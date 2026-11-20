@@ -10,8 +10,8 @@ documents it points to. **No product code exists yet.**
 | Design | `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` | approved by the owner |
 | Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | approved by the owner, not started |
 | Plans 2–7 | not written | see "Order of work" below |
-| Branch | `claude/baby-health-tracker-platform-egwwyz` in `davcs86/happybabytracker` | holds only docs |
-| Pull request | https://github.com/davcs86/happybabytracker/pull/1 | open, docs only, not merged |
+| Design, plan 1 and this file | `main` of `davcs86/happybabytracker` | merged by PR #1 (docs only) |
+| Implementation branch | none yet | create it from `main` when plan 1 starts |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -43,9 +43,9 @@ One plan per item, each its own PR, each written just before it is built.
 
 | Repository | Role | Branch for this work |
 |---|---|---|
-| `davcs86/happybabytracker` | the app | `claude/baby-health-tracker-platform-egwwyz` |
+| `davcs86/happybabytracker` | the app | a new branch from `main` |
 | `davcs86/commsgun` | the architecture and tooling to mirror; read-only reference | none needed |
-| `davcs86/homelab-edge` | deployment (Ansible); changed from plan 2 on | `claude/baby-health-tracker-platform-egwwyz` |
+| `davcs86/homelab-edge` | deployment (Ansible); changed from plan 2 on | a new branch from its `main`, in plan 2 |
 | `davcs86/xstockstrat` | public; reference for Web Push with VAPID (`services/xstockstrat-notify/src/fanout/webPush.ts`, `services/xstockstrat-ui/docs/pwa-push.md`) | read-only |
 
 Both `commsgun` and `homelab-edge` have a `CLAUDE.md` whose rules bind any work there: list
@@ -135,7 +135,7 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Read `docs/superpowers/HANDOFF.md` in `davcs86/happybabytracker`, then the design and plan 1 it
-> points to. Execute plan 1 with subagent-driven development on branch
-> `claude/baby-health-tracker-platform-egwwyz`. `davcs86/commsgun` is the reference to mirror;
-> attach it read-only. Do not change `davcs86/homelab-edge` in this plan.
+> Start from `main` of `davcs86/happybabytracker`. Read `docs/superpowers/HANDOFF.md`, then the
+> design and plan 1 it points to. Execute plan 1 with subagent-driven development on a new branch
+> created from `main`, and open a pull request against `main` when it is done. `davcs86/commsgun` is
+> the reference to mirror; attach it read-only. Do not change `davcs86/homelab-edge` in this plan.
