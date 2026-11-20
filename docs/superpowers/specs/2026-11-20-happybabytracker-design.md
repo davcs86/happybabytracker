@@ -39,6 +39,9 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 - G10. An installable PWA, mobile-first, with no feature that exists on only one device class
   **(owner)**.
 - G11. Medication reminders by Web Push with VAPID, opted into per device **(owner)**.
+- G15. The same reminders can also go to an ntfy server when the deployment configures one. ntfy is
+  an addition, never a replacement: Web Push is always present **(owner)**. Nothing in this repository
+  depends on `homelab-edge`; a fork runs against any ntfy server or none **(owner)**.
 - G12. PDF export of a kid's record for a time range **(owner)**.
 - G13. Each user picks display units; storage keeps metric and imperial values side by side,
   converted when a row is saved **(owner)**.
@@ -176,7 +179,7 @@ Two levels **(owner)**. A kid has one or more guardians and zero or more caregiv
   their other sessions.
 - Failed logins are limited per client address and per username, in memory **(call: 5 per minute)**.
   The limiter counts admin and parent attempts together and answers both the same way.
-- Disabling a parent deletes their sessions and push subscriptions at once.
+- Disabling a parent deletes their sessions, push subscriptions and ntfy topic at once.
 
 ### 5.4 The Authelia seam
 
@@ -245,6 +248,7 @@ Authelia is approved for the edge but not deployed, and it is planned for **publ
 | `medication_doses` | doses given | medication, time, amount text |
 | `reminders` | materialised reminder occurrences (11) | medication, due time, state, attempts |
 | `push_subscriptions`, `push_kid_optins` | Web Push (11) | parent, device label, endpoint, keys; subscription, kid |
+| `ntfy_topics`, `ntfy_kid_optins` | ntfy (11.1) | parent (one row each), topic; parent, kid |
 | `meta` | schema version, admin fingerprint | key, value |
 
 BMI is never stored; it is computed from a weight and a length/height measured on the same date.
@@ -426,7 +430,7 @@ object; the timeline filtered to sickness shows the course **(call)**.
   not.
 - The medication screen shows each active course with its last dose and its next due time.
 
-## 11. Reminders and Web Push
+## 11. Reminders, Web Push and ntfy
 
 - The API holds a VAPID key pair (the private key from SOPS; the public key is derived and served to
   the UI) and a VAPID subject, which is an `https:` URL **(owner)**: the app's own origin **(call)**.
@@ -439,7 +443,9 @@ object; the timeline filtered to sickness shows the course **(call)**.
 - The worker ticks every 30 seconds. For each active scheduled medication of a kid whose medication
   module is on, it materialises the next occurrence as a `reminders` row, unique on (medication, due
   time), so a restart or a second tick never creates or sends a duplicate.
-- A due reminder is sent to every opted-in subscription for that kid. The payload is encrypted to the
+- A due reminder is sent to every opted-in Web Push subscription for that kid, and to every
+  opted-in ntfy topic when ntfy is configured (11.1). Each target is delivered and retried on its own;
+  a failing channel never delays or blocks the other. The Web Push payload is encrypted to the
   device (RFC 8291). The notification is generic: "<Category> due for <kid's name>", for example
   "Medication due for Mia", and never names the medication or the dose **(owner)**. Medication is the
   only category in stage one; the payload carries the category so others can follow. It opens the
@@ -453,6 +459,31 @@ object; the timeline filtered to sickness shows the course **(call)**.
 - On iOS the settings screen explains that notifications need the app added to the home screen.
 - The service worker handles install and push only. It caches no kid data; without a connection the
   app shows an offline page **(owner: online-only)**.
+
+### 11.1 ntfy (optional second channel)
+
+- ntfy is on when `NTFY_URL` is set, and absent from the UI and the worker when it is not. Web Push
+  does not depend on it and is always on **(owner)**.
+- One topic **per parent** **(owner)**. When a parent turns ntfy on in account settings, the API
+  generates `<NTFY_TOPIC_PREFIX>-<22 random base62 characters>` **(call)**, stores it, and the screen
+  shows the server address (`NTFY_PUBLIC_URL`, or `NTFY_URL` when that is unset) and the topic to
+  subscribe to in the ntfy app. The parent can regenerate the topic (the old one stops receiving) or
+  turn ntfy off (the topic is deleted).
+- The parent chooses the kids to be reminded about on that topic, as for a Web Push device. Only a
+  parent with a grant on the kid can opt in; revoking the grant removes the opt-in. So a reminder for
+  a kid only ever goes to topics of parents who can see that kid.
+- The message is the same generic text as the push, "<Category> due for <kid's name>", with the app's
+  medication screen as its click address. The API publishes with `Authorization: Bearer <NTFY_TOKEN>`
+  when a token is set and with no credentials when it is not.
+- Delivery: a 429 or 5xx is retried with the same backoff and the same 30-minute expiry as a push. A
+  401 or 403 is logged once per tick as a configuration fault (no topic in the log) and is not
+  retried for that occurrence. The topic is a secret and is never logged.
+- The app does not manage who may **read** a topic. On an open ntfy server the unguessable topic is
+  the protection; on a server that denies by default, read access is the server operator's to grant.
+- ntfy keeps a message in its cache (72 hours on the edge's server), so the kid's name rests there in
+  plaintext for that long. The settings screen says so next to the switch **(call)**.
+- `GET /healthz/reminders` covers both channels: an occurrence stuck on either one for more than 15
+  minutes turns it 503.
 
 ## 12. PDF export
 
@@ -479,9 +510,15 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 | `PUBLIC_ORIGIN` | the app's origin, used in invite and reset links and as the push click target |
 | `DATA_DIR` | SQLite directory, default `/data`, the only writable path |
 | `HBT_ALLOW_FAKE_PUSH` | `1` sends pushes to an in-memory recorder (tests and smoke only) |
+| `NTFY_URL` | optional; the ntfy server the API publishes to. Unset turns ntfy off |
+| `NTFY_TOKEN` | optional ntfy access token (secret) |
+| `NTFY_TOPIC_PREFIX` | required with `NTFY_URL`; 1–32 of `a-z0-9-` |
+| `NTFY_PUBLIC_URL` | optional; the server address shown to parents when it differs from `NTFY_URL` |
 
 The process refuses to start on a missing or too-short secret, an invalid VAPID key or an invalid
-origin.
+origin; the VAPID variables are always required **(owner)**. It also refuses `NTFY_URL` without a
+prefix, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, and any other `NTFY_*` variable set while
+`NTFY_URL` is not.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
 `GET /healthz/reminders` is 503 when a reminder has been due and unsent for more than 15 minutes
@@ -575,6 +612,7 @@ their network path.
 | `happybabytracker_admin_password` | generated; the owner may replace it with `sops set` |
 | `happybabytracker_internal_api_token` | generated |
 | `happybabytracker_vapid_private_key` | generated once (a P-256 key in a form with no quote, backslash or line break). Never rotated casually: a new key invalidates every push subscription |
+| `happybabytracker_ntfy_token`, `happybabytracker_ntfy_password_bcrypt` | generated, only when ntfy is enabled for the app (below) |
 
 The deploy asserts presence, shape and minimum length before it writes any file, as it does for
 commsgun.
@@ -594,6 +632,18 @@ private name, in the `edge` group, with ntfy alerts.
 `bump-happybabytracker` workflow modelled on `bump-commsgun` that pins both in one PR and refuses a
 pair whose revision labels differ.
 
+**ntfy (the platform admin's choice)**: one inventory switch, `happybabytracker_ntfy_enabled`
+**(owner: configurable on the edge)**. Off: no `NTFY_*` variable is rendered and the app runs on Web
+Push alone. On, the edge PR adds:
+
+- an ntfy user `happybabytracker` with write-only access to `<prefix>-*` and a token, declared in
+  `ntfy-server.yml.j2` beside `alerts`; the prefix is an inventory value;
+- `NTFY_URL` pointing at the ntfy container over a compose network the API joins, `NTFY_PUBLIC_URL` =
+  `https://{{ ntfy_private_hostname }}` (ntfy's `base-url`, the only name an iOS subscription works
+  under), `NTFY_TOKEN` and `NTFY_TOPIC_PREFIX` in the API's env file;
+- nothing for readers: `david` already reads every topic as ntfy admin. Any other parent needs an ntfy
+  user with read access to their own topic, added by hand in this repo when that day comes.
+
 **Policy**: no change.
 
 **Docs**: a runbook (first deploy, add a parent, reset a password, rotate the internal token, restore
@@ -612,7 +662,8 @@ One design, several plans, each its own PR, each leaving something that works:
    age-adaptive home screen; PWA manifest and install.
 4. **Growth**: measurements, reference tables, charts, corrected age.
 5. **Vaccination**: schedule files, doses, due and overdue.
-6. **Sickness and medication**: symptoms, courses, doses, the reminder worker, Web Push.
+6. **Sickness and medication**: symptoms, courses, doses, the reminder worker, Web Push, the ntfy
+   channel; then the edge's ntfy switch.
 7. **Milestones and PDF export.**
 
 Each plan after the second ends with: merge, the bump PR, a deploy, and a check on the edge.

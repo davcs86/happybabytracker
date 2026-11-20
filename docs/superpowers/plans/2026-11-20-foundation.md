@@ -153,7 +153,9 @@ and token redemption (the limiter's key). Errors are `{"error":"<snake_case_code
   - `TestLoadRefuses`: each of — `ADMIN_USERNAME` empty or not matching `UsernamePattern`;
     `ADMIN_PASSWORD` of 15 chars; `INTERNAL_API_TOKEN` of 31 chars; `PUBLIC_ORIGIN` not `http(s)://host`
     or with a path — returns an error whose text names the variable and never contains its value.
-  - `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` and `HBT_ALLOW_FAKE_PUSH` are **not** read in this plan.
+  - `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `HBT_ALLOW_FAKE_PUSH` and the `NTFY_*` variables are **not**
+    read in this plan; plan 6 adds them (VAPID then becomes required at start, so the edge provisions
+    it in plan 2).
 - [ ] **Step 4:** Run `cd api && go test ./internal/config/` → FAIL (package missing).
 - [ ] **Step 5:** Implement `constants.go` and `config.Load`.
 - [ ] **Step 6:** Run again → PASS. `gofmt -l .` prints nothing; `go vet ./...` clean.
