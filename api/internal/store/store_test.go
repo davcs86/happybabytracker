@@ -147,3 +147,15 @@ func TestMetaRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoVacuumIncremental(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var got int
+	if err := s.w.QueryRow(`PRAGMA auto_vacuum`).Scan(&got); err != nil || got != 2 {
+		t.Fatalf("auto_vacuum = %d (%v), want 2 (INCREMENTAL)", got, err)
+	}
+}

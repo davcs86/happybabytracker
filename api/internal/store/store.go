@@ -37,8 +37,9 @@ func Open(dataDir string) (*Store, error) {
 		return nil, fmt.Errorf("store: create db file: %w", err)
 	}
 	f.Close()
+	// auto_vacuum must precede journal_mode so it applies before any page is written.
 	busy := constants.SQLiteBusyTimeout.Milliseconds()
-	wdsn := fmt.Sprintf("file:%s?_txlock=immediate&_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=secure_delete(ON)", path, busy)
+	wdsn := fmt.Sprintf("file:%s?_txlock=immediate&_pragma=auto_vacuum(INCREMENTAL)&_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=secure_delete(ON)", path, busy)
 	w, err := sql.Open("sqlite", wdsn)
 	if err != nil {
 		return nil, err
