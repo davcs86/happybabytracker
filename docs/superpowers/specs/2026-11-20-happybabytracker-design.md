@@ -1,10 +1,9 @@
 # happybabytracker — health and growth tracker for babies and kids: design
 
-Status: **draft, awaiting owner approval** (2026-11-20). Nothing is built.
+Status: **approved by the owner** (2026-11-20). Plans: `docs/superpowers/plans/`.
 
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
-Items marked **(confirm)** need a value only the owner can give before the step that uses it.
 
 ## 1. Intent
 
@@ -104,7 +103,7 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 
 ### 4.1 Application shape
 
-1. **commsgun mirror — chosen (call; the owner approved the overall direction and did not object).**
+1. **commsgun mirror — chosen (owner: acceptable as long as it serves the PWA and Web Push).**
    Two images. The Go API owns users, sessions, authorization, data, PDF export and the reminder
    worker, on a listener that is never published. The SvelteKit server is the only published port; it
    holds the session cookie and calls the API server-side. Authorization is enforced in the API, so a
@@ -152,8 +151,7 @@ admin session is deleted. Changing either in SOPS and redeploying therefore sign
 | `guardian` | yes | yes | yes | yes | yes |
 | `caregiver` | yes | yes | no | no | no |
 
-Two levels **(call — the owner answered "agree" to a question that offered one level or these two;
-confirm)**.
+Two levels **(owner)**. A kid has one or more guardians and zero or more caregivers.
 
 - A parent who creates a kid becomes its guardian **(owner)**.
 - A guardian grants access by typing another parent's exact username and choosing a role. There is no
@@ -356,7 +354,7 @@ phone and desktop width **(owner: no functionality gaps)**.
   published by its source.
 - A source that cannot be bundled is left out; its id is not offered. The builder reports which of
   the two optional sources made it in. The licence check applies to `who` and `cdc` too, against the
-  licence and visibility of this repository and its images (15, **confirm**); if a required source
+  licence and visibility of this repository and its images (both public, 15), so bundling a table is redistribution; if a required source
   cannot be bundled the builder stops and asks the owner.
 
 ### 8.2 Behaviour
@@ -422,8 +420,8 @@ object; the timeline filtered to sickness shows the course **(call)**.
 - A medication is a course: name, dose as text ("2.5 ml"), start, optional end, and a schedule that
   is one of: none (as needed), fixed times of day, or every N hours from a start time **(call)**.
 - "Every N hours" is a fixed grid from the start time. It is not re-anchored to the dose actually
-  logged: the app does not compute a safe interval (non-goals). Instead every reminder and the "next
-  due" line show when the last dose was logged, so the parent decides **(call; confirm)**.
+  logged: the app does not compute a safe interval (non-goals). Instead the "next due" line shows
+  when the last dose was logged, so the parent decides **(owner: do not recompute)**.
 - A dose given is logged against the medication with a time. Logging is always possible, scheduled or
   not.
 - The medication screen shows each active course with its last dose and its next due time.
@@ -431,8 +429,10 @@ object; the timeline filtered to sickness shows the course **(call)**.
 ## 11. Reminders and Web Push
 
 - The API holds a VAPID key pair (the private key from SOPS; the public key is derived and served to
-  the UI) and a VAPID contact address **(confirm: a `mailto:` or `https:` contact the push services
-  may use)**.
+  the UI) and a VAPID subject, which is an `https:` URL **(owner)**: the app's own origin **(call)**.
+  The API refuses to start unless the subject begins with `https:`. `davcs86/xstockstrat` already
+  sends Web Push this way (`services/xstockstrat-notify/src/fanout/webPush.ts`); its push TTL of one
+  hour and 10-second send timeout are the starting values here **(call)**.
 - A parent turns notifications on **per device**, and on that device chooses the kids to be reminded
   about **(owner)**. Only a parent with a grant on the kid can opt in; revoking the grant removes the
   opt-in.
@@ -440,8 +440,10 @@ object; the timeline filtered to sickness shows the course **(call)**.
   module is on, it materialises the next occurrence as a `reminders` row, unique on (medication, due
   time), so a restart or a second tick never creates or sends a duplicate.
 - A due reminder is sent to every opted-in subscription for that kid. The payload is encrypted to the
-  device (RFC 8291). The notification reads "Medication due: <medication> for <kid's name>" and opens
-  the medication screen **(call — it is visible on a lock screen; confirm)**.
+  device (RFC 8291). The notification is generic: "<Category> due for <kid's name>", for example
+  "Medication due for Mia", and never names the medication or the dose **(owner)**. Medication is the
+  only category in stage one; the payload carries the category so others can follow. It opens the
+  medication screen.
 - Delivery: a 404 or 410 from the push service deletes that subscription; a 429 or 5xx is retried
   with backoff; a reminder not sent within 30 minutes of its due time is marked `expired` and never
   sent late **(call)**. A dose logged for that medication from 30 minutes before the due time until
@@ -473,7 +475,7 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters) |
 | `INTERNAL_API_TOKEN` | shared with the UI container (secret, at least 32 characters) |
 | `VAPID_PRIVATE_KEY` | P-256 private key for Web Push (secret) |
-| `VAPID_SUBJECT` | contact for the push services |
+| `VAPID_SUBJECT` | the `https:` subject sent to the push services; on the edge, the app's origin |
 | `PUBLIC_ORIGIN` | the app's origin, used in invite and reset links and as the push click target |
 | `DATA_DIR` | SQLite directory, default `/data`, the only writable path |
 | `HBT_ALLOW_FAKE_PUSH` | `1` sends pushes to an in-memory recorder (tests and smoke only) |
@@ -552,18 +554,17 @@ Everything follows that repo's `CLAUDE.md`.
 | `happybabytracker-api` | `happybabytracker_api_image` | none published | `happybabytracker-data:/data` | 96m **(call)** |
 | `happybabytracker-ui` | `happybabytracker_ui_image` | `127.0.0.1:9212:9212` | none | 192m **(call)** |
 
-**Image visibility (confirm)**: the edge pulls commsgun's images without a credential because the
-GHCR packages are public. The same is assumed here only once the owner says so; private images need a
-registry credential on the edge and in the bump workflow, which is new work in plan 2.
+**Image visibility**: the repository is public **(owner)** and both GHCR packages are made public
+once, as commsgun's were, so the edge and the bump workflow pull without a credential.
 
 **Name**: one `*.private` name for the UI, wired in the four places of EDGE-07, inheriting
-`tailnet_only` and `deny_staging_vm`. The label is the owner's **(confirm; proposed
-`happybaby.private.<domain>`)**. Nothing under `*.public`, nothing in `edge_sites`.
+`tailnet_only` and `deny_staging_vm`: `happybaby.private.<domain>` **(owner)**. Nothing under
+`*.public`, nothing in `edge_sites`.
 
-**Who can reach it (confirm)**: constraint 7. Every parent and caregiver needs a tailnet device that
-may reach `tag:edge:443`. Adding them to `group:members` also lets them reach Gatus, ntfy and the
-commsgun login. If that is not wanted, the edge PR adds a group for them and a Caddy rule that admits
-that group's addresses to this one name only, in the manner of `deny_staging_vm`.
+**Who can reach it**: only the tailnet users that reach `*.private` today, `david@` and
+`david_admin@` **(owner)**. No policy or Caddy change. Other parents and caregivers can have accounts
+but cannot reach the app until the Authelia work changes how it is exposed (5.4); that work decides
+their network path.
 
 **Secrets** (`secrets/edge.sops.yaml`, declared in `scripts/init_secrets.py`, documented in
 `secrets/README.md`):
@@ -574,14 +575,14 @@ that group's addresses to this one name only, in the manner of `deny_staging_vm`
 | `happybabytracker_admin_password` | generated; the owner may replace it with `sops set` |
 | `happybabytracker_internal_api_token` | generated |
 | `happybabytracker_vapid_private_key` | generated once (a P-256 key in a form with no quote, backslash or line break). Never rotated casually: a new key invalidates every push subscription |
-| `happybabytracker_vapid_subject` | owner-provided **(confirm)** |
 
 The deploy asserts presence, shape and minimum length before it writes any file, as it does for
 commsgun.
 
 **Backup**: the existing `edge-backup` script also snapshots this database (`.backup`, then
 `PRAGMA integrity_check`) into the same `age`-encrypted archive, the restore drill opens it, and the
-timer runs twice a day **(owner: twice a day; the two clock times are the owner's — confirm)**. The
+timer runs at 00:00 and 12:00 UTC **(owner)**, which also moves the headscale snapshot from its
+single 03:17 UTC run. The
 existing heartbeat endpoint keeps its name (EDGE-10) and its interval is shortened to match
 **(call: one archive and one timer, rather than a second unit)**. `docs/runbooks/recovery.md` gains
 the restore steps for this database.
@@ -593,8 +594,7 @@ private name, in the `edge` group, with ntfy alerts.
 `bump-happybabytracker` workflow modelled on `bump-commsgun` that pins both in one PR and refuses a
 pair whose revision labels differ.
 
-**Policy**: no grant changes for the service itself. A change only if the owner picks the narrower
-access above.
+**Policy**: no change.
 
 **Docs**: a runbook (first deploy, add a parent, reset a password, rotate the internal token, restore
 the database, what a VAPID key change costs), the Context Guide row in `CLAUDE.md`, one entry in
