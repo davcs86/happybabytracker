@@ -73,8 +73,8 @@ func TestSessionByTokenRefusals(t *testing.T) {
 	if _, err := s.SessionByToken(ctx, []byte("unknown"), t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown token: %v, want ErrNotFound", err)
 	}
-	if _, err := s.SessionByToken(ctx, []byte("h1"), exp.Add(-time.Millisecond)); err != nil {
-		t.Errorf("1ms before expiry: %v", err)
+	if _, err := s.SessionByToken(ctx, []byte("h1"), exp.Add(-time.Second)); err != nil {
+		t.Errorf("1s before expiry: %v", err)
 	}
 	if _, err := s.SessionByToken(ctx, []byte("h1"), exp); !errors.Is(err, ErrNotFound) {
 		t.Errorf("at expiry: %v, want ErrNotFound", err)
@@ -120,8 +120,8 @@ func TestTouchSession(t *testing.T) {
 		t.Fatalf("after touch: %+v, %v; want expiry %v", got, err, newExp)
 	}
 	var seen int64
-	if err := s.r.QueryRow(`SELECT last_seen_at FROM sessions WHERE id = ?`, id).Scan(&seen); err != nil || seen != later.UnixMilli() {
-		t.Fatalf("last_seen_at = %d, %v; want %d", seen, err, later.UnixMilli())
+	if err := s.r.QueryRow(`SELECT last_seen_at FROM sessions WHERE id = ?`, id).Scan(&seen); err != nil || seen != later.Unix() {
+		t.Fatalf("last_seen_at = %d, %v; want %d", seen, err, later.Unix())
 	}
 	if err := s.TouchSession(ctx, "no-such-session", later, newExp); err != nil {
 		t.Errorf("touching a vanished session: %v, want nil", err)
@@ -273,8 +273,8 @@ func TestSetParentDisabled(t *testing.T) {
 		t.Errorf("another parent's session was removed: %v", err)
 	}
 	var updated int64
-	if err := s.r.QueryRow(`SELECT updated_at FROM parents WHERE id = ?`, p.ID).Scan(&updated); err != nil || updated != later.UnixMilli() {
-		t.Errorf("updated_at = %d, %v; want %d", updated, err, later.UnixMilli())
+	if err := s.r.QueryRow(`SELECT updated_at FROM parents WHERE id = ?`, p.ID).Scan(&updated); err != nil || updated != later.Unix() {
+		t.Errorf("updated_at = %d, %v; want %d", updated, err, later.Unix())
 	}
 
 	if err := s.SetParentDisabled(ctx, p.ID, false, later); err != nil {
@@ -286,5 +286,31 @@ func TestSetParentDisabled(t *testing.T) {
 	}
 	if err := s.SetParentDisabled(ctx, "nobody", true, later); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown parent: %v, want ErrNotFound", err)
+	}
+}
+
+func TestInstantsAreStoredAsUnixSeconds(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	exp := t0.Add(constants.ParentSessionTTL)
+	id := mustSession(t, s, "parent", p.ID, []byte("h"), exp)
+
+	var created, updated, sCreated, seen, expires int64
+	if err := s.r.QueryRow(`SELECT created_at, updated_at FROM parents WHERE id = ?`, p.ID).Scan(&created, &updated); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.r.QueryRow(`SELECT created_at, last_seen_at, expires_at FROM sessions WHERE id = ?`, id).Scan(&sCreated, &seen, &expires); err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string]int64{"parents.created_at": created, "parents.updated_at": updated, "sessions.created_at": sCreated, "sessions.last_seen_at": seen} {
+		if got != t0.Unix() {
+			t.Errorf("%s = %d, want %d (unix seconds)", name, got, t0.Unix())
+		}
+	}
+	if expires != exp.Unix() {
+		t.Errorf("sessions.expires_at = %d, want %d (unix seconds)", expires, exp.Unix())
+	}
+	if p.CreatedAt != time.Unix(created, 0).UTC() {
+		t.Errorf("CreatedAt = %v, want %v", p.CreatedAt, time.Unix(created, 0).UTC())
 	}
 }

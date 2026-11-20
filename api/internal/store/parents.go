@@ -31,7 +31,7 @@ func scanParent(row *sql.Row) (model.Parent, string, error) {
 	if err != nil {
 		return model.Parent{}, "", err
 	}
-	p.CreatedAt = time.UnixMilli(created).UTC()
+	p.CreatedAt = time.Unix(created, 0).UTC()
 	p.HasPassword = hash.String != ""
 	return p, hash.String, nil
 }
@@ -51,7 +51,7 @@ func (s *Store) CreateParent(ctx context.Context, username, displayName string, 
 	id := model.NewID()
 	_, err := s.w.ExecContext(ctx,
 		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		id, username, displayName, now.UnixMilli(), now.UnixMilli())
+		id, username, displayName, now.Unix(), now.Unix())
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return model.Parent{}, ErrConflict
@@ -87,7 +87,7 @@ func (s *Store) SetPassword(ctx context.Context, parentID, secretHash, keepSessi
 // SetParentDisabled flips the flag; disabling also deletes the parent's sessions.
 func (s *Store) SetParentDisabled(ctx context.Context, id string, disabled bool, now time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE parents SET disabled = ?, updated_at = ? WHERE id = ?`, disabled, now.UnixMilli(), id)
+		res, err := tx.ExecContext(ctx, `UPDATE parents SET disabled = ?, updated_at = ? WHERE id = ?`, disabled, now.Unix(), id)
 		if err != nil {
 			return err
 		}

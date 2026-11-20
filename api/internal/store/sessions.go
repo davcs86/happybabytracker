@@ -18,7 +18,7 @@ func (s *Store) CreateSession(ctx context.Context, kind, parentID string, tokenH
 	id := model.NewID()
 	_, err := s.w.ExecContext(ctx,
 		`INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, tokenHash, kind, parent, now.UnixMilli(), now.UnixMilli(), expires.UnixMilli())
+		id, tokenHash, kind, parent, now.Unix(), now.Unix(), expires.Unix())
 	if err != nil {
 		return "", err
 	}
@@ -36,7 +36,7 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash []byte, now time.T
 		`SELECT s.id, s.kind, s.parent_id, s.expires_at
 		 FROM sessions s LEFT JOIN parents p ON p.id = s.parent_id
 		 WHERE s.token_hash = ? AND s.expires_at > ? AND (p.id IS NULL OR p.disabled = 0)`,
-		tokenHash, now.UnixMilli()).Scan(&p.SessionID, &p.Kind, &parent, &expires)
+		tokenHash, now.Unix()).Scan(&p.SessionID, &p.Kind, &parent, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Principal{}, ErrNotFound
 	}
@@ -44,14 +44,14 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash []byte, now time.T
 		return model.Principal{}, err
 	}
 	p.ParentID = parent.String
-	p.ExpiresAt = time.UnixMilli(expires).UTC()
+	p.ExpiresAt = time.Unix(expires, 0).UTC()
 	return p, nil
 }
 
 // TouchSession records the use and moves the expiry; a vanished session is not an error.
 func (s *Store) TouchSession(ctx context.Context, id string, now, expires time.Time) error {
 	_, err := s.w.ExecContext(ctx,
-		`UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?`, now.UnixMilli(), expires.UnixMilli(), id)
+		`UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?`, now.Unix(), expires.Unix(), id)
 	return err
 }
 
