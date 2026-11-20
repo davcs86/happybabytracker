@@ -1,0 +1,101 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+
+	"github.com/davcs86/happybabytracker/api/internal/model"
+)
+
+// RoleFor returns ErrNotFound alike for an unknown kid and for a kid the parent holds no grant on.
+func (s *Store) RoleFor(ctx context.Context, kidID, parentID string) (model.Role, error) {
+	var role model.Role
+	err := s.r.QueryRowContext(ctx, `SELECT role FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, parentID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return role, err
+}
+
+// AccessList returns the kid's grants, guardians first, then by username; never nil.
+func (s *Store) AccessList(ctx context.Context, kidID string) ([]model.Grant, error) {
+	rows, err := s.r.QueryContext(ctx,
+		`SELECT p.id, p.username, p.display_name, a.role FROM kid_access a JOIN parents p ON p.id = a.parent_id
+		 WHERE a.kid_id = ? ORDER BY CASE a.role WHEN ? THEN 0 ELSE 1 END, p.username`, kidID, model.RoleGuardian)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.Grant{}
+	for rows.Next() {
+		var g model.Grant
+		if err := rows.Scan(&g.ParentID, &g.Username, &g.DisplayName, &g.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// SetAccess grants or changes a role; ErrNotFound for an unknown or disabled parent, ErrLastGuardian on a downgrade.
+func (s *Store) SetAccess(ctx context.Context, kidID, username string, role model.Role, now time.Time) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		var parentID string
+		err := tx.QueryRowContext(ctx, `SELECT id FROM parents WHERE username = ? AND disabled = 0`, username).Scan(&parentID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES (?, ?, ?, ?)
+			 ON CONFLICT(kid_id, parent_id) DO UPDATE SET role = excluded.role`,
+			kidID, parentID, role, now.Unix()); err != nil {
+			return err
+		}
+		return keepsActiveGuardian(ctx, tx, kidID)
+	})
+}
+
+// RemoveAccess returns ErrNotFound when the parent holds no grant on the kid.
+func (s *Store) RemoveAccess(ctx context.Context, kidID, parentID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `DELETE FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, parentID)
+		if err := oneRow(res, err); err != nil {
+			return err
+		}
+		return keepsActiveGuardian(ctx, tx, kidID)
+	})
+}
+
+// keepsActiveGuardian must read through tx: a count on the read pool would let two writers both pass.
+func keepsActiveGuardian(ctx context.Context, tx *sql.Tx, kidID string) error {
+	var n int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM kid_access a JOIN parents p ON p.id = a.parent_id
+		 WHERE a.kid_id = ? AND a.role = ? AND p.disabled = 0`, kidID, model.RoleGuardian).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrLastGuardian
+	}
+	return nil
+}
+
+// guardsEveryKidWithOthers is ErrLastGuardian when some kid the parent guards has no other active guardian.
+func guardsEveryKidWithOthers(ctx context.Context, tx *sql.Tx, parentID string) error {
+	var orphaned int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM kid_access a WHERE a.parent_id = ?1 AND a.role = ?2 AND NOT EXISTS (
+		   SELECT 1 FROM kid_access g JOIN parents p ON p.id = g.parent_id
+		   WHERE g.kid_id = a.kid_id AND g.role = ?2 AND p.disabled = 0)`, parentID, model.RoleGuardian).Scan(&orphaned); err != nil {
+		return err
+	}
+	if orphaned > 0 {
+		return ErrLastGuardian
+	}
+	return nil
+}

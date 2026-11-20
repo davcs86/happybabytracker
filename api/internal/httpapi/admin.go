@@ -149,6 +149,10 @@ func (d Deps) setDisabled(disabled bool) http.HandlerFunc {
 			respondError(w, http.StatusNotFound, "not_found")
 			return
 		}
+		if errors.Is(err, store.ErrLastGuardian) { // the admin learns nothing about which kid
+			respondError(w, http.StatusConflict, "sole_guardian")
+			return
+		}
 		if err != nil {
 			respondInternal(w)
 			return

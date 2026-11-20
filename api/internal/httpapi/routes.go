@@ -58,6 +58,15 @@ func Routes(d Deps) []Route {
 		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},
 		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
+
+		{http.MethodGet, "/v1/kids", Parent, d.listKids},
+		{http.MethodPost, "/v1/kids", Parent, d.createKid},
+		{http.MethodGet, "/v1/kids/{kid}", Caregiver, d.getKid},
+		{http.MethodPatch, "/v1/kids/{kid}", Guardian, d.updateKid},
+		{http.MethodDelete, "/v1/kids/{kid}", Guardian, d.deleteKid},
+		{http.MethodGet, "/v1/kids/{kid}/access", Guardian, d.listAccess},
+		{http.MethodPut, "/v1/kids/{kid}/access/{username}", Guardian, d.setAccess},
+		{http.MethodDelete, "/v1/kids/{kid}/access/{parent}", Caregiver, d.removeAccess},
 	}
 }
 

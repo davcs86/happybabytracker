@@ -89,8 +89,8 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 	switch access {
 	case Open, Internal:
 		return ctx, model.Principal{}, true
-	case Session, Admin, Parent:
-	default: // Caregiver and Guardian arrive with the kid-role lookup; anything else is a bug.
+	case Session, Admin, Parent, Caregiver, Guardian:
+	default: // an unknown class is a bug, never an open route
 		respondError(w, http.StatusInternalServerError, "internal")
 		return ctx, model.Principal{}, false
 	}
@@ -110,9 +110,27 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 		respondError(w, http.StatusInternalServerError, "internal")
 		return ctx, model.Principal{}, false
 	}
-	if (access == Admin && p.Kind != kindAdmin) || (access == Parent && p.Kind != kindParent) {
+	perKid := access == Caregiver || access == Guardian
+	if (access == Admin && p.Kind != kindAdmin) || ((access == Parent || perKid) && p.Kind != kindParent) {
 		respondError(w, http.StatusForbidden, "forbidden")
 		return ctx, p, false
+	}
+	if perKid {
+		// Unknown kid and no grant must stay byte-identical: both are this one 404.
+		role, err := d.Store.RoleFor(ctx, r.PathValue("kid"), p.ParentID)
+		if errors.Is(err, store.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "not_found")
+			return ctx, p, false
+		}
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "internal")
+			return ctx, p, false
+		}
+		if access == Guardian && role != model.RoleGuardian {
+			respondError(w, http.StatusForbidden, "forbidden")
+			return ctx, p, false
+		}
+		ctx = context.WithValue(ctx, kidRoleKey, role)
 	}
 
 	if p.Kind == kindParent && p.ExpiresAt.Sub(now) < constants.ParentSessionTTL-constants.SessionTouchInterval {

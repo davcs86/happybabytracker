@@ -15,6 +15,11 @@ func NewID() string {
 // Role is a parent's access to one kid: "guardian" or "caregiver".
 type Role string
 
+const (
+	RoleGuardian  Role = "guardian"
+	RoleCaregiver Role = "caregiver"
+)
+
 // One-time token kinds.
 const (
 	TokenInvite = "invite"

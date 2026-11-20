@@ -37,6 +37,14 @@ const (
 	DisplayNameMinLen = 1
 	DisplayNameMaxLen = 64
 
+	KidNameMinLen     = 1
+	KidNameMaxLen     = 64
+	KidMinBirthDate   = "1900-01-01"
+	GestationWeeksMin = 22
+	GestationWeeksMax = 44
+	GestationDaysMin  = 0
+	GestationDaysMax  = 6
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 

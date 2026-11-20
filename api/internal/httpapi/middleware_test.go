@@ -98,12 +98,10 @@ func TestOnlyOpenSkipsTheInternalToken(t *testing.T) {
 	}
 }
 
-func TestUnservedAccessClassesAreRefused(t *testing.T) {
+func TestUnknownAccessClassesAreRefused(t *testing.T) {
 	k := newKit(t)
 	parent := k.asParent("ana")
 	routes := []Route{
-		{http.MethodGet, "/caregiver", Caregiver, ok},
-		{http.MethodGet, "/guardian", Guardian, ok},
 		{http.MethodGet, "/unknown", Access(99), ok},
 		{http.MethodGet, "/negative", Access(-1), ok},
 	}
@@ -118,6 +116,49 @@ func TestUnservedAccessClassesAreRefused(t *testing.T) {
 	}
 	if KidRoleFrom(httptest.NewRequest(http.MethodGet, "/", nil).Context()) != "" {
 		t.Error("KidRoleFrom on a bare context must be the zero Role")
+	}
+}
+
+func TestKidAccessClasses(t *testing.T) {
+	k := newKit(t)
+	admin, guardian, carer, stranger := k.asAdmin(), k.asParent("ana"), k.asParent("cara"), k.asParent("sam")
+	kid := k.createKid(guardian, nil)
+	k.grant(guardian, kid, "cara", "caregiver")
+	role := func(w http.ResponseWriter, r *http.Request) {
+		respondJSON(w, http.StatusOK, map[string]string{"role": string(KidRoleFrom(r.Context()))})
+	}
+	routes := []Route{
+		{http.MethodGet, "/c/{kid}", Caregiver, role},
+		{http.MethodGet, "/g/{kid}", Guardian, role},
+		{http.MethodGet, "/nokid", Caregiver, role},
+	}
+	cases := []struct {
+		path, token string
+		status      int
+		body        string
+	}{
+		{"/c/" + kid, guardian, 200, `{"role":"guardian"}`},
+		{"/c/" + kid, carer, 200, `{"role":"caregiver"}`},
+		{"/g/" + kid, guardian, 200, `{"role":"guardian"}`},
+		{"/g/" + kid, carer, 403, `{"error":"forbidden"}`},
+		{"/c/" + kid, stranger, 404, `{"error":"not_found"}`},
+		{"/g/" + kid, stranger, 404, `{"error":"not_found"}`},
+		{"/c/no-such-kid", guardian, 404, `{"error":"not_found"}`},
+		{"/nokid", guardian, 404, `{"error":"not_found"}`},
+		// The admin is refused before any lookup: a real and an unknown kid answer alike.
+		{"/c/" + kid, admin, 403, `{"error":"forbidden"}`},
+		{"/g/no-such-kid", admin, 403, `{"error":"forbidden"}`},
+		{"/c/" + kid, "", 401, `{"error":"no_session"}`},
+	}
+	for _, c := range cases {
+		r := k.newReq(http.MethodGet, c.path, nil)
+		if c.token != "" {
+			r.Header.Set("X-Session-Token", c.token)
+		}
+		rec := k.serveRoutes(routes, r)
+		if rec.Code != c.status || strings.TrimSpace(rec.Body.String()) != c.body {
+			t.Errorf("%s: %d %q, want %d %s", c.path, rec.Code, rec.Body.String(), c.status, c.body)
+		}
 	}
 }
 
@@ -227,6 +268,16 @@ func TestRoutesTable(t *testing.T) {
 		"POST /v1/session":   Internal,
 		"GET /v1/session":    Session,
 		"DELETE /v1/session": Session,
+
+		"GET /v1/kids":                            Parent,
+		"POST /v1/kids":                           Parent,
+		"GET /v1/kids/{kid}":                      Caregiver,
+		"PATCH /v1/kids/{kid}":                    Guardian,
+		"DELETE /v1/kids/{kid}":                   Guardian,
+		"GET /v1/kids/{kid}/access":               Guardian,
+		"PUT /v1/kids/{kid}/access/{username}":    Guardian,
+		"DELETE /v1/kids/{kid}/access/{parent}":   Caregiver,
+		"POST /v1/admin/parents/{parent}/disable": Admin,
 	}
 	got := map[string]Access{}
 	for _, rt := range Routes(k.deps()) {

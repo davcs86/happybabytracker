@@ -134,20 +134,19 @@ func setPassword(ctx context.Context, tx *sql.Tx, parentID, secretHash, keepSess
 	return err
 }
 
-// SetParentDisabled flips the flag; disabling also deletes the parent's sessions.
+// SetParentDisabled flips the flag; disabling also deletes the parent's sessions, and is ErrLastGuardian
+// when it would leave any kid without an active guardian.
 func (s *Store) SetParentDisabled(ctx context.Context, id string, disabled bool, now time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `UPDATE parents SET disabled = ?, updated_at = ? WHERE id = ?`, disabled, now.Unix(), id)
-		if err != nil {
+		if err := oneRow(res, err); err != nil {
 			return err
-		}
-		if n, err := res.RowsAffected(); err != nil {
-			return err
-		} else if n == 0 {
-			return ErrNotFound
 		}
 		if !disabled {
 			return nil
+		}
+		if err := guardsEveryKidWithOthers(ctx, tx, id); err != nil {
+			return err
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE parent_id = ?`, id)
 		return err
