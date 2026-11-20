@@ -27,6 +27,8 @@ const (
 	Argon2SaltBytes   = 16
 	Argon2KeyBytes    = 32
 
+	MaxConcurrentHashes = 2
+
 	SQLiteBusyTimeout = 5 * time.Second
 	ReadPoolMax       = 4
 

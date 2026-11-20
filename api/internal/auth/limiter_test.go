@@ -124,3 +124,53 @@ func TestLimiterConcurrent(t *testing.T) {
 		t.Fatalf("%d calls allowed on the shared key, want exactly %d", got, limit)
 	}
 }
+
+func TestLimiterBlockedKeySurvivesFlood(t *testing.T) {
+	c := newClock()
+	l := NewLimiter(5, c.now)
+	for i := 0; i < 6; i++ {
+		l.Allow("victim")
+	}
+	for i := 0; i < constants.LimiterMaxKeys+500; i++ {
+		c.t = c.t.Add(time.Microsecond)
+		if !l.Allow(fmt.Sprintf("flood%d", i)) {
+			t.Fatalf("new key %d refused", i)
+		}
+		if n := len(l.windows); n > constants.LimiterMaxKeys {
+			t.Fatalf("map holds %d keys, bound is %d", n, constants.LimiterMaxKeys)
+		}
+	}
+	if _, ok := l.windows["victim"]; !ok {
+		t.Fatal("blocked key was evicted by a flood of fresh keys")
+	}
+	if l.Allow("victim") {
+		t.Fatal("blocked key got a fresh window")
+	}
+}
+
+func TestLimiterAllBlockedEvictsOldest(t *testing.T) {
+	c := newClock()
+	l := NewLimiter(5, c.now)
+	for i := 0; i < constants.LimiterMaxKeys; i++ {
+		c.t = c.t.Add(time.Microsecond)
+		for j := 0; j < 5; j++ {
+			l.Allow(fmt.Sprintf("k%d", i))
+		}
+	}
+	c.t = c.t.Add(time.Microsecond)
+	if !l.Allow("newcomer") {
+		t.Fatal("new key refused while the map was full of blocked keys")
+	}
+	if n := len(l.windows); n != constants.LimiterMaxKeys {
+		t.Fatalf("map holds %d keys, want %d", n, constants.LimiterMaxKeys)
+	}
+	if _, ok := l.windows["k0"]; ok {
+		t.Fatal("oldest blocked key survived")
+	}
+	if _, ok := l.windows["k1"]; !ok {
+		t.Fatal("second-oldest blocked key was evicted")
+	}
+	if _, ok := l.windows["newcomer"]; !ok {
+		t.Fatal("new key was not stored")
+	}
+}

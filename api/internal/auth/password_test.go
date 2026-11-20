@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/argon2"
 
@@ -74,9 +76,9 @@ func TestHashesDiffer(t *testing.T) {
 
 func TestVerifyUsesStoredParameters(t *testing.T) {
 	salt := []byte("0123456789abcdef")
-	key := argon2.IDKey([]byte(goodPassword), salt, 1, 64, 2, 16)
+	key := argon2.IDKey([]byte(goodPassword), salt, 1, 64, 1, constants.Argon2KeyBytes)
 	enc := base64.RawStdEncoding
-	h := fmt.Sprintf("$argon2id$v=19$m=64,t=1,p=2$%s$%s", enc.EncodeToString(salt), enc.EncodeToString(key))
+	h := fmt.Sprintf("$argon2id$v=19$m=64,t=1,p=1$%s$%s", enc.EncodeToString(salt), enc.EncodeToString(key))
 	if !VerifyPassword(h, goodPassword) {
 		t.Fatal("hash with non-default stored parameters did not verify")
 	}
@@ -111,6 +113,18 @@ func TestVerifyMalformedNeverPanics(t *testing.T) {
 		"empty salt":    "$argon2id$v=19$m=19456,t=2,p=1$$" + key,
 		"empty hash":    "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$",
 		"padded b64":    "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "=$" + key,
+		"memory 4GiB":   "$argon2id$v=19$m=4194304,t=2,p=1$" + salt + "$" + key,
+		"memory +1":     "$argon2id$v=19$m=19457,t=2,p=1$" + salt + "$" + key,
+		"time max":      "$argon2id$v=19$m=19456,t=4294967295,p=1$" + salt + "$" + key,
+		"time +1":       "$argon2id$v=19$m=19456,t=3,p=1$" + salt + "$" + key,
+		"threads 255":   "$argon2id$v=19$m=19456,t=2,p=255$" + salt + "$" + key,
+		"threads +1":    "$argon2id$v=19$m=19456,t=2,p=2$" + salt + "$" + key,
+		"1-byte key":    "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$" + enc.EncodeToString([]byte{1}),
+		"31-byte key":   "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$" + enc.EncodeToString(make([]byte, 31)),
+		"33-byte key":   "$argon2id$v=19$m=19456,t=2,p=1$" + salt + "$" + enc.EncodeToString(make([]byte, 33)),
+		"1-byte salt":   "$argon2id$v=19$m=19456,t=2,p=1$" + enc.EncodeToString([]byte{1}) + "$" + key,
+		"15-byte salt":  "$argon2id$v=19$m=19456,t=2,p=1$" + enc.EncodeToString(make([]byte, 15)) + "$" + key,
+		"17-byte salt":  "$argon2id$v=19$m=19456,t=2,p=1$" + enc.EncodeToString(make([]byte, 17)) + "$" + key,
 	}
 	calls := countingKDF(t)
 	for name, h := range cases {
@@ -170,5 +184,75 @@ func TestErrorsCarryNoSecret(t *testing.T) {
 	_, err := HashPassword("tiny-secret")
 	if err == nil || strings.Contains(err.Error(), "tiny-secret") {
 		t.Fatalf("error %v must not echo the password", err)
+	}
+}
+
+func TestKDFConcurrencyIsBounded(t *testing.T) {
+	var inFlight, peak atomic.Int64
+	orig := idKey
+	idKey = func(_, _ []byte, _, _ uint32, _ uint8, keyLen uint32) []byte {
+		n := inFlight.Add(1)
+		for {
+			p := peak.Load()
+			if n <= p || peak.CompareAndSwap(p, n) {
+				break
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+		inFlight.Add(-1)
+		return make([]byte, keyLen)
+	}
+	t.Cleanup(func() { idKey = orig })
+
+	h, err := HashPassword(goodPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if i%2 == 0 {
+				if _, err := HashPassword(goodPassword); err != nil {
+					t.Error(err)
+				}
+			} else {
+				VerifyPassword(h, goodPassword)
+			}
+		}(i)
+	}
+	wg.Wait()
+	if got := peak.Load(); got > constants.MaxConcurrentHashes {
+		t.Fatalf("%d KDF runs in flight at once, bound is %d", got, constants.MaxConcurrentHashes)
+	}
+	if got := peak.Load(); got < constants.MaxConcurrentHashes {
+		t.Fatalf("peak %d: the semaphore admits fewer than %d concurrent runs", got, constants.MaxConcurrentHashes)
+	}
+}
+
+func TestRejectedInputTakesNoKDFSlot(t *testing.T) {
+	for i := 0; i < constants.MaxConcurrentHashes; i++ {
+		kdfSlots <- struct{}{}
+	}
+	t.Cleanup(func() {
+		for i := 0; i < constants.MaxConcurrentHashes; i++ {
+			<-kdfSlots
+		}
+	})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := HashPassword("short"); err != ErrPasswordLength {
+			t.Errorf("err = %v", err)
+		}
+		if VerifyPassword("not a hash", goodPassword) {
+			t.Error("malformed hash verified")
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("rejected input blocked on the KDF semaphore")
 	}
 }

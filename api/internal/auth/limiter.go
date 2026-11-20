@@ -41,21 +41,30 @@ func (l *Limiter) Allow(key string) bool {
 	return w.count <= l.perMinute
 }
 
-// makeRoom drops expired windows, then the oldest one if the map is still full.
+// makeRoom drops expired windows, then the oldest unblocked one; a blocked key goes only when all are blocked.
 func (l *Limiter) makeRoom(now time.Time) {
-	var oldestKey string
-	var oldest time.Time
-	found := false
+	var openKey, blockedKey string
+	var openStart, blockedStart time.Time
+	haveOpen, haveBlocked := false, false
 	for k, w := range l.windows {
 		if !now.Before(w.start.Add(constants.LimiterWindow)) {
 			delete(l.windows, k)
 			continue
 		}
-		if !found || w.start.Before(oldest) {
-			oldestKey, oldest, found = k, w.start, true
+		if w.count >= l.perMinute {
+			if !haveBlocked || w.start.Before(blockedStart) {
+				blockedKey, blockedStart, haveBlocked = k, w.start, true
+			}
+		} else if !haveOpen || w.start.Before(openStart) {
+			openKey, openStart, haveOpen = k, w.start, true
 		}
 	}
-	if len(l.windows) >= constants.LimiterMaxKeys && found {
-		delete(l.windows, oldestKey)
+	if len(l.windows) < constants.LimiterMaxKeys {
+		return
+	}
+	if haveOpen {
+		delete(l.windows, openKey)
+	} else if haveBlocked {
+		delete(l.windows, blockedKey)
 	}
 }
