@@ -64,3 +64,41 @@ func (s *Store) DeleteAdminSessions(ctx context.Context) error {
 	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE kind = 'admin'`)
 	return err
 }
+
+// ListSessions returns the parent's unexpired sessions, newest first; never nil.
+func (s *Store) ListSessions(ctx context.Context, parentID string, now time.Time) ([]model.SessionInfo, error) {
+	rows, err := s.r.QueryContext(ctx,
+		`SELECT id, created_at, last_seen_at FROM sessions WHERE parent_id = ? AND expires_at > ? ORDER BY created_at DESC, id DESC`,
+		parentID, now.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.SessionInfo{}
+	for rows.Next() {
+		var (
+			si            model.SessionInfo
+			created, seen int64
+		)
+		if err := rows.Scan(&si.ID, &created, &seen); err != nil {
+			return nil, err
+		}
+		si.CreatedAt, si.LastSeenAt = time.Unix(created, 0).UTC(), time.Unix(seen, 0).UTC()
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
+// DeleteParentSession ends one of the parent's own sessions; ErrNotFound when it is not theirs.
+func (s *Store) DeleteParentSession(ctx context.Context, parentID, sessionID string) error {
+	res, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE id = ? AND parent_id = ?`, sessionID, parentID)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

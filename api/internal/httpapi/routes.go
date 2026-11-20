@@ -44,6 +44,20 @@ func Routes(d Deps) []Route {
 		{http.MethodPost, "/v1/session", Internal, d.login},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
 		{http.MethodDelete, "/v1/session", Session, d.logout},
+
+		{http.MethodPost, "/v1/admin/parents", Admin, d.createParent},
+		{http.MethodGet, "/v1/admin/parents", Admin, d.listParents},
+		{http.MethodPost, "/v1/admin/parents/{parent}/reset-link", Admin, d.resetLink},
+		{http.MethodPost, "/v1/admin/parents/{parent}/disable", Admin, d.setDisabled(true)},
+		{http.MethodPost, "/v1/admin/parents/{parent}/enable", Admin, d.setDisabled(false)},
+
+		{http.MethodGet, "/v1/tokens/{token}", Internal, d.peekToken},
+		{http.MethodPost, "/v1/tokens/{token}/redeem", Internal, d.redeemToken},
+
+		{http.MethodPatch, "/v1/me", Parent, d.updateProfile},
+		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},
+		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
+		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
 	}
 }
 

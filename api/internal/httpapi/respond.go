@@ -31,6 +31,15 @@ func respondError(w http.ResponseWriter, status int, code string, field ...strin
 	respondJSON(w, status, b)
 }
 
+// respondInvalid is the 422 for a field that fails validation.
+func respondInvalid(w http.ResponseWriter, field string) {
+	respondError(w, http.StatusUnprocessableEntity, "invalid", field)
+}
+
+func respondInternal(w http.ResponseWriter) {
+	respondError(w, http.StatusInternalServerError, "internal")
+}
+
 var errTrailingData = errors.New("trailing data after the JSON value")
 
 const unknownFieldPrefix = "json: unknown field "

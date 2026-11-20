@@ -314,3 +314,59 @@ func TestInstantsAreStoredAsUnixSeconds(t *testing.T) {
 		t.Errorf("CreatedAt = %v, want %v", p.CreatedAt, time.Unix(created, 0).UTC())
 	}
 }
+
+func TestListSessions(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	bob := mustParent(t, s, "bob")
+	old := mustSession(t, s, "parent", ana.ID, []byte("old"), t0.Add(2*time.Hour))
+	if err := s.TouchSession(ctx, old, t0.Add(30*time.Minute), t0.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSession(ctx, "parent", ana.ID, []byte("new"), t0.Add(time.Hour), t0.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	mustSession(t, s, "parent", ana.ID, []byte("gone"), t0.Add(time.Minute))
+	mustSession(t, s, "parent", bob.ID, []byte("bobs"), t0.Add(2*time.Hour))
+	mustSession(t, s, "admin", "", []byte("admin"), t0.Add(2*time.Hour))
+
+	now := t0.Add(time.Hour)
+	got, err := s.ListSessions(ctx, ana.ID, now)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ListSessions = %+v, %v; want ana's two live sessions", got, err)
+	}
+	if !got[0].CreatedAt.Equal(t0.Add(time.Hour)) || got[1].ID != old {
+		t.Errorf("order = %+v; want newest first", got)
+	}
+	if !got[1].CreatedAt.Equal(t0) || !got[1].LastSeenAt.Equal(t0.Add(30*time.Minute)) || got[1].Current {
+		t.Errorf("old session = %+v", got[1])
+	}
+	if got, err := s.ListSessions(ctx, "nobody", now); err != nil || got == nil || len(got) != 0 {
+		t.Errorf("no sessions = %#v, %v; want a non-nil empty slice", got, err)
+	}
+}
+
+func TestDeleteParentSession(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	bob := mustParent(t, s, "bob")
+	exp := t0.Add(time.Hour)
+	mine := mustSession(t, s, "parent", ana.ID, []byte("mine"), exp)
+	theirs := mustSession(t, s, "parent", bob.ID, []byte("theirs"), exp)
+
+	if err := s.DeleteParentSession(ctx, ana.ID, theirs); !errors.Is(err, ErrNotFound) {
+		t.Errorf("another parent's session: %v, want ErrNotFound", err)
+	}
+	if _, err := s.SessionByToken(ctx, []byte("theirs"), t0); err != nil {
+		t.Errorf("another parent's session was removed: %v", err)
+	}
+	if err := s.DeleteParentSession(ctx, ana.ID, "no-such-session"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown session: %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteParentSession(ctx, ana.ID, mine); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SessionByToken(ctx, []byte("mine"), t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("deleted session still resolves: %v", err)
+	}
+}

@@ -15,6 +15,12 @@ func NewID() string {
 // Role is a parent's access to one kid: "guardian" or "caregiver".
 type Role string
 
+// One-time token kinds.
+const (
+	TokenInvite = "invite"
+	TokenReset  = "reset"
+)
+
 // Principal is who a request acts as; Kind is "admin" or "parent", and ParentID is empty for an admin.
 type Principal struct {
 	Kind      string

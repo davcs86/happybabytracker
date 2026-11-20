@@ -9,6 +9,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -34,6 +35,13 @@ type parentView struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Units       unitsView `json:"units"`
+}
+
+func newParentView(p model.Parent) parentView {
+	return parentView{
+		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
+		Units: unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
+	}
 }
 
 type unitsView struct {
@@ -149,10 +157,8 @@ func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "internal")
 			return
 		}
-		view.Parent = &parentView{
-			ID: parent.ID, Username: parent.Username, DisplayName: parent.DisplayName,
-			Units: unitsView{Weight: parent.Units.Weight, Length: parent.Units.Length, Volume: parent.Units.Volume, Temp: parent.Units.Temp},
-		}
+		pv := newParentView(parent)
+		view.Parent = &pv
 	}
 	respondJSON(w, http.StatusOK, view)
 }

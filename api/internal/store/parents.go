@@ -17,7 +17,9 @@ const providerLocal = "local"
 const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash
 	FROM parents p LEFT JOIN identities i ON i.parent_id = p.id AND i.provider = '` + providerLocal + `' `
 
-func scanParent(row *sql.Row) (model.Parent, string, error) {
+type rowScanner interface{ Scan(dest ...any) error }
+
+func scanParent(row rowScanner) (model.Parent, string, error) {
 	var (
 		p       model.Parent
 		hash    sql.NullString
@@ -62,26 +64,74 @@ func (s *Store) CreateParent(ctx context.Context, username, displayName string, 
 	return s.ParentByID(ctx, id)
 }
 
+// ListParents returns every parent, by username; never nil.
+func (s *Store) ListParents(ctx context.Context) ([]model.Parent, error) {
+	rows, err := s.r.QueryContext(ctx, parentSelect+`ORDER BY p.username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.Parent{}
+	for rows.Next() {
+		p, _, err := scanParent(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// LocalSecret returns the parent's local password hash; ErrNotFound when none is set.
+func (s *Store) LocalSecret(ctx context.Context, parentID string) (string, error) {
+	var hash sql.NullString
+	err := s.r.QueryRowContext(ctx, `SELECT secret_hash FROM identities WHERE parent_id = ? AND provider = ?`, parentID, providerLocal).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && hash.String == "") {
+		return "", ErrNotFound
+	}
+	return hash.String, err
+}
+
+// UpdateParentProfile replaces the display name and units; the caller validates them.
+func (s *Store) UpdateParentProfile(ctx context.Context, id, displayName string, u model.Units, now time.Time) error {
+	res, err := s.w.ExecContext(ctx,
+		`UPDATE parents SET display_name = ?, unit_weight = ?, unit_length = ?, unit_volume = ?, unit_temp = ?, updated_at = ? WHERE id = ?`,
+		displayName, u.Weight, u.Length, u.Volume, u.Temp, now.Unix(), id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetPassword upserts the parent's local identity and deletes their sessions except keepSessionID ("" keeps none).
 func (s *Store) SetPassword(ctx context.Context, parentID, secretHash, keepSessionID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		var username string
-		err := tx.QueryRowContext(ctx, `SELECT username FROM parents WHERE id = ?`, parentID).Scan(&username)
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO identities(parent_id, provider, subject, secret_hash) VALUES (?, ?, ?, ?)
-			 ON CONFLICT(provider, subject) DO UPDATE SET secret_hash = excluded.secret_hash`,
-			parentID, providerLocal, username, secretHash); err != nil {
-			return err
-		}
-		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE parent_id = ? AND id <> ?`, parentID, keepSessionID)
-		return err
+		return setPassword(ctx, tx, parentID, secretHash, keepSessionID)
 	})
+}
+
+func setPassword(ctx context.Context, tx *sql.Tx, parentID, secretHash, keepSessionID string) error {
+	var username string
+	err := tx.QueryRowContext(ctx, `SELECT username FROM parents WHERE id = ?`, parentID).Scan(&username)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO identities(parent_id, provider, subject, secret_hash) VALUES (?, ?, ?, ?)
+		 ON CONFLICT(provider, subject) DO UPDATE SET secret_hash = excluded.secret_hash`,
+		parentID, providerLocal, username, secretHash); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE parent_id = ? AND id <> ?`, parentID, keepSessionID)
+	return err
 }
 
 // SetParentDisabled flips the flag; disabling also deletes the parent's sessions.
