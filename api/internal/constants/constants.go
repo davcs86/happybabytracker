@@ -16,8 +16,16 @@ const (
 	AdminSessionTTL      = 12 * time.Hour
 
 	LoginAttemptsPerMinute = 5
+	LimiterWindow          = time.Minute
+	LimiterMaxKeys         = 10000
 	TokenBytes             = 32
 	MaxBodyBytes           = 64 << 10
+
+	Argon2MemoryKiB   = 19456
+	Argon2Iterations  = 2
+	Argon2Parallelism = 1
+	Argon2SaltBytes   = 16
+	Argon2KeyBytes    = 32
 
 	SQLiteBusyTimeout = 5 * time.Second
 	ReadPoolMax       = 4
