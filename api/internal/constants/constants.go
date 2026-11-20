@@ -36,4 +36,9 @@ const (
 
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
+
+	ReadHeaderTimeout = 5 * time.Second
+	ReadTimeout       = 15 * time.Second
+	WriteTimeout      = 30 * time.Second
+	ShutdownTimeout   = 10 * time.Second
 )
