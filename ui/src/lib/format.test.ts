@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest';
+import { formatAge, formatInstant, todayIn } from './format';
+
+describe('formatAge', () => {
+	const cases: [string, string, string, string][] = [
+		['under 1 year shows months and days', '2026-07-08', '2026-11-20', '4 months 12 days'],
+		['the same day is a lone "0 days"', '2026-11-20', '2026-11-20', '0 days'],
+		['under 1 month shows days only, singular', '2026-11-19', '2026-11-20', '1 day'],
+		['under 1 month shows days only, plural', '2026-10-21', '2026-11-20', '30 days'],
+		['under 1 year omits days at 0, singular month', '2026-10-20', '2026-11-20', '1 month'],
+		['under 1 year shows a singular day', '2026-09-19', '2026-11-20', '2 months 1 day'],
+		['from 1 year shows years and months', '2024-08-20', '2026-11-20', '2 years 3 months'],
+		['from 1 year omits months at 0, singular year', '2025-11-20', '2026-11-20', '1 year'],
+		['from 1 year never shows days', '2025-11-01', '2026-11-20', '1 year'],
+		['from 1 year shows a singular month', '2024-10-01', '2026-11-20', '2 years 1 month'],
+		['31 Jan + 1 month clamps to 28 Feb', '2026-01-31', '2026-02-28', '1 month'],
+		['31 Jan clamped to 28 Feb, then 1 day', '2026-01-31', '2026-03-01', '1 month 1 day'],
+		['a birth date after today shows 0 days', '2026-11-21', '2026-11-20', '0 days']
+	];
+	for (const [rule, birth, today, want] of cases) {
+		it(`${rule}: ${birth} on ${today} is "${want}"`, () => {
+			expect(formatAge(birth, today)).toBe(want);
+		});
+	}
+
+	describe('29 Feb birth dates on non-leap years (29 Feb + 12 months = 28 Feb)', () => {
+		const leap: [string, string, string][] = [
+			['28 Feb of the next year is exactly 1 year', '2025-02-28', '1 year'],
+			['27 Feb is 11 months (to 29 Jan) and 29 days', '2025-02-27', '11 months 29 days'],
+			['1 Mar is 1 year; from 1 year days are not shown', '2025-03-01', '1 year'],
+			['28 Feb two years on is 2 years', '2026-02-28', '2 years'],
+			['29 Mar is 1 year 1 month (29 Feb + 13 months = 29 Mar)', '2025-03-29', '1 year 1 month'],
+			['28 Mar is still 1 year (29 Mar not reached)', '2025-03-28', '1 year'],
+			['29 Feb of the next leap year is 4 years', '2028-02-29', '4 years'],
+			['29 Mar of the birth year is 1 month', '2024-03-29', '1 month'],
+			['28 Mar of the birth year is 28 days', '2024-03-28', '28 days']
+		];
+		for (const [rule, today, want] of leap) {
+			it(`${rule}: 2024-02-29 on ${today} is "${want}"`, () => {
+				expect(formatAge('2024-02-29', today)).toBe(want);
+			});
+		}
+	});
+});
+
+describe('todayIn', () => {
+	const now = new Date('2026-11-20T10:30:00Z');
+
+	it('returns YYYY-MM-DD in the given zone', () => {
+		expect(todayIn('UTC', now)).toBe('2026-11-20');
+	});
+
+	it('is the next day east of UTC+13:30 and the previous day west of UTC-10:30', () => {
+		expect(todayIn('Pacific/Kiritimati', now)).toBe('2026-11-21');
+		expect(todayIn('Pacific/Pago_Pago', now)).toBe('2026-11-19');
+	});
+
+	it('defaults to the current instant', () => {
+		expect(todayIn('UTC')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+	});
+});
+
+describe('formatInstant', () => {
+	it('shows an RFC 3339 instant as a UTC date and minute', () => {
+		expect(formatInstant('2026-11-21T09:05:59Z')).toBe('2026-11-21 09:05 UTC');
+	});
+});

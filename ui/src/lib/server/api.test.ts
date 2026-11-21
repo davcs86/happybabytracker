@@ -342,3 +342,285 @@ describe('createApi logging', () => {
 		expect(logSpy).not.toHaveBeenCalled();
 	});
 });
+
+describe('createApi admin, account, kid and access calls', () => {
+	const KID_WIRE = {
+		id: 'k-1',
+		name: 'Mia',
+		birth_date: '2026-07-08',
+		sex: 'female',
+		gestation_weeks: 35,
+		gestation_days: null,
+		time_zone: 'Europe/Madrid',
+		role: 'caregiver'
+	};
+	const KID = {
+		id: 'k-1',
+		name: 'Mia',
+		birthDate: '2026-07-08',
+		sex: 'female',
+		gestationWeeks: 35,
+		gestationDays: null,
+		timeZone: 'Europe/Madrid',
+		role: 'caregiver'
+	};
+	const PARENT_WIRE = {
+		id: 'p-1',
+		username: 'eve',
+		display_name: 'Eve',
+		disabled: false,
+		has_password: false,
+		created_at: '2026-11-21T00:00:00Z'
+	};
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+
+	it('maps a kid and a kid list to camelCase', async () => {
+		const f = mockFetch(async (u) => json(u.endsWith('/kids') ? { kids: [KID_WIRE] } : KID_WIRE));
+		const api = createApi(env, asFetch(f), SESSION);
+		expect(await api.listKids()).toEqual({ ok: true, data: [KID] });
+		expect(await api.getKid('k-1')).toEqual({ ok: true, data: KID });
+		expect(sent(f, 1)).toMatchObject({ url: 'http://api:9210/v1/kids/k-1', method: 'GET' });
+	});
+
+	it('sends every kid field on create and update, gestation as explicit null', async () => {
+		const f = mockFetch(async () => json(KID_WIRE));
+		const api = createApi(env, asFetch(f), SESSION);
+		const input = {
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC'
+		};
+		const body = {
+			name: 'Mia',
+			birth_date: '2026-07-08',
+			sex: 'female',
+			gestation_weeks: null,
+			gestation_days: null,
+			time_zone: 'UTC'
+		};
+		await api.createKid(input);
+		await api.updateKid('k-1', input);
+		expect(sent(f, 0)).toEqual({ url: 'http://api:9210/v1/kids', method: 'POST', body });
+		expect(sent(f, 1)).toEqual({ url: 'http://api:9210/v1/kids/k-1', method: 'PATCH', body });
+	});
+
+	it('deletes a kid with confirm_name', async () => {
+		const f = mockFetch(async () => new Response(null, { status: 204 }));
+		expect(await createApi(env, asFetch(f), SESSION).deleteKid('k-1', 'Mia')).toEqual({
+			ok: true,
+			data: null
+		});
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1',
+			method: 'DELETE',
+			body: { confirm_name: 'Mia' }
+		});
+	});
+
+	it('refuses a kid with an unknown sex, role or a fractional gestation', async () => {
+		for (const bad of [{ sex: 'x' }, { role: 'owner' }, { gestation_weeks: 35.5 }]) {
+			const f = mockFetch(async () => json({ ...KID_WIRE, ...bad }));
+			expect(await createApi(env, asFetch(f), SESSION).getKid('k-1')).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		}
+	});
+
+	it('lists, sets and removes access', async () => {
+		const f = mockFetch(async (_u, i) =>
+			i?.method === 'GET'
+				? json({
+						grants: [{ parent_id: 'p-1', username: 'ana', display_name: 'Ana', role: 'guardian' }]
+					})
+				: new Response(null, { status: 204 })
+		);
+		const api = createApi(env, asFetch(f), SESSION);
+		expect(await api.listAccess('k-1')).toEqual({
+			ok: true,
+			data: [{ parentId: 'p-1', username: 'ana', displayName: 'Ana', role: 'guardian' }]
+		});
+		await api.setAccess('k-1', '  Dan ', 'caregiver');
+		await api.removeAccess('k-1', 'p-2');
+		expect(sent(f, 1)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/access/Dan',
+			method: 'PUT',
+			body: { role: 'caregiver' }
+		});
+		expect(sent(f, 2)).toMatchObject({
+			url: 'http://api:9210/v1/kids/k-1/access/p-2',
+			method: 'DELETE'
+		});
+	});
+
+	it('encodes the username as one path segment', async () => {
+		const f = mockFetch(async () => new Response(null, { status: 204 }));
+		await createApi(env, asFetch(f), SESSION).setAccess('k-1', 'a/b?c', 'guardian');
+		expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/access/a%2Fb%3Fc');
+	});
+
+	it.each(['', '   ', '.', '..'])(
+		'a username %j is parent_not_found without a request',
+		async (username) => {
+			const f = mockFetch(async () => json({}));
+			expect(
+				await createApi(env, asFetch(f), SESSION).setAccess('k-1', username, 'guardian')
+			).toEqual({ ok: false, status: 404, reason: 'not_found', code: 'parent_not_found' });
+			expect(f).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each(['..', '.', '', 'a/b', 'a.b', 'a%2Fb', 'a'.repeat(65)])(
+		'an id %j is not_found without a request',
+		async (id) => {
+			const f = mockFetch(async () => json({}));
+			const api = createApi(env, asFetch(f), SESSION);
+			const nf = { ok: false, status: 404, reason: 'not_found' };
+			expect(await api.getKid(id)).toEqual(nf);
+			expect(await api.updateKid(id, {} as never)).toEqual(nf);
+			expect(await api.deleteKid(id, 'x')).toEqual(nf);
+			expect(await api.listAccess(id)).toEqual(nf);
+			expect(await api.setAccess(id, 'ana', 'guardian')).toEqual(nf);
+			expect(await api.removeAccess(id, 'p-1')).toEqual(nf);
+			expect(await api.removeAccess('k-1', id)).toEqual(nf);
+			expect(await api.deleteSession(id)).toEqual(nf);
+			expect(await api.parentLink(id)).toEqual(nf);
+			expect(await api.setParentDisabled(id, true)).toEqual(nf);
+			expect(f).not.toHaveBeenCalled();
+		}
+	);
+
+	it('creates a parent and returns the invite link', async () => {
+		const f = mockFetch(async () =>
+			json(
+				{
+					parent: PARENT_WIRE,
+					invite_url: 'https://x.test/invite/t',
+					expires_at: '2026-11-24T00:00:00Z'
+				},
+				201
+			)
+		);
+		expect(await createApi(env, asFetch(f), SESSION).createParent('eve', 'Eve')).toEqual({
+			ok: true,
+			data: {
+				parent: {
+					id: 'p-1',
+					username: 'eve',
+					displayName: 'Eve',
+					disabled: false,
+					hasPassword: false,
+					createdAt: '2026-11-21T00:00:00Z'
+				},
+				link: { kind: 'invite', url: 'https://x.test/invite/t', expiresAt: '2026-11-24T00:00:00Z' }
+			}
+		});
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/admin/parents',
+			method: 'POST',
+			body: { username: 'eve', display_name: 'Eve' }
+		});
+	});
+
+	it('tells a reset link from an invite by the response key', async () => {
+		const reset = mockFetch(async () =>
+			json({ reset_url: 'https://x.test/reset/r', expires_at: 'e' })
+		);
+		const invite = mockFetch(async () =>
+			json({ invite_url: 'https://x.test/invite/i', expires_at: 'e' })
+		);
+		expect(await createApi(env, asFetch(reset), SESSION).parentLink('p-1')).toEqual({
+			ok: true,
+			data: { kind: 'reset', url: 'https://x.test/reset/r', expiresAt: 'e' }
+		});
+		expect(await createApi(env, asFetch(invite), SESSION).parentLink('p-1')).toEqual({
+			ok: true,
+			data: { kind: 'invite', url: 'https://x.test/invite/i', expiresAt: 'e' }
+		});
+		expect(sent(reset)).toMatchObject({
+			url: 'http://api:9210/v1/admin/parents/p-1/reset-link',
+			method: 'POST'
+		});
+	});
+
+	it('lists, disables and enables parents; keeps the sole_guardian code', async () => {
+		const f = mockFetch(async (u) =>
+			u.endsWith('/parents')
+				? json({ parents: [PARENT_WIRE] })
+				: u.endsWith('/disable')
+					? json({ error: 'sole_guardian' }, 409)
+					: new Response(null, { status: 204 })
+		);
+		const api = createApi(env, asFetch(f), SESSION);
+		expect((await api.listParents()).ok).toBe(true);
+		expect(await api.setParentDisabled('p-1', true)).toEqual({
+			ok: false,
+			status: 409,
+			reason: 'conflict',
+			code: 'sole_guardian'
+		});
+		expect(await api.setParentDisabled('p-1', false)).toEqual({ ok: true, data: null });
+		expect(sent(f, 2).url).toBe('http://api:9210/v1/admin/parents/p-1/enable');
+	});
+
+	it('updates the profile, changes the password and manages sessions', async () => {
+		const f = mockFetch(async (u, i) => {
+			if (u.endsWith('/v1/me'))
+				return json({
+					id: 'p-1',
+					username: 'ana',
+					display_name: 'Ana B',
+					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' }
+				});
+			if (u.endsWith('/sessions') && i?.method === 'GET')
+				return json({
+					sessions: [{ id: 's-1', created_at: 'c', last_seen_at: 'l', current: true }]
+				});
+			return new Response(null, { status: 204 });
+		});
+		const api = createApi(env, asFetch(f), SESSION);
+		const units = { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' } as const;
+		expect(await api.updateProfile('Ana B', units)).toEqual({
+			ok: true,
+			data: { id: 'p-1', username: 'ana', displayName: 'Ana B', units }
+		});
+		expect(sent(f, 0)).toEqual({
+			url: 'http://api:9210/v1/me',
+			method: 'PATCH',
+			body: { display_name: 'Ana B', units }
+		});
+		await api.changePassword('old password!', 'new password!');
+		expect(sent(f, 1)).toEqual({
+			url: 'http://api:9210/v1/me/password',
+			method: 'POST',
+			body: { current: 'old password!', new: 'new password!' }
+		});
+		expect(await api.listSessions()).toEqual({
+			ok: true,
+			data: [{ id: 's-1', createdAt: 'c', lastSeenAt: 'l', current: true }]
+		});
+		await api.deleteSession('s-2');
+		expect(sent(f, 3)).toMatchObject({
+			url: 'http://api:9210/v1/me/sessions/s-2',
+			method: 'DELETE'
+		});
+	});
+
+	it('maps a list without its key to error', async () => {
+		const f = mockFetch(async () => json({ items: [] }));
+		expect(await createApi(env, asFetch(f), SESSION).listKids()).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+});
