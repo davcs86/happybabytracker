@@ -29,7 +29,7 @@ API (`ghcr.io/davcs86/happybabytracker-api`):
 | `DATA_DIR` | SQLite directory, default `/data` (the only writable path) |
 
 The process refuses to start on a missing or invalid value (only `DATA_DIR` has a default) and names
-the variable, never its value. It listens on `:9210`. The image also sets `GOMEMLIMIT=56MiB`, so that
+the variable, never its value. It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
 two concurrent password hashes stay within the edge's 96m container limit and the 60 MiB memory ceiling.
 Changing `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `INTERNAL_API_TOKEN` ends every admin session at the next
 start; parent sessions are kept.
