@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -208,8 +209,8 @@ func TestSetAccess(t *testing.T) {
 		t.Errorf("bo after upgrade = %q", role)
 	}
 	for _, name := range []string{"nobody", "off"} {
-		if err := s.SetAccess(ctx, k.ID, ana.ID, name, model.RoleCaregiver, t0); !errors.Is(err, ErrNotFound) {
-			t.Errorf("%s: %v, want ErrNotFound", name, err)
+		if err := s.SetAccess(ctx, k.ID, ana.ID, name, model.RoleCaregiver, t0); !errors.Is(err, ErrParentNotFound) || !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: %v, want ErrParentNotFound (an ErrNotFound)", name, err)
 		}
 	}
 	if _, err := s.RoleFor(ctx, k.ID, off.ID); !errors.Is(err, ErrNotFound) {
@@ -498,6 +499,113 @@ func TestConcurrentRevokeAndRegrant(t *testing.T) {
 		grants, err := s.AccessList(ctx, kid.ID)
 		if err != nil || len(grants) != 1 || grants[0].ParentID != b.ID || activeGuardians(t, s, kid.ID) != 1 {
 			t.Fatalf("round %d: grants = %+v, %v", round, grants, err)
+		}
+	}
+}
+
+func TestDisabledActorHasNoGrant(t *testing.T) {
+	s := openMem(t)
+	kid, a, b := armPair(t, s, 0)
+	mustParent(t, s, "cal")
+	if err := s.SetParentDisabled(ctx, a.ID, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	k := kid
+	k.Name = "Changed"
+	for _, op := range []struct {
+		what string
+		f    func() error
+	}{
+		{"update", func() error { return s.UpdateKid(ctx, k, a.ID, t0) }},
+		{"grant self", func() error { return s.SetAccess(ctx, kid.ID, a.ID, a.Username, model.RoleCaregiver, t0) }},
+		{"grant other", func() error { return s.SetAccess(ctx, kid.ID, a.ID, "cal", model.RoleGuardian, t0) }},
+		{"remove B", func() error { return s.RemoveAccess(ctx, kid.ID, a.ID, b.ID) }},
+		{"leave", func() error { return s.RemoveAccess(ctx, kid.ID, a.ID, a.ID) }},
+		{"delete", func() error { return s.DeleteKid(ctx, kid.ID, a.ID) }},
+	} {
+		if err := op.f(); !errors.Is(err, ErrNotFound) || errors.Is(err, ErrParentNotFound) {
+			t.Errorf("disabled actor %s: %v, want ErrNotFound", op.what, err)
+		}
+	}
+	if got, err := s.Kid(ctx, kid.ID); err != nil || got.Name != "Lía" {
+		t.Errorf("kid = %+v, %v", got, err)
+	}
+	grants, _ := s.AccessList(ctx, kid.ID)
+	if len(grants) != 2 || grants[0].Role != model.RoleGuardian || grants[1].Role != model.RoleGuardian {
+		t.Errorf("grants changed: %+v", grants)
+	}
+	if err := s.SetParentDisabled(ctx, a.ID, false, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateKid(ctx, k, a.ID, t0); err != nil {
+		t.Errorf("re-enabled actor updates: %v", err)
+	}
+}
+
+// logWrites records, on the writer and inside each write's own transaction, the order in which
+// a parent's disable and a kid's delete commit; a rolled-back write leaves no row.
+func logWrites(t *testing.T, s *Store) {
+	t.Helper()
+	for _, q := range []string{
+		`CREATE TABLE test_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, what TEXT NOT NULL)`,
+		`CREATE TRIGGER test_log_disable AFTER UPDATE OF disabled ON parents WHEN NEW.disabled = 1
+		 BEGIN INSERT INTO test_log(what) VALUES ('disable:' || NEW.id); END`,
+		`CREATE TRIGGER test_log_delete AFTER DELETE ON kids
+		 BEGIN INSERT INTO test_log(what) VALUES ('delete:' || OLD.id); END`,
+	} {
+		if _, err := s.w.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func writeOrder(t *testing.T, s *Store, ids ...string) []string {
+	t.Helper()
+	rows, err := s.w.Query(`SELECT what FROM test_log ORDER BY seq`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var what string
+		if err := rows.Scan(&what); err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range ids {
+			if strings.HasSuffix(what, ":"+id) {
+				out = append(out, strings.TrimSuffix(what, ":"+id))
+			}
+		}
+	}
+	return out
+}
+
+func TestConcurrentDisableAndDelete(t *testing.T) {
+	s := openMem(t)
+	logWrites(t, s)
+	for round := range 50 {
+		kid, a, _ := armPair(t, s, round)
+		disabled, deleted := race(
+			func() error { return s.SetParentDisabled(ctx, a.ID, true, t0) },
+			func() error { return s.DeleteKid(ctx, kid.ID, a.ID) },
+		)
+		if disabled != nil {
+			t.Fatalf("round %d: disable: %v", round, disabled)
+		}
+		order := fmt.Sprint(writeOrder(t, s, a.ID, kid.ID))
+		_, kidErr := s.Kid(ctx, kid.ID)
+		switch order {
+		case "[delete disable]": // the delete won the writer
+			if deleted != nil || !errors.Is(kidErr, ErrNotFound) {
+				t.Fatalf("round %d: delete first, but delete = %v, kid = %v", round, deleted, kidErr)
+			}
+		case "[disable]": // the disable won: the delete was refused and the kid stays
+			if !errors.Is(deleted, ErrNotFound) || kidErr != nil || activeGuardians(t, s, kid.ID) != 1 {
+				t.Fatalf("round %d: disable first, but delete = %v, kid = %v", round, deleted, kidErr)
+			}
+		default:
+			t.Fatalf("round %d: write order %s (delete %v): a disabled actor's delete committed", round, order, deleted)
 		}
 	}
 }

@@ -284,3 +284,35 @@ func TestStaleAuthorizationIsRefused(t *testing.T) {
 	rec := k.staleCall(d.setAccess, http.MethodPut, base+"/access/cal", "bob", kid, model.RoleGuardian, map[string]string{"username": "cal"}, map[string]string{"role": "caregiver"})
 	sameResponse(t, "PUT on a deleted kid", rec, noGrant)
 }
+
+func TestDisabledActorMidRequestGetsTheNoGrant404(t *testing.T) {
+	k := newKit(t)
+	admin, ana, sam := k.asAdmin(), k.asParent("ana"), k.asParent("sam")
+	k.asParent("bob")
+	k.asParent("cal")
+	kid := k.createKid(ana, nil)
+	k.grant(ana, kid, "bob", "guardian")
+	base := "/v1/kids/" + kid
+	noGrant := k.do(http.MethodGet, base, sam, nil)
+	// The middleware admitted ana as a guardian; the admin disables her before her write runs.
+	if rec := k.disable(admin, "ana"); rec.Code != http.StatusNoContent {
+		t.Fatalf("disable: %d %q", rec.Code, rec.Body.String())
+	}
+	d := k.deps()
+	for what, rec := range map[string]*httptest.ResponseRecorder{
+		"DELETE kid":   k.staleCall(d.deleteKid, http.MethodDelete, base, "ana", kid, model.RoleGuardian, nil, map[string]string{"confirm_name": testKidName}),
+		"PUT access":   k.staleCall(d.setAccess, http.MethodPut, base+"/access/cal", "ana", kid, model.RoleGuardian, map[string]string{"username": "cal"}, map[string]string{"role": "guardian"}),
+		"PATCH kid":    k.staleCall(d.updateKid, http.MethodPatch, base, "ana", kid, model.RoleGuardian, nil, map[string]string{"name": "Changed"}),
+		"DELETE other": k.staleCall(d.removeAccess, http.MethodDelete, base+"/access/x", "ana", kid, model.RoleGuardian, map[string]string{"parent": k.parentID("bob")}, nil),
+		"DELETE self":  k.staleCall(d.removeAccess, http.MethodDelete, base+"/access/x", "ana", kid, model.RoleGuardian, map[string]string{"parent": k.parentID("ana")}, nil),
+	} {
+		sameResponse(t, what, rec, noGrant)
+	}
+	bob := k.asParent("bob")
+	if got := bodyMap(t, k.do(http.MethodGet, base, bob, nil)); got["name"] != testKidName {
+		t.Errorf("kid changed: %v", got)
+	}
+	if grants := bodyMap(t, k.do(http.MethodGet, base+"/access", bob, nil))["grants"].([]any); len(grants) != 2 {
+		t.Errorf("grants changed: %v", grants)
+	}
+}

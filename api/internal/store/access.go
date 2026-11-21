@@ -64,14 +64,16 @@ func (s *Store) SetAccess(ctx context.Context, kidID, actorID, username string, 
 	})
 }
 
-// RemoveAccess returns ErrNotFound when the parent holds no grant on the kid; removing someone other
-// than actorID needs actorID to be a guardian.
+// RemoveAccess needs an active grant for actorID (ErrNotFound) and, to remove someone else, the
+// guardian role (ErrForbidden); a target without a grant is ErrNotFound.
 func (s *Store) RemoveAccess(ctx context.Context, kidID, actorID, parentID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		if actorID != parentID {
-			if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
-				return err
-			}
+		role, err := actorRole(ctx, tx, kidID, actorID)
+		if err != nil {
+			return err
+		}
+		if actorID != parentID && role != model.RoleGuardian {
+			return ErrForbidden
 		}
 		res, err := tx.ExecContext(ctx, `DELETE FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, parentID)
 		if err := oneRow(res, err); err != nil {
@@ -81,13 +83,21 @@ func (s *Store) RemoveAccess(ctx context.Context, kidID, actorID, parentID strin
 	})
 }
 
-// actorIsGuardian re-asserts on tx what the middleware checked on the read pool, which may be stale by now.
-func actorIsGuardian(ctx context.Context, tx *sql.Tx, kidID, actorID string) error {
+// actorRole re-asserts on tx what the middleware checked on the read pool, which may be stale by now.
+// A disabled actor keeps the grant row but counts as having none: ErrNotFound.
+func actorRole(ctx context.Context, tx *sql.Tx, kidID, actorID string) (model.Role, error) {
 	var role model.Role
-	err := tx.QueryRowContext(ctx, `SELECT role FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, actorID).Scan(&role)
+	err := tx.QueryRowContext(ctx,
+		`SELECT a.role FROM kid_access a JOIN parents p ON p.id = a.parent_id
+		 WHERE a.kid_id = ? AND a.parent_id = ? AND p.disabled = 0`, kidID, actorID).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return "", ErrNotFound
 	}
+	return role, err
+}
+
+func actorIsGuardian(ctx context.Context, tx *sql.Tx, kidID, actorID string) error {
+	role, err := actorRole(ctx, tx, kidID, actorID)
 	if err != nil {
 		return err
 	}
