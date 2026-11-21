@@ -7,7 +7,17 @@ import {
 	expectNotFoundPage,
 	signIn
 } from './helpers.js';
-import { ANA, CLEO, DAN, LEO, MIA, resetStub } from './stub-api.js';
+import {
+	ANA,
+	CLEO,
+	DAN,
+	LEO,
+	MIA,
+	STUB_TOKEN,
+	STUB_URL,
+	openSession,
+	resetStub
+} from './stub-api.js';
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -120,6 +130,69 @@ test.describe('the time zone', () => {
 		await page.getByLabel('Time zone').selectOption('America/Mexico_City');
 		await expect(page.getByLabel('Time zone')).toHaveValue('America/Mexico_City');
 	});
+});
+
+test.describe('a device zone ICU lists only under an older name', () => {
+	test.use({ timezoneId: 'Asia/Kolkata' });
+
+	test('is added, selected and stored; the home page shows the age', async ({ page }) => {
+		// Chromium reports ICU's Asia/Calcutta; Firefox and Safari report the current name.
+		await page.addInitScript(() => {
+			const resolved = Intl.DateTimeFormat.prototype.resolvedOptions;
+			Intl.DateTimeFormat.prototype.resolvedOptions = function () {
+				return { ...resolved.call(this), timeZone: 'Asia/Kolkata' };
+			};
+		});
+		await signIn(page, ANA);
+		await page.goto('/kids/new');
+		await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+		await expectAccessible(page);
+		await fillKid(page, { name: 'Anu', birthDate: '2026-09-01', sex: 'Female' });
+		await page.getByRole('button', { name: 'Add child' }).click();
+		await expect(page.getByRole('heading', { name: 'Anu', level: 1 })).toBeVisible();
+		await page.goto('/');
+		await expect(kidCard(page, 'Anu')).toContainText(
+			formatAge('2026-09-01', todayIn('Asia/Kolkata'))
+		);
+		await expectAccessible(page);
+	});
+});
+
+// Stored through another browser that reports the current IANA name.
+async function storeKolkataKid(): Promise<string> {
+	const session = await openSession(ANA.username, ANA.password);
+	const res = await fetch(`${STUB_URL}/v1/kids`, {
+		method: 'POST',
+		headers: {
+			authorization: `Bearer ${STUB_TOKEN}`,
+			'x-session-token': session,
+			'content-type': 'application/json'
+		},
+		body: JSON.stringify({
+			name: 'Anu',
+			birth_date: '2026-09-01',
+			sex: 'female',
+			time_zone: 'Asia/Kolkata'
+		})
+	});
+	expect(res.status).toBe(201);
+	return ((await res.json()) as { id: string }).id;
+}
+
+test('settings keeps a stored zone missing from the ICU list selected', async ({ page }) => {
+	const id = await storeKolkataKid();
+	await signIn(page, ANA);
+	await page.goto(`/kids/${id}/settings`);
+	await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+	await expectAccessible(page);
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	await page.reload();
+	await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+	await page.goto('/');
+	await expect(kidCard(page, 'Anu')).toContainText(
+		formatAge('2026-09-01', todayIn('Asia/Kolkata'))
+	);
 });
 
 test('create a child without "born early"', async ({ page }) => {
@@ -311,6 +384,13 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByRole('heading', { name: 'Zoe', level: 1 })).toBeVisible();
 		await page.goto('/');
 		await expect(kidCard(page, 'Zoe')).toContainText(formatAge('2026-08-01', todayIn('UTC')));
+	});
+
+	test('settings renders a stored zone missing from the ICU list as selected', async ({ page }) => {
+		const id = await storeKolkataKid();
+		await signIn(page, ANA);
+		await page.goto(`/kids/${id}/settings`);
+		await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
 	});
 
 	test('a 422 lands on its field without JavaScript', async ({ page }) => {

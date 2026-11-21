@@ -12,6 +12,7 @@
 		KID_NAME_MAX_LEN
 	} from '#lib/constants.js';
 	import { todayIn } from '#lib/format.js';
+	import { acceptsZone, withZone } from '#lib/time-zone.js';
 
 	type Values = {
 		name: string;
@@ -41,8 +42,9 @@
 		action?: string;
 	} = $props();
 
-	let select: HTMLSelectElement | undefined = $state();
 	let zone = $state<string | null>(null);
+	let deviceZone = $state<string | null>(null);
+	const options = $derived(deviceZone ? withZone(zones, deviceZone) : zones);
 	let touched = false;
 
 	const err = (f: string) => (field === f ? message : null);
@@ -58,10 +60,9 @@
 
 	onMount(() => {
 		const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
-		if (detectZone && !touched && select && zones.includes(device)) {
-			select.value = device;
-			zone = device;
-		}
+		if (!detectZone || touched || !acceptsZone(device)) return;
+		deviceZone = device;
+		zone = device;
 	});
 </script>
 
@@ -177,8 +178,7 @@
 			id="kid-time_zone"
 			name="time_zone"
 			class={SELECT_CLASS}
-			bind:this={select}
-			value={values.timeZone}
+			value={zone ?? values.timeZone}
 			onchange={(e) => {
 				touched = true;
 				zone = e.currentTarget.value;
@@ -186,7 +186,7 @@
 			aria-invalid={invalid('time_zone')}
 			aria-describedby={describedBy('time_zone')}
 		>
-			{#each zones as z (z)}
+			{#each options as z (z)}
 				<option value={z}>{z}</option>
 			{/each}
 		</select>

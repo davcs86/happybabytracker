@@ -55,6 +55,17 @@ describe('todayIn', () => {
 		expect(todayIn('Pacific/Pago_Pago', now)).toBe('2026-11-19');
 	});
 
+	it('formats current IANA names that ICU only lists under older ones', () => {
+		// 10:30Z is 16:00 in Kolkata (+05:30), 12:30 in Kyiv (+02:00), 17:30 in Ho Chi Minh (+07:00).
+		const late = new Date('2026-11-20T20:00:00Z');
+		expect(todayIn('Asia/Kolkata', now)).toBe('2026-11-20');
+		expect(todayIn('Asia/Kolkata', late)).toBe('2026-11-21');
+		expect(todayIn('Europe/Kyiv', new Date('2026-11-20T22:30:00Z'))).toBe('2026-11-21');
+		expect(todayIn('Europe/Kyiv', new Date('2026-11-20T21:30:00Z'))).toBe('2026-11-20');
+		expect(todayIn('Asia/Ho_Chi_Minh', new Date('2026-11-20T17:30:00Z'))).toBe('2026-11-21');
+		expect(todayIn('Asia/Ho_Chi_Minh', new Date('2026-11-20T16:30:00Z'))).toBe('2026-11-20');
+	});
+
 	it('defaults to the current instant', () => {
 		expect(todayIn('UTC')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 	});
