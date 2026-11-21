@@ -20,8 +20,9 @@
 <KidLinks kid={data.kid} />
 
 {#if data.kid.role === 'caregiver'}
-	<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
-	<details class="mt-6 max-w-md rounded-lg border p-3">
+	<!-- Two steps without JavaScript: the button exists only inside the opened details.
+	     A failure reopens it, so its message shows after a full-page POST too. -->
+	<details class="mt-6 max-w-md rounded-lg border p-3" open={!!form?.message}>
 		<summary class="cursor-pointer text-sm font-medium">Leave this child</summary>
 		<form method="POST" action="?/leave" class="mt-3 flex flex-col gap-3" use:enhance>
 			{#if form?.message}<p class={ERROR_CLASS} role="alert">{form.message}</p>{/if}

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
 	KID_COOKIE,
+	SESSION_COOKIE,
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
@@ -17,7 +18,8 @@ import {
 	UI_ORIGIN,
 	openSession,
 	receivedRequests,
-	resetStub
+	resetStub,
+	setScenario
 } from './stub-api.js';
 
 const PARENT_NOT_FOUND = 'No active account has that username.';
@@ -122,9 +124,10 @@ test('the caregiver view has no admin controls', async ({ page }) => {
 	await page.goto(`/kids/${LEO.id}`);
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByRole('link', { name: /Access|Settings|Parents/ })).toHaveCount(0);
-	await expect(
-		page.getByRole('button', { name: /Remove|Change role|Add|Delete|Leave/ })
-	).toHaveCount(0);
+	// With the leave panel open every button is exposed: only sign-out and the leave confirmation.
+	await page.getByText('Leave this child', { exact: true }).click();
+	await expect(page.getByRole('button')).toHaveText(['Sign out', `Yes, leave ${LEO.name}`]);
+	await expect(page.getByRole('button', { name: /Remove|Change role|Add|Delete/ })).toHaveCount(0);
 	await expectAccessible(page);
 	await page.goto('/');
 	await expect(page.getByRole('link', { name: `Access for ${LEO.name}` })).toHaveCount(0);
@@ -260,8 +263,71 @@ test.describe('a caregiver leaves a kid', () => {
 		expect((await deletes()).map((r) => r.session === cleo)).toEqual([true, false]);
 	});
 
+	const UNREACHABLE = 'The app cannot reach its server, try again soon';
+	const FAILED = 'Something went wrong, try again';
+
+	async function expectStillThere(page: Page, message: string, session: string | undefined) {
+		await expect(page.getByRole('alert')).toHaveText(message);
+		await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
+		expect(new URL(page.url()).pathname).toBe(`/kids/${LEO.id}`);
+		const cookies = await page.context().cookies();
+		expect(cookies.find((c) => c.name === SESSION_COOKIE)?.value).toBe(session);
+	}
+
+	test('a failed leave shows its message in the open panel', async ({ page, context }) => {
+		await openLeave(page);
+		const session = (await context.cookies()).find((c) => c.name === SESSION_COOKIE)?.value;
+		await setScenario('leave_unavailable');
+		await confirm(page).click();
+		await expectStillThere(page, UNREACHABLE, session);
+		await expectAccessible(page);
+	});
+
+	test('a forbidden leave is the same 404 page as an unknown kid', async ({ page }) => {
+		await signIn(page, ANA);
+		const unknown = await expectNotFoundPage(page, '/kids/k-unknown');
+		await page.goto(`/kids/${LEO.id}`);
+		await leaveControl(page).click();
+		await setScenario('leave_forbidden');
+		await confirm(page).click();
+		await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+		expect(await page.locator('body').innerText()).toBe(unknown);
+		await expectAccessible(page);
+	});
+
 	test.describe('without JavaScript', () => {
 		test.use({ javaScriptEnabled: false });
+
+		test('an unreachable API shows the failure and keeps the session', async ({
+			page,
+			context
+		}) => {
+			await openLeave(page);
+			const session = (await context.cookies()).find((c) => c.name === SESSION_COOKIE)?.value;
+			await setScenario('leave_unavailable');
+			await confirm(page).click();
+			await expectStillThere(page, UNREACHABLE, session);
+		});
+
+		test('a rate-limited leave shows the generic failure', async ({ page, context }) => {
+			await openLeave(page);
+			const session = (await context.cookies()).find((c) => c.name === SESSION_COOKIE)?.value;
+			await setScenario('leave_rate_limited');
+			await confirm(page).click();
+			await expectStillThere(page, FAILED, session);
+		});
+
+		test('a forbidden leave is the same 404 page as an unknown kid', async ({ page }) => {
+			await signIn(page, ANA);
+			await page.goto('/kids/k-unknown');
+			const unknown = await page.locator('body').innerText();
+			await page.goto(`/kids/${LEO.id}`);
+			await leaveControl(page).click();
+			await setScenario('leave_forbidden');
+			await confirm(page).click();
+			await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+			expect(await page.locator('body').innerText()).toBe(unknown);
+		});
 
 		// axe runs in the page, so the 404 pages are checked by the JavaScript tests above.
 		test('the whole flow works', async ({ page }) => {

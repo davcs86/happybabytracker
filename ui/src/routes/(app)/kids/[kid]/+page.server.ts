@@ -16,7 +16,9 @@ export const load: PageServerLoad = async ({ locals, params, cookies }) => {
 export const actions: Actions = {
 	// The parent is always the signed-in principal; posted fields are never read.
 	leave: async ({ locals, params, cookies }) => {
-		const r = await locals.api.removeAccess(params.kid, locals.session?.parent?.id ?? '');
+		const me = locals.session?.parent?.id;
+		if (!me) failPage({ ok: false, status: 401, reason: 'unauthorized', code: 'no_session' });
+		const r = await locals.api.removeAccess(params.kid, me);
 		// not_found: already left, or the grant was revoked meanwhile.
 		if (r.ok || r.reason === 'not_found') {
 			if (cookies.get(KID_COOKIE) === params.kid) clearKidCookie(cookies);

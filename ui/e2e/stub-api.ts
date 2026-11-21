@@ -40,7 +40,16 @@ export const TOKENS = {
 } as const;
 export const INVITEE = 'bo';
 
-export const SCENARIOS = ['normal', 'down', 'unavailable', 'slow', 'rate_limited'] as const;
+export const SCENARIOS = [
+	'normal',
+	'down',
+	'unavailable',
+	'slow',
+	'rate_limited',
+	'leave_unavailable',
+	'leave_rate_limited',
+	'leave_forbidden'
+] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
 const SLOW_MS = 6000;
@@ -847,6 +856,14 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 		const params = m.slice(1).map((s) => decodeURIComponent(s));
 		const p = admit(state, res, sessionToken, r.access, r.kidParam ? params[0] : undefined);
 		if (!p) return;
+		// Failures of one access removal, for the leave action's error paths.
+		if (method === 'DELETE' && r.pattern.source.includes('access')) {
+			if (state.scenario === 'leave_unavailable') return error(res, 503, 'unavailable');
+			if (state.scenario === 'leave_forbidden') return error(res, 403, 'forbidden');
+			if (state.scenario === 'leave_rate_limited') {
+				return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
+			}
+		}
 		return r.run(state, req, res, p, params);
 	}
 	return error(res, 404, 'not_found');
