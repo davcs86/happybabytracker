@@ -1,6 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
-import { ANA, CLEO, LEO, MIA, resetStub } from './stub-api.js';
+import {
+	KID_COOKIE,
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn
+} from './helpers.js';
+import {
+	ADMIN,
+	ANA,
+	CLEO,
+	LEO,
+	MIA,
+	STUB_TOKEN,
+	STUB_URL,
+	UI_ORIGIN,
+	openSession,
+	receivedRequests,
+	resetStub
+} from './stub-api.js';
 
 const PARENT_NOT_FOUND = 'No active account has that username.';
 const LAST_GUARDIAN = 'A child needs at least one guardian.';
@@ -113,4 +131,153 @@ test('the caregiver view has no admin controls', async ({ page }) => {
 	await expect(page.getByRole('link', { name: `Settings for ${LEO.name}` })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: 'Parents' })).toHaveCount(0);
 	await expectNotFoundPage(page, `/kids/${LEO.id}/access`);
+});
+
+test.describe('a caregiver leaves a kid', () => {
+	const LEAVE_TEXT = `You will lose access to ${LEO.name}. A guardian has to add you again.`;
+	const leaveControl = (page: Page) => page.getByText('Leave this child', { exact: true });
+	const confirm = (page: Page) => page.getByRole('button', { name: `Yes, leave ${LEO.name}` });
+	const deletes = async () => (await receivedRequests()).filter((r) => r.method === 'DELETE');
+
+	async function openLeave(page: Page) {
+		await signIn(page, ANA);
+		await page.goto(`/kids/${LEO.id}`);
+		await leaveControl(page).click();
+		await expect(page.getByText(LEAVE_TEXT)).toBeVisible();
+	}
+
+	async function expectLeft(page: Page) {
+		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		await expect(page.getByRole('heading', { name: LEO.name, exact: true })).toHaveCount(0);
+		const unknown = await expectNotFoundPage(page, '/kids/k-unknown');
+		for (const path of [`/kids/${LEO.id}`, `/kids/${LEO.id}/settings`, `/kids/${LEO.id}/access`]) {
+			expect(await expectNotFoundPage(page, path)).toBe(unknown);
+		}
+	}
+
+	test('only a caregiver gets the control, and the first click does not submit', async ({
+		page
+	}) => {
+		await signIn(page, ANA);
+		await page.goto(`/kids/${LEO.id}`);
+		await expect(leaveControl(page)).toBeVisible();
+		await expect(confirm(page)).toBeHidden();
+		await expectAccessible(page);
+		await leaveControl(page).click();
+		await expect(confirm(page)).toBeVisible();
+		await expectAccessible(page);
+		expect(await deletes()).toEqual([]);
+
+		await page.goto(`/kids/${MIA.id}`);
+		await expect(page.getByRole('heading', { name: MIA.name, level: 1 })).toBeVisible();
+		await expect(leaveControl(page)).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('the admin never reaches a kid page', async ({ page }) => {
+		await signIn(page, ADMIN);
+		await page.goto(`/kids/${LEO.id}`);
+		await expect(page).toHaveURL(/\/admin\/parents$/);
+		await expect(leaveControl(page)).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('confirming leaves: home without the kid, then the 404 page everywhere', async ({
+		page,
+		context
+	}) => {
+		await openLeave(page);
+		await confirm(page).click();
+		await expectLeft(page);
+		expect((await context.cookies()).find((c) => c.name === KID_COOKIE)).toBeUndefined();
+		await page.goto('/');
+		await expectAccessible(page);
+		expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
+	});
+
+	test('closing the confirmation again sends no request', async ({ page }) => {
+		await openLeave(page);
+		await leaveControl(page).click();
+		await expect(confirm(page)).toBeHidden();
+		await page.goto(`/kids/${LEO.id}`);
+		await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
+		expect(await deletes()).toEqual([]);
+	});
+
+	test('hbt_kid pointing at another kid is left alone', async ({ page, context }) => {
+		await openLeave(page);
+		await context.addCookies([
+			{
+				name: KID_COOKIE,
+				value: MIA.id,
+				url: UI_ORIGIN,
+				httpOnly: true,
+				secure: true,
+				sameSite: 'Strict'
+			}
+		]);
+		await confirm(page).click();
+		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(MIA.id);
+	});
+
+	test('posted parent, parent_id and kid fields are ignored', async ({ page }) => {
+		await openLeave(page);
+		await confirm(page).evaluate((button: HTMLButtonElement) => {
+			for (const [name, value] of [
+				['parent_id', 'p-cleo'],
+				['parent', 'p-cleo'],
+				['kid', 'k-mia']
+			]) {
+				button.form?.append(
+					Object.assign(document.createElement('input'), { type: 'hidden', name, value })
+				);
+			}
+		});
+		await confirm(page).click();
+		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
+		await expect(page.getByRole('heading', { name: MIA.name, exact: true })).toBeVisible();
+
+		await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+		await signIn(page, CLEO);
+		await page.goto(`/kids/${LEO.id}/access`);
+		await expect(grant(page, 'Cleo')).toContainText('Guardian');
+		await expect(grant(page, 'Ana')).toHaveCount(0);
+	});
+
+	test('a grant revoked meanwhile still ends at home', async ({ page }) => {
+		await openLeave(page);
+		const cleo = await openSession(CLEO.username, CLEO.password);
+		const revoke = await fetch(`${STUB_URL}/v1/kids/${LEO.id}/access/p-ana`, {
+			method: 'DELETE',
+			headers: { authorization: `Bearer ${STUB_TOKEN}`, 'x-session-token': cleo }
+		});
+		expect(revoke.status).toBe(204);
+		await confirm(page).click();
+		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		// Cleo's revoke, then Ana's leave, which the stub answers 404.
+		expect((await deletes()).map((r) => r.session === cleo)).toEqual([true, false]);
+	});
+
+	test.describe('without JavaScript', () => {
+		test.use({ javaScriptEnabled: false });
+
+		// axe runs in the page, so the 404 pages are checked by the JavaScript tests above.
+		test('the whole flow works', async ({ page }) => {
+			await openLeave(page);
+			await confirm(page).click();
+			await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+			await expect(page.getByRole('heading', { name: LEO.name, exact: true })).toHaveCount(0);
+			for (const path of [
+				`/kids/${LEO.id}`,
+				`/kids/${LEO.id}/settings`,
+				`/kids/${LEO.id}/access`
+			]) {
+				expect((await page.goto(path))?.status()).toBe(404);
+				await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+			}
+			expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
+		});
+	});
 });
