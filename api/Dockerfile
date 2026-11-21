@@ -17,6 +17,8 @@ COPY --from=build /out/happybabytracker-api /happybabytracker-api
 COPY --from=build --chown=10001:10001 /out/data /data
 USER 10001:10001
 ENV DATA_DIR=/data
+# Two concurrent argon2 hashes (~38 MiB live) must stay under the 60 MiB ceiling in a 96m container.
+ENV GOMEMLIMIT=56MiB
 VOLUME /data
 EXPOSE 9210
 ENTRYPOINT ["/happybabytracker-api"]

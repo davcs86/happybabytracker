@@ -274,6 +274,30 @@ pass "8 after the admin password changes the old admin cookie is refused and cle
 # A parent login runs argon2 in the fresh API process before memory is read.
 login login-b "$ADDR_B" "$USER_B" "$PASSWORD_B" >/dev/null
 
+# Assertion 10's burst: each login has its own limiter keys, so every one reaches an argon2 verify.
+BURST=24
+for i in $(seq 1 "$BURST"); do
+  pw="$(rand 12)"
+  remember "burst-${SUFFIX}-$i"
+  remember "$pw"
+  form "burst-$i" "198.51.100.$i" - /login "username=burst-${SUFFIX}-$i" "password=$pw" \
+    >"$WORK/burst-$i.code" &
+done
+api_burst=0
+ui_burst=0
+while [ -n "$(jobs -r)" ]; do
+  m="$(mem_mib "$API")"
+  api_burst=$((m > api_burst ? m : api_burst))
+  m="$(mem_mib "$UI")"
+  ui_burst=$((m > ui_burst ? m : ui_burst))
+done
+wait
+for i in $(seq 1 "$BURST"); do
+  [ "$(cat "$WORK/burst-$i.code")" = 400 ] || fail "10 burst login $i" "status $(cat "$WORK/burst-$i.code")"
+done
+API_MEM_3="$(mem_mib "$API")"
+UI_MEM_3="$(mem_mib "$UI")"
+
 # 9. No identifier, password or token in either container's logs.
 docker logs "$API" >"$WORK/api-2.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
@@ -283,12 +307,18 @@ for f in api-1.log api-2.log ui.log; do
 done
 pass "9 the logs of both containers carry no username, kid name, password or token"
 
-# 10. Resident memory after the logins, before and after the API restarts.
+# 10. Resident memory: before the restarts, during and after the login burst, at the end.
 API_MEM_2="$(mem_mib "$API")"
 UI_MEM_2="$(mem_mib "$UI")"
-api_mem=$((API_MEM_1 > API_MEM_2 ? API_MEM_1 : API_MEM_2))
-ui_mem=$((UI_MEM_1 > UI_MEM_2 ? UI_MEM_1 : UI_MEM_2))
-readings="api ${API_MEM_1}/${API_MEM_2} MiB, ui ${UI_MEM_1}/${UI_MEM_2} MiB (first run/end)"
+api_mem=0
+for m in "$API_MEM_1" "$api_burst" "$API_MEM_3" "$API_MEM_2"; do api_mem=$((m > api_mem ? m : api_mem)); done
+ui_mem=0
+for m in "$UI_MEM_1" "$ui_burst" "$UI_MEM_3" "$UI_MEM_2"; do ui_mem=$((m > ui_mem ? m : ui_mem)); done
+readings="api ${API_MEM_1}/${api_burst}/${API_MEM_3}/${API_MEM_2} MiB, ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_3}/${UI_MEM_2} MiB (first run/${BURST}-login burst peak/after burst/end)"
+[ "$(docker inspect --format '{{.State.OOMKilled}}' "$API")" = false ] ||
+  fail "10 api OOM-killed" "$readings"
+code="$(curl -sS -o /dev/null -w '%{http_code}' "$UI_URL/healthz/api" || true)"
+[ "$code" = 200 ] || fail "10 /healthz/api after the burst" "status $code; $readings"
 [ "$api_mem" -le "$API_MEM_LIMIT_MIB" ] || fail "10 api memory over ${API_MEM_LIMIT_MIB} MiB" "$readings"
 [ "$ui_mem" -le "$UI_MEM_LIMIT_MIB" ] || fail "10 ui memory over ${UI_MEM_LIMIT_MIB} MiB" "$readings"
-pass "10 resident memory within ${API_MEM_LIMIT_MIB}/${UI_MEM_LIMIT_MIB} MiB: $readings"
+pass "10 memory within ${API_MEM_LIMIT_MIB}/${UI_MEM_LIMIT_MIB} MiB, no OOM kill, /healthz/api 200: $readings"
