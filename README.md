@@ -48,7 +48,7 @@ Because of the last row, the origin and client address come from `X-Forwarded-Pr
 `X-Forwarded-Host` and `X-Forwarded-For`: put the UI behind a reverse proxy that sends all three. The
 session cookie is `Secure`, so the public origin must be `https`.
 
-The `VAPID_*` and `NTFY_*` variables of the design arrive with the reminders plan; nothing reads them yet.
+The `VAPID_*` and `NTFY_*` variables of the design arrive with a later plan; nothing reads them yet.
 
 Health, all through the UI: `GET /healthz` (the UI), `GET /healthz/api` (the API's `/healthz`, 200 while
 its database answers).
@@ -73,12 +73,24 @@ The UI then expects a TLS-terminating proxy in front of `127.0.0.1:9212` that se
 `X-Forwarded-*` headers. `scripts/smoke.sh hbt-api:dev hbt-ui:dev` runs both images the same way and
 plays that proxy with `curl`.
 
-Without Docker, the API with `go run` and the UI with the Vite dev server:
+Without Docker, the API with `go run` and the UI with the Vite dev server, each in its own shell
+started at the repository root. Both shells need the same token; pick one first:
+
+```sh
+export TOKEN=0123456789abcdef0123456789abcdef   # any value of at least 32 characters
+```
+
+Shell 1, the API (stays in the foreground):
 
 ```sh
 cd api && ADMIN_USERNAME=admin ADMIN_PASSWORD='choose-16-or-more' \
   INTERNAL_API_TOKEN="$TOKEN" PUBLIC_ORIGIN=http://localhost:5173 DATA_DIR="$(mktemp -d)" \
   go run ./cmd/happybabytracker-api
+```
+
+Shell 2, the UI:
+
+```sh
 cd ui && pnpm install && INTERNAL_API_TOKEN="$TOKEN" API_BASE_URL=http://localhost:9210 \
   ORIGIN=http://localhost:5173 PORT=5173 pnpm dev
 ```

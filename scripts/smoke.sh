@@ -48,11 +48,34 @@ trap cleanup EXIT
 
 pass() { echo "PASS: $1"; }
 
+scrub() { # stdin -> stdout with every remembered secret and identifier redacted
+  local text p
+  text="$(cat)"
+  while IFS= read -r p; do text="${text//"$p"/[redacted]}"; done <"$SECRETS_FILE"
+  printf '%s\n' "$text"
+}
+
+oom_killed() { # container -> succeeds when the kernel OOM-killed it
+  [ "$(docker inspect --format '{{.State.OOMKilled}}' "$1" 2>/dev/null)" = true ]
+}
+
 fail() {
+  local c
+  for c in "$API" "$UI"; do
+    if oom_killed "$c"; then echo "FAIL: $c was OOM-killed" >&2; fi
+  done
   echo "FAIL: $1${2:+: $2}" >&2
-  docker logs "$API" >&2 || true
-  docker logs "$UI" >&2 || true
+  if [ -s "$WORK/api-1.log" ]; then scrub <"$WORK/api-1.log" >&2; fi
+  docker logs "$API" 2>&1 | scrub >&2 || true
+  docker logs "$UI" 2>&1 | scrub >&2 || true
   exit 1
+}
+
+fail_if_oom() { # assertion
+  local c
+  for c in "$API" "$UI"; do
+    if oom_killed "$c"; then fail "$1" "$c was OOM-killed"; fi
+  done
 }
 
 port_busy() {
@@ -62,7 +85,7 @@ port_busy() {
 wait_ok() { # url
   local _
   for _ in $(seq 1 30); do
-    if curl -fsS "$1" >/dev/null 2>&1; then return 0; fi
+    if curl -fsS --max-time 10 "$1" >/dev/null 2>&1; then return 0; fi
     sleep 1
   done
   return 1
@@ -70,7 +93,7 @@ wait_ok() { # url
 
 start_api() { # admin-password
   docker run -d --name "$API" --network "$NETWORK" \
-    --read-only --cap-drop ALL --security-opt no-new-privileges --memory 256m \
+    --read-only --cap-drop ALL --security-opt no-new-privileges --memory 96m --memory-swap 96m \
     -v "$VOLUME":/data \
     -e ADMIN_USERNAME="$ADMIN_USERNAME" -e ADMIN_PASSWORD="$1" \
     -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" \
@@ -81,7 +104,7 @@ start_api() { # admin-password
 req() { # name client-addr cookie|- curl-args... -> status; body and headers in $WORK/<name>.*
   local name="$1" addr="$2" cookie="$3"
   shift 3
-  local args=(-sS -o "$WORK/$name.body" -D "$WORK/$name.headers" -w '%{http_code}'
+  local args=(-sS --max-time 10 -o "$WORK/$name.body" -D "$WORK/$name.headers" -w '%{http_code}'
     -H 'X-Forwarded-Proto: https' -H "X-Forwarded-Host: ${FORWARDED_HOST}"
     -H "X-Forwarded-For: ${addr}" -H 'Accept: text/html')
   if [ "$cookie" != "-" ]; then args+=(-H "Cookie: hbt_session=${cookie}"); fi
@@ -140,6 +163,25 @@ redeem() { # name addr url password -> session cookie
   echo "$session"
 }
 
+# The container's memory high-water mark: cgroup v1 max_usage_in_bytes or v2 memory.peak.
+peak_file() { # container -> the readable high-water file, or nothing
+  local pid path f
+  pid="$(docker inspect --format '{{.State.Pid}}' "$1")"
+  path="$(sed -n 's/^[0-9]*:memory:\(.*\)$/\1/p' "/proc/$pid/cgroup" 2>/dev/null || true)"
+  f="/sys/fs/cgroup/memory${path}/memory.max_usage_in_bytes"
+  if [ -n "$path" ] && [ -r "$f" ]; then echo "$f"; return 0; fi
+  path="$(sed -n 's/^0::\(.*\)$/\1/p' "/proc/$pid/cgroup" 2>/dev/null || true)"
+  f="/sys/fs/cgroup${path}/memory.peak"
+  if [ -n "$path" ] && [ -r "$f" ]; then echo "$f"; fi
+}
+
+peak_mib() { # container -> high-water MiB rounded up, or nothing when no file is readable
+  local f
+  f="$(peak_file "$1")"
+  [ -n "$f" ] || return 0
+  awk '{ v = $1 / 1048576; printf "%d\n", (v == int(v)) ? v : int(v) + 1 }' "$f"
+}
+
 mem_mib() { # container -> resident MiB (integer, rounded up; 99999 when unreadable)
   { docker stats --no-stream --format '{{.MemUsage}}' "$1" || echo '? ?'; } | awk '{
     v = $1; u = v; sub(/[0-9.]+/, "", u); sub(/[A-Za-z]+$/, "", v)
@@ -161,11 +203,16 @@ docker network create "$NETWORK" >/dev/null
 docker volume create "$VOLUME" >/dev/null
 start_api "$ADMIN_PASSWORD"
 docker run -d --name "$UI" --network "$NETWORK" \
-  --read-only --cap-drop ALL --security-opt no-new-privileges --memory 256m \
+  --read-only --cap-drop ALL --security-opt no-new-privileges --memory 192m --memory-swap 192m \
   -p "127.0.0.1:${UI_PORT}:9212" \
   -e API_BASE_URL="http://${API}:9210" -e ORIGIN="$ORIGIN" \
   -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" \
   "$UI_IMAGE" >/dev/null
+
+# Memory is the cgroup high-water mark when the host exposes it, else sampled docker stats.
+MEM_FILE="$(peak_file "$API")"
+MEM_FILE="${MEM_FILE##*/}"
+mem() { if [ -n "$MEM_FILE" ]; then peak_mib "$1"; else mem_mib "$1"; fi; }
 
 # 1. Health through the UI, and the container contract.
 wait_ok "$UI_URL/healthz" || fail "1 ui /healthz" "no 200 within 30 s"
@@ -179,10 +226,11 @@ done
 pass "1 /healthz and /healthz/api are 200; the API port is not published; read-only, uid 10001"
 
 # 2. The origin check.
-code="$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-Proto: https' \
+code="$(curl -sS --max-time 10 -o "$WORK/bad-host.body" -w '%{http_code}' -H 'X-Forwarded-Proto: https' \
   -H 'X-Forwarded-Host: evil.example' -H "X-Forwarded-For: ${ADDR_ADMIN}" "$UI_URL/login" || true)"
-[ "$code" = 400 ] || fail "2 wrong Host" "expected 400, got $code"
-pass "2 a wrong Host gets 400"
+{ [ "$code" = 400 ] && body_has bad-host 'Bad origin'; } ||
+  fail "2 wrong Host" "expected the app's 400 Bad origin, got $code"
+pass "2 a wrong Host gets the app's 400 Bad origin"
 
 # 3. Admin creates smoke-a; smoke-a redeems the invite and creates a kid.
 ADMIN_SESSION="$(login admin-login "$ADDR_ADMIN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD")"
@@ -236,27 +284,40 @@ code_a="$(req home-a "$ADDR_A" "$SESSION_A" "$UI_URL/")"
   fail "5 $USER_A disabled" "admin page $code, $USER_A home $code_a"
 pass "5 disabling the sole guardian is refused; after a second guardian it succeeds"
 
-# 6. The admin never sees a kid: pages, action answers and the page data the API fed.
+# 6. The admin never sees a kid: pages, action answers, page data, and the kid's own URLs.
 code="$(req admin-parents-data "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents/__data.json")"
 [ "$code" = 200 ] || fail "6 admin page data" "status $code"
-n=0
-for f in "$WORK"/admin-*.body; do
-  n=$((n + 1))
-  if grep -qF -- "$KID_NAME" "$f"; then fail "6 admin sees no kid" "$(basename "$f")"; fi
+for p in home:/ kid:"$KID_PATH" kid-access:"$KID_PATH/access"; do
+  code="$(req "admin-${p%%:*}" "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL${p#*:}")"
+  [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
+    fail "6 admin GET ${p#*:}" "status $code, Location $(location "admin-${p%%:*}")"
 done
-pass "6 none of the admin's $n captured answers contain the kid's name"
+code="$(req admin-kid-data "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL$KID_PATH/__data.json")"
+{ [ "$code" = 200 ] && body_has admin-kid-data '"type":"redirect"' &&
+  body_has admin-kid-data '/admin/parents'; } || fail "6 admin kid page data" "status $code"
+leaks() { grep -qF -- "$KID_NAME" "$1"; }
+leaks "$WORK/kid-a.body" || fail "6 control" "the kid's name is not found in its own page"
+n=0
+for f in "$WORK"/admin-*.body "$WORK"/admin-*.headers; do
+  n=$((n + 1))
+  if leaks "$f"; then fail "6 admin sees no kid" "$(basename "$f")"; fi
+done
+pass "6 none of the admin's $n captured bodies and headers contain the kid's name (control matches)"
 
-API_MEM_1="$(mem_mib "$API")"
-UI_MEM_1="$(mem_mib "$UI")"
+API_MEM_1="$(mem "$API")"
+UI_MEM_1="$(mem "$UI")"
 
 # 7. Data and sessions live on the volume.
 docker restart "$API" >/dev/null
 wait_ok "$UI_URL/healthz/api" || fail "7 api restart" "no 200 within 30 s"
 code="$(req kid-b "$ADDR_B" "$SESSION_B" "$UI_URL$KID_PATH")"
 { [ "$code" = 200 ] && body_has kid-b "$KID_NAME"; } || fail "7 session after restart" "status $code"
-pass "7 after an API restart $USER_B's session still works"
+code="$(req admin-after-restart "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
+[ "$code" = 200 ] || fail "7 admin session after restart" "status $code"
+pass "7 after an API restart the sessions of $USER_B and the admin still work"
 
 # 8. New admin credentials end the old admin session (API no_session: cookie cleared).
+API_MEM_1B="$(mem "$API")"
 docker logs "$API" >"$WORK/api-1.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD_2"
@@ -285,18 +346,21 @@ for i in $(seq 1 "$BURST"); do
 done
 api_burst=0
 ui_burst=0
-while [ -n "$(jobs -r)" ]; do
+while [ -z "$MEM_FILE" ] && [ -n "$(jobs -r)" ]; do
   m="$(mem_mib "$API")"
   api_burst=$((m > api_burst ? m : api_burst))
   m="$(mem_mib "$UI")"
   ui_burst=$((m > ui_burst ? m : ui_burst))
 done
 wait
+fail_if_oom "10 login burst"
+if [ -n "$MEM_FILE" ]; then
+  api_burst="$(mem "$API")"
+  ui_burst="$(mem "$UI")"
+fi
 for i in $(seq 1 "$BURST"); do
   [ "$(cat "$WORK/burst-$i.code")" = 400 ] || fail "10 burst login $i" "status $(cat "$WORK/burst-$i.code")"
 done
-API_MEM_3="$(mem_mib "$API")"
-UI_MEM_3="$(mem_mib "$UI")"
 
 # 9. No identifier, password or token in either container's logs.
 docker logs "$API" >"$WORK/api-2.log" 2>&1
@@ -307,17 +371,26 @@ for f in api-1.log api-2.log ui.log; do
 done
 pass "9 the logs of both containers carry no username, kid name, password or token"
 
-# 10. Resident memory: before the restarts, during and after the login burst, at the end.
-API_MEM_2="$(mem_mib "$API")"
-UI_MEM_2="$(mem_mib "$UI")"
+# 10. Memory of each API process and of the UI, with the login burst in the last API process.
+fail_if_oom "10 memory"
+API_MEM_2="$(mem "$API")"
+UI_MEM_2="$(mem "$UI")"
 api_mem=0
-for m in "$API_MEM_1" "$api_burst" "$API_MEM_3" "$API_MEM_2"; do api_mem=$((m > api_mem ? m : api_mem)); done
+for m in "$API_MEM_1" "$API_MEM_1B" "$api_burst" "$API_MEM_2"; do
+  [ "$m" -gt 0 ] 2>/dev/null || fail "10 api memory" "unreadable reading '$m'"
+  api_mem=$((m > api_mem ? m : api_mem))
+done
 ui_mem=0
-for m in "$UI_MEM_1" "$ui_burst" "$UI_MEM_3" "$UI_MEM_2"; do ui_mem=$((m > ui_mem ? m : ui_mem)); done
-readings="api ${API_MEM_1}/${api_burst}/${API_MEM_3}/${API_MEM_2} MiB, ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_3}/${UI_MEM_2} MiB (first run/${BURST}-login burst peak/after burst/end)"
-[ "$(docker inspect --format '{{.State.OOMKilled}}' "$API")" = false ] ||
-  fail "10 api OOM-killed" "$readings"
-code="$(curl -sS -o /dev/null -w '%{http_code}' "$UI_URL/healthz/api" || true)"
+for m in "$UI_MEM_1" "$ui_burst" "$UI_MEM_2"; do
+  [ "$m" -gt 0 ] 2>/dev/null || fail "10 ui memory" "unreadable reading '$m'"
+  ui_mem=$((m > ui_mem ? m : ui_mem))
+done
+if [ -n "$MEM_FILE" ]; then
+  readings="$MEM_FILE: api ${API_MEM_1}/${API_MEM_1B}/${api_burst} MiB (first process before/after restart, last process after the ${BURST}-login burst), ui ${UI_MEM_2} MiB"
+else
+  readings="sampled docker stats: api ${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_2} MiB (first process before/after restart, during the ${BURST}-login burst, end), ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_2} MiB"
+fi
+code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/api" || true)"
 [ "$code" = 200 ] || fail "10 /healthz/api after the burst" "status $code; $readings"
 [ "$api_mem" -le "$API_MEM_LIMIT_MIB" ] || fail "10 api memory over ${API_MEM_LIMIT_MIB} MiB" "$readings"
 [ "$ui_mem" -le "$UI_MEM_LIMIT_MIB" ] || fail "10 ui memory over ${UI_MEM_LIMIT_MIB} MiB" "$readings"
