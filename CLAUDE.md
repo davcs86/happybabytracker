@@ -60,6 +60,8 @@ with `INTERNAL_API_TOKEN` and the person's session token. Design:
    handler's pre-check.
 5. **No PII in logs or errors.** Logs are JSON lines of ids and enumerated facts: never a name,
    username, note, value, token or secret. No secret, name or username in an error string either.
+   Invite and reset tokens travel in the URL path and must never reach OTEL (traces, metrics or logs):
+   scrub `/invite/*` and `/reset/*` before any export. Caddy's own access log may keep them.
 6. **Secrets are server-only and compared in constant time.** Read only in server-only code (`api/`,
    `ui/src/lib/server/`); never in a fixture.
 7. **Limits live in two files only**: `api/internal/constants/constants.go` (API) and
