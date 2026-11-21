@@ -24,6 +24,8 @@ import (
 
 const fingerprintKey = "admin_fingerprint"
 
+var errAdminCollision = errors.New("ADMIN_USERNAME collides with an existing parent account")
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -46,6 +48,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 		return err
 	}
 	defer st.Close()
+	if err := checkAdminUsername(ctx, st, cfg); err != nil {
+		return err
+	}
 	if err := syncAdminFingerprint(ctx, st, cfg); err != nil {
 		return err
 	}
@@ -95,4 +100,20 @@ func syncAdminFingerprint(ctx context.Context, st *store.Store, cfg config.Confi
 		return err
 	}
 	return st.MetaSet(ctx, fingerprintKey, want)
+}
+
+// checkAdminUsername refuses to start when a parent already owns the admin's login name; the error omits the name.
+func checkAdminUsername(ctx context.Context, st *store.Store, cfg config.Config) error {
+	name, ok := auth.NormalizeUsername(cfg.AdminUsername)
+	if !ok {
+		return errors.New("ADMIN_USERNAME is not a valid username")
+	}
+	_, _, err := st.ParentByUsername(ctx, name)
+	if err == nil {
+		return errAdminCollision
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	return err
 }

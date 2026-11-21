@@ -24,6 +24,8 @@ const (
 	kindNone   = "none"
 )
 
+var errUnknownAccess = errors.New("unknown access class")
+
 type ctxKey int
 
 const (
@@ -48,7 +50,8 @@ func respondNoKid(w http.ResponseWriter) { respondError(w, http.StatusNotFound, 
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status       int
+	cause, slide string
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
@@ -73,12 +76,20 @@ func (d Deps) guard(route string, access Access, h http.HandlerFunc) http.Handle
 		if ok {
 			h(rec, r.WithContext(ctx))
 		}
-		d.Log.Info("request",
+		attrs := []any{
 			"route", route,
 			"status", rec.status,
 			"principal_kind", kind,
 			"request_id", model.NewID(),
-			"duration_ms", time.Since(start).Milliseconds())
+			"duration_ms", time.Since(start).Milliseconds(),
+		}
+		if rec.cause != "" {
+			attrs = append(attrs, constants.LogFieldCause, rec.cause)
+		}
+		if rec.slide != "" {
+			attrs = append(attrs, constants.LogFieldSlide, rec.slide)
+		}
+		d.Log.Info("request", attrs...)
 	})
 }
 
@@ -94,7 +105,7 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 		return ctx, model.Principal{}, true
 	case Session, Admin, Parent, Caregiver, Guardian:
 	default: // an unknown class is a bug, never an open route
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, errUnknownAccess)
 		return ctx, model.Principal{}, false
 	}
 
@@ -110,7 +121,7 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 		return ctx, model.Principal{}, false
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, err)
 		return ctx, model.Principal{}, false
 	}
 	perKid := access == Caregiver || access == Guardian
@@ -125,7 +136,7 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 			return ctx, p, false
 		}
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "internal")
+			respondInternal(w, err)
 			return ctx, p, false
 		}
 		if access == Guardian && role != model.RoleGuardian {
@@ -138,10 +149,10 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 	if p.Kind == kindParent && p.ExpiresAt.Sub(now) < constants.ParentSessionTTL-constants.SessionTouchInterval {
 		expires := now.Add(constants.ParentSessionTTL)
 		if err := d.Store.TouchSession(ctx, p.SessionID, now, expires); err != nil {
-			respondError(w, http.StatusInternalServerError, "internal")
-			return ctx, p, false
+			noteSlideFailed(w, err) // the session stays valid and expires on its old schedule
+		} else {
+			p.ExpiresAt = expires
 		}
-		p.ExpiresAt = expires
 	}
 	return context.WithValue(ctx, principalKey, p), p, true
 }

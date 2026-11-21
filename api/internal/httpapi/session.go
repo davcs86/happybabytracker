@@ -85,7 +85,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 
 	kind, parentID, authed, err := d.checkCredentials(r, username, valid, in.Password)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, err)
 		return
 	}
 	if !authed {
@@ -95,7 +95,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 
 	token, hash, err := auth.NewToken()
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, err)
 		return
 	}
 	now := d.Now()
@@ -104,7 +104,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 		ttl = constants.AdminSessionTTL
 	}
 	if _, err := d.Store.CreateSession(r.Context(), kind, parentID, hash, now, now.Add(ttl)); err != nil {
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, loginResponse{Token: token, Kind: kind, ExpiresAt: formatTime(now.Add(ttl))})
@@ -154,7 +154,7 @@ func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "internal")
+			respondInternal(w, err)
 			return
 		}
 		pv := newParentView(parent)
@@ -165,7 +165,7 @@ func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {
 
 func (d Deps) logout(w http.ResponseWriter, r *http.Request) {
 	if err := d.Store.DeleteSession(r.Context(), PrincipalFrom(r.Context()).SessionID); err != nil {
-		respondError(w, http.StatusInternalServerError, "internal")
+		respondInternal(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

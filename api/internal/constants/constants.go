@@ -52,4 +52,10 @@ const (
 	ReadTimeout       = 15 * time.Second
 	WriteTimeout      = 30 * time.Second
 	ShutdownTimeout   = 10 * time.Second
+
+	LogFieldCause    = "cause"
+	LogFieldSlide    = "slide"
+	SlideFailed      = "failed"
+	CauseSQLite      = "sqlite"
+	CauseOtherPrefix = "other:"
 )

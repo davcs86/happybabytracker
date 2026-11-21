@@ -19,7 +19,7 @@ type grantView struct {
 func (d Deps) listAccess(w http.ResponseWriter, r *http.Request) {
 	grants, err := d.Store.AccessList(r.Context(), r.PathValue("kid"))
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	rows := make([]grantView, len(grants))
@@ -82,7 +82,7 @@ func kidWriteOK(w http.ResponseWriter, err error) bool {
 	case errors.Is(err, store.ErrLastGuardian):
 		respondError(w, http.StatusConflict, "last_guardian")
 	default:
-		respondInternal(w)
+		respondInternal(w, err)
 	}
 	return false
 }

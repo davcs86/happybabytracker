@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,5 +139,83 @@ func TestFirstStartRecordsTheFingerprint(t *testing.T) {
 	// With no record, a session cannot be tied to the current credentials.
 	if has(t, s, []byte("early")) {
 		t.Fatal("an admin session of unknown origin survived the first fingerprint")
+	}
+}
+
+const collisionMsg = "ADMIN_USERNAME collides with an existing parent account"
+
+func TestAdminUsernameCollidingWithAParentIsRefused(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.CreateParent(ctx, "david", "David", now); err != nil {
+		t.Fatal(err)
+	}
+
+	err = checkAdminUsername(ctx, s, cfgWith("david", "admin-password-AAAAAAAA"))
+	if err == nil || err.Error() != collisionMsg {
+		t.Fatalf("collision: %v, want %q", err, collisionMsg)
+	}
+	if strings.Contains(err.Error(), "david") {
+		t.Fatalf("error echoes the username: %q", err)
+	}
+
+	// login normalises case and whitespace, so a config value that only differs that way collides too.
+	for _, v := range []string{"David", " david ", "DAVID\t"} {
+		if err := checkAdminUsername(ctx, s, cfgWith(v, "admin-password-AAAAAAAA")); err == nil || err.Error() != collisionMsg {
+			t.Errorf("config value %q: %v, want %q", v, err, collisionMsg)
+		}
+	}
+
+	if err := checkAdminUsername(ctx, s, cfgWith("root-admin", "admin-password-AAAAAAAA")); err != nil {
+		t.Fatalf("no collision: %v", err)
+	}
+}
+
+func TestConfigNeverHoldsAnUnnormalisedAdminUsername(t *testing.T) {
+	for _, v := range []string{"David", " david ", "DAVID"} {
+		env := map[string]string{
+			"ADMIN_USERNAME": v, "ADMIN_PASSWORD": "admin-password-AAAAAAAA",
+			"INTERNAL_API_TOKEN": "internal-token-0123456789abcdef0123456789abcdef", "PUBLIC_ORIGIN": "http://localhost:9212",
+		}
+		if _, err := config.Load(func(k string) string { return env[k] }); err == nil {
+			t.Errorf("config.Load accepted %q", v)
+		}
+	}
+}
+
+func TestRunRefusesToStartOnACollision(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateParent(ctx, "david", "David", now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
+		"ADMIN_USERNAME": "david", "ADMIN_PASSWORD": "admin-password-AAAAAAAA", "DATA_DIR": dir,
+		"INTERNAL_API_TOKEN": "internal-token-0123456789abcdef0123456789abcdef", "PUBLIC_ORIGIN": "http://localhost:9212",
+	}
+	err = run(ctx, func(k string) string { return env[k] }, io.Discard)
+	if err == nil || err.Error() != collisionMsg {
+		t.Fatalf("run: %v, want %q", err, collisionMsg)
+	}
+
+	// Refused before anything was changed: no fingerprint was recorded.
+	s, err = store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, ok, err := s.MetaGet(ctx, "admin_fingerprint"); err != nil || ok {
+		t.Fatalf("fingerprint recorded despite the refusal: %v %v", ok, err)
 	}
 }

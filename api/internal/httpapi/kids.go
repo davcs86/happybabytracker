@@ -126,7 +126,7 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, newKidView(kid, model.RoleGuardian))
@@ -135,7 +135,7 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 func (d Deps) listKids(w http.ResponseWriter, r *http.Request) {
 	kids, err := d.Store.KidsFor(r.Context(), PrincipalFrom(r.Context()).ParentID)
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	rows := make([]kidView, len(kids))
@@ -155,7 +155,7 @@ func (d Deps) loadKid(w http.ResponseWriter, r *http.Request) (model.Kid, bool) 
 		return model.Kid{}, false
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return model.Kid{}, false
 	}
 	return kid, true

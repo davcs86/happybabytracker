@@ -54,6 +54,11 @@ func newKit(t *testing.T) *kit {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return newKitWith(t, s)
+}
+
+func newKitWith(t *testing.T, s *store.Store) *kit {
+	t.Helper()
 	t.Cleanup(func() { s.Close() })
 	k := &kit{
 		t:     t,

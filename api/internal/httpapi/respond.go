@@ -36,7 +36,9 @@ func respondInvalid(w http.ResponseWriter, field string) {
 	respondError(w, http.StatusUnprocessableEntity, "invalid", field)
 }
 
-func respondInternal(w http.ResponseWriter) {
+// respondInternal is the bare 500; err only feeds the log line's cause.
+func respondInternal(w http.ResponseWriter, err error) {
+	noteCause(w, err)
 	respondError(w, http.StatusInternalServerError, "internal")
 }
 

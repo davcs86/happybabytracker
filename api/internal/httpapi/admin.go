@@ -79,12 +79,12 @@ func (d Deps) createParent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	link, expires, err := d.issueLink(r, model.TokenInvite, parent.ID, now)
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, struct {
@@ -97,7 +97,7 @@ func (d Deps) createParent(w http.ResponseWriter, r *http.Request) {
 func (d Deps) listParents(w http.ResponseWriter, r *http.Request) {
 	parents, err := d.Store.ListParents(r.Context())
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	rows := make([]adminParentView, len(parents))
@@ -117,7 +117,7 @@ func (d Deps) resetLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	kind := model.TokenReset
@@ -126,7 +126,7 @@ func (d Deps) resetLink(w http.ResponseWriter, r *http.Request) {
 	}
 	link, expires, err := d.issueLink(r, kind, parent.ID, d.Now())
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	out := struct {
@@ -154,7 +154,7 @@ func (d Deps) setDisabled(disabled bool) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			respondInternal(w)
+			respondInternal(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -168,7 +168,7 @@ func (d Deps) peekToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, struct {
@@ -195,7 +195,7 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "not_found")
 		return
 	} else if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	secret, err := auth.HashPassword(in.Password)
@@ -204,7 +204,7 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	parentID, err := d.Store.RedeemToken(ctx, tokenHash, secret, now)
@@ -213,18 +213,18 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 
 	session, sessionHash, err := auth.NewToken()
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	expires := now.Add(constants.ParentSessionTTL)
 	if _, err := d.Store.CreateSession(ctx, kindParent, parentID, sessionHash, now, expires); err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, loginResponse{Token: session, Kind: kindParent, ExpiresAt: formatTime(expires)})

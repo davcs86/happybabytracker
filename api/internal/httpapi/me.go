@@ -44,7 +44,7 @@ func (d Deps) updateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (d Deps) updateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := d.Store.UpdateParentProfile(ctx, id, name, units, d.Now()); err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	parent.DisplayName, parent.Units = name, units
@@ -94,7 +94,7 @@ func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 	ctx, p := r.Context(), PrincipalFrom(r.Context())
 	stored, err := d.Store.LocalSecret(ctx, p.ParentID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	if !verifyPassword(stored, in.Current) {
@@ -107,11 +107,11 @@ func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	if err := d.Store.SetPassword(ctx, p.ParentID, hash, p.SessionID); err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -121,7 +121,7 @@ func (d Deps) listSessions(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
 	sessions, err := d.Store.ListSessions(r.Context(), p.ParentID, d.Now())
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	rows := make([]sessionInfoView, len(sessions))
@@ -141,7 +141,7 @@ func (d Deps) deleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondInternal(w)
+		respondInternal(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
