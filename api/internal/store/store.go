@@ -19,6 +19,9 @@ var (
 	ErrNotFound     = errors.New("store: not found")
 	ErrConflict     = errors.New("store: conflict")
 	ErrLastGuardian = errors.New("store: last guardian")
+	ErrForbidden    = errors.New("store: forbidden")
+	// ErrParentNotFound is an ErrNotFound naming the grant's target, not the kid or the actor.
+	ErrParentNotFound = fmt.Errorf("%w: parent", ErrNotFound)
 )
 
 type Store struct {

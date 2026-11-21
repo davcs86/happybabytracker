@@ -39,13 +39,17 @@ func (s *Store) AccessList(ctx context.Context, kidID string) ([]model.Grant, er
 	return out, rows.Err()
 }
 
-// SetAccess grants or changes a role; ErrNotFound for an unknown or disabled parent, ErrLastGuardian on a downgrade.
-func (s *Store) SetAccess(ctx context.Context, kidID, username string, role model.Role, now time.Time) error {
+// SetAccess grants or changes a role. actorID must be a guardian (ErrNotFound without a grant, ErrForbidden as
+// a caregiver); ErrParentNotFound for an unknown or disabled target; ErrLastGuardian on a downgrade.
+func (s *Store) SetAccess(ctx context.Context, kidID, actorID, username string, role model.Role, now time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
+			return err
+		}
 		var parentID string
 		err := tx.QueryRowContext(ctx, `SELECT id FROM parents WHERE username = ? AND disabled = 0`, username).Scan(&parentID)
 		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+			return ErrParentNotFound
 		}
 		if err != nil {
 			return err
@@ -60,15 +64,37 @@ func (s *Store) SetAccess(ctx context.Context, kidID, username string, role mode
 	})
 }
 
-// RemoveAccess returns ErrNotFound when the parent holds no grant on the kid.
-func (s *Store) RemoveAccess(ctx context.Context, kidID, parentID string) error {
+// RemoveAccess returns ErrNotFound when the parent holds no grant on the kid; removing someone other
+// than actorID needs actorID to be a guardian.
+func (s *Store) RemoveAccess(ctx context.Context, kidID, actorID, parentID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if actorID != parentID {
+			if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
+				return err
+			}
+		}
 		res, err := tx.ExecContext(ctx, `DELETE FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, parentID)
 		if err := oneRow(res, err); err != nil {
 			return err
 		}
 		return keepsActiveGuardian(ctx, tx, kidID)
 	})
+}
+
+// actorIsGuardian re-asserts on tx what the middleware checked on the read pool, which may be stale by now.
+func actorIsGuardian(ctx context.Context, tx *sql.Tx, kidID, actorID string) error {
+	var role model.Role
+	err := tx.QueryRowContext(ctx, `SELECT role FROM kid_access WHERE kid_id = ? AND parent_id = ?`, kidID, actorID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if role != model.RoleGuardian {
+		return ErrForbidden
+	}
+	return nil
 }
 
 // keepsActiveGuardian must read through tx: a count on the read pool would let two writers both pass.

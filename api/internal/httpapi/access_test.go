@@ -1,10 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 func (k *kit) disable(admin, username string) *httptest.ResponseRecorder {
@@ -187,4 +191,96 @@ func TestDisabledParentGrantStays(t *testing.T) {
 	if len(rows) != 1 || rows[0].(map[string]any)["id"] != kid || rows[0].(map[string]any)["role"] != "guardian" {
 		t.Errorf("re-enabled parent's kids = %v", rows)
 	}
+}
+
+// staleCall runs h as if the middleware had admitted username with role on kid before the state changed.
+func (k *kit) staleCall(h http.HandlerFunc, method, path, username, kid string, role model.Role, pathValues map[string]string, body any) *httptest.ResponseRecorder {
+	k.t.Helper()
+	r := k.newReq(method, path, body)
+	ctx := context.WithValue(r.Context(), principalKey, model.Principal{Kind: kindParent, ParentID: k.parentID(username)})
+	if role != "" {
+		ctx = context.WithValue(ctx, kidRoleKey, role)
+	}
+	r = r.WithContext(ctx)
+	r.SetPathValue("kid", kid)
+	for key, v := range pathValues {
+		r.SetPathValue(key, v)
+	}
+	rec := httptest.NewRecorder()
+	h(rec, r)
+	return rec
+}
+
+func sameResponse(t *testing.T, what string, got, want *httptest.ResponseRecorder) {
+	t.Helper()
+	if got.Code != want.Code || !reflect.DeepEqual(got.Header(), want.Header()) || got.Body.String() != want.Body.String() {
+		t.Errorf("%s: %d %v %q, want %d %v %q", what, got.Code, got.Header(), got.Body.String(), want.Code, want.Header(), want.Body.String())
+	}
+}
+
+func TestCreateKidByCreatorDisabledMidRequest(t *testing.T) {
+	k := newKit(t)
+	admin := k.asAdmin()
+	k.asParent("ana")
+	if rec := k.disable(admin, "ana"); rec.Code != http.StatusNoContent {
+		t.Fatalf("disable: %d", rec.Code)
+	}
+	d := k.deps()
+	rec := k.staleCall(d.createKid, http.MethodPost, "/v1/kids", "ana", "", "", nil, kidBody(nil))
+	wantErr(t, rec, http.StatusUnauthorized, "no_session")
+	if kids, err := k.Store.KidsFor(context.Background(), k.parentID("ana")); err != nil || len(kids) != 0 {
+		t.Errorf("kids = %v, %v", kids, err)
+	}
+}
+
+func TestStaleAuthorizationIsRefused(t *testing.T) {
+	k := newKit(t)
+	ana, bob, sam := k.asParent("ana"), k.asParent("bob"), k.asParent("sam")
+	k.asParent("cal")
+	kid := k.createKid(ana, nil)
+	k.grant(ana, kid, "bob", "guardian")
+	d := k.deps()
+	base := "/v1/kids/" + kid
+	// What the middleware answers a parent with no grant: every stale refusal must match it byte for byte.
+	noGrant := k.do(http.MethodGet, base, sam, nil)
+	k.grant(ana, kid, "sam", "caregiver")
+	forbidden := k.do(http.MethodPatch, base, sam, map[string]string{"name": "X"})
+	wantErr(t, forbidden, http.StatusForbidden, "forbidden")
+
+	calls := func(role model.Role) map[string]*httptest.ResponseRecorder {
+		return map[string]*httptest.ResponseRecorder{
+			"PATCH kid":      k.staleCall(d.updateKid, http.MethodPatch, base, "ana", kid, role, nil, map[string]string{"name": "Changed"}),
+			"DELETE kid":     k.staleCall(d.deleteKid, http.MethodDelete, base, "ana", kid, role, nil, map[string]string{"confirm_name": testKidName}),
+			"PUT self":       k.staleCall(d.setAccess, http.MethodPut, base+"/access/ana", "ana", kid, role, map[string]string{"username": "ana"}, map[string]string{"role": "guardian"}),
+			"PUT other":      k.staleCall(d.setAccess, http.MethodPut, base+"/access/cal", "ana", kid, role, map[string]string{"username": "cal"}, map[string]string{"role": "guardian"}),
+			"DELETE another": k.staleCall(d.removeAccess, http.MethodDelete, base+"/access/x", "ana", kid, role, map[string]string{"parent": k.parentID("sam")}, nil),
+		}
+	}
+
+	// Downgraded to caregiver after the middleware saw a guardian.
+	k.grant(bob, kid, "ana", "caregiver")
+	for what, rec := range calls(model.RoleGuardian) {
+		sameResponse(t, "downgraded "+what, rec, forbidden)
+	}
+	// Revoked after the middleware saw a guardian.
+	if rec := k.do(http.MethodDelete, base+"/access/"+k.parentID("ana"), bob, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: %d", rec.Code)
+	}
+	for what, rec := range calls(model.RoleGuardian) {
+		sameResponse(t, "revoked "+what, rec, noGrant)
+	}
+
+	grants := bodyMap(t, k.do(http.MethodGet, base+"/access", bob, nil))["grants"].([]any)
+	if len(grants) != 2 {
+		t.Errorf("grants changed: %v", grants)
+	}
+	if got := bodyMap(t, k.do(http.MethodGet, base, bob, nil)); got["name"] != testKidName {
+		t.Errorf("kid changed: %v", got)
+	}
+	// The kid deleted under a guardian's PUT is the same 404, not a 500.
+	if rec := k.do(http.MethodDelete, base, bob, map[string]string{"confirm_name": testKidName}); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	rec := k.staleCall(d.setAccess, http.MethodPut, base+"/access/cal", "bob", kid, model.RoleGuardian, map[string]string{"username": "cal"}, map[string]string{"role": "caregiver"})
+	sameResponse(t, "PUT on a deleted kid", rec, noGrant)
 }

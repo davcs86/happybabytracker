@@ -48,15 +48,12 @@ func (d Deps) setAccess(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "parent_not_found")
 		return
 	}
-	err := d.Store.SetAccess(r.Context(), r.PathValue("kid"), username, in.Role, d.Now())
-	switch {
-	case errors.Is(err, store.ErrNotFound):
+	err := d.Store.SetAccess(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, username, in.Role, d.Now())
+	if errors.Is(err, store.ErrParentNotFound) {
 		respondError(w, http.StatusNotFound, "parent_not_found")
-	case errors.Is(err, store.ErrLastGuardian):
-		respondError(w, http.StatusConflict, "last_guardian")
-	case err != nil:
-		respondInternal(w)
-	default:
+		return
+	}
+	if kidWriteOK(w, err) {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -68,15 +65,24 @@ func (d Deps) removeAccess(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusForbidden, "forbidden")
 		return
 	}
-	err := d.Store.RemoveAccess(r.Context(), r.PathValue("kid"), target)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		respondError(w, http.StatusNotFound, "not_found")
-	case errors.Is(err, store.ErrLastGuardian):
-		respondError(w, http.StatusConflict, "last_guardian")
-	case err != nil:
-		respondInternal(w)
-	default:
+	if kidWriteOK(w, d.Store.RemoveAccess(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, target)) {
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// kidWriteOK is true when err is nil; otherwise it answers the refused per-kid write and is false.
+func kidWriteOK(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, store.ErrNotFound):
+		respondNoKid(w)
+	case errors.Is(err, store.ErrForbidden):
+		respondError(w, http.StatusForbidden, "forbidden")
+	case errors.Is(err, store.ErrLastGuardian):
+		respondError(w, http.StatusConflict, "last_guardian")
+	default:
+		respondInternal(w)
+	}
+	return false
 }

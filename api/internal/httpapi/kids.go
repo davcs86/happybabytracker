@@ -121,6 +121,10 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kid, err := d.Store.CreateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
+	if errors.Is(err, store.ErrNotFound) { // the creator was disabled since the middleware, ending this session
+		respondError(w, http.StatusUnauthorized, "no_session")
+		return
+	}
 	if err != nil {
 		respondInternal(w)
 		return
@@ -147,7 +151,7 @@ func (d Deps) listKids(w http.ResponseWriter, r *http.Request) {
 func (d Deps) loadKid(w http.ResponseWriter, r *http.Request) (model.Kid, bool) {
 	kid, err := d.Store.Kid(r.Context(), r.PathValue("kid"))
 	if errors.Is(err, store.ErrNotFound) {
-		respondError(w, http.StatusNotFound, "not_found")
+		respondNoKid(w)
 		return model.Kid{}, false
 	}
 	if err != nil {
@@ -182,12 +186,7 @@ func (d Deps) updateKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := d.Store.UpdateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
-	if errors.Is(err, store.ErrNotFound) {
-		respondError(w, http.StatusNotFound, "not_found")
-		return
-	}
-	if err != nil {
-		respondInternal(w)
+	if !kidWriteOK(w, err) {
 		return
 	}
 	respondJSON(w, http.StatusOK, newKidView(kid, KidRoleFrom(r.Context())))
@@ -208,13 +207,8 @@ func (d Deps) deleteKid(w http.ResponseWriter, r *http.Request) {
 		respondInvalid(w, "confirm_name")
 		return
 	}
-	err := d.Store.DeleteKid(r.Context(), kid.ID)
-	if errors.Is(err, store.ErrNotFound) {
-		respondError(w, http.StatusNotFound, "not_found")
-		return
-	}
-	if err != nil {
-		respondInternal(w)
+	err := d.Store.DeleteKid(r.Context(), kid.ID, PrincipalFrom(r.Context()).ParentID)
+	if !kidWriteOK(w, err) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

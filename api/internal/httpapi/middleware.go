@@ -43,6 +43,9 @@ func KidRoleFrom(ctx context.Context) model.Role {
 	return r
 }
 
+// respondNoKid is the one 404 for an unknown kid and for no grant, so the two stay byte-identical.
+func respondNoKid(w http.ResponseWriter) { respondError(w, http.StatusNotFound, "not_found") }
+
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -116,10 +119,9 @@ func (d Deps) admit(w http.ResponseWriter, r *http.Request, access Access) (cont
 		return ctx, p, false
 	}
 	if perKid {
-		// Unknown kid and no grant must stay byte-identical: both are this one 404.
 		role, err := d.Store.RoleFor(ctx, r.PathValue("kid"), p.ParentID)
 		if errors.Is(err, store.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found")
+			respondNoKid(w)
 			return ctx, p, false
 		}
 		if err != nil {

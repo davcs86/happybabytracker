@@ -25,9 +25,9 @@ func mustKid(t *testing.T, s *Store, creator, name string) model.Kid {
 	return k
 }
 
-func mustGrant(t *testing.T, s *Store, kidID, username string, role model.Role) {
+func mustGrant(t *testing.T, s *Store, kidID, actorID, username string, role model.Role) {
 	t.Helper()
-	if err := s.SetAccess(ctx, kidID, username, role, t0); err != nil {
+	if err := s.SetAccess(ctx, kidID, actorID, username, role, t0); err != nil {
 		t.Fatalf("SetAccess %s %s: %v", username, role, err)
 	}
 }
@@ -66,8 +66,8 @@ func TestCreateKidStoresKidAndGuardianGrant(t *testing.T) {
 		created != t0.Unix() || updated != t0.Unix() || by != ana.ID {
 		t.Errorf("stamps = %d %d %q, %v", created, updated, by, err)
 	}
-	if _, err := s.CreateKid(ctx, newKid("X"), "nobody", t0); err == nil {
-		t.Error("a kid was created for an unknown parent")
+	if _, err := s.CreateKid(ctx, newKid("X"), "nobody", t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown creator: %v, want ErrNotFound", err)
 	}
 	if _, err := s.Kid(ctx, "nobody"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown kid: %v", err)
@@ -85,7 +85,7 @@ func TestKidsForOrderAndRoles(t *testing.T) {
 		t.Fatal(err)
 	}
 	early := mustKid(t, s, bo.ID, "Early")
-	mustGrant(t, s, early.ID, "ana", model.RoleCaregiver)
+	mustGrant(t, s, early.ID, bo.ID, "ana", model.RoleCaregiver)
 	mustKid(t, s, bo.ID, "Not Ana's")
 
 	got, err := s.KidsFor(ctx, ana.ID)
@@ -101,6 +101,7 @@ func TestUpdateKid(t *testing.T) {
 	s := openMem(t)
 	ana, bo := mustParent(t, s, "ana"), mustParent(t, s, "bo")
 	k := mustKid(t, s, ana.ID, "Lía")
+	mustGrant(t, s, k.ID, ana.ID, "bo", model.RoleGuardian)
 	k.Name, k.TimeZone, k.GestationWeeks, k.GestationDays = "Lia", "UTC", intp(30), intp(0)
 	later := t0.Add(time.Minute)
 	if err := s.UpdateKid(ctx, k, bo.ID, later); err != nil {
@@ -132,10 +133,10 @@ func TestDeleteKidCascadesOnlyItsGrants(t *testing.T) {
 	s := openMem(t)
 	ana, bo := mustParent(t, s, "ana"), mustParent(t, s, "bo")
 	gone, kept := mustKid(t, s, ana.ID, "Gone"), mustKid(t, s, ana.ID, "Kept")
-	mustGrant(t, s, gone.ID, "bo", model.RoleCaregiver)
-	mustGrant(t, s, kept.ID, "bo", model.RoleGuardian)
+	mustGrant(t, s, gone.ID, ana.ID, "bo", model.RoleCaregiver)
+	mustGrant(t, s, kept.ID, ana.ID, "bo", model.RoleGuardian)
 
-	if err := s.DeleteKid(ctx, gone.ID); err != nil {
+	if err := s.DeleteKid(ctx, gone.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
 	var n int
@@ -155,7 +156,7 @@ func TestDeleteKidCascadesOnlyItsGrants(t *testing.T) {
 	if got, _ := s.KidsFor(ctx, bo.ID); len(got) != 1 || got[0].ID != kept.ID {
 		t.Errorf("bo's kids = %+v", got)
 	}
-	if err := s.DeleteKid(ctx, gone.ID); !errors.Is(err, ErrNotFound) {
+	if err := s.DeleteKid(ctx, gone.ID, ana.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("second delete: %v", err)
 	}
 }
@@ -167,9 +168,9 @@ func TestAccessListOrder(t *testing.T) {
 	mustParent(t, s, "bob")
 	mustParent(t, s, "cal")
 	k := mustKid(t, s, zed.ID, "Lía")
-	mustGrant(t, s, k.ID, "cal", model.RoleCaregiver)
-	mustGrant(t, s, k.ID, "bob", model.RoleGuardian)
-	mustGrant(t, s, k.ID, "amy", model.RoleCaregiver)
+	mustGrant(t, s, k.ID, zed.ID, "cal", model.RoleCaregiver)
+	mustGrant(t, s, k.ID, zed.ID, "bob", model.RoleGuardian)
+	mustGrant(t, s, k.ID, zed.ID, "amy", model.RoleCaregiver)
 	got, err := s.AccessList(ctx, k.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -198,16 +199,16 @@ func TestSetAccess(t *testing.T) {
 	}
 	k := mustKid(t, s, ana.ID, "Lía")
 
-	mustGrant(t, s, k.ID, "bo", model.RoleCaregiver)
+	mustGrant(t, s, k.ID, ana.ID, "bo", model.RoleCaregiver)
 	if role, _ := s.RoleFor(ctx, k.ID, bo.ID); role != model.RoleCaregiver {
 		t.Errorf("bo = %q", role)
 	}
-	mustGrant(t, s, k.ID, "bo", model.RoleGuardian)
+	mustGrant(t, s, k.ID, ana.ID, "bo", model.RoleGuardian)
 	if role, _ := s.RoleFor(ctx, k.ID, bo.ID); role != model.RoleGuardian {
 		t.Errorf("bo after upgrade = %q", role)
 	}
 	for _, name := range []string{"nobody", "off"} {
-		if err := s.SetAccess(ctx, k.ID, name, model.RoleCaregiver, t0); !errors.Is(err, ErrNotFound) {
+		if err := s.SetAccess(ctx, k.ID, ana.ID, name, model.RoleCaregiver, t0); !errors.Is(err, ErrNotFound) {
 			t.Errorf("%s: %v, want ErrNotFound", name, err)
 		}
 	}
@@ -224,34 +225,34 @@ func TestLastGuardianInTheStore(t *testing.T) {
 	ana, bo := mustParent(t, s, "ana"), mustParent(t, s, "bo")
 	k := mustKid(t, s, ana.ID, "Lía")
 
-	if err := s.SetAccess(ctx, k.ID, "ana", model.RoleCaregiver, t0); !errors.Is(err, ErrLastGuardian) {
+	if err := s.SetAccess(ctx, k.ID, ana.ID, "ana", model.RoleCaregiver, t0); !errors.Is(err, ErrLastGuardian) {
 		t.Errorf("sole guardian downgrade: %v", err)
 	}
-	if err := s.RemoveAccess(ctx, k.ID, ana.ID); !errors.Is(err, ErrLastGuardian) {
+	if err := s.RemoveAccess(ctx, k.ID, ana.ID, ana.ID); !errors.Is(err, ErrLastGuardian) {
 		t.Errorf("sole guardian leaves: %v", err)
 	}
 	if role, _ := s.RoleFor(ctx, k.ID, ana.ID); role != model.RoleGuardian {
 		t.Errorf("refusal was not rolled back: %q", role)
 	}
-	if err := s.RemoveAccess(ctx, k.ID, bo.ID); !errors.Is(err, ErrNotFound) {
+	if err := s.RemoveAccess(ctx, k.ID, ana.ID, bo.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("no grant: %v", err)
 	}
 
-	mustGrant(t, s, k.ID, "bo", model.RoleGuardian)
+	mustGrant(t, s, k.ID, ana.ID, "bo", model.RoleGuardian)
 	if err := s.SetParentDisabled(ctx, bo.ID, true, t0); err != nil {
 		t.Fatal(err)
 	}
 	// A disabled guardian does not count.
-	if err := s.RemoveAccess(ctx, k.ID, ana.ID); !errors.Is(err, ErrLastGuardian) {
+	if err := s.RemoveAccess(ctx, k.ID, ana.ID, ana.ID); !errors.Is(err, ErrLastGuardian) {
 		t.Errorf("leave with only a disabled co-guardian: %v", err)
 	}
 	if err := s.SetParentDisabled(ctx, bo.ID, false, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAccess(ctx, k.ID, "ana", model.RoleCaregiver, t0); err != nil {
+	if err := s.SetAccess(ctx, k.ID, ana.ID, "ana", model.RoleCaregiver, t0); err != nil {
 		t.Errorf("downgrade with a co-guardian: %v", err)
 	}
-	if err := s.RemoveAccess(ctx, k.ID, ana.ID); err != nil {
+	if err := s.RemoveAccess(ctx, k.ID, ana.ID, ana.ID); err != nil {
 		t.Errorf("caregiver leaves: %v", err)
 	}
 	if activeGuardians(t, s, k.ID) != 1 {
@@ -269,7 +270,7 @@ func TestDisableChecksEveryKidTheParentGuards(t *testing.T) {
 		k := mustKid(t, s, ana.ID, fmt.Sprintf("Kid %d", i))
 		kids = append(kids, k)
 		if i != 3 {
-			mustGrant(t, s, k.ID, "bo", model.RoleGuardian)
+			mustGrant(t, s, k.ID, ana.ID, "bo", model.RoleGuardian)
 		}
 	}
 	if err := s.SetParentDisabled(ctx, ana.ID, true, t0); !errors.Is(err, ErrLastGuardian) {
@@ -282,11 +283,11 @@ func TestDisableChecksEveryKidTheParentGuards(t *testing.T) {
 		t.Errorf("refused disable ended the session: %v", err)
 	}
 
-	mustGrant(t, s, kids[3].ID, "bo", model.RoleCaregiver)
+	mustGrant(t, s, kids[3].ID, ana.ID, "bo", model.RoleCaregiver)
 	if err := s.SetParentDisabled(ctx, ana.ID, true, t0); !errors.Is(err, ErrLastGuardian) {
 		t.Errorf("a caregiver does not make a guardian: %v", err)
 	}
-	mustGrant(t, s, kids[3].ID, "bo", model.RoleGuardian)
+	mustGrant(t, s, kids[3].ID, ana.ID, "bo", model.RoleGuardian)
 	if err := s.SetParentDisabled(ctx, ana.ID, true, t0); err != nil {
 		t.Fatalf("disable with a co-guardian everywhere: %v", err)
 	}
@@ -311,7 +312,7 @@ func armPair(t *testing.T, s *Store, round int) (kid model.Kid, a, b model.Paren
 	t.Helper()
 	a, b = mustParent(t, s, fmt.Sprintf("a%d", round)), mustParent(t, s, fmt.Sprintf("b%d", round))
 	kid = mustKid(t, s, a.ID, "Lía")
-	mustGrant(t, s, kid.ID, b.Username, model.RoleGuardian)
+	mustGrant(t, s, kid.ID, a.ID, b.Username, model.RoleGuardian)
 	return kid, a, b
 }
 
@@ -330,14 +331,14 @@ func race(f, g func() error) (error, error) {
 	return e1, e2
 }
 
-func exactlyOneWins(t *testing.T, round int, e1, e2 error) {
+func exactlyOneWins(t *testing.T, round int, e1, e2, wantLoss error) {
 	t.Helper()
 	ok1, ok2 := e1 == nil, e2 == nil
 	if ok1 == ok2 {
 		t.Fatalf("round %d: errors %v / %v, want exactly one success", round, e1, e2)
 	}
-	if lost := errors.Join(e1, e2); !errors.Is(lost, ErrLastGuardian) {
-		t.Fatalf("round %d: loser got %v, want ErrLastGuardian", round, lost)
+	if lost := errors.Join(e1, e2); !errors.Is(lost, wantLoss) {
+		t.Fatalf("round %d: loser got %v, want %v", round, lost, wantLoss)
 	}
 }
 
@@ -346,10 +347,11 @@ func TestConcurrentRevokes(t *testing.T) {
 	for round := range 50 {
 		kid, a, b := armPair(t, s, round)
 		e1, e2 := race(
-			func() error { return s.RemoveAccess(ctx, kid.ID, b.ID) },
-			func() error { return s.RemoveAccess(ctx, kid.ID, a.ID) },
+			func() error { return s.RemoveAccess(ctx, kid.ID, a.ID, b.ID) },
+			func() error { return s.RemoveAccess(ctx, kid.ID, b.ID, a.ID) },
 		)
-		exactlyOneWins(t, round, e1, e2)
+		// The loser's own grant is already gone, so its actor check refuses it before the guardian count.
+		exactlyOneWins(t, round, e1, e2, ErrNotFound)
 		if n := activeGuardians(t, s, kid.ID); n != 1 {
 			t.Fatalf("round %d: %d active guardians, want 1", round, n)
 		}
@@ -361,12 +363,141 @@ func TestConcurrentLeaveAndDisable(t *testing.T) {
 	for round := range 50 {
 		kid, a, b := armPair(t, s, round)
 		e1, e2 := race(
-			func() error { return s.RemoveAccess(ctx, kid.ID, b.ID) },
+			func() error { return s.RemoveAccess(ctx, kid.ID, b.ID, b.ID) },
 			func() error { return s.SetParentDisabled(ctx, a.ID, true, t0) },
 		)
-		exactlyOneWins(t, round, e1, e2)
+		exactlyOneWins(t, round, e1, e2, ErrLastGuardian)
 		if n := activeGuardians(t, s, kid.ID); n != 1 {
 			t.Fatalf("round %d: %d active guardians, want 1", round, n)
+		}
+	}
+}
+
+func countKids(t *testing.T, s *Store) int {
+	t.Helper()
+	var n int
+	if err := s.w.QueryRow(`SELECT COUNT(*) FROM kids`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestCreateKidByDisabledCreatorStoresNothing(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	if err := s.SetParentDisabled(ctx, ana.ID, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateKid(ctx, newKid("Lía"), ana.ID, t0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("disabled creator: %v, want ErrNotFound", err)
+	}
+	if n := countKids(t, s); n != 0 {
+		t.Fatalf("%d kids stored", n)
+	}
+	var grants int
+	if err := s.w.QueryRow(`SELECT COUNT(*) FROM kid_access`).Scan(&grants); err != nil || grants != 0 {
+		t.Errorf("grants = %d, %v", grants, err)
+	}
+}
+
+func TestRevokedActorCannotRegrant(t *testing.T) {
+	s := openMem(t)
+	kid, a, b := armPair(t, s, 0)
+	mustParent(t, s, "cal")
+	if err := s.RemoveAccess(ctx, kid.ID, b.ID, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{a.Username, "cal"} {
+		if err := s.SetAccess(ctx, kid.ID, a.ID, target, model.RoleGuardian, t0); !errors.Is(err, ErrNotFound) {
+			t.Errorf("revoked actor grants %s: %v, want ErrNotFound", target, err)
+		}
+	}
+	if _, err := s.RoleFor(ctx, kid.ID, a.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the revoke was undone: %v", err)
+	}
+	if grants, _ := s.AccessList(ctx, kid.ID); len(grants) != 1 || grants[0].ParentID != b.ID {
+		t.Errorf("grants = %+v", grants)
+	}
+	k := kid
+	k.Name = "Changed"
+	if err := s.UpdateKid(ctx, k, a.ID, t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revoked actor updates: %v", err)
+	}
+	if err := s.RemoveAccess(ctx, kid.ID, a.ID, b.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revoked actor removes: %v", err)
+	}
+	if err := s.DeleteKid(ctx, kid.ID, a.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("revoked actor deletes: %v", err)
+	}
+	if got, err := s.Kid(ctx, kid.ID); err != nil || got.Name != "Lía" {
+		t.Errorf("kid = %+v, %v", got, err)
+	}
+	// A vanished kid answers ErrNotFound, not a foreign-key failure.
+	if err := s.DeleteKid(ctx, kid.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAccess(ctx, kid.ID, b.ID, "cal", model.RoleCaregiver, t0); !errors.Is(err, ErrNotFound) || errors.Is(err, ErrParentNotFound) {
+		t.Errorf("grant on a deleted kid: %v, want ErrNotFound (not ErrParentNotFound)", err)
+	}
+}
+
+func TestDowngradedActorIsForbidden(t *testing.T) {
+	s := openMem(t)
+	kid, a, b := armPair(t, s, 0)
+	mustParent(t, s, "cal")
+	mustGrant(t, s, kid.ID, b.ID, a.Username, model.RoleCaregiver)
+	k := kid
+	k.Name = "Changed"
+	if err := s.UpdateKid(ctx, k, a.ID, t0); !errors.Is(err, ErrForbidden) {
+		t.Errorf("caregiver updates: %v, want ErrForbidden", err)
+	}
+	if err := s.DeleteKid(ctx, kid.ID, a.ID); !errors.Is(err, ErrForbidden) {
+		t.Errorf("caregiver deletes: %v, want ErrForbidden", err)
+	}
+	for _, target := range []string{a.Username, b.Username, "cal"} {
+		if err := s.SetAccess(ctx, kid.ID, a.ID, target, model.RoleGuardian, t0); !errors.Is(err, ErrForbidden) {
+			t.Errorf("caregiver grants %s: %v, want ErrForbidden", target, err)
+		}
+	}
+	if err := s.RemoveAccess(ctx, kid.ID, a.ID, b.ID); !errors.Is(err, ErrForbidden) {
+		t.Errorf("caregiver removes a guardian: %v, want ErrForbidden", err)
+	}
+	if got, _ := s.Kid(ctx, kid.ID); got.Name != "Lía" {
+		t.Errorf("kid changed: %+v", got)
+	}
+	grants, _ := s.AccessList(ctx, kid.ID)
+	if len(grants) != 2 || grants[0].ParentID != b.ID || grants[1].Role != model.RoleCaregiver {
+		t.Errorf("grants changed: %+v", grants)
+	}
+	if err := s.SetAccess(ctx, kid.ID, b.ID, "nobody", model.RoleCaregiver, t0); !errors.Is(err, ErrParentNotFound) || !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown target: %v, want ErrParentNotFound (an ErrNotFound)", err)
+	}
+	// Leaving needs no role.
+	if err := s.RemoveAccess(ctx, kid.ID, a.ID, a.ID); err != nil {
+		t.Errorf("caregiver leaves: %v", err)
+	}
+}
+
+func TestConcurrentRevokeAndRegrant(t *testing.T) {
+	s := openMem(t)
+	for round := range 50 {
+		kid, a, b := armPair(t, s, round)
+		removed, granted := race(
+			func() error { return s.RemoveAccess(ctx, kid.ID, b.ID, a.ID) },
+			func() error { return s.SetAccess(ctx, kid.ID, a.ID, a.Username, model.RoleGuardian, t0) },
+		)
+		if removed != nil {
+			t.Fatalf("round %d: revoke: %v", round, removed)
+		}
+		if granted != nil && !errors.Is(granted, ErrNotFound) {
+			t.Fatalf("round %d: regrant: %v", round, granted)
+		}
+		if _, err := s.RoleFor(ctx, kid.ID, a.ID); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("round %d: the revoke was undone (regrant %v): %v", round, granted, err)
+		}
+		grants, err := s.AccessList(ctx, kid.ID)
+		if err != nil || len(grants) != 1 || grants[0].ParentID != b.ID || activeGuardians(t, s, kid.ID) != 1 {
+			t.Fatalf("round %d: grants = %+v, %v", round, grants, err)
 		}
 	}
 }

@@ -37,19 +37,30 @@ func nullableInt(n sql.NullInt64) *int {
 }
 
 // CreateKid stores the kid and makes the creator its guardian in one transaction; the caller validates k.
+// An unknown or disabled creator is ErrNotFound and stores nothing.
 func (s *Store) CreateKid(ctx context.Context, k model.Kid, creator string, now time.Time) (model.Kid, error) {
 	k.ID = model.NewID()
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		var one int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM parents WHERE id = ? AND disabled = 0`, creator).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO kids(id, name, birth_date, sex, gestation_weeks, gestation_days, time_zone, created_by, updated_by, created_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			k.ID, k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, creator, creator, now.Unix(), now.Unix()); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES (?, ?, ?, ?)`,
-			k.ID, creator, model.RoleGuardian, now.Unix())
-		return err
+			k.ID, creator, model.RoleGuardian, now.Unix()); err != nil {
+			return err
+		}
+		return keepsActiveGuardian(ctx, tx, k.ID)
 	})
 	if err != nil {
 		return model.Kid{}, err
@@ -82,19 +93,29 @@ func (s *Store) Kid(ctx context.Context, kidID string) (model.Kid, error) {
 	return scanKid(s.r.QueryRowContext(ctx, `SELECT `+kidColumns+` FROM kids k WHERE k.id = ?`, kidID))
 }
 
-// UpdateKid replaces every profile field of k.ID; the caller validates the merged record.
+// UpdateKid replaces every profile field of k.ID; the caller validates the merged record. by must be a guardian.
 func (s *Store) UpdateKid(ctx context.Context, k model.Kid, by string, now time.Time) error {
-	res, err := s.w.ExecContext(ctx,
-		`UPDATE kids SET name = ?, birth_date = ?, sex = ?, gestation_weeks = ?, gestation_days = ?, time_zone = ?, updated_by = ?, updated_at = ?
-		 WHERE id = ?`,
-		k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, by, now.Unix(), k.ID)
-	return oneRow(res, err)
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := actorIsGuardian(ctx, tx, k.ID, by); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx,
+			`UPDATE kids SET name = ?, birth_date = ?, sex = ?, gestation_weeks = ?, gestation_days = ?, time_zone = ?, updated_by = ?, updated_at = ?
+			 WHERE id = ?`,
+			k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, by, now.Unix(), k.ID)
+		return oneRow(res, err)
+	})
 }
 
-// DeleteKid removes the kid; its grants go with it through ON DELETE CASCADE.
-func (s *Store) DeleteKid(ctx context.Context, kidID string) error {
-	res, err := s.w.ExecContext(ctx, `DELETE FROM kids WHERE id = ?`, kidID)
-	return oneRow(res, err)
+// DeleteKid removes the kid; its grants go with it through ON DELETE CASCADE. actorID must be a guardian.
+func (s *Store) DeleteKid(ctx context.Context, kidID, actorID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM kids WHERE id = ?`, kidID)
+		return oneRow(res, err)
+	})
 }
 
 // oneRow turns a write that touched no row into ErrNotFound.
