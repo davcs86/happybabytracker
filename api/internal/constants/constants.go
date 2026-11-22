@@ -45,6 +45,10 @@ const (
 	GestationDaysMin  = 0
 	GestationDaysMax  = 6
 
+	FlOzMicroMLNumerator   = 295735
+	FlOzMicroMLDenominator = 10000
+	MaxVolumeAmount        = 1 << 24
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
