@@ -149,6 +149,17 @@ export function unitLabel(measure: Measure, units: Pick<Units, 'weight' | 'lengt
 	return measure === 'weight' ? units.weight : units.length;
 }
 
+// The sentence of spec 8.2: no curves at all, or a shown point the source has no table for.
+export function lacksTable(covered: boolean, rows: GrowthRow[], measure: Measure) {
+	return (
+		!covered ||
+		rows.some((r) => {
+			const score = r.scores[measure];
+			return score?.scored === false && score.reason === 'not_covered';
+		})
+	);
+}
+
 export type ChartInput = {
 	curves: Curves;
 	rows: GrowthRow[];
@@ -157,6 +168,8 @@ export type ChartInput = {
 };
 
 export function buildChart({ curves, rows, measure, units }: ChartInput) {
+	// A one-point line draws nothing: shown as points without curves.
+	const curveLines = curves.lines.filter((l) => l.points.length >= 2);
 	const imperial = measure === 'weight' ? units.weight === 'lb' : units.length === 'in';
 	const curveValue = (p: CurvePoint) => (imperial && p.imperial !== null ? p.imperial : p.metric);
 	const points = rows
@@ -175,7 +188,7 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 	const xs = [curves.fromMonths, curves.toMonths, ...points.map((p) => p.x)];
 	const xDomain = { min: Math.min(...xs), max: Math.max(...xs) };
 	const yDomain = niceDomain(
-		[...curves.lines.flatMap((l) => l.points.map(curveValue)), ...points.map((p) => p.y)],
+		[...curveLines.flatMap((l) => l.points.map(curveValue)), ...points.map((p) => p.y)],
 		Y_TICKS
 	);
 	const plot = {
@@ -189,14 +202,14 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 	const xTicks = ticks(xDomain.min, xDomain.max, X_TICKS);
 	const yTicks = ticks(yDomain.min, yDomain.max, Y_TICKS);
 
-	const median = curves.lines.findIndex((l) => l.percentile === 50);
-	const centre = median >= 0 ? median : Math.floor(curves.lines.length / 2);
-	const ends = curves.lines.map((l) => {
+	const median = curveLines.findIndex((l) => l.percentile === 50);
+	const centre = median >= 0 ? median : Math.floor(curveLines.length / 2);
+	const ends = curveLines.map((l) => {
 		const last = l.points.at(-1);
 		return last ? sy(curveValue(last)) : plot.bottom;
 	});
 	const labelYs = spreadLabels(ends, LABEL_GAP, plot.top, plot.bottom);
-	const lines = curves.lines.map((l, i) => ({
+	const lines = curveLines.map((l, i) => ({
 		percentile: l.percentile,
 		label: ordinal(l.percentile),
 		d: linePath(
@@ -221,7 +234,7 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 		yLabel: `${MEASURE_LABEL[measure]} (${unitLabel(measure, units)})`,
 		table: {
 			ticks: xTicks,
-			lines: curves.lines.map((l) => ({
+			lines: curveLines.map((l) => ({
 				label: ordinal(l.percentile),
 				values: xTicks.map((t) => valueAt(l.points, t, curveValue))
 			}))

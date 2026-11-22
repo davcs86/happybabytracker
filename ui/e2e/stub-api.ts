@@ -49,8 +49,7 @@ export const SCENARIOS = [
 	'leave_unavailable',
 	'leave_rate_limited',
 	'leave_forbidden',
-	'patch_unavailable',
-	'curves_not_covered'
+	'patch_unavailable'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -1846,6 +1845,8 @@ function curves(kid: KidRow, measure: GrowthMeasure, from: number, to: number) {
 	for (let a = 0; a <= hi; a += a < CURVE_FINE_UNTIL ? CURVE_FINE_STEP : 1) {
 		if (a >= Math.max(from, lo) && a <= Math.min(to, hi)) ages.push(a);
 	}
+	// Like the API, a line ends on the table's last row (WHO head: 60.98 months).
+	if (hi <= to && hi >= Math.max(from, lo) && ages.at(-1) !== hi) ages.push(hi);
 	if (ages.length === 0) return null;
 	const percentiles = [...LINES[kid.growthSource]];
 	if (kid.growthSource === 'cdc' && measure === 'bmi') percentiles.push(CDC_BMI_EXTRA_LINE);
@@ -1941,7 +1942,7 @@ const growthRoutes: RouteDef[] = [
 		state.growth.push(g);
 		send(res, 201, growthView(g, kid));
 	}),
-	kidRoute('GET', 'growth\\/curves', 'caregiver', (state, req, res, kid) => {
+	kidRoute('GET', 'growth\\/curves', 'caregiver', (_state, req, res, kid) => {
 		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
 		const measure = q.get('measure') ?? '';
 		if (!(GROWTH_MEASURES as readonly string[]).includes(measure)) {
@@ -1957,11 +1958,7 @@ const growthRoutes: RouteDef[] = [
 		const to = monthsParam(q, 'to_months', defTo);
 		if (to === null) return error(res, 422, 'invalid', 'to_months');
 		if (from > to) return error(res, 422, 'invalid', 'from_months');
-		// The default range always meets a table; the API answers not_covered for an explicit range only.
-		const c =
-			state.scenario === 'curves_not_covered'
-				? null
-				: curves(kid, measure as GrowthMeasure, from, to);
+		const c = curves(kid, measure as GrowthMeasure, from, to);
 		send(res, 200, {
 			source: kid.growthSource,
 			measure,

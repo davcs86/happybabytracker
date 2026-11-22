@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildChart,
+	lacksTable,
 	linePath,
 	linearScale,
 	niceDomain,
@@ -203,6 +204,31 @@ describe('scoringMonths', () => {
 	});
 });
 
+describe('lacksTable', () => {
+	const notCovered = { scored: false as const, reason: 'not_covered' as const };
+	const beforeTerm = { scored: false as const, reason: 'before_term' as const };
+
+	it('is true when the curves are not covered', () => {
+		expect(lacksTable(false, [], 'weight')).toBe(true);
+	});
+
+	it('is true when one row of the shown measure has no table', () => {
+		const rows = [row(), row({ id: 'g2', scores: { ...row().scores, head: notCovered } })];
+		expect(lacksTable(true, rows, 'head')).toBe(true);
+		expect(lacksTable(true, rows, 'weight')).toBe(false);
+	});
+
+	it('is false when every row is scored, before term or without the measure', () => {
+		const rows = [
+			row(),
+			row({ id: 'g2', scores: { ...row().scores, weight: beforeTerm } }),
+			row({ id: 'g3', weight: null, scores: { ...row().scores, weight: null } })
+		];
+		expect(lacksTable(true, rows, 'weight')).toBe(false);
+		expect(lacksTable(true, [], 'bmi')).toBe(false);
+	});
+});
+
 describe('buildChart', () => {
 	it('draws one labelled, dashed path per percentile line and the kid’s points', () => {
 		const c = buildChart({ curves: curves(), rows: [row()], measure: 'weight', units: METRIC });
@@ -326,5 +352,26 @@ describe('buildChart', () => {
 		expect(c.table.lines.map((l) => l.label)).toEqual(['3rd', '50th', '97th']);
 		expect(c.table.lines[1].values[0]).toBe(4);
 		expect(c.table.lines[1].values[c.table.ticks.indexOf(20)]).toBe(9);
+	});
+	it('drops lines with fewer than two points, with their labels and table columns', () => {
+		const one = curves({
+			fromMonths: 24,
+			toMonths: 24,
+			lines: [3, 50].map((percentile) => ({
+				percentile,
+				points: [{ ageMonths: 24, metric: 15, imperial: null, gap: false }]
+			}))
+		});
+		const c = buildChart({ curves: one, rows: [row()], measure: 'bmi', units: METRIC });
+		expect(c.lines).toEqual([]);
+		expect(c.table.lines).toEqual([]);
+		expect(c.points).toHaveLength(1);
+
+		const mixed = curves();
+		mixed.lines[0].points = mixed.lines[0].points.slice(0, 1);
+		const m = buildChart({ curves: mixed, rows: [], measure: 'weight', units: METRIC });
+		expect(m.lines.map((l) => l.label)).toEqual(['50th', '97th']);
+		expect(m.table.lines.map((l) => l.label)).toEqual(['50th', '97th']);
+		expect(m.lines[0].dash).toBe('');
 	});
 });

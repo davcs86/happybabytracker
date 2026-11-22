@@ -3,7 +3,7 @@
 	import GrowthChart from '#lib/components/GrowthChart.svelte';
 	import GrowthTable from '#lib/components/GrowthTable.svelte';
 	import { MEASURES } from '#lib/constants.js';
-	import { MEASURE_LABEL } from '#lib/growth-chart.js';
+	import { lacksTable, MEASURE_LABEL } from '#lib/growth-chart.js';
 	import { growthMeasurePath, growthNewPath } from '#lib/paths.js';
 	import type { PageProps } from './$types';
 
@@ -48,7 +48,7 @@
 
 <section aria-labelledby="chart-heading" class="mb-6">
 	<h2 id="chart-heading" class="mb-2 font-semibold">{MEASURE_LABEL[data.measure]}</h2>
-	{#if !data.curves.covered}
+	{#if lacksTable(data.curves.covered, data.rows, data.measure)}
 		<p class="mb-2">{sourceName} has no table for this measure at this age</p>
 	{/if}
 	<GrowthChart

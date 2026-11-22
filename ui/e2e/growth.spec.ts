@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { todayIn } from '../src/lib/format.js';
 import { formatDayHeading } from '../src/lib/timeline.js';
 import { expectAccessible, expectNotFoundPage, signIn } from './helpers.js';
-import { ANA, DAN, IVY, LEO, resetStub, setScenario, stubAs } from './stub-api.js';
+import { ANA, DAN, IVY, LEO, resetStub, stubAs } from './stub-api.js';
 
 // The stub's scores are fake: a score is checked by its shape, never its number.
 
@@ -160,21 +160,60 @@ test('a preterm kid shows both ages and is plotted at corrected age', async ({ p
 	await expectAccessible(page);
 });
 
-test('a source without a table shows the points only and says so', async ({ page }) => {
+test('CDC has no BMI table under 24 months: the points without curves, and it says so', async ({
+	page
+}) => {
 	const api = await stubAs(ANA);
 	await seedIvy(api);
 	await api('PATCH', `/v1/kids/${IVY.id}`, { growth_source: 'cdc' });
 	await signIn(page, ANA);
-	await setScenario('curves_not_covered');
 	await page.goto(growthUrl(IVY.id, 'bmi'));
 	await expect(page.getByText(`${CDC} has no table for this measure at this age`)).toBeVisible();
 	await expect(curveLines(page)).toHaveCount(0);
+	await expect(chart(page).getByText('50th', { exact: true })).toHaveCount(0);
 	await expect(kidPoints(page)).toHaveCount(3);
-	// CDC has no BMI table under 24 months: Ivy's rows are listed unscored.
 	await expect(rows(page).first()).toContainText(
 		/BMI [\d.]+: this source has no table for this age/
 	);
 	await expectAccessible(page);
+});
+
+test('WHO has no head circumference table after five years: early curves drawn, and it says so', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const today = todayIn('UTC');
+	const born = addDays(today, -7 * 365 - 2);
+	const kid = await api('POST', '/v1/kids', {
+		name: 'Oli',
+		birth_date: born,
+		sex: 'male',
+		time_zone: 'UTC'
+	});
+	expect(kid.status).toBe(201);
+	for (const [on, mm] of [
+		[addDays(born, 3 * 365), 490],
+		[today, 510]
+	] as const) {
+		const r = await api('POST', `/v1/kids/${kid.body.id}/growth`, {
+			measured_on: on,
+			head: cm(mm)
+		});
+		expect(r.status).toBe(201);
+	}
+	await signIn(page, ANA);
+	await page.goto(growthUrl(kid.body.id, 'head'));
+	await expect(page.getByText(`${WHO} has no table for this measure at this age`)).toBeVisible();
+	await expect(curveLines(page)).toHaveCount(5);
+	await expect(kidPoints(page)).toHaveCount(2);
+	await expect(rows(page).first()).toContainText(
+		/Head circumference 51 cm: this source has no table for this age/
+	);
+	await expect(rows(page).nth(1)).toContainText(/Head circumference 49 cm: z -?\d+\.\d{2}/);
+	await expectAccessible(page);
+
+	await page.goto(growthUrl(kid.body.id, 'weight'));
+	await expect(page.getByText(/has no table for this measure/)).toHaveCount(0);
 });
 
 test('an imperial parent sees pounds and ounces and inches', async ({ page }) => {
