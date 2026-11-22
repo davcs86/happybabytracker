@@ -1,4 +1,4 @@
-import { API_TIMEOUT_MS, ID_PATTERN, TOKEN_PATTERN } from './constants';
+import { API_TIMEOUT_MS, ID_PATTERN, TOKEN_PATTERN, VACCINE_LINE_PATTERN } from './constants';
 import type { Env } from './env';
 import {
 	AGE_BANDS,
@@ -14,10 +14,16 @@ import {
 	TIMELINE_TYPE,
 	TIMER_KINDS,
 	TRACKER_KINDS,
+	VACCINE_AGE_UNITS,
+	VACCINE_DISMISS_REASONS,
+	VACCINE_KINDS,
+	VACCINE_STATUSES,
 	VOLUME_UNITS,
 	WEIGHT_UNITS
 } from '../constants';
 import type {
+	Administration,
+	AdministrationInput,
 	AdminParent,
 	Bottle,
 	Curves,
@@ -32,6 +38,7 @@ import type {
 	GrowthSourceInfo,
 	GrowthWeight,
 	Home,
+	HomeDue,
 	Kid,
 	KidInput,
 	ListQuery,
@@ -57,6 +64,13 @@ import type {
 	TrackerEntries,
 	TrackerKind,
 	Units,
+	VaccineAge,
+	VaccineCatalogue,
+	VaccineDismissReason,
+	VaccineGroup,
+	VaccineLine,
+	Vaccines,
+	VaccineSchemaInfo,
 	Volume,
 	VolumeTotal
 } from '../types';
@@ -99,7 +113,7 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination'}`
 	| 'growth_curves'
 	| 'growth_sources'
 	| 'end_timer'
@@ -108,7 +122,13 @@ type Endpoint =
 	| 'summary'
 	| 'list_modules'
 	| 'set_module'
-	| 'home';
+	| 'home'
+	| 'vaccines'
+	| 'vaccine_schemas'
+	| 'vaccine_catalogue'
+	| 'set_dismissal'
+	| 'clear_dismissal'
+	| 'dismiss_before';
 
 // Thrown by a wire-shape parser; the call becomes reason 'error'.
 class ShapeError extends Error {}
@@ -246,6 +266,7 @@ function toKid(v: unknown): Kid {
 		gestationDays: intOrNull(k.gestation_days),
 		timeZone: string(k.time_zone),
 		growthSource: oneOf(k.growth_source, GROWTH_SOURCES),
+		vaccineSchema: stringOrNull(k.vaccine_schema),
 		role: oneOf(k.role, ROLES)
 	};
 }
@@ -438,12 +459,130 @@ function toHome(v: unknown): Home {
 			sleep: running.sleep === null ? null : toSleep(running.sleep),
 			nursing: running.nursing === null ? null : toNursing(running.nursing)
 		},
-		today: toDaySummary(o.today)
+		today: toDaySummary(o.today),
+		due: list(o, 'due', toHomeDue)
 	};
 }
 
 const nullOr = <T>(v: unknown, parse: (v: unknown) => T): T | null =>
 	v === null ? null : parse(v);
+
+function toVaccineAge(v: unknown): VaccineAge {
+	const o = object(v);
+	return { n: int(o.n), unit: oneOf(o.unit, VACCINE_AGE_UNITS) };
+}
+
+function toHomeDue(v: unknown): HomeDue {
+	const o = object(v);
+	return {
+		kind: oneOf(o.kind, ['vaccine']),
+		from: toVaccineAge(o.from),
+		status: oneOf(o.status, ['due', 'overdue']),
+		count: int(o.count)
+	};
+}
+
+function toVaccineSchemaInfo(v: unknown): VaccineSchemaInfo {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		name: string(o.name),
+		authority: string(o.authority),
+		edition: string(o.edition),
+		retrieved: string(o.retrieved),
+		originUrl: string(o.origin_url),
+		licence: string(o.licence),
+		attribution: string(o.attribution)
+	};
+}
+
+const toDismissReason = (v: unknown): VaccineDismissReason => oneOf(v, VACCINE_DISMISS_REASONS);
+
+function toVaccineLine(v: unknown): VaccineLine {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		group: string(o.group),
+		antigen: string(o.antigen),
+		series: int(o.series),
+		kind: oneOf(o.kind, VACCINE_KINDS),
+		status: oneOf(o.status, VACCINE_STATUSES),
+		fromDate: string(o.from_date),
+		untilDate: string(o.until_date),
+		givenOn: stringOrNull(o.given_on),
+		administration: stringOrNull(o.administration),
+		dismissal: nullOr(o.dismissal, (d) => ({ reason: toDismissReason(object(d).reason) })),
+		note: string(o.note)
+	};
+}
+
+function toVaccineGroup(v: unknown): VaccineGroup {
+	const o = object(v);
+	return {
+		from: toVaccineAge(o.from),
+		fromDate: string(o.from_date),
+		status: oneOf(o.status, VACCINE_STATUSES),
+		lines: list(o, 'lines', toVaccineLine)
+	};
+}
+
+function toVaccines(v: unknown): Vaccines {
+	const o = object(v);
+	return {
+		schema: nullOr(o.schema, (s) => ({
+			...toVaccineSchemaInfo(s),
+			omitted: list(s, 'omitted', string)
+		})),
+		today: string(o.today),
+		groups: list(o, 'groups', toVaccineGroup),
+		also: list(o, 'also', toVaccineLine),
+		recurring: list(o, 'recurring', (r) => {
+			const rec = object(r);
+			return {
+				antigen: string(rec.antigen),
+				lineId: string(rec.line_id),
+				doses: list(rec, 'doses', (d) => {
+					const dose = object(d);
+					return { administration: string(dose.administration), givenOn: string(dose.given_on) };
+				})
+			};
+		}),
+		other: list(o, 'other', (d) => {
+			const dose = object(d);
+			return {
+				administration: string(dose.administration),
+				antigen: string(dose.antigen),
+				givenOn: string(dose.given_on),
+				product: stringOrNull(dose.product)
+			};
+		})
+	};
+}
+
+function toVaccineCatalogue(v: unknown): VaccineCatalogue {
+	return {
+		antigens: list(v, 'antigens', (a) => {
+			const o = object(a);
+			return { id: string(o.id), name: string(o.name) };
+		}),
+		products: list(v, 'products', (p) => {
+			const o = object(p);
+			return { id: string(o.id), name: string(o.name), antigens: list(o, 'antigens', string) };
+		})
+	};
+}
+
+function toAdministration(v: unknown): Administration {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		givenOn: string(o.given_on),
+		antigens: list(o, 'antigens', string),
+		lot: stringOrNull(o.lot),
+		product: stringOrNull(o.product),
+		note: stringOrNull(o.note)
+	};
+}
 
 function toGrowthWeight(v: unknown): GrowthWeight {
 	const o = object(v);
@@ -570,7 +709,8 @@ const kidBody = (k: KidInput) => ({
 	gestation_weeks: k.gestationWeeks,
 	gestation_days: k.gestationDays,
 	time_zone: k.timeZone,
-	...(k.growthSource === undefined ? {} : { growth_source: k.growthSource })
+	...(k.growthSource === undefined ? {} : { growth_source: k.growthSource }),
+	...(k.vaccineSchema === undefined ? {} : { vaccine_schema: k.vaccineSchema })
 });
 
 const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' } as const;
@@ -661,6 +801,16 @@ export function createApi(
 		id: string,
 		run: (kidId: string, id: string) => Promise<ApiResult<T>>
 	) => withId(kidId, (k) => withId(id, (i) => run(k, i)));
+
+	// A schedule line id outside VACCINE_LINE_PATTERN answers 404 without a call.
+	const withKidLine = <T>(
+		kidId: string,
+		line: string,
+		run: (kidId: string, line: string) => Promise<ApiResult<T>>
+	) =>
+		withId(kidId, (k) =>
+			VACCINE_LINE_PATTERN.test(line) ? run(k, line) : Promise.resolve<ApiResult<T>>(NOT_FOUND)
+		);
 
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
@@ -856,6 +1006,72 @@ export function createApi(
 		growthSources: () =>
 			call('growth_sources', 'GET', '/v1/growth-sources', (b) =>
 				list(b, 'sources', toGrowthSourceInfo)
+			),
+
+		vaccineSchemas: () =>
+			call('vaccine_schemas', 'GET', '/v1/vaccine-schemas', (b) =>
+				list(b, 'schemas', toVaccineSchemaInfo)
+			),
+		vaccineCatalogue: () =>
+			call('vaccine_catalogue', 'GET', '/v1/vaccine-catalogue', toVaccineCatalogue),
+		vaccines: (kidId: string) =>
+			withId(kidId, (k) => call('vaccines', 'GET', `/v1/kids/${k}/vaccines`, toVaccines)),
+		// input is the API's own JSON body, as readVaccineForm builds it.
+		listVaccinations: (kidId: string) =>
+			withId(kidId, (k) =>
+				call('list_vaccination', 'GET', `/v1/kids/${k}/vaccinations`, (b) =>
+					list(b, 'vaccinations', toAdministration)
+				)
+			),
+		getVaccination: (kidId: string, id: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call('get_vaccination', 'GET', `/v1/kids/${k}/vaccinations/${i}`, toAdministration)
+			),
+		createVaccination: (kidId: string, input: AdministrationInput) =>
+			withId(kidId, (k) =>
+				call('create_vaccination', 'POST', `/v1/kids/${k}/vaccinations`, toAdministration, input)
+			),
+		updateVaccination: (kidId: string, id: string, input: AdministrationInput) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call(
+					'update_vaccination',
+					'PATCH',
+					`/v1/kids/${k}/vaccinations/${i}`,
+					toAdministration,
+					input
+				)
+			),
+		deleteVaccination: (kidId: string, id: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call<null>('delete_vaccination', 'DELETE', `/v1/kids/${k}/vaccinations/${i}`, null)
+			),
+		setDismissal: (kidId: string, line: string, reason: string) =>
+			withKidLine(kidId, line, (k, l) =>
+				call(
+					'set_dismissal',
+					'PUT',
+					`/v1/kids/${k}/vaccine-dismissals/${l}`,
+					(b) => {
+						const o = object(b);
+						return { line: string(o.line), reason: toDismissReason(o.reason) };
+					},
+					{ reason }
+				)
+			),
+		clearDismissal: (kidId: string, line: string) =>
+			withKidLine(kidId, line, (k, l) =>
+				call<null>('clear_dismissal', 'DELETE', `/v1/kids/${k}/vaccine-dismissals/${l}`, null)
+			),
+		// before is YYYY-MM-DD in the kid's zone; the answer is how many lines were dismissed.
+		dismissBefore: (kidId: string, before: string, reason: string) =>
+			withId(kidId, (k) =>
+				call(
+					'dismiss_before',
+					'POST',
+					`/v1/kids/${k}/vaccine-dismissals`,
+					(b) => int(object(b).dismissed),
+					{ before, reason }
+				)
 			)
 	};
 }

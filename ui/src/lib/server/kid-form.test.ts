@@ -37,8 +37,41 @@ describe('kidValues growth source', () => {
 			gestationDays: null,
 			timeZone: 'UTC',
 			growthSource: 'cdc',
+			vaccineSchema: null,
 			role: 'guardian'
 		} as const;
 		expect(kidValues(stored).growthSource).toBe('cdc');
+	});
+});
+
+describe('readKidForm vaccine schedule', () => {
+	it('sends the chosen schedule, null for "none", and nothing for a form without the field', () => {
+		expect(readKidForm(form({ ...kid, vaccine_schema: 'uk' })).input).toMatchObject({
+			vaccineSchema: 'uk'
+		});
+		const none = readKidForm(form({ ...kid, vaccine_schema: '' }));
+		expect(none.input).toHaveProperty('vaccineSchema', null);
+		expect(none.values.vaccineSchema).toBe('');
+		expect(readKidForm(form(kid)).input).not.toHaveProperty('vaccineSchema');
+	});
+});
+
+describe('kidValues vaccine schedule', () => {
+	it("shows no schedule for a new kid and a stored kid's own one", () => {
+		expect(kidValues().vaccineSchema).toBe('');
+		const stored = {
+			id: 'k-1',
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC',
+			growthSource: 'who',
+			vaccineSchema: 'us',
+			role: 'guardian'
+		} as const;
+		expect(kidValues(stored).vaccineSchema).toBe('us');
+		expect(kidValues({ ...stored, vaccineSchema: null }).vaccineSchema).toBe('');
 	});
 });

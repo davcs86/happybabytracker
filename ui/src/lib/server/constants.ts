@@ -13,6 +13,9 @@ export const KID_COOKIE = 'hbt_kid';
 export const KID_COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60;
 // API ids are UUIDs; any other path parameter never reaches an API path.
 export const ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+// A catalogue antigen id, and a schedule line id in a path; anything else never reaches the API.
+export const ANTIGEN_PATTERN = /^[a-z][a-z0-9_]*$/;
+export const VACCINE_LINE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const NOT_FOUND_MESSAGE = 'Not found';
 export const FAILURE_MESSAGE = 'Something went wrong, try again';
 export const UNREACHABLE_MESSAGE = 'The app cannot reach its server, try again soon';

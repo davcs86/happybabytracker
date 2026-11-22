@@ -354,6 +354,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		gestation_days: null,
 		time_zone: 'Europe/Madrid',
 		growth_source: 'cdc',
+		vaccine_schema: null,
 		role: 'caregiver'
 	};
 	const KID = {
@@ -365,6 +366,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		gestationDays: null,
 		timeZone: 'Europe/Madrid',
 		growthSource: 'cdc',
+		vaccineSchema: null,
 		role: 'caregiver'
 	};
 	const PARENT_WIRE = {
@@ -432,6 +434,26 @@ describe('createApi admin, account, kid and access calls', () => {
 		expect(sent(f).body).toMatchObject({ growth_source: 'cdc' });
 	});
 
+	it('reads a chosen schedule and sends vaccine_schema only when the input has one', async () => {
+		const f = mockFetch(async () => json({ ...KID_WIRE, vaccine_schema: 'uk' }));
+		const api = createApi(env, asFetch(f), SESSION);
+		const input = {
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC'
+		};
+		expect(await api.getKid('k-1')).toMatchObject({ ok: true, data: { vaccineSchema: 'uk' } });
+		await api.updateKid('k-1', { ...input, vaccineSchema: 'us' });
+		await api.updateKid('k-1', { ...input, vaccineSchema: null });
+		await api.updateKid('k-1', input);
+		expect(sent(f, 1).body).toMatchObject({ vaccine_schema: 'us' });
+		expect(sent(f, 2).body).toHaveProperty('vaccine_schema', null);
+		expect(sent(f, 3).body).not.toHaveProperty('vaccine_schema');
+	});
+
 	it('deletes a kid with confirm_name', async () => {
 		const f = mockFetch(async () => new Response(null, { status: 204 }));
 		expect(await createApi(env, asFetch(f), SESSION).deleteKid('k-1', 'Mia')).toEqual({
@@ -451,7 +473,9 @@ describe('createApi admin, account, kid and access calls', () => {
 			{ role: 'owner' },
 			{ gestation_weeks: 35.5 },
 			{ growth_source: 'uk-who' },
-			{ growth_source: undefined }
+			{ growth_source: undefined },
+			{ vaccine_schema: undefined },
+			{ vaccine_schema: 1 }
 		]) {
 			const f = mockFetch(async () => json({ ...KID_WIRE, ...bad }));
 			expect(await createApi(env, asFetch(f), SESSION).getKid('k-1')).toMatchObject({
@@ -1045,7 +1069,8 @@ describe('createApi tracker calls', () => {
 			band: '0-11',
 			modules: [MODULE],
 			running: { sleep: ENTRIES.sleep.wire, nursing: null },
-			today: DAY
+			today: DAY,
+			due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }]
 		};
 
 		it('reads the home model, a running timer and an idle one', async () => {
@@ -1058,7 +1083,8 @@ describe('createApi tracker calls', () => {
 					band: '0-11',
 					modules: [MODULE],
 					running: { sleep: ENTRIES.sleep.entry, nursing: null },
-					today: DAY
+					today: DAY,
+					due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }]
 				}
 			});
 			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/home');
@@ -1073,7 +1099,12 @@ describe('createApi tracker calls', () => {
 			],
 			['a missing today', { ...HOME, today: undefined }],
 			['a fractional age', { ...HOME, age_months: 8.5 }],
-			['a missing corrected birth date', { ...HOME, corrected_birth_date: undefined }]
+			['a missing corrected birth date', { ...HOME, corrected_birth_date: undefined }],
+			['a missing due list', { ...HOME, due: undefined }],
+			['a due entry of an unknown kind', { ...HOME, due: [{ ...HOME.due[0], kind: 'medicine' }] }],
+			['a due entry that is upcoming', { ...HOME, due: [{ ...HOME.due[0], status: 'upcoming' }] }],
+			['a due entry in hours', { ...HOME, due: [{ ...HOME.due[0], from: { n: 4, unit: 'h' } }] }],
+			['a fractional due count', { ...HOME, due: [{ ...HOME.due[0], count: 1.5 }] }]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
 		});
@@ -1427,5 +1458,327 @@ describe('createApi growth calls', () => {
 		});
 		expect(logged()).not.toContain('g-secret');
 		expect(logged()).not.toContain('private note');
+	});
+});
+
+describe('createApi vaccination calls', () => {
+	const KID = 'k-1';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+	const MALFORMED = { ok: false, reason: 'error' };
+
+	const SCHEMA_WIRE = {
+		id: 'uk',
+		name: 'United Kingdom (England)',
+		authority: 'UKHSA',
+		edition: 'From 1 September 2026',
+		retrieved: '2026-11-22',
+		origin_url: 'https://www.gov.uk/x',
+		licence: 'OGL v3.0',
+		attribution: 'Contains public sector information'
+	};
+	const SCHEMA = {
+		id: 'uk',
+		name: 'United Kingdom (England)',
+		authority: 'UKHSA',
+		edition: 'From 1 September 2026',
+		retrieved: '2026-11-22',
+		originUrl: 'https://www.gov.uk/x',
+		licence: 'OGL v3.0',
+		attribution: 'Contains public sector information'
+	};
+	const STATUSES = ['given', 'due', 'upcoming', 'overdue', 'dismissed', 'available'] as const;
+	const lineWire = (status: string, i: number) => ({
+		id: `hib-${i + 1}`,
+		group: '6-in-1',
+		antigen: 'hib',
+		series: i + 1,
+		kind: status === 'available' ? 'may_not_be_needed' : 'routine',
+		status,
+		from_date: '2026-03-01',
+		until_date: '2026-04-01',
+		given_on: status === 'given' ? '2026-03-02' : null,
+		administration: status === 'given' ? 'a1' : null,
+		dismissal: status === 'dismissed' ? { reason: 'not_needed' } : null,
+		note: 'Source text'
+	});
+	const line = (status: string, i: number) => ({
+		id: `hib-${i + 1}`,
+		group: '6-in-1',
+		antigen: 'hib',
+		series: i + 1,
+		kind: status === 'available' ? 'may_not_be_needed' : 'routine',
+		status,
+		fromDate: '2026-03-01',
+		untilDate: '2026-04-01',
+		givenOn: status === 'given' ? '2026-03-02' : null,
+		administration: status === 'given' ? 'a1' : null,
+		dismissal: status === 'dismissed' ? { reason: 'not_needed' } : null,
+		note: 'Source text'
+	});
+	const VACCINES_WIRE = {
+		schema: { ...SCHEMA_WIRE, omitted: ['Pregnancy'] },
+		today: '2026-11-22',
+		groups: [
+			{
+				from: { n: 8, unit: 'w' },
+				from_date: '2026-03-01',
+				status: 'overdue',
+				lines: STATUSES.map(lineWire)
+			}
+		],
+		also: [{ ...lineWire('available', 0), id: 'rsv-1', kind: 'supplementary' }],
+		recurring: [
+			{
+				antigen: 'influenza',
+				line_id: 'influenza-1',
+				doses: [{ administration: 'a2', given_on: '2026-10-01' }]
+			}
+		],
+		other: [
+			{ administration: 'a3', antigen: 'typhoid', given_on: '2026-09-01', product: null },
+			{ administration: 'a4', antigen: 'other', given_on: '2026-09-02', product: 'Travel' }
+		]
+	};
+	const VACCINES = {
+		schema: { ...SCHEMA, omitted: ['Pregnancy'] },
+		today: '2026-11-22',
+		groups: [
+			{
+				from: { n: 8, unit: 'w' },
+				fromDate: '2026-03-01',
+				status: 'overdue',
+				lines: STATUSES.map(line)
+			}
+		],
+		also: [{ ...line('available', 0), id: 'rsv-1', kind: 'supplementary' }],
+		recurring: [
+			{
+				antigen: 'influenza',
+				lineId: 'influenza-1',
+				doses: [{ administration: 'a2', givenOn: '2026-10-01' }]
+			}
+		],
+		other: [
+			{ administration: 'a3', antigen: 'typhoid', givenOn: '2026-09-01', product: null },
+			{ administration: 'a4', antigen: 'other', givenOn: '2026-09-02', product: 'Travel' }
+		]
+	};
+	const ADMIN_WIRE = {
+		id: 'a1',
+		given_on: '2026-03-02',
+		antigens: ['diphtheria', 'hib'],
+		lot: null,
+		product: '6-in-1',
+		note: null
+	};
+	const ADMIN = {
+		id: 'a1',
+		givenOn: '2026-03-02',
+		antigens: ['diphtheria', 'hib'],
+		lot: null,
+		product: '6-in-1',
+		note: null
+	};
+
+	it('reads the schedules and the catalogue', async () => {
+		const f = respond({ schemas: [SCHEMA_WIRE] });
+		expect(await api(f).vaccineSchemas()).toEqual({ ok: true, data: [SCHEMA] });
+		expect(sent(f).url).toBe('http://api:9210/v1/vaccine-schemas');
+		const catalogue = {
+			antigens: [{ id: 'hib', name: 'Hib' }],
+			products: [{ id: 'mmr', name: 'MMR', antigens: ['measles', 'mumps', 'rubella'] }]
+		};
+		const g = respond(catalogue);
+		expect(await api(g).vaccineCatalogue()).toEqual({ ok: true, data: catalogue });
+		expect(sent(g).url).toBe('http://api:9210/v1/vaccine-catalogue');
+	});
+
+	it("reads a kid's vaccines with every line status, and one without a schedule", async () => {
+		const f = respond(VACCINES_WIRE);
+		expect(await api(f).vaccines(KID)).toEqual({ ok: true, data: VACCINES });
+		expect(sent(f)).toMatchObject({ url: 'http://api:9210/v1/kids/k-1/vaccines', method: 'GET' });
+		const none = {
+			schema: null,
+			today: '2026-11-22',
+			groups: [],
+			also: [],
+			recurring: [],
+			other: []
+		};
+		expect(await api(respond(none)).vaccines(KID)).toEqual({ ok: true, data: none });
+	});
+
+	const group = VACCINES_WIRE.groups[0];
+	it.each([
+		['an unknown line status', { groups: [{ ...group, lines: [lineWire('late', 0)] }] }],
+		['an unknown group status', { groups: [{ ...group, status: 'late' }] }],
+		['an unknown kind', { groups: [{ ...group, lines: [{ ...lineWire('due', 0), kind: 'x' }] }] }],
+		['an unknown age unit', { groups: [{ ...group, from: { n: 8, unit: 'h' } }] }],
+		['a fractional age', { groups: [{ ...group, from: { n: 1.5, unit: 'm' } }] }],
+		[
+			'an unknown dismissal reason',
+			{ groups: [{ ...group, lines: [{ ...lineWire('due', 0), dismissal: { reason: 'x' } }] }] }
+		],
+		['a schema without omitted', { schema: SCHEMA_WIRE }],
+		['a missing recurring list', { recurring: undefined }],
+		[
+			'an other dose without a date',
+			{ other: [{ administration: 'a', antigen: 'x', product: null }] }
+		],
+		['a missing today', { today: undefined }]
+	])('maps vaccines with %s to error', async (_name, bad) => {
+		expect(await api(respond({ ...VACCINES_WIRE, ...bad })).vaccines(KID)).toMatchObject(MALFORMED);
+	});
+
+	it('lists, reads, creates, updates and deletes administrations', async () => {
+		const l = respond({ vaccinations: [ADMIN_WIRE] });
+		expect(await api(l).listVaccinations(KID)).toEqual({ ok: true, data: [ADMIN] });
+		expect(sent(l).url).toBe('http://api:9210/v1/kids/k-1/vaccinations');
+		const g = respond(ADMIN_WIRE);
+		expect(await api(g).getVaccination(KID, 'a1')).toEqual({ ok: true, data: ADMIN });
+		expect(sent(g).url).toBe('http://api:9210/v1/kids/k-1/vaccinations/a1');
+		const input = { given_on: '2026-03-02', antigens: ['diphtheria', 'hib'], product: '6-in-1' };
+		const c = respond(ADMIN_WIRE, 201);
+		expect(await api(c).createVaccination(KID, input)).toEqual({ ok: true, data: ADMIN });
+		expect(sent(c)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/vaccinations',
+			method: 'POST',
+			body: input
+		});
+		const u = respond(ADMIN_WIRE);
+		await api(u).updateVaccination(KID, 'a1', { lot: null });
+		expect(sent(u)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/vaccinations/a1',
+			method: 'PATCH',
+			body: { lot: null }
+		});
+		const d = respond(null, 204);
+		expect(await api(d).deleteVaccination(KID, 'a1')).toEqual({ ok: true, data: null });
+		expect(sent(d)).toMatchObject({
+			url: 'http://api:9210/v1/kids/k-1/vaccinations/a1',
+			method: 'DELETE'
+		});
+	});
+
+	it('maps a refusal to its field, the cap to limit, 404 and 503', async () => {
+		const input = { given_on: '2026-03-02', antigens: ['other'] };
+		expect(
+			await api(respond({ error: 'invalid', field: 'product' }, 422)).createVaccination(KID, input)
+		).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'product' });
+		expect(await api(respond({ error: 'limit' }, 409)).createVaccination(KID, input)).toEqual({
+			ok: false,
+			status: 409,
+			reason: 'conflict',
+			code: 'limit'
+		});
+		expect(
+			await api(respond({ error: 'not_found' }, 404)).updateVaccination(KID, 'a1', input)
+		).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		expect(await api(respond({ error: 'unavailable' }, 503)).vaccines(KID)).toMatchObject({
+			ok: false,
+			reason: 'unavailable',
+			code: 'unavailable'
+		});
+	});
+
+	it.each([
+		['a missing lot', { lot: undefined }],
+		['a numeric product', { product: 3 }],
+		['antigens that are not a list', { antigens: 'hib' }],
+		['a missing date', { given_on: undefined }]
+	])('maps an administration with %s to error', async (_name, bad) => {
+		expect(
+			await api(respond({ vaccinations: [{ ...ADMIN_WIRE, ...bad }] })).listVaccinations(KID)
+		).toMatchObject(MALFORMED);
+		expect(await api(respond({ vaccinations: {} })).listVaccinations(KID)).toMatchObject(MALFORMED);
+	});
+
+	it('sets, clears and bulk-sets dismissals', async () => {
+		const s = respond({ line: 'hib-1', reason: 'not_needed' });
+		expect(await api(s).setDismissal(KID, 'hib-1', 'not_needed')).toEqual({
+			ok: true,
+			data: { line: 'hib-1', reason: 'not_needed' }
+		});
+		expect(sent(s)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/vaccine-dismissals/hib-1',
+			method: 'PUT',
+			body: { reason: 'not_needed' }
+		});
+		const c = respond(null, 204);
+		expect(await api(c).clearDismissal(KID, 'measles-2-b202407')).toEqual({ ok: true, data: null });
+		expect(sent(c)).toMatchObject({
+			url: 'http://api:9210/v1/kids/k-1/vaccine-dismissals/measles-2-b202407',
+			method: 'DELETE'
+		});
+		const b = respond({ dismissed: 4 });
+		expect(await api(b).dismissBefore(KID, '2026-01-01', 'given_unknown')).toEqual({
+			ok: true,
+			data: 4
+		});
+		expect(sent(b)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/vaccine-dismissals',
+			method: 'POST',
+			body: { before: '2026-01-01', reason: 'given_unknown' }
+		});
+		expect(await api(respond({ dismissed: '4' })).dismissBefore(KID, 'x', 'y')).toMatchObject(
+			MALFORMED
+		);
+		expect(
+			await api(respond({ line: 'hib-1', reason: 'other' })).setDismissal(KID, 'hib-1', 'x')
+		).toMatchObject(MALFORMED);
+		expect(
+			await api(respond({ error: 'invalid', field: 'reason' }, 422)).setDismissal(KID, 'hib-1', 'x')
+		).toMatchObject({ reason: 'invalid', field: 'reason' });
+	});
+
+	it('an id or line outside its pattern is not_found without a request', async () => {
+		const f = respond(ADMIN_WIRE);
+		const a = api(f);
+		for (const r of [
+			await a.vaccines('../x'),
+			await a.listVaccinations('k 1'),
+			await a.getVaccination(KID, '../x'),
+			await a.createVaccination('', {}),
+			await a.updateVaccination(KID, 'a/1', {}),
+			await a.deleteVaccination(KID, '..'),
+			await a.setDismissal(KID, '../hib-1', 'not_needed'),
+			await a.setDismissal('k/1', 'hib-1', 'not_needed'),
+			await a.clearDismissal(KID, 'hib-1?x'),
+			await a.clearDismissal(KID, ''),
+			await a.dismissBefore('../x', '2026-01-01', 'not_needed')
+		]) {
+			expect(r).toEqual(NOT_FOUND);
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a vaccination call by its endpoint name, never the kid, the line or the body', async () => {
+		await api(respond({ error: 'invalid', field: 'lot' }, 422)).updateVaccination(KID, 'a-secret', {
+			lot: 'LOT-SECRET'
+		});
+		expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+			level: 'error',
+			msg: 'api call failed',
+			endpoint: 'update_vaccination',
+			status: 422
+		});
+		await api(respond({}, 404)).setDismissal(KID, 'hib-9', 'not_needed');
+		expect(JSON.parse(String(logSpy.mock.calls[1][0]))).toMatchObject({
+			endpoint: 'set_dismissal'
+		});
+		expect(logged()).not.toContain('a-secret');
+		expect(logged()).not.toContain('LOT-SECRET');
+		expect(logged()).not.toContain('hib-9');
 	});
 });

@@ -12,6 +12,10 @@ import type {
 	TimelineType,
 	TimerKind,
 	TrackerKind,
+	VaccineAgeUnit,
+	VaccineDismissReason,
+	VaccineKind,
+	VaccineStatus,
 	VolumeUnit,
 	WeightUnit
 } from './types';
@@ -65,6 +69,45 @@ export const GROWTH_SCORE_REASONS = [
 export const DEFAULT_TIME_ZONE = 'UTC';
 // The API's default source for a new kid.
 export const DEFAULT_GROWTH_SOURCE: GrowthSourceId = 'who';
+// Vaccination (constants.go): lot, product name and note lengths in characters.
+export const VACCINE_LOT_MAX_LEN = 40;
+export const VACCINE_PRODUCT_MAX_LEN = 80;
+export const NOTE_MAX_LEN = 500;
+export const VACCINE_STATUSES = [
+	'given',
+	'due',
+	'upcoming',
+	'overdue',
+	'dismissed',
+	'available'
+] as const satisfies readonly VaccineStatus[];
+export const VACCINE_KINDS = [
+	'routine',
+	'may_not_be_needed',
+	'supplementary',
+	'recurring'
+] as const satisfies readonly VaccineKind[];
+export const VACCINE_AGE_UNITS = ['d', 'w', 'm', 'y'] as const satisfies readonly VaccineAgeUnit[];
+export const VACCINE_DISMISS_REASONS = [
+	'not_needed',
+	'given_unknown'
+] as const satisfies readonly VaccineDismissReason[];
+export const VACCINE_STATUS_LABEL: Record<VaccineStatus, string> = {
+	given: 'Given',
+	due: 'Due',
+	upcoming: 'Upcoming',
+	overdue: 'Overdue',
+	dismissed: 'Dismissed',
+	available: 'Available'
+};
+export const VACCINE_UNIT_LABEL: Record<VaccineAgeUnit, { one: string; many: string }> = {
+	d: { one: 'day', many: 'days' },
+	w: { one: 'week', many: 'weeks' },
+	m: { one: 'month', many: 'months' },
+	y: { one: 'year', many: 'years' }
+};
+// The home shows at most this many due entries.
+export const HOME_DUE_MAX = 3;
 export const INVITE_VALIDITY = '72 hours';
 export const RESET_VALIDITY = '1 hour';
 

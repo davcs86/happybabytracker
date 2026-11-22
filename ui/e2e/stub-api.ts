@@ -114,6 +114,7 @@ type KidRow = {
 	gestationDays: number | null;
 	timeZone: string;
 	growthSource: string;
+	vaccineSchema: string | null;
 	seq: number;
 };
 type Grant = { kidId: string; parentId: string; role: Role };
@@ -131,6 +132,9 @@ type State = {
 	grants: Grant[];
 	entries: Record<TrackerKey, Row[]>;
 	growth: GrowthStub[];
+	vaccinations: AdministrationStub[];
+	// kid id + ':' + schema + ':' + line id -> reason.
+	dismissals: Map<string, string>;
 	// kid id + ':' + module id; a row is a guardian's choice (or a band-crossing re-enable).
 	modules: Map<string, boolean>;
 	nextId: number;
@@ -172,6 +176,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationWeeks: null,
 		gestationDays: null,
 		growthSource: 'who',
+		vaccineSchema: null,
 		seq: 1
 	};
 	const leo: KidRow = {
@@ -180,6 +185,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationWeeks: 35,
 		gestationDays: 2,
 		growthSource: 'who',
+		vaccineSchema: null,
 		seq: 2
 	};
 	const ivy: KidRow = {
@@ -188,6 +194,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationWeeks: null,
 		gestationDays: null,
 		growthSource: 'who',
+		vaccineSchema: null,
 		seq: 3
 	};
 	return {
@@ -210,6 +217,8 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		],
 		entries: { bottles: [], nursing: [], pumping: [], sleep: [], diapers: [], meals: [] },
 		growth: leoGrowth(),
+		vaccinations: [],
+		dismissals: new Map(),
 		modules: new Map(),
 		nextId: 1
 	};
@@ -374,6 +383,7 @@ function kidView(k: KidRow, role: Role) {
 		gestation_days: k.gestationDays,
 		time_zone: k.timeZone,
 		growth_source: k.growthSource,
+		vaccine_schema: k.vaccineSchema,
 		role
 	};
 }
@@ -424,7 +434,7 @@ const inRange = (n: number | null, r: { min: number; max: number }) =>
 	n !== null && n >= r.min && n <= r.max;
 
 // invalidKidField in kids.go, same order: name, birth_date, sex, gestation_weeks, gestation_days, time_zone,
-// growth_source.
+// growth_source, then vaccine_schema (newSchemaOK; every stub schedule is shipped).
 function invalidKidField(k: KidRow): string {
 	const n = codePoints(k.name);
 	if (n < KID_NAME.min || n > KID_NAME.max) return 'name';
@@ -442,6 +452,7 @@ function invalidKidField(k: KidRow): string {
 	if ((d === null && w !== null) || (d !== null && !inRange(d, DAYS))) return 'gestation_days';
 	if (!zoneOK) return 'time_zone';
 	if (!GROWTH_SOURCE_IDS.includes(k.growthSource)) return 'growth_source';
+	if (k.vaccineSchema !== null && !STUB_SCHEDULES.has(k.vaccineSchema)) return 'vaccine_schema';
 	return '';
 }
 
@@ -459,6 +470,7 @@ function mergeKid(k: KidRow, body: Body): KidRow {
 	}
 	if ('gestation_weeks' in body) out.gestationWeeks = body.gestation_weeks as number | null;
 	if ('gestation_days' in body) out.gestationDays = body.gestation_days as number | null;
+	if ('vaccine_schema' in body) out.vaccineSchema = body.vaccine_schema as string | null;
 	out.name = out.name.trim();
 	return out;
 }
@@ -470,7 +482,8 @@ const KID_FIELDS: Record<string, FieldKind> = {
 	gestation_weeks: 'int',
 	gestation_days: 'int',
 	time_zone: 'string',
-	growth_source: 'string'
+	growth_source: 'string',
+	vaccine_schema: 'string'
 };
 
 const roleFor = (state: State, kidId: string, parentId: string) =>
@@ -723,6 +736,7 @@ const routes: RouteDef[] = [
 				gestationDays: null,
 				timeZone: '',
 				growthSource: 'who',
+				vaccineSchema: null,
 				seq: 0
 			};
 			const kid = mergeKid(empty, body);
@@ -1581,7 +1595,8 @@ const overviewRoutes: RouteDef[] = [
 				sleep: runningOf(state, 'sleep', kid.id),
 				nursing: runningOf(state, 'nursing', kid.id)
 			},
-			today: daySummary(state, kid, todayIn(kid.timeZone))
+			today: daySummary(state, kid, todayIn(kid.timeZone)),
+			due: vaccineDue(state, kid)
 		});
 	})
 ];
@@ -2002,7 +2017,507 @@ const growthRoutes: RouteDef[] = [
 		}
 	}
 ];
-routes.push(...TRACKER_KEYS.flatMap(trackerRoutes), ...overviewRoutes, ...growthRoutes);
+// Vaccination: the Go handlers' validation, 404s and evaluation rules in memory, on a tiny made-up schedule.
+
+const MAX_VACCINE_ADMINISTRATIONS_PER_KID = 500;
+const VACCINE_LOT_MAX_LEN = 40;
+const VACCINE_PRODUCT_MAX_LEN = 80;
+const VACCINE_DEFAULT_WINDOW_MONTHS = 1;
+const DISMISS_REASONS = ['not_needed', 'given_unknown'];
+const ANTIGEN_OTHER = 'other';
+
+type VaccineKind = 'routine' | 'may_not_be_needed' | 'supplementary' | 'recurring';
+type Age = { n: number; unit: 'd' | 'w' | 'm' | 'y' };
+type StubLine = {
+	id: string;
+	group: string;
+	antigen: string;
+	series: number;
+	from: Age;
+	until?: Age;
+	kind: VaccineKind;
+};
+type AdministrationStub = {
+	kidId: string;
+	id: string;
+	givenOn: string;
+	antigens: string[];
+	lot: string | null;
+	product: string | null;
+	note: string | null;
+};
+
+const age = (text: string): Age => ({
+	n: Number(text.slice(0, -1)),
+	unit: text.slice(-1) as Age['unit']
+});
+const stubLine = (
+	id: string,
+	group: string,
+	from: string,
+	kind: VaccineKind = 'routine',
+	until?: string
+) => {
+	const [antigen, series] = id.split('-');
+	return {
+		id,
+		group,
+		antigen,
+		series: Number(series),
+		from: age(from),
+		until: until ? age(until) : undefined,
+		kind
+	};
+};
+
+// A STUB, not reference data: two made-up schedules for UI tests only.
+type StubSchedule = { info: Record<string, string>; omitted: string[]; lines: readonly StubLine[] };
+const STUB_SCHEDULES = new Map<string, StubSchedule>(
+	(
+		[
+			[
+				'us',
+				'United States (stub)',
+				[
+					stubLine('diphtheria-1', '6-in-1', '8w'),
+					stubLine('hib-1', '6-in-1', '8w'),
+					stubLine('rotavirus-1', 'Rotavirus', '8w', 'may_not_be_needed', '15w'),
+					stubLine('measles-1', 'MMR', '12m', 'routine', '15m'),
+					stubLine('hib-2', 'Hib', '12m', 'routine', '15m'),
+					stubLine('diphtheria-2', 'DTaP', '18m'),
+					stubLine('influenza-1', 'Flu', '6m', 'recurring'),
+					stubLine('rsv-1', 'RSV', '8m', 'supplementary')
+				]
+			],
+			[
+				'uk',
+				'United Kingdom (stub)',
+				[
+					stubLine('diphtheria-1', '6-in-1', '8w'),
+					stubLine('hib-1', '6-in-1', '8w'),
+					stubLine('measles-1', 'MMR', '1y'),
+					stubLine('measles-2', 'MMR', '3y'),
+					stubLine('influenza-1', 'Flu', '2y', 'recurring')
+				]
+			]
+		] as const
+	).map(([id, name, lines]) => [
+		id,
+		{
+			info: {
+				id,
+				name,
+				authority: 'Stub authority',
+				edition: 'Stub edition',
+				retrieved: '2026-11-22',
+				origin_url: 'https://example.test/schedule',
+				licence: 'Stub licence',
+				attribution: 'Stub attribution'
+			},
+			omitted: ['Stub omission'],
+			lines: lines as readonly StubLine[]
+		}
+	])
+);
+
+const VACCINE_ANTIGENS = [
+	['diphtheria', 'Diphtheria'],
+	['hib', 'Haemophilus influenzae type b (Hib)'],
+	['rotavirus', 'Rotavirus'],
+	['measles', 'Measles'],
+	['influenza', 'Influenza'],
+	['rsv', 'Respiratory syncytial virus (RSV)'],
+	['typhoid', 'Typhoid'],
+	[ANTIGEN_OTHER, 'Other (product name required)']
+].map(([id, name]) => ({ id, name }));
+const VACCINE_PRODUCTS = [
+	{ id: '6in1', name: '6-in-1 (stub)', antigens: ['diphtheria', 'hib'] },
+	{ id: 'mmr', name: 'MMR (stub)', antigens: ['measles'] }
+];
+
+function addAge(date: string, a: Age): string {
+	if (a.unit === 'd') return addDays(date, a.n);
+	if (a.unit === 'w') return addDays(date, 7 * a.n);
+	return addMonths(date, a.unit === 'm' ? a.n : 12 * a.n);
+}
+
+type LineState = {
+	line: StubLine;
+	status: string;
+	fromDate: string;
+	untilDate: string;
+	givenOn: string | null;
+	administration: string | null;
+	reason: string | null;
+};
+type StubDose = { id: string; administration: string; antigen: string; givenOn: string };
+const STATUS_RANK = ['overdue', 'due', 'upcoming', 'available', 'dismissed', 'given'];
+
+const dosesOf = (state: State, kidId: string): StubDose[] =>
+	state.vaccinations
+		.filter((a) => a.kidId === kidId)
+		.flatMap((a) =>
+			a.antigens.map((antigen) => ({
+				id: `${a.id}:${antigen}`,
+				administration: a.id,
+				antigen,
+				givenOn: a.givenOn
+			}))
+		)
+		.sort((x, y) =>
+			x.givenOn === y.givenOn ? (x.id < y.id ? -1 : 1) : x.givenOn < y.givenOn ? -1 : 1
+		);
+
+// Evaluate in vaccines/evaluate.go: the Nth dose of an antigen fills its Nth line; given beats dismissed.
+function evaluate(state: State, kid: KidRow, schemaId: string | null) {
+	const today = todayIn(kid.timeZone);
+	const lines = schemaId ? (STUB_SCHEDULES.get(schemaId)?.lines ?? []) : [];
+	const doses = dosesOf(state, kid.id);
+	const e = {
+		lines: [] as LineState[],
+		also: [] as LineState[],
+		recurring: [] as Body[],
+		other: [] as StubDose[]
+	};
+	const antigens = [...new Set(lines.map((l) => l.antigen))];
+	e.other = doses.filter((d) => !antigens.includes(d.antigen));
+	for (const antigen of antigens) {
+		const series = lines.filter((l) => l.antigen === antigen).sort((a, b) => a.series - b.series);
+		const given = doses.filter((d) => d.antigen === antigen);
+		if (series[0].kind === 'recurring') {
+			e.recurring.push({
+				antigen,
+				line_id: series[0].id,
+				doses: given.map((d) => ({ administration: d.administration, given_on: d.givenOn }))
+			});
+			continue;
+		}
+		series.forEach((line, i) => {
+			const fromDate = addAge(kid.birthDate, line.from);
+			const untilDate = line.until
+				? addAge(kid.birthDate, line.until)
+				: addMonths(fromDate, VACCINE_DEFAULT_WINDOW_MONTHS);
+			let status =
+				line.kind === 'supplementary'
+					? 'available'
+					: today < fromDate
+						? 'upcoming'
+						: today >= untilDate
+							? line.kind === 'routine'
+								? 'overdue'
+								: 'available'
+							: 'due';
+			const ls: LineState = {
+				line,
+				status,
+				fromDate,
+				untilDate,
+				givenOn: null,
+				administration: null,
+				reason: null
+			};
+			const reason = state.dismissals.get(`${kid.id}:${schemaId}:${line.id}`);
+			if (i < given.length) {
+				status = 'given';
+				Object.assign(ls, { givenOn: given[i].givenOn, administration: given[i].administration });
+			} else if (reason !== undefined) {
+				status = 'dismissed';
+				ls.reason = reason;
+			}
+			ls.status = status;
+			(line.kind === 'supplementary' ? e.also : e.lines).push(ls);
+		});
+		e.other.push(...given.slice(series.length));
+	}
+	e.other.sort((x, y) =>
+		x.givenOn === y.givenOn ? (x.id < y.id ? -1 : 1) : x.givenOn < y.givenOn ? -1 : 1
+	);
+	const key = (l: LineState) =>
+		[l.fromDate, l.line.group, l.line.antigen, String(l.line.series).padStart(3, '0')].join('|');
+	e.lines.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+	e.also.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+	return { ...e, today };
+}
+
+const kidSchedule = (kid: KidRow) =>
+	kid.vaccineSchema !== null && STUB_SCHEDULES.has(kid.vaccineSchema) ? kid.vaccineSchema : null;
+
+function lineView(ls: LineState) {
+	return {
+		id: ls.line.id,
+		group: ls.line.group,
+		antigen: ls.line.antigen,
+		series: ls.line.series,
+		kind: ls.line.kind,
+		status: ls.status,
+		from_date: ls.fromDate,
+		until_date: ls.untilDate,
+		given_on: ls.givenOn,
+		administration: ls.administration,
+		dismissal: ls.reason === null ? null : { reason: ls.reason },
+		note: 'Stub note'
+	};
+}
+
+function vaccinesView(state: State, kid: KidRow) {
+	const schemaId = kidSchedule(kid);
+	const e = evaluate(state, kid, schemaId);
+	const groups: { from: Age; from_date: string; status: string; lines: Body[] }[] = [];
+	for (const ls of e.lines) {
+		let g = groups.at(-1);
+		if (!g || g.from_date !== ls.fromDate) {
+			g = { from: ls.line.from, from_date: ls.fromDate, status: ls.status, lines: [] };
+			groups.push(g);
+		}
+		if (STATUS_RANK.indexOf(ls.status) < STATUS_RANK.indexOf(g.status)) g.status = ls.status;
+		g.lines.push(lineView(ls));
+	}
+	const product = (d: StubDose) =>
+		state.vaccinations.find((a) => a.id === d.administration)?.product ?? null;
+	const schedule = schemaId ? STUB_SCHEDULES.get(schemaId) : undefined;
+	return {
+		schema: schedule ? { ...schedule.info, omitted: schedule.omitted } : null,
+		today: e.today,
+		groups,
+		also: e.also.map(lineView),
+		recurring: e.recurring,
+		other: e.other.map((d) => ({
+			administration: d.administration,
+			antigen: d.antigen,
+			given_on: d.givenOn,
+			product: product(d)
+		}))
+	};
+}
+
+// vaccineDue in home.go: one entry per visit with a due or overdue line; empty when the module is off.
+function vaccineDue(state: State, kid: KidRow) {
+	const on = moduleStates(state, kid).some((m) => m.module === 'vaccination' && m.enabled);
+	const schemaId = kidSchedule(kid);
+	if (!on || schemaId === null) return [];
+	const out: { kind: string; from: Age; status: string; count: number }[] = [];
+	let fromDate = '';
+	for (const ls of evaluate(state, kid, schemaId).lines) {
+		if (ls.status !== 'due' && ls.status !== 'overdue') continue;
+		if (out.length === 0 || fromDate !== ls.fromDate) {
+			out.push({ kind: 'vaccine', from: ls.line.from, status: 'due', count: 0 });
+			fromDate = ls.fromDate;
+		}
+		const g = out[out.length - 1];
+		g.count++;
+		if (ls.status === 'overdue') g.status = 'overdue';
+	}
+	return out;
+}
+
+const administrationView = (a: AdministrationStub) => ({
+	id: a.id,
+	given_on: a.givenOn,
+	antigens: a.antigens,
+	lot: a.lot,
+	product: a.product,
+	note: a.note
+});
+
+const ADMINISTRATION_FIELDS: Record<string, FieldKind> = {
+	given_on: 'string',
+	antigens: 'strings',
+	lot: 'string',
+	product: 'string',
+	note: 'string'
+};
+
+// mergeOnto in vaccines.go: absent keeps, null clears lot, product or note; an unchanged stored date stays valid.
+function mergeAdministration(a: AdministrationStub, body: Body, kid: KidRow): string {
+	const stored = a.givenOn;
+	if ('given_on' in body) {
+		if (body.given_on === null) return 'given_on';
+		a.givenOn = body.given_on as string;
+	}
+	if (a.givenOn === '' || a.givenOn !== stored) {
+		if (!validDate(a.givenOn) || a.givenOn > todayIn(kid.timeZone) || a.givenOn < kid.birthDate) {
+			return 'given_on';
+		}
+	}
+	if ('antigens' in body) {
+		const ids = body.antigens as string[] | null;
+		const known = VACCINE_ANTIGENS.map((x) => x.id);
+		if (
+			ids === null ||
+			ids.length === 0 ||
+			ids.some((id, i) => !known.includes(id) || ids.indexOf(id) !== i)
+		) {
+			return 'antigens';
+		}
+		a.antigens = [...ids].sort();
+	}
+	if (a.antigens.length === 0) return 'antigens';
+	const tooLong = (s: string | null, max: number) => s !== null && runes(s) > max;
+	if ('lot' in body) a.lot = body.lot as string | null;
+	if (tooLong(a.lot, VACCINE_LOT_MAX_LEN)) return 'lot';
+	if ('product' in body) a.product = body.product as string | null;
+	if (
+		tooLong(a.product, VACCINE_PRODUCT_MAX_LEN) ||
+		(a.antigens.includes(ANTIGEN_OTHER) && (a.product ?? '').trim() === '')
+	) {
+		return 'product';
+	}
+	if ('note' in body) a.note = body.note as string | null;
+	if (tooLong(a.note, NOTE_MAX_LEN)) return 'note';
+	return '';
+}
+
+const administrationOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.vaccinations.find((a) => a.kidId === kidId && a.id === id) : undefined;
+
+// The 404 an unknown administration, another kid's one and a malformed id all share.
+const administrationRoute = (
+	method: string,
+	run: (
+		state: State,
+		res: ServerResponse,
+		kid: KidRow,
+		a: AdministrationStub,
+		body: Body
+	) => unknown
+): RouteDef => ({
+	method,
+	pattern: /^\/v1\/kids\/([^/]+)\/vaccinations\/([^/]+)$/,
+	access: 'caregiver',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, id]) => {
+		const body = method === 'PATCH' ? await decodeBody(req, res, ADMINISTRATION_FIELDS) : {};
+		if (!body) return;
+		const a = administrationOf(state, kidId, id);
+		if (!a) return noKid(res);
+		return run(state, res, state.kids.get(kidId) as KidRow, a, body);
+	}
+});
+
+// dismissalLine in vaccines.go: 404 unless the kid has a schedule and the line is one of its evaluated lines.
+const dismissalRoute = (
+	method: string,
+	run: (
+		state: State,
+		res: ServerResponse,
+		kid: KidRow,
+		key: string,
+		line: string,
+		body: Body
+	) => unknown
+): RouteDef => ({
+	method,
+	pattern: /^\/v1\/kids\/([^/]+)\/vaccine-dismissals\/([^/]+)$/,
+	access: 'guardian',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, line]) => {
+		const body = method === 'PUT' ? await decodeBody(req, res, { reason: 'string' }) : {};
+		if (!body) return;
+		const kid = state.kids.get(kidId) as KidRow;
+		const schemaId = kidSchedule(kid);
+		if (
+			schemaId === null ||
+			!evaluate(state, kid, schemaId).lines.some((l) => l.line.id === line)
+		) {
+			return noKid(res);
+		}
+		return run(state, res, kid, `${kid.id}:${schemaId}:${line}`, line, body);
+	}
+});
+
+const vaccineRoutes: RouteDef[] = [
+	{
+		method: 'GET',
+		pattern: /^\/v1\/vaccine-schemas$/,
+		access: 'parent',
+		run: (_state, _req, res) =>
+			send(res, 200, { schemas: [...STUB_SCHEDULES.values()].map((s) => s.info) })
+	},
+	{
+		method: 'GET',
+		pattern: /^\/v1\/vaccine-catalogue$/,
+		access: 'parent',
+		run: (_state, _req, res) =>
+			send(res, 200, { antigens: VACCINE_ANTIGENS, products: VACCINE_PRODUCTS })
+	},
+	kidRoute('GET', 'vaccines', 'caregiver', (state, _req, res, kid) =>
+		send(res, 200, vaccinesView(state, kid))
+	),
+	kidRoute('GET', 'vaccinations', 'caregiver', (state, _req, res, kid) => {
+		const rows = state.vaccinations
+			.filter((a) => a.kidId === kid.id)
+			.sort((a, b) =>
+				a.givenOn === b.givenOn ? (a.id < b.id ? 1 : -1) : a.givenOn < b.givenOn ? 1 : -1
+			);
+		send(res, 200, { vaccinations: rows.map(administrationView) });
+	}),
+	kidRoute('POST', 'vaccinations', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, ADMINISTRATION_FIELDS);
+		if (!body) return;
+		const a: AdministrationStub = {
+			kidId: kid.id,
+			id: '',
+			givenOn: '',
+			antigens: [],
+			lot: null,
+			product: null,
+			note: null
+		};
+		const field = mergeAdministration(a, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		const count = state.vaccinations.filter((r) => r.kidId === kid.id).length;
+		if (count >= MAX_VACCINE_ADMINISTRATIONS_PER_KID) return error(res, 409, 'limit');
+		a.id = nextId(state, 'v');
+		state.vaccinations.push(a);
+		send(res, 201, administrationView(a));
+	}),
+	administrationRoute('GET', (_state, res, _kid, a) => send(res, 200, administrationView(a))),
+	administrationRoute('PATCH', (_state, res, kid, a, body) => {
+		const merged = structuredClone(a);
+		const field = mergeAdministration(merged, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		Object.assign(a, merged);
+		send(res, 200, administrationView(a));
+	}),
+	administrationRoute('DELETE', (state, res, _kid, a) => {
+		state.vaccinations = state.vaccinations.filter((r) => r !== a);
+		send(res, 204);
+	}),
+	dismissalRoute('PUT', (state, res, _kid, key, line, body) => {
+		if (!DISMISS_REASONS.includes(body.reason as string)) {
+			return error(res, 422, 'invalid', 'reason');
+		}
+		state.dismissals.set(key, body.reason as string);
+		send(res, 200, { line, reason: body.reason });
+	}),
+	dismissalRoute('DELETE', (state, res, _kid, key) => {
+		state.dismissals.delete(key);
+		send(res, 204);
+	}),
+	kidRoute('POST', 'vaccine-dismissals', 'guardian', async (state, req, res, kid) => {
+		const body = await decode(req, res, ['before', 'reason']);
+		if (!body) return;
+		const schemaId = kidSchedule(kid);
+		if (schemaId === null) return noKid(res);
+		if (!validDate(body.before)) return error(res, 422, 'invalid', 'before');
+		if (!DISMISS_REASONS.includes(body.reason)) return error(res, 422, 'invalid', 'reason');
+		const lines = evaluate(state, kid, schemaId).lines.filter(
+			(l) =>
+				(l.line.kind === 'routine' || l.line.kind === 'may_not_be_needed') &&
+				!['given', 'dismissed', 'available'].includes(l.status) &&
+				l.fromDate < body.before
+		);
+		for (const l of lines) state.dismissals.set(`${kid.id}:${schemaId}:${l.line.id}`, body.reason);
+		send(res, 200, { dismissed: lines.length });
+	})
+];
+
+routes.push(
+	...TRACKER_KEYS.flatMap(trackerRoutes),
+	...overviewRoutes,
+	...growthRoutes,
+	...vaccineRoutes
+);
 
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {
 	const method = req.method ?? 'GET';

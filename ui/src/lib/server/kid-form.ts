@@ -19,7 +19,8 @@ export type KidField =
 	| 'gestation_weeks'
 	| 'gestation_days'
 	| 'time_zone'
-	| 'growth_source';
+	| 'growth_source'
+	| 'vaccine_schema';
 
 export type KidFormValues = {
 	name: string;
@@ -30,6 +31,7 @@ export type KidFormValues = {
 	days: string;
 	timeZone: string;
 	growthSource: string;
+	vaccineSchema: string;
 };
 
 export const KID_FIELD_MESSAGES: Record<KidField, string> = {
@@ -39,7 +41,8 @@ export const KID_FIELD_MESSAGES: Record<KidField, string> = {
 	gestation_weeks: `Enter weeks from ${GESTATION_WEEKS.min} to ${GESTATION_WEEKS.max}`,
 	gestation_days: `Enter days from ${GESTATION_DAYS.min} to ${GESTATION_DAYS.max}`,
 	time_zone: 'Choose a time zone from the list',
-	growth_source: 'Choose a growth reference from the list'
+	growth_source: 'Choose a growth reference from the list',
+	vaccine_schema: 'Choose a vaccination schedule from the list'
 };
 
 const isKidField = (f: string | undefined): f is KidField =>
@@ -54,14 +57,15 @@ export function kidValues(kid?: Kid): KidFormValues {
 		weeks: kid?.gestationWeeks?.toString() ?? '',
 		days: kid?.gestationDays?.toString() ?? '',
 		timeZone: kid?.timeZone ?? DEFAULT_TIME_ZONE,
-		growthSource: kid?.growthSource ?? DEFAULT_GROWTH_SOURCE
+		growthSource: kid?.growthSource ?? DEFAULT_GROWTH_SOURCE,
+		vaccineSchema: kid?.vaccineSchema ?? ''
 	};
 }
 
 const wholeNumber = (s: string) => (/^\d{1,3}$/.test(s) ? Number(s) : null);
 
 // With "Born early?" off the gestation is sent as null, which clears it on PATCH; a form without a growth
-// source sends none, which keeps the stored one (the API's default on create).
+// source or schedule field keeps the stored one, and a blank schedule sends null (no schedule).
 export function readKidForm(form: FormData): {
 	values: KidFormValues;
 	input: KidInput | null;
@@ -76,7 +80,8 @@ export function readKidForm(form: FormData): {
 		weeks: text('gestation_weeks').trim(),
 		days: text('gestation_days').trim(),
 		timeZone: text('time_zone'),
-		growthSource: text('growth_source')
+		growthSource: text('growth_source'),
+		vaccineSchema: text('vaccine_schema')
 	};
 	const weeks = values.bornEarly ? wholeNumber(values.weeks) : null;
 	const days = values.bornEarly ? wholeNumber(values.days) : null;
@@ -91,6 +96,7 @@ export function readKidForm(form: FormData): {
 		timeZone: values.timeZone
 	};
 	if (values.growthSource !== '') input.growthSource = values.growthSource;
+	if (form.get('vaccine_schema') !== null) input.vaccineSchema = values.vaccineSchema || null;
 	return { values, input, field: null };
 }
 
