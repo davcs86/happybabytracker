@@ -226,7 +226,7 @@ func newMatrixFixture(t *testing.T) *fixture {
 	f.token[aNoToken], f.sid[aNoToken] = f.token[aG], f.sid[aG]
 	f.sid[aNoSession] = f.sid[aG]
 
-	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC"}, f.parent[aG].ID, k.now)
+	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who"}, f.parent[aG].ID, k.now)
 	if err != nil {
 		t.Fatal(err)
 	}

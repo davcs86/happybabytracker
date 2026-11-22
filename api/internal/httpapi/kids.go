@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
@@ -22,13 +23,15 @@ type kidView struct {
 	GestationWeeks *int   `json:"gestation_weeks"`
 	GestationDays  *int   `json:"gestation_days"`
 	TimeZone       string `json:"time_zone"`
+	GrowthSource   string `json:"growth_source"`
 	Role           string `json:"role"`
 }
 
 func newKidView(k model.Kid, role model.Role) kidView {
 	return kidView{
 		ID: k.ID, Name: k.Name, BirthDate: k.BirthDate, Sex: k.Sex,
-		GestationWeeks: k.GestationWeeks, GestationDays: k.GestationDays, TimeZone: k.TimeZone, Role: string(role),
+		GestationWeeks: k.GestationWeeks, GestationDays: k.GestationDays, TimeZone: k.TimeZone,
+		GrowthSource: k.GrowthSource, Role: string(role),
 	}
 }
 
@@ -51,11 +54,13 @@ type kidInput struct {
 	GestationWeeks optionalInt `json:"gestation_weeks"`
 	GestationDays  optionalInt `json:"gestation_days"`
 	TimeZone       *string     `json:"time_zone"`
+	GrowthSource   *string     `json:"growth_source"`
 }
 
 func (in kidInput) mergeOnto(k model.Kid) model.Kid {
 	for _, f := range []struct{ dst, src *string }{
 		{&k.Name, in.Name}, {&k.BirthDate, in.BirthDate}, {&k.Sex, in.Sex}, {&k.TimeZone, in.TimeZone},
+		{&k.GrowthSource, in.GrowthSource},
 	} {
 		if f.src != nil {
 			*f.dst = *f.src
@@ -82,7 +87,7 @@ func kidLocation(name string) (*time.Location, bool) {
 	return loc, err == nil
 }
 
-// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone; "" when valid.
+// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source; "" when valid.
 func invalidKidField(k model.Kid, now time.Time) string {
 	if n := utf8.RuneCountInString(k.Name); n < constants.KidNameMinLen || n > constants.KidNameMaxLen {
 		return "name"
@@ -106,6 +111,9 @@ func invalidKidField(k model.Kid, now time.Time) string {
 	if !zoneOK {
 		return "time_zone"
 	}
+	if !slices.Contains(growth.Sources, growth.Source(k.GrowthSource)) {
+		return "growth_source"
+	}
 	return ""
 }
 
@@ -115,7 +123,7 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := d.Now()
-	kid := in.mergeOnto(model.Kid{})
+	kid := in.mergeOnto(model.Kid{GrowthSource: string(growth.SourceWHO)})
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
 		return

@@ -14,7 +14,7 @@ import (
 func intp(n int) *int { return &n }
 
 func newKid(name string) model.Kid {
-	return model.Kid{Name: name, BirthDate: "2026-01-02", Sex: "female", TimeZone: "Europe/Madrid"}
+	return model.Kid{Name: name, BirthDate: "2026-01-02", Sex: "female", TimeZone: "Europe/Madrid", GrowthSource: "who"}
 }
 
 func mustKid(t *testing.T, s *Store, creator, name string) model.Kid {

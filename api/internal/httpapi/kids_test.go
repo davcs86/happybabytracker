@@ -80,10 +80,10 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 		t.Fatalf("create: %d %q", rec.Code, rec.Body.String())
 	}
 	got := bodyMap(t, rec)
-	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "role")
+	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "role")
 	id, _ := got["id"].(string)
 	want := map[string]any{"id": id, "name": testKidName, "birth_date": "2026-03-04", "sex": "female",
-		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "role": "guardian"}
+		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "growth_source": "who", "role": "guardian"}
 	if id == "" || !reflect.DeepEqual(got, want) {
 		t.Fatalf("created = %v", got)
 	}
@@ -98,7 +98,7 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 
 	plain := k.createKid(ana, nil)
 	rec = k.do(http.MethodGet, "/v1/kids/"+plain, ana, nil)
-	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 8 {
+	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 9 {
 		t.Errorf("without gestation = %v", b)
 	}
 }
@@ -120,7 +120,7 @@ func TestKidsForListsOnlyGranted(t *testing.T) {
 	}
 	for i, want := range []struct{ id, role string }{{first, "guardian"}, {shared, "caregiver"}, {last, "guardian"}} {
 		row := rows[i].(map[string]any)
-		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "role")
+		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "role")
 		if row["id"] != want.id || row["role"] != want.role {
 			t.Errorf("row %d = %v, want %s %s", i, row, want.id, want.role)
 		}
@@ -230,7 +230,7 @@ func TestPatchKid(t *testing.T) {
 		t.Fatalf("patch name: %d %q", rec.Code, rec.Body.String())
 	}
 	want := map[string]any{"id": kid, "name": "Nova", "birth_date": "2026-11-20", "sex": "female",
-		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "role": "guardian"}
+		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "growth_source": "who", "role": "guardian"}
 	if got := bodyMap(t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("patch response = %v", got)
 	}
@@ -383,5 +383,54 @@ func TestKidNamesNeverReachTheLog(t *testing.T) {
 	}
 	if strings.Count(logs, "\n") != 7 {
 		t.Errorf("want one line per request:\n%s", logs)
+	}
+}
+
+func TestKidGrowthSource(t *testing.T) {
+	k := newKit(t)
+	ana, cara := k.asParent("ana"), k.asParent("cara")
+	source := func(kid string) any {
+		t.Helper()
+		return bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid, ana, nil))["growth_source"]
+	}
+
+	if got := source(k.createKid(ana, nil)); got != "who" {
+		t.Errorf("created without growth_source = %v, want who", got)
+	}
+	kid := k.createKid(ana, map[string]any{"growth_source": "cdc"})
+	if got := source(kid); got != "cdc" {
+		t.Fatalf("created with cdc = %v", got)
+	}
+	for _, row := range k.kidsOf(ana) {
+		if row := row.(map[string]any); row["id"] == kid && row["growth_source"] != "cdc" {
+			t.Errorf("list row = %v", row)
+		}
+	}
+
+	// An omitted key keeps the stored value, across a PATCH of another field too.
+	for _, body := range []map[string]any{{}, {"name": "Nova"}} {
+		rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, body)
+		if rec.Code != http.StatusOK || bodyMap(t, rec)["growth_source"] != "cdc" || source(kid) != "cdc" {
+			t.Fatalf("patch %v: %d %q, stored %v", body, rec.Code, rec.Body.String(), source(kid))
+		}
+	}
+
+	for _, bad := range []string{"uk-who", "", "WHO"} {
+		wantInvalid(t, k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"growth_source": bad}), "growth_source")
+		wantInvalid(t, k.do(http.MethodPost, "/v1/kids", ana, kidBody(map[string]any{"growth_source": bad})), "growth_source")
+		if got := source(kid); got != "cdc" {
+			t.Fatalf("after refused %q: %v", bad, got)
+		}
+	}
+
+	k.grant(ana, kid, "cara", "caregiver")
+	wantErr(t, k.do(http.MethodPatch, "/v1/kids/"+kid, cara, map[string]any{"growth_source": "who"}), http.StatusForbidden, "forbidden")
+	if got := source(kid); got != "cdc" {
+		t.Errorf("a caregiver's refused patch changed it: %v", got)
+	}
+
+	rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"growth_source": "who"})
+	if rec.Code != http.StatusOK || bodyMap(t, rec)["growth_source"] != "who" || source(kid) != "who" {
+		t.Errorf("patch to who: %d %q, stored %v", rec.Code, rec.Body.String(), source(kid))
 	}
 }

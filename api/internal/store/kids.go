@@ -9,14 +9,14 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
-const kidColumns = `k.id, k.name, k.birth_date, k.sex, k.gestation_weeks, k.gestation_days, k.time_zone`
+const kidColumns = `k.id, k.name, k.birth_date, k.sex, k.gestation_weeks, k.gestation_days, k.time_zone, k.growth_source`
 
 func scanKid(row rowScanner, extra ...any) (model.Kid, error) {
 	var (
 		k           model.Kid
 		weeks, days sql.NullInt64
 	)
-	dest := append([]any{&k.ID, &k.Name, &k.BirthDate, &k.Sex, &weeks, &days, &k.TimeZone}, extra...)
+	dest := append([]any{&k.ID, &k.Name, &k.BirthDate, &k.Sex, &weeks, &days, &k.TimeZone, &k.GrowthSource}, extra...)
 	err := row.Scan(dest...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Kid{}, ErrNotFound
@@ -50,9 +50,9 @@ func (s *Store) CreateKid(ctx context.Context, k model.Kid, creator string, now 
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO kids(id, name, birth_date, sex, gestation_weeks, gestation_days, time_zone, created_by, updated_by, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			k.ID, k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, creator, creator, now.Unix(), now.Unix()); err != nil {
+			`INSERT INTO kids(id, name, birth_date, sex, gestation_weeks, gestation_days, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			k.ID, k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, k.GrowthSource, creator, creator, now.Unix(), now.Unix()); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
@@ -100,9 +100,9 @@ func (s *Store) UpdateKid(ctx context.Context, k model.Kid, by string, now time.
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
-			`UPDATE kids SET name = ?, birth_date = ?, sex = ?, gestation_weeks = ?, gestation_days = ?, time_zone = ?, updated_by = ?, updated_at = ?
+			`UPDATE kids SET name = ?, birth_date = ?, sex = ?, gestation_weeks = ?, gestation_days = ?, time_zone = ?, growth_source = ?, updated_by = ?, updated_at = ?
 			 WHERE id = ?`,
-			k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, by, now.Unix(), k.ID)
+			k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, k.GrowthSource, by, now.Unix(), k.ID)
 		return oneRow(res, err)
 	})
 }
