@@ -337,7 +337,7 @@ func TestSourcesList(t *testing.T) {
 			{"measure": "weight", "from_months": 0, "to_months": 240},
 			{"measure": "length", "from_months": 0, "to_months": 240},
 			{"measure": "head", "from_months": 0, "to_months": 36},
-			{"measure": "bmi", "from_months": 24, "to_months": 240.5},
+			{"measure": "bmi", "from_months": 24, "to_months": constants.CurveMaxMonths},
 		},
 	}
 	for i, id := range []growth.Source{growth.SourceWHO, growth.SourceCDC} {
@@ -354,6 +354,21 @@ func TestSourcesList(t *testing.T) {
 		if !equalJSON(s["coverage"], wantCoverage[string(id)]) {
 			t.Errorf("%s coverage = %v, want %v", id, s["coverage"], wantCoverage[string(id)])
 		}
+		for _, c := range s["coverage"].([]any) {
+			if to := c.(map[string]any)["to_months"].(float64); to > constants.CurveMaxMonths {
+				t.Errorf("%s coverage to_months %v above the request cap %v", id, to, constants.CurveMaxMonths)
+			}
+		}
+	}
+}
+
+func TestCurvesAtTheRequestCapAgreeWithSources(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	kid := k.createKid(ana, map[string]any{"growth_source": "cdc"})
+	c := k.curves(ana, kid, "measure=bmi&from_months=200&to_months=240")
+	if c["covered"] != true || c["to_months"].(float64) > constants.CurveMaxMonths {
+		t.Errorf("CDC BMI at the cap: covered %v to_months %v, want true and <= %v", c["covered"], c["to_months"], constants.CurveMaxMonths)
 	}
 }
 

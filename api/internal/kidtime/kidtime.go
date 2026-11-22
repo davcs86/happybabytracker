@@ -30,7 +30,7 @@ func ParseDate(s string, loc *time.Location) (time.Time, error) {
 
 // AgeMonths is the whole calendar months from birthDate to now's local date, never negative.
 func AgeMonths(birthDate string, loc *time.Location, now time.Time) (int, error) {
-	birth, err := ParseDate(birthDate, loc)
+	birth, err := parseDay(birthDate, loc)
 	if err != nil {
 		return 0, err
 	}
@@ -56,7 +56,7 @@ func BandFor(months int) Band {
 
 // BandStart is the local midnight the kid enters b: the birth date for Band0to11, else the birth date plus the band's months.
 func BandStart(birthDate string, loc *time.Location, b Band) (time.Time, error) {
-	birth, err := ParseDate(birthDate, loc)
+	birth, err := parseDay(birthDate, loc)
 	if err != nil {
 		return time.Time{}, err
 	}

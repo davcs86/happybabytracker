@@ -2,6 +2,7 @@ package growth
 
 import (
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -152,4 +153,38 @@ func abs(x float64) float64 {
 		return -x
 	}
 	return x
+}
+
+func TestLoadIsIdempotent(t *testing.T) {
+	for range 3 {
+		if err := Load(); err != nil {
+			t.Fatalf("Load() = %v, want nil", err)
+		}
+	}
+}
+
+func TestLoadTurnsAPanicIntoAnError(t *testing.T) {
+	resetLoad(func() (map[tableKey]*table, map[Source]Info) { panic("corrupt table") })
+	t.Cleanup(func() { resetLoad(load) })
+	for range 3 {
+		if err := Load(); !errors.Is(err, ErrTablesUnavailable) {
+			t.Fatalf("Load() = %v, want ErrTablesUnavailable", err)
+		}
+	}
+	if _, err := ScoreOf(SourceWHO, Weight, Male, 10, 4); !errors.Is(err, ErrTablesUnavailable) {
+		t.Errorf("ScoreOf error = %v, want ErrTablesUnavailable", err)
+	}
+	if _, err := Curves(SourceWHO, Weight, Male, 0, 12); !errors.Is(err, ErrTablesUnavailable) {
+		t.Errorf("Curves error = %v, want ErrTablesUnavailable", err)
+	}
+	if _, ok := SourceInfo(SourceWHO); ok {
+		t.Error("SourceInfo answered ok after a failed load")
+	}
+	if _, _, ok := Coverage(SourceWHO, Weight, Male); ok {
+		t.Error("Coverage answered ok after a failed load")
+	}
+}
+
+func resetLoad(l func() (map[tableKey]*table, map[Source]Info)) {
+	loader, once, loadErr, tables, infos = l, sync.Once{}, nil, nil, nil
 }

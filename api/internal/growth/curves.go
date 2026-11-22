@@ -43,6 +43,9 @@ func Percentiles(s Source, m Measure) []float64 {
 // Curves draws every line of Percentiles(s, m) from fromMonths to toMonths.
 // The age range is clamped to the source's coverage; ErrNotCovered when nothing remains.
 func Curves(s Source, m Measure, sex Sex, fromMonths, toMonths float64) ([]Curve, error) {
+	if err := Load(); err != nil {
+		return nil, err
+	}
 	lo, hi, ok := coverage(s, m, sex)
 	lines := Percentiles(s, m)
 	from, to := max(fromMonths, lo), min(toMonths, hi)

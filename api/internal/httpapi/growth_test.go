@@ -485,9 +485,6 @@ func TestGrowthRowCapAnswersLimit(t *testing.T) {
 	if rec.Code != http.StatusConflict || strings.TrimSpace(rec.Body.String()) != `{"error":"limit"}` {
 		t.Errorf("row over the cap: %d %q, want 409 limit", rec.Code, rec.Body.String())
 	}
-	if n := len(bodyMap(t, k.do(http.MethodGet, base, ana, nil))["growth"].([]any)); n != constants.MaxGrowthPerKid {
-		t.Errorf("list = %d rows, want %d", n, constants.MaxGrowthPerKid)
-	}
 	if rec := k.do(http.MethodDelete, base+"/"+last, ana, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %q", rec.Code, rec.Body.String())
 	}

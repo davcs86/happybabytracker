@@ -83,18 +83,35 @@ var tableNames = map[Source]map[Measure]tablePair{
 	},
 }
 
+// ErrTablesUnavailable: the embedded tables failed to load; never a per-measurement verdict.
+var ErrTablesUnavailable = errors.New("growth: reference tables unavailable")
+
 var (
-	once   sync.Once
-	tables map[tableKey]*table
-	infos  map[Source]Info
+	once    sync.Once
+	loadErr error
+	tables  map[tableKey]*table
+	infos   map[Source]Info
+	loader  = load
 )
 
-func loadOnce() { once.Do(load) }
+// Load reads the embedded tables once; a failure is returned on this and every later call.
+func Load() error {
+	once.Do(func() {
+		defer func() {
+			if r := recover(); r != nil {
+				loadErr = fmt.Errorf("%w: %v", ErrTablesUnavailable, r)
+			}
+		}()
+		t, i := loader()
+		tables, infos = t, i
+	})
+	return loadErr
+}
 
 // load panics on a malformed embedded file: the data ships with the binary and data_test.go checks it.
-func load() {
-	tables = map[tableKey]*table{}
-	infos = map[Source]Info{}
+func load() (map[tableKey]*table, map[Source]Info) {
+	tables := map[tableKey]*table{}
+	infos := map[Source]Info{}
 	for _, src := range Sources {
 		paths, err := fs.Glob(dataFS, path.Join("data", string(src), "*.csv"))
 		if err != nil || len(paths) == 0 {
@@ -116,6 +133,7 @@ func load() {
 			}
 		}
 	}
+	return tables, infos
 }
 
 func parseTable(p string) (map[string]string, *table) {
@@ -157,8 +175,7 @@ func parseTable(p string) (map[string]string, *table) {
 }
 
 func tableFor(src Source, name string, sex Sex) *table {
-	loadOnce()
-	if name == "" {
+	if Load() != nil || name == "" {
 		return nil
 	}
 	return tables[tableKey{src, name, sex}]
@@ -187,6 +204,9 @@ func whoLastDay(m Measure, sex Sex) int {
 
 // lookupDays: WHO 2006 rows by exact day, everything else by days / DaysPerMonth.
 func lookupDays(src Source, m Measure, sex Sex, days int) (hit, error) {
+	if err := Load(); err != nil {
+		return hit{}, err
+	}
 	if days < 0 {
 		return hit{}, ErrNotCovered
 	}
@@ -204,6 +224,9 @@ func lookupDays(src Source, m Measure, sex Sex, days int) (hit, error) {
 
 // lookupMonths reads the WHO 2007 or a CDC table, interpolating L, M, S between the bracketing rows.
 func lookupMonths(src Source, m Measure, sex Sex, months float64) (hit, error) {
+	if err := Load(); err != nil {
+		return hit{}, err
+	}
 	first, second := pairFor(src, m, sex)
 	var t *table
 	switch src {

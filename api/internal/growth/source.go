@@ -22,7 +22,9 @@ var sourceNames = map[Source]string{
 
 // SourceInfo describes an offered source.
 func SourceInfo(s Source) (Info, bool) {
-	loadOnce()
+	if Load() != nil {
+		return Info{}, false
+	}
 	info, ok := infos[s]
 	return info, ok
 }

@@ -102,7 +102,7 @@ func TestWeightTypedValueIsExact(t *testing.T) {
 		num = constants.GramsPerOzNumerator
 		den = constants.GramsPerOzDenominator * 100 // hundredths of an ounce
 	)
-	for _, amount := range []int64{1, 2, 3, 7, 15, 29, 100, 3200, 13150, 12345, constants.MaxWeightAmount} {
+	for i, amount := range []int64{1, 2, 3, 7, 15, 29, 100, 3200, 13150, 12345, constants.MaxWeightAmount} {
 		kg, err := NewWeight(UnitKG, amount)
 		if err != nil {
 			t.Fatalf("kg %d: %v", amount, err)
@@ -116,8 +116,14 @@ func TestWeightTypedValueIsExact(t *testing.T) {
 		}
 
 		lb, err := NewWeight(UnitLB, amount)
+		if 2*amount*num < den { // grams round to 0: the one expected refusal
+			if !errors.Is(err, ErrRange) {
+				t.Fatalf("lb case %d: err %v, want ErrRange", i, err)
+			}
+			continue
+		}
 		if err != nil {
-			continue // tiny amounts legitimately round to 0 g
+			t.Fatalf("lb case %d: %v", i, err)
 		}
 		if lb.OzHundredths != amount || lb.Typed != UnitLB {
 			t.Fatalf("lb %d: typed column changed: %+v", amount, lb)

@@ -18,6 +18,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
@@ -52,6 +53,10 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 		return err
 	}
 	if err := syncAdminFingerprint(ctx, st, cfg); err != nil {
+		return err
+	}
+
+	if err := growth.Load(); err != nil {
 		return err
 	}
 

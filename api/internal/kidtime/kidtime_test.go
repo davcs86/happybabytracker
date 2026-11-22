@@ -1,6 +1,7 @@
 package kidtime
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -343,5 +344,18 @@ func TestCorrectedBirthDate(t *testing.T) {
 		} else if strings.Contains(err.Error(), "secret") {
 			t.Errorf("error %q carries input", err)
 		}
+	}
+}
+
+func TestAgeMonthsAndBandStartHideTheBadDate(t *testing.T) {
+	const bad = "2024-13-45"
+	madrid := mustLoc(t, "Europe/Madrid")
+	_, err := AgeMonths(bad, madrid, time.Now())
+	if !errors.Is(err, ErrBadDate) || strings.Contains(err.Error(), bad) {
+		t.Errorf("AgeMonths error = %v, want ErrBadDate without the input", err)
+	}
+	_, err = BandStart(bad, madrid, Band12to23)
+	if !errors.Is(err, ErrBadDate) || strings.Contains(err.Error(), bad) {
+		t.Errorf("BandStart error = %v, want ErrBadDate without the input", err)
 	}
 }

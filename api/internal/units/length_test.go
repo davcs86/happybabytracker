@@ -101,7 +101,7 @@ func TestLengthTypedValueIsExact(t *testing.T) {
 		num = constants.MMPerInchNumerator
 		den = constants.MMPerInchDenominator * 100 // hundredths of an inch
 	)
-	for _, amount := range []int64{1, 2, 3, 7, 15, 29, 127, 250, 500, 2000, 12345, constants.MaxLengthAmount} {
+	for i, amount := range []int64{1, 2, 3, 7, 15, 29, 127, 250, 500, 2000, 12345, constants.MaxLengthAmount} {
 		cm, err := NewLength(UnitCM, amount)
 		if err != nil {
 			t.Fatalf("cm %d: %v", amount, err)
@@ -115,8 +115,14 @@ func TestLengthTypedValueIsExact(t *testing.T) {
 		}
 
 		in, err := NewLength(UnitIN, amount)
+		if 2*amount*num < den { // mm round to 0: the one expected refusal
+			if !errors.Is(err, ErrRange) {
+				t.Fatalf("in case %d: err %v, want ErrRange", i, err)
+			}
+			continue
+		}
 		if err != nil {
-			continue // tiny amounts legitimately round to 0 mm
+			t.Fatalf("in case %d: %v", i, err)
 		}
 		if in.InHundredths != amount || in.Typed != UnitIN {
 			t.Fatalf("in %d: typed column changed: %+v", amount, in)

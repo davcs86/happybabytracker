@@ -163,6 +163,8 @@ func newSourceView(info growth.Info) sourceView {
 				c.FromMonths, c.ToMonths, found = min(c.FromMonths, from), max(c.ToMonths, to), true
 			}
 		}
+		// Capped so a client never asks curves for more than monthsParam accepts.
+		c.ToMonths = min(c.ToMonths, constants.CurveMaxMonths)
 		if found {
 			v.Coverage = append(v.Coverage, c)
 		}
@@ -171,6 +173,10 @@ func newSourceView(info growth.Info) sourceView {
 }
 
 func (d Deps) growthSources(w http.ResponseWriter, _ *http.Request) {
+	if err := growth.Load(); err != nil {
+		respondInternal(w, err)
+		return
+	}
 	views := []sourceView{}
 	for _, s := range growth.Sources {
 		if info, ok := growth.SourceInfo(s); ok {

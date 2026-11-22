@@ -50,7 +50,9 @@ func TestHeapAfterLoad(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	loadOnce()
+	if err := Load(); err != nil {
+		t.Fatal(err)
+	}
 	runtime.GC()
 	runtime.ReadMemStats(&after)
 	t.Logf("HeapInuse before %d B, after loading both sources %d B (delta %d B)",
