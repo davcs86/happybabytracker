@@ -12,7 +12,7 @@ import zipfile
 
 RETRIEVED = "2026-11-22"
 WHO_CDN = "https://cdn.who.int/media/docs/default-source/child-growth"
-WHO_VERSION = "published 2006/2007; files dated 2020-11-10, retrieved 2026-11-22"
+WHO_VERSION = "published 2006/2007; files created 2020-11-10, the Child Growth Standards files last modified 2022-08-24; retrieved 2026-11-22"
 WHO_LICENCE = (
     "CC BY-NC-SA 3.0 IGO (https://creativecommons.org/licenses/by-nc-sa/3.0/igo/legalcode); "
     "not MIT: non-commercial use only, share-alike; see LICENSE and NOTICE in this directory"

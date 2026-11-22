@@ -9,8 +9,7 @@ https://creativecommons.org/licenses/by-nc-sa/3.0/igo/legalcode
 Not endorsed by WHO. The WHO name and logo are not used to imply any connection with or endorsement of
 this project.
 
-Attribution (WHO's suggested citation form, "[Title]. [Place of publication]: World Health Organization;
-[Year]. Licence: CC BY-NC-SA 3.0 IGO.", from https://www.who.int/about/policies/publishing/copyright)
+Attribution (in the citation form WHO suggests at https://www.who.int/about/policies/publishing/copyright)
 
 - wfa-day, lhfa-day, bfa-day:
   WHO Child Growth Standards: length/height-for-age, weight-for-age, weight-for-length,
@@ -26,12 +25,24 @@ Attribution (WHO's suggested citation form, "[Title]. [Place of publication]: Wo
   WHO names this article as describing the sample and methods: "Development of a WHO growth reference
   for school-aged children and adolescents", https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2636412/
 
-Adaptation disclaimer (WHO's wording for adaptations, applied to each work above):
+Adaptation disclaimer (WHO's wording for adaptations, one per work above):
 
-  This is an adaptation of an original work "[Title]. Geneva: World Health Organization (WHO); [Year].
-  Licence: CC BY-NC-SA 3.0 IGO". This adaptation was not created by WHO. WHO is not responsible for the
-  content or accuracy of this adaptation. The original edition shall be the binding and authentic
-  edition.
+  This is an adaptation of an original work "WHO Child Growth Standards: length/height-for-age,
+  weight-for-age, weight-for-length, weight-for-height and body mass index-for-age: methods and
+  development. Geneva: World Health Organization (WHO); 2006. Licence: CC BY-NC-SA 3.0 IGO". This
+  adaptation was not created by WHO. WHO is not responsible for the content or accuracy of this
+  adaptation. The original edition shall be the binding and authentic edition.
+
+  This is an adaptation of an original work "WHO Child Growth Standards: head circumference-for-age,
+  arm circumference-for-age, triceps skinfold-for-age and subscapular skinfold-for-age: methods and
+  development. Geneva: World Health Organization (WHO); 2007. Licence: CC BY-NC-SA 3.0 IGO". This
+  adaptation was not created by WHO. WHO is not responsible for the content or accuracy of this
+  adaptation. The original edition shall be the binding and authentic edition.
+
+  This is an adaptation of an original work "WHO Growth Reference 2007 for 5-19 years. Geneva: World
+  Health Organization (WHO); 2007. Licence: CC BY-NC-SA 3.0 IGO". This adaptation was not created by
+  WHO. WHO is not responsible for the content or accuracy of this adaptation. The original edition
+  shall be the binding and authentic edition.
 
 What was changed: each WHO xlsx file was converted to CSV by scripts/growth/convert.py. Only the age
 (Day or Month), L, M and S columns were kept; the SD columns were dropped. Every kept value is the same
@@ -39,7 +50,9 @@ number as in the source cell, written as the shortest decimal that reads back as
 value Excel shows); nothing was rounded or recomputed. Each CSV starts with comment lines naming its
 source file, URL and SHA-256.
 
-Retrieved 2026-11-22 from cdn.who.int. Source pages:
+Retrieved 2026-11-22 from cdn.who.int. The xlsx files' own metadata dates them: every file created
+2020-11-10; the eight 2006/2007 Child Growth Standards files (wfa, lhfa, hcfa, bfa) last modified
+2022-08-24, the six Growth Reference 2007 files not modified since. Source pages:
 https://www.who.int/tools/child-growth-standards/standards/weight-for-age
 https://www.who.int/tools/child-growth-standards/standards/length-height-for-age
 https://www.who.int/tools/child-growth-standards/standards/head-circumference-for-age
@@ -69,6 +82,8 @@ weight-for-age-(5-10-years) folder, have wfa_* sheet names and hold weight value
 
 Licence basis: the pages hosting these files carry no licence statement and link to WHO's website
 terms of use (https://www.who.int/about/policies/terms-of-use); WHO states that its publications are
-under CC BY-NC-SA 3.0 IGO (https://www.who.int/about/policies/publishing/copyright). The owner of this
-project chose to redistribute the tables under CC BY-NC-SA 3.0 IGO. This reading is not legal advice
-and has not been confirmed by WHO.
+under CC BY-NC-SA 3.0 IGO (https://www.who.int/about/policies/publishing/copyright). Those website
+terms also say: "Reproduction or translation of substantial portions of the web site, or any use other
+than for educational or other non-commercial purposes, require explicit, prior authorization in
+writing." The owner of this project chose to redistribute the tables under CC BY-NC-SA 3.0 IGO. This
+reading is not legal advice and has not been confirmed by WHO.
