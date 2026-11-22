@@ -10,7 +10,7 @@ import {
 	KID_NAME_MAX_LEN
 } from '../constants';
 import { coverageHint } from '../growth';
-import type { GrowthSourceInfo, Kid, KidInput } from '../types';
+import type { GrowthSourceInfo, Kid, KidInput, VaccineSchemaInfo } from '../types';
 
 export type KidField =
 	| 'name'
@@ -120,3 +120,7 @@ export function kidApiFailure<T extends object>(
 // The source select offers exactly the API's list, each with its coverage on one line.
 export const sourceOptions = (sources: GrowthSourceInfo[]) =>
 	sources.map((s) => ({ id: s.id, name: s.name, hint: coverageHint(s.coverage) }));
+
+// The schedule select offers exactly the API's list after "None yet".
+export const scheduleOptions = (schemas: VaccineSchemaInfo[]) =>
+	schemas.map((s) => ({ id: s.id, label: `${s.name} — ${s.authority}, ${s.edition}` }));

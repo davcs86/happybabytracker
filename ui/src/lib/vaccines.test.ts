@@ -41,12 +41,14 @@ describe('status and due labels', () => {
 		).toEqual(['Given', 'Due', 'Upcoming', 'Overdue', 'Dismissed', 'Available']);
 	});
 
-	it('labels a home due entry by its visit and status', () => {
-		const entry = { kind: 'vaccine', count: 3 } as const;
-		expect(dueLabel({ ...entry, from: { n: 4, unit: 'm' }, status: 'overdue' })).toBe(
-			'4-month vaccines · overdue'
+	it('labels a home due entry by its visit, its status label and its count', () => {
+		const entry = { kind: 'vaccine' } as const;
+		expect(dueLabel({ ...entry, from: { n: 4, unit: 'm' }, status: 'overdue', count: 7 })).toBe(
+			'4-month vaccines · Overdue (7)'
 		);
-		expect(dueLabel({ ...entry, from: { n: 0, unit: 'd' }, status: 'due' })).toBe('Birth · due');
+		expect(dueLabel({ ...entry, from: { n: 0, unit: 'd' }, status: 'due', count: 1 })).toBe(
+			'Birth · Due (1)'
+		);
 	});
 });
 

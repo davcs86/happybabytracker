@@ -49,7 +49,8 @@ export const SCENARIOS = [
 	'leave_unavailable',
 	'leave_rate_limited',
 	'leave_forbidden',
-	'patch_unavailable'
+	'patch_unavailable',
+	'home_due_many'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -1597,7 +1598,7 @@ const overviewRoutes: RouteDef[] = [
 				nursing: runningOf(state, 'nursing', kid.id)
 			},
 			today: daySummary(state, kid, todayIn(kid.timeZone)),
-			due: vaccineDue(state, kid)
+			due: state.scenario === 'home_due_many' ? MANY_DUE : vaccineDue(state, kid)
 		});
 	})
 ];
@@ -2296,6 +2297,14 @@ function vaccinesView(state: State, kid: KidRow) {
 		}))
 	};
 }
+
+// More visits than the home shows, which the two stub schedules cannot produce.
+const MANY_DUE = [1, 2, 3, 4, 5].map((n) => ({
+	kind: 'vaccine',
+	from: { n, unit: 'y' },
+	status: n === 1 ? 'overdue' : 'due',
+	count: n === 1 ? 2 : 1
+}));
 
 // vaccineDue in home.go: one entry per visit with a due or overdue line; empty when the module is off.
 function vaccineDue(state: State, kid: KidRow) {

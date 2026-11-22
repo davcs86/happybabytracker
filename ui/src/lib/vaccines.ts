@@ -21,7 +21,8 @@ export const groupTitle = ({ from }: Pick<VaccineGroup, 'from'>) =>
 
 export const statusLabel = (status: VaccineStatus) => VACCINE_STATUS_LABEL[status];
 
-export const dueLabel = (entry: HomeDue) => `${groupTitle(entry)} · ${entry.status}`;
+export const dueLabel = (entry: HomeDue) =>
+	`${groupTitle(entry)} · ${statusLabel(entry.status)} (${entry.count})`;
 
 // untilDate is the first day the window is over; recurring lines have no window to show.
 export function windowLabel(line: Pick<VaccineLine, 'kind' | 'fromDate' | 'untilDate'>): string {

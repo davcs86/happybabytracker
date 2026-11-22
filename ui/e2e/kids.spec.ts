@@ -17,8 +17,12 @@ import {
 	MIA,
 	STUB_TOKEN,
 	STUB_URL,
+	UI_ORIGIN,
 	openSession,
-	resetStub
+	receivedRequests,
+	resetStub,
+	storeVaccineSchema,
+	stubAs
 } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -36,6 +40,22 @@ type KidForm = {
 	early?: { weeks: string; days: string };
 	timeZone?: string;
 };
+
+const schedule = (page: Page) => page.getByLabel('Vaccination schedule', { exact: true });
+const optionValues = (page: Page) =>
+	schedule(page)
+		.locator('option')
+		.evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
+const lastPatch = async (kid: string) => {
+	const writes = (await receivedRequests()).filter(
+		(r) => r.method === 'PATCH' && r.path === `/v1/kids/${kid}`
+	);
+	return JSON.parse(writes.at(-1)?.body ?? 'null') as Record<string, unknown>;
+};
+const storedSchedule = async (kid: string) =>
+	(await (await stubAs(ANA))('GET', `/v1/kids/${kid}`)).body.vaccine_schema;
+const NO_SCHEDULE = 'No vaccination schedule chosen yet.';
+const CAPTION = 'Schedule: Stub authority, Stub edition';
 
 async function fillKid(page: Page, kid: KidForm) {
 	if (kid.name !== undefined) await page.getByLabel('Name', { exact: true }).fill(kid.name);
@@ -365,6 +385,88 @@ test('a caregiver sees the kid without settings or access; direct visits are 404
 	await expectNotFoundPage(page, '/kids/not.an.id');
 });
 
+test('settings offer None yet and exactly the shipped schedules; saving one shows on the Vaccines page', async ({
+	page
+}) => {
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}/settings`);
+	await expect(schedule(page)).toHaveValue('');
+	expect(await optionValues(page)).toEqual(['', 'us', 'uk']);
+	await expect(schedule(page).locator('option')).toHaveText([
+		'None yet',
+		'United States (stub) — Stub authority, Stub edition',
+		'United Kingdom (stub) — Stub authority, Stub edition'
+	]);
+	await expectAccessible(page);
+
+	await schedule(page).selectOption('uk');
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await lastPatch(IVY.id)).toMatchObject({ vaccine_schema: 'uk' });
+	await page.goto(`/kids/${IVY.id}/vaccines`);
+	await expect(page.getByText(CAPTION)).toBeVisible();
+	await expect(page.getByText(NO_SCHEDULE)).toHaveCount(0);
+
+	await page.goto(`/kids/${IVY.id}/settings`);
+	await expect(schedule(page)).toHaveValue('uk');
+	await schedule(page).selectOption('');
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await lastPatch(IVY.id)).toMatchObject({ vaccine_schema: null });
+	await page.goto(`/kids/${IVY.id}/vaccines`);
+	await expect(page.getByText(NO_SCHEDULE)).toBeVisible();
+});
+
+test('a new child has no schedule and the Vaccines page asks to choose one', async ({ page }) => {
+	await signIn(page, ANA);
+	await page.goto('/kids/new');
+	await expect(schedule(page)).toHaveValue('');
+	expect(await optionValues(page)).toEqual(['', 'us', 'uk']);
+	await expectAccessible(page);
+	await fillKid(page, { name: 'Noa', birthDate: '2026-08-01', sex: 'Female' });
+	await page.getByRole('button', { name: 'Add child' }).click();
+	await expect(page.getByRole('heading', { name: 'Noa', level: 1 })).toBeVisible();
+	const kids = (await (await stubAs(ANA))('GET', '/v1/kids')).body.kids as Record<
+		string,
+		unknown
+	>[];
+	const noa = kids.find((k) => k.name === 'Noa');
+	expect(noa).toMatchObject({ vaccine_schema: null });
+	await page.goto(`/kids/${noa?.id}/vaccines`);
+	await expect(page.getByText(NO_SCHEDULE)).toBeVisible();
+	await expect(page.getByRole('link', { name: /Choose a schedule/ })).toBeVisible();
+});
+
+test('a retired stored schedule stays selected and kept on save until another is chosen', async ({
+	page
+}) => {
+	await storeVaccineSchema(IVY.id, 'retired-2020');
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}/settings`);
+	await expect(schedule(page)).toHaveValue('retired-2020');
+	expect(await optionValues(page)).toEqual(['retired-2020', '', 'us', 'uk']);
+	await expect(schedule(page).locator('option').first()).toHaveText(
+		'Unavailable schedule (retired-2020)'
+	);
+	await expectAccessible(page);
+
+	await page.getByLabel('Name', { exact: true }).fill('Ivy Rose');
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	const body = await lastPatch(IVY.id);
+	expect(body.name).toBe('Ivy Rose');
+	expect(body.vaccine_schema ?? 'retired-2020').toBe('retired-2020');
+	expect(await storedSchedule(IVY.id)).toBe('retired-2020');
+	await expect(schedule(page)).toHaveValue('retired-2020');
+
+	await schedule(page).selectOption('');
+	await page.getByRole('button', { name: 'Save' }).click();
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await storedSchedule(IVY.id)).toBeNull();
+	await page.reload();
+	expect(await optionValues(page)).toEqual(['', 'us', 'uk']);
+});
+
 test.describe('without JavaScript', () => {
 	// axe runs in the page, so these pages are checked by the JavaScript tests above.
 	test.use({ javaScriptEnabled: false, timezoneId: 'Asia/Tokyo' });
@@ -393,6 +495,18 @@ test.describe('without JavaScript', () => {
 		await signIn(page, ANA);
 		await page.goto(`/kids/${id}/settings`);
 		await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
+	});
+
+	test('settings saves a schedule as a plain form post', async ({ page }) => {
+		await signIn(page, ANA);
+		await page.goto(`/kids/${IVY.id}/settings`);
+		await schedule(page).selectOption('us');
+		await page.getByRole('button', { name: 'Save' }).click();
+		await expect(page.getByRole('status')).toHaveText('Saved');
+		expect(await storedSchedule(IVY.id)).toBe('us');
+		await page.goto(`/kids/${IVY.id}/vaccines`);
+		await expect(page.getByText(CAPTION)).toBeVisible();
+		expect(page.url()).toBe(`${UI_ORIGIN}/kids/${IVY.id}/vaccines`);
 	});
 
 	test('a 422 lands on its field without JavaScript', async ({ page }) => {

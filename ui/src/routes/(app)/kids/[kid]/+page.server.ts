@@ -27,6 +27,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		running: home.data.running,
 		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
+		due: home.data.due,
 		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')
 	};
 };

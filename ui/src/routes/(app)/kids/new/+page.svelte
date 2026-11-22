@@ -16,6 +16,7 @@
 	message={form?.message}
 	zones={data.zones}
 	sources={data.sources}
+	schedules={data.schedules}
 	detectZone
 	submitLabel="Add child"
 />

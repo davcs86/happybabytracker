@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { kidValues, readKidForm } from './kid-form';
+import { kidValues, readKidForm, scheduleOptions } from './kid-form';
+import type { VaccineSchemaInfo } from '../types';
 
 const form = (fields: Record<string, string>) => {
 	const data = new FormData();
@@ -73,5 +74,24 @@ describe('kidValues vaccine schedule', () => {
 		} as const;
 		expect(kidValues(stored).vaccineSchema).toBe('us');
 		expect(kidValues({ ...stored, vaccineSchema: null }).vaccineSchema).toBe('');
+	});
+});
+
+describe('scheduleOptions', () => {
+	const info = (id: string, name: string): VaccineSchemaInfo => ({
+		id,
+		name,
+		authority: 'CDC',
+		edition: '2025',
+		retrieved: '2026-11-22',
+		originUrl: 'https://example.test',
+		licence: 'l',
+		attribution: 'a'
+	});
+	it('offers exactly the API list in its order, named with authority and edition', () => {
+		expect(scheduleOptions([info('us', 'United States'), info('uk', 'England')])).toEqual([
+			{ id: 'us', label: 'United States — CDC, 2025' },
+			{ id: 'uk', label: 'England — CDC, 2025' }
+		]);
 	});
 });
