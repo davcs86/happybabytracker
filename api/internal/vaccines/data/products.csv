@@ -1,0 +1,23 @@
+id,name,antigens
+hexavalent,6-in-1 (DTaP-IPV-Hib-HepB),diphtheria|tetanus|pertussis|polio|hib|hepatitis_b
+dtap,DTaP,diphtheria|tetanus|pertussis
+dtap_ipv,DTaP-IPV (4-in-1),diphtheria|tetanus|pertussis|polio
+tdap,Tdap,diphtheria|tetanus|pertussis
+td,Td,diphtheria|tetanus
+td_ipv,Td-IPV (3-in-1),diphtheria|tetanus|polio
+mmr,MMR,measles|mumps|rubella
+mmrv,MMRV,measles|mumps|rubella|varicella
+hib,Hib,hib
+hepatitis_b,Hepatitis B,hepatitis_b
+hepatitis_a,Hepatitis A,hepatitis_a
+pcv,Pneumococcal conjugate (PCV),pneumococcus
+rotavirus,Rotavirus,rotavirus
+menacwy,MenACWY,meningococcal_acwy
+menb,MenB,meningococcal_b
+hpv,HPV,hpv
+influenza,Influenza,influenza
+covid19,COVID-19,covid19
+rsv_antibody,RSV (monoclonal antibody),rsv
+bcg,BCG,tuberculosis
+ipv,Polio (IPV),polio
+varicella,Varicella,varicella

@@ -1,0 +1,28 @@
+id,name
+diphtheria,Diphtheria
+tetanus,Tetanus
+pertussis,Pertussis (whooping cough)
+polio,Polio
+hib,Haemophilus influenzae type b (Hib)
+hepatitis_b,Hepatitis B
+hepatitis_a,Hepatitis A
+pneumococcus,Pneumococcal
+rotavirus,Rotavirus
+measles,Measles
+mumps,Mumps
+rubella,Rubella
+varicella,Varicella (chickenpox)
+hpv,Human papillomavirus (HPV)
+meningococcal_acwy,Meningococcal ACWY
+meningococcal_b,Meningococcal B
+influenza,Influenza
+covid19,COVID-19
+rsv,Respiratory syncytial virus (RSV)
+tuberculosis,Tuberculosis
+typhoid,Typhoid
+yellow_fever,Yellow fever
+rabies,Rabies
+japanese_encephalitis,Japanese encephalitis
+cholera,Cholera
+tick_borne_encephalitis,Tick-borne encephalitis
+other,Other (product name required)

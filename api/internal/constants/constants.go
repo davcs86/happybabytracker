@@ -105,6 +105,16 @@ const (
 	PoundsPerKG = 2.2046226218
 	CMPerInch   = 2.54
 
+	MaxVaccineAdministrationsPerKid = 500
+	VaccineLotMaxLen                = 40
+	VaccineProductMaxLen            = 80
+	VaccineDefaultWindowMonths      = 1
+	// Schedule ages above about 130 years are refused, per unit.
+	VaccineMaxAgeDays   = 47482
+	VaccineMaxAgeWeeks  = 6783
+	VaccineMaxAgeMonths = 1560
+	VaccineMaxAgeYears  = 130
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
@@ -119,3 +129,6 @@ const (
 	CauseSQLite      = "sqlite"
 	CauseOtherPrefix = "other:"
 )
+
+// VaccineSchedules lists the schedule ids the API may ship, in display order.
+var VaccineSchedules = []string{"us", "uk", "mx"}
