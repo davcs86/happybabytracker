@@ -45,6 +45,8 @@ const overflows = (page: Page) =>
 	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 const href = (link: Locator) => link.evaluate((a) => (a as HTMLAnchorElement).href);
 
+// Rendered as the page alert, not only in the serialised form data.
+const SHOWN_REFUSAL = /role="alert"[^>]*>Only a guardian can dismiss vaccines</;
 const HIB = 'Haemophilus influenzae type b (Hib)';
 
 async function onSchedule(api: Api, kid = IVY.id, schema = 'us') {
@@ -364,14 +366,21 @@ test('a caregiver records a dose but gets no dismiss controls, and a posted dism
 
 	const response = await page.request.post(`${pageUrl(LEO.id)}?/dismiss`, {
 		form: { line: 'hib-1', reason: 'not_needed' },
-		headers: { origin: UI_ORIGIN }
+		headers: { origin: UI_ORIGIN, accept: 'text/html' }
 	});
 	expect(response.status()).toBe(403);
-	expect(await response.text()).toContain('Only a guardian can dismiss vaccines');
+	expect(await response.text()).toMatch(SHOWN_REFUSAL);
 	const cleo = await stubAs(CLEO);
 	const v = (await cleo('GET', `/v1/kids/${LEO.id}/vaccines`)).body;
 	const lines = (v.groups as { lines: { dismissal: unknown }[] }[]).flatMap((g) => g.lines);
 	expect(lines.every((l) => l.dismissal === null)).toBe(true);
+
+	const before = await page.request.post(`${pageUrl(LEO.id)}?/dismissBefore`, {
+		form: { before: TODAY, reason: 'not_needed' },
+		headers: { origin: UI_ORIGIN, accept: 'text/html' }
+	});
+	expect(before.status()).toBe(403);
+	expect(await before.text()).toMatch(SHOWN_REFUSAL);
 });
 
 test('no grant, an unknown and another kid’s administration are the same 404 page', async ({
@@ -412,7 +421,10 @@ test('an extra dose is listed under Other with its product and opens its edit pa
 	expect(await href(link)).toBe(`${UI_ORIGIN}${editUrl(IVY.id, typhoid.id)}`);
 });
 
-test('the page has no horizontal overflow with a 200-character note', async ({ page }) => {
+test('no horizontal overflow with an 80-character product on the page and a 200-character note on the edit page', async ({
+	page
+}, testInfo) => {
+	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
 	const api = await stubAs(ANA);
 	await onSchedule(api);
 	const row = await seed(api, {
@@ -423,11 +435,31 @@ test('the page has no horizontal overflow with a 200-character note', async ({ p
 	});
 	await signIn(page, ANA);
 	await page.goto(pageUrl(IVY.id));
-	await expect(groups(page).first()).toBeVisible();
+	const other = page.getByRole('region', { name: 'Other recorded vaccinations' });
+	await expect(other.getByText('p'.repeat(80))).toBeVisible();
 	expect(await overflows(page)).toBe(false);
 	await page.goto(editUrl(IVY.id, row.id));
 	await expect(field(page, 'Note')).toHaveValue('n'.repeat(200));
 	expect(await overflows(page)).toBe(false);
+});
+
+test('an Also available line carries its status in its name and links a given dose', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await onSchedule(api);
+	await signIn(page, ANA);
+	await page.goto(pageUrl(IVY.id));
+	const also = page.getByRole('region', { name: 'Also available' });
+	const rsv = 'Respiratory syncytial virus (RSV), dose 1';
+	await expect(line(also, rsv)).toHaveAccessibleName(/Available from \d{4}-\d{2}-\d{2}/);
+
+	const dose = await seed(api, { given_on: AT_TWO_MONTHS, antigens: ['rsv'] });
+	await page.reload();
+	await expect(line(also, rsv)).toHaveAccessibleName(new RegExp(`Given ${AT_TWO_MONTHS}`));
+	const link = line(also, rsv).getByRole('link', { name: `Given ${AT_TWO_MONTHS}` });
+	expect(await href(link)).toBe(`${UI_ORIGIN}${editUrl(IVY.id, dose.id)}`);
+	await expectAccessible(page);
 });
 
 test('the page is linked from the kid home and stays reachable with the module off', async ({

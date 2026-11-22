@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { todayIn } from '../src/lib/format.js';
-import { ANA, CLEO, IVY, LEO, MIA, resetStub, stubAs } from './stub-api.js';
+import { ANA, CLEO, IVY, LEO, MIA, resetStub, storeVaccineSchema, stubAs } from './stub-api.js';
 
 // The stub's vaccination routes answer as the Go API does; its schedules are a stub, never checked against real data.
 
@@ -92,6 +92,26 @@ test('kids have no schedule by default; a guardian chooses, changes and clears o
 		vaccine_schema: 'us'
 	});
 	expect(created).toMatchObject({ status: 201, body: { vaccine_schema: 'us' } });
+});
+
+test('a retired schedule id stays until it is changed, as newSchemaOK does', async () => {
+	const ana = await stubAs(ANA);
+	await storeVaccineSchema(MIA.id, 'ch');
+	expect(await ana('PATCH', `/v1/kids/${MIA.id}`, { name: 'Mia' })).toMatchObject({
+		status: 200,
+		body: { vaccine_schema: 'ch' }
+	});
+	expect(await ana('PATCH', `/v1/kids/${MIA.id}`, { vaccine_schema: 'ch' })).toMatchObject({
+		status: 200,
+		body: { vaccine_schema: 'ch' }
+	});
+	expect(await ana('PATCH', `/v1/kids/${MIA.id}`, { vaccine_schema: 'zz' })).toMatchObject(
+		invalid('vaccine_schema')
+	);
+	expect(await ana('PATCH', `/v1/kids/${MIA.id}`, { vaccine_schema: 'us' })).toMatchObject({
+		status: 200,
+		body: { vaccine_schema: 'us' }
+	});
 });
 
 test('without a schedule every dose is listed under other', async () => {

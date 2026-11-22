@@ -22,12 +22,17 @@
 	const edit = (administration: string) =>
 		resolve('/(app)/kids/[kid]/vaccines/[administration]', { kid: data.kid.id, administration });
 
-	const lineFailure = $derived(
-		form?.form === 'dismiss' || form?.form === 'undoDismiss' ? form.message : null
-	);
 	const before = $derived(form?.form === 'dismissBefore' ? form : null);
 	const dismissed = $derived(before && 'dismissed' in before ? before.dismissed : null);
 	const beforeFailure = $derived(before && 'message' in before ? before : null);
+	// A dismiss-before failure without a field shows here, as a caregiver has no form to show it in.
+	const lineFailure = $derived(
+		form?.form === 'dismiss' || form?.form === 'undoDismiss'
+			? form.message
+			: beforeFailure && !beforeFailure.field
+				? beforeFailure.message
+				: null
+	);
 	const beforeError = (name: string) =>
 		beforeFailure?.field === name ? (beforeFailure.message ?? null) : null;
 </script>
@@ -96,14 +101,21 @@
 			<h2 id="also-heading" class="mb-2 font-semibold">Also available</h2>
 			<ul class="flex flex-col gap-2">
 				{#each data.vaccines.also as line (line.id)}
-					<li aria-labelledby="vline-{line.id}-name" class="rounded-lg border p-3">
+					<li
+						aria-labelledby="vline-{line.id}-name vline-{line.id}-status"
+						class="rounded-lg border p-3"
+					>
 						<p id="vline-{line.id}-name" class="font-medium">
 							{name(line.antigen)}, dose {line.series}
 						</p>
-						<p class="text-sm">
-							{line.status === 'given' && line.givenOn
-								? `Given ${line.givenOn}`
-								: windowLabel(line)}
+						<p id="vline-{line.id}-status" class="text-sm">
+							{#if line.status === 'given' && line.givenOn && line.administration}
+								<a href={edit(line.administration)} class="underline">Given {line.givenOn}</a>
+							{:else if line.status === 'given' && line.givenOn}
+								Given {line.givenOn}
+							{:else}
+								{windowLabel(line)}
+							{/if}
 						</p>
 					</li>
 				{/each}
@@ -173,9 +185,6 @@
 			undone on its own.
 		</p>
 		<form method="POST" action="?/dismissBefore" class="flex flex-col gap-3" novalidate use:enhance>
-			{#if beforeFailure && !beforeFailure.field && beforeFailure.message}
-				<p class={ERROR_CLASS} role="alert">{beforeFailure.message}</p>
-			{/if}
 			<Field id="vaccine-before" label="Due before" error={beforeError('before')}>
 				{#snippet children(control)}
 					<Input

@@ -51,7 +51,7 @@
 <Field
 	id="vaccine-product_shortcut"
 	label="Product shortcut"
-	hint="Choosing a product ticks the vaccines it covers; you can also tick them yourself"
+	hint="With JavaScript on, choosing a product ticks the vaccines it covers; you can always tick them yourself."
 >
 	{#snippet children(control)}
 		<select {...control} name="product_shortcut" class={SELECT_CLASS} onchange={tick}>

@@ -434,8 +434,8 @@ const inRange = (n: number | null, r: { min: number; max: number }) =>
 	n !== null && n >= r.min && n <= r.max;
 
 // invalidKidField in kids.go, same order: name, birth_date, sex, gestation_weeks, gestation_days, time_zone,
-// growth_source, then vaccine_schema (newSchemaOK; every stub schedule is shipped).
-function invalidKidField(k: KidRow): string {
+// growth_source, then vaccine_schema (newSchemaOK: an unchanged stored id passes, even one no longer shipped).
+function invalidKidField(k: KidRow, storedSchema: string | null = null): string {
 	const n = codePoints(k.name);
 	if (n < KID_NAME.min || n > KID_NAME.max) return 'name';
 	const zoneOK = validZone(k.timeZone);
@@ -452,7 +452,8 @@ function invalidKidField(k: KidRow): string {
 	if ((d === null && w !== null) || (d !== null && !inRange(d, DAYS))) return 'gestation_days';
 	if (!zoneOK) return 'time_zone';
 	if (!GROWTH_SOURCE_IDS.includes(k.growthSource)) return 'growth_source';
-	if (k.vaccineSchema !== null && !STUB_SCHEDULES.has(k.vaccineSchema)) return 'vaccine_schema';
+	const changed = k.vaccineSchema !== null && k.vaccineSchema !== storedSchema;
+	if (changed && !STUB_SCHEDULES.has(k.vaccineSchema as string)) return 'vaccine_schema';
 	return '';
 }
 
@@ -771,7 +772,7 @@ const routes: RouteDef[] = [
 			const stored = state.kids.get(id);
 			if (!stored) return noKid(res);
 			const kid = mergeKid(stored, body);
-			const field = invalidKidField(kid);
+			const field = invalidKidField(kid, stored.vaccineSchema);
 			if (field) return error(res, 422, 'invalid', field);
 			state.kids.set(id, kid);
 			send(res, 200, kidView(kid, p.role ?? 'guardian'));
