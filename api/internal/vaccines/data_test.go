@@ -595,18 +595,14 @@ const (
 // mxLines is every line of mx.csv, from Cuadros 1 and 6; a change to the file must change this table.
 var mxLines = func() []cohortPinned {
 	ls := []cohortPinned{
-		ukLine("tuberculosis-1", "BCG", "0d", "", KindRoutine, "", ""),
+		ukLine("tuberculosis-1", "BCG", "0d", "12m", KindRoutine, "", ""),
 		ukLine("hepatitis_b-1", "Hepatitis B", "0d", "7d", KindMayNotBeNeeded, "", ""),
 	}
 	for i, from := range []string{"2m", "4m", "6m", "18m"} {
 		for _, a := range []string{"diphtheria", "tetanus", "pertussis", "polio", "hib"} {
 			ls = append(ls, ukLine(fmt.Sprintf("%s-%d", a, i+1), "Hexavalent", from, "", KindRoutine, "", ""))
 		}
-		kind := KindRoutine
-		if from == "18m" {
-			kind = KindMayNotBeNeeded
-		}
-		ls = append(ls, ukLine(fmt.Sprintf("hepatitis_b-%d", i+2), "Hexavalent", from, "", kind, "", ""))
+		ls = append(ls, ukLine(fmt.Sprintf("hepatitis_b-%d", i+2), "Hexavalent", from, "", KindMayNotBeNeeded, "", ""))
 	}
 	for _, a := range []string{"diphtheria", "tetanus", "pertussis"} {
 		ls = append(ls, ukLine(a+"-5", "DPT booster", "4y", "", KindRoutine, "", ""))
@@ -634,7 +630,8 @@ var mxLines = func() []cohortPinned {
 	)
 }()
 
-// mxVerify are the lines the owner must re-check against the source (ruling R4).
+// mxVerify are the lines whose note starts "(verify)": the source does not settle them, so the
+// owner re-checks them before an update ships.
 var mxVerify = []string{"influenza-1", "covid19-1", "hpv-1"}
 
 func mustMX(t *testing.T) Schema {
@@ -803,20 +800,20 @@ func TestMXEvaluatesTwoMonthVisit(t *testing.T) {
 	}
 	wantDue := []string{"diphtheria-1", "tetanus-1", "pertussis-1", "polio-1", "hib-1", "hepatitis_b-2",
 		"rotavirus-1", "pneumococcus-1"}
-	if !sameSet(byStatus[StatusDue], wantDue) {
+	if !sameSet(byStatus[StatusDue], append([]string{"tuberculosis-1"}, wantDue...)) {
 		t.Errorf("due = %v, want %v", byStatus[StatusDue], wantDue)
 	}
-	if !sameSet(byStatus[StatusOverdue], []string{"tuberculosis-1"}) {
-		t.Errorf("overdue = %v, want tuberculosis-1", byStatus[StatusOverdue])
+	if len(byStatus[StatusOverdue]) != 0 {
+		t.Errorf("overdue = %v, want none", byStatus[StatusOverdue])
 	}
 	if !sameSet(byStatus[StatusAvailable], []string{"hepatitis_b-1"}) {
 		t.Errorf("available = %v, want hepatitis_b-1 (birth dose after 7 days)", byStatus[StatusAvailable])
 	}
 	groups := e.Due()
-	if len(groups) != 2 || groups[0].From != age(0, UnitDay) || groups[0].Status != StatusOverdue ||
+	if len(groups) != 2 || groups[0].From != age(0, UnitDay) || groups[0].Status != StatusDue || groups[0].Count != 1 ||
 		groups[1].From != age(2, UnitMonth) || groups[1].FromDate != "2026-11-01" || groups[1].Status != StatusDue ||
 		groups[1].Count != len(wantDue) {
-		t.Errorf("Due() = %+v, want an overdue birth group and a 2-month group of %d", groups, len(wantDue))
+		t.Errorf("Due() = %+v, want a due BCG birth group and a 2-month group of %d", groups, len(wantDue))
 	}
 }
 
@@ -832,8 +829,9 @@ func TestMXAtFifteenYears(t *testing.T) {
 				t.Errorf("born %s: %s = %s, want overdue", born, l.Line.ID, l.Status)
 			}
 		}
-		if !sameSet(byStatus[StatusAvailable], []string{"hepatitis_b-1", "hepatitis_b-5"}) || len(byStatus) != 2 {
-			t.Errorf("born %s: statuses = %v, want overdue and available {hepatitis_b-1 hepatitis_b-5}", born, byStatus)
+		hepB := []string{"hepatitis_b-1", "hepatitis_b-2", "hepatitis_b-3", "hepatitis_b-4", "hepatitis_b-5"}
+		if !sameSet(byStatus[StatusAvailable], hepB) || len(byStatus) != 2 {
+			t.Errorf("born %s: statuses = %v, want overdue and available %v", born, byStatus, hepB)
 		}
 		var also []string
 		for _, l := range e.Also {
@@ -857,6 +855,40 @@ func TestMXAtFifteenYears(t *testing.T) {
 		}
 		if n != len(byStatus[StatusOverdue]) {
 			t.Errorf("born %s: Due() counts %d lines, want the %d overdue ones", born, n, len(byStatus[StatusOverdue]))
+		}
+	}
+}
+
+// A child may skip the birth dose and start hepatitis B with the hexavalent at 2 months, so count
+// matching shifts its doses; no hepatitis B line may then read overdue.
+func TestMXHepatitisBNeverOverdue(t *testing.T) {
+	s := mustMX(t)
+	const born = "2026-01-15"
+	var schedule []Dose
+	for _, l := range mustEval(t, s, nil, nil, born, born).Lines {
+		schedule = append(schedule, Dose{ID: l.Line.ID, Administration: l.FromDate, Antigen: l.Line.Antigen, GivenOn: l.FromDate})
+	}
+	b, _ := time.Parse(dateLayout, born)
+	for _, birthDose := range []bool{false, true} {
+		for day := b; day.Before(b.AddDate(0, 20, 0)); day = day.AddDate(0, 0, 1) {
+			today := day.Format(dateLayout)
+			var given []Dose
+			for _, d := range schedule {
+				if d.GivenOn <= today && (birthDose || d.ID != "hepatitis_b-1") {
+					given = append(given, d)
+				}
+			}
+			for _, l := range mustEval(t, s, given, nil, born, today).Lines {
+				if l.Line.Antigen != "hepatitis_b" {
+					continue
+				}
+				if l.Status == StatusOverdue {
+					t.Errorf("birth dose %v, %s: %s is overdue", birthDose, today, l.Line.ID)
+				}
+				if birthDose && l.Status != StatusGiven && l.Status != StatusUpcoming && l.Status != StatusDue {
+					t.Errorf("birth dose %v, %s: %s = %s", birthDose, today, l.Line.ID, l.Status)
+				}
+			}
 		}
 	}
 }

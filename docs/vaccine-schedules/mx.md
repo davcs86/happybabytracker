@@ -8,7 +8,7 @@ Generated from `api/internal/vaccines/data/mx.csv`; do not edit. After changing 
 - **Retrieved:** 2026-11-22
 - **Source:** https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026
 - **Licence:** gob.mx publishes no open licence on these documents (no Creative Commons or Libre Uso MX notice was found on them). The gob.mx Términos y Condiciones (https://www.gob.mx/terminos) say that the portal's information is public unless indicated otherwise, and require anyone who reproduces or processes it to cite its electronic location and the date it was consulted; the same page also limits downloaded materials to personal, non-commercial use. Only facts are transcribed (antigen, dose number, age): the Ley Federal del Derecho de Autor, art. 14, excludes facts and calendars (fr. X) and administrative texts (fr. VIII) from copyright protection. No logo, emblem, page image or prose of the publication is reproduced beyond short quoted age wording. This is not legal advice.
-- **Attribution:** Fuente: Secretaría de Salud, CeNSIA, “Lineamientos Generales del Programa de Vacunación Universal 2026” (31 de diciembre de 2025; enmienda del 18 de febrero de 2026), https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf (page: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026), consultado el 22 de noviembre de 2026 (2026-11-22). This is a partial, simplified transcription of facts only (antigen, dose number and age), with dose numbers derived by counting and without brand names: selective, risk-group, pregnancy, catch-up, adolescent and adult lines and the items listed in the review document are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails.
+- **Attribution:** Fuente: Secretaría de Salud, CeNSIA, “Lineamientos Generales del Programa de Vacunación Universal 2026” (31 de diciembre de 2025; enmienda del 18 de febrero de 2026), https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf (page: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026), consultado el 22 de noviembre de 2026 (2026-11-22). This is a partial, simplified transcription of facts only (antigen, dose number and age), with dose numbers derived by counting and without brand names: selective, risk-group, pregnancy and catch-up lines, adolescent and adult lines other than HPV (Td included) and the items listed in the review document are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails.
 
 ## Kinds
 
@@ -26,8 +26,7 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 - Influenza and COVID-19 from 5 years for children with comorbidities, from 10 to 59 years with risk factors, from 60 years and in pregnancy, and the second dose in the first season for children of 6 to 59 months (one recurring line per antigen stands for every season)
 - Adolescent and adult lines, which the Lineamientos class as risk-based and not universal: Td from 15 years with a booster every 10 years (3 doses at 0, 1 and 12 months when incomplete or undocumented), SR or SRP from 10 to 49 years without a complete schedule, hepatitis B from 11 years without prior vaccination, pneumococcal conjugate from 60 years
 - HPV for people of 11 to 49 years living with HIV (3 doses) and for 9 to 19 years in the sexual-violence protocol, and the PRONAM catch-up of girls of 12 to 16 years
-- The RV5 rotavirus scheme of 3 doses at 2, 4 and 6 months (Cuadro 7
-- a third dose lists under Other)
+- The RV5 rotavirus scheme of 3 doses at 2, 4 and 6 months (Cuadro 7, a third dose lists under Other)
 - The measles dosis cero at 6 to 11 months in outbreaks (it does not count towards the series) and the measles catch-up of children of 1 to 12 years (amendment of 18 February 2026)
 - SRP catch-up of 2 doses 4 weeks apart for children under 10 with no dose
 - BCG catch-up up to 5 years (exceptionally 14)
@@ -45,21 +44,21 @@ These lines carry `(verify)`: check them against the source first.
 |---|---|---|---|---|---|
 | COVID-19 | COVID-19 | 1 | from 6 months, every season | `recurring` | (verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; the source says the COVID-19 policy may change during 2026. |
 | Influenza | Influenza | 1 | from 6 months, every season | `recurring` | (verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; from 5 years only with a comorbidity. |
-| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school campaign, and the Lineamientos class adolescent vaccines as not universal, so it is never flagged. |
+| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |
 
 ## Birth
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
-| BCG | Tuberculosis | 1 | from Birth until 1 month (default window) | `routine` | “Recién nacido”, one dose, for newborns of 2,000 g or more before leaving hospital or at the first contact with health services, preferably before 1 year. |
-| Hepatitis B | Hepatitis B | 1 | from Birth until 7 days | `may_not_be_needed` | “Recién nacido”: in the first 24 hours of life, late up to 7 days of life. A baby without this dose starts hepatitis B with the hexavalent at 2 months, so doses then fill one line earlier by count. |
+| BCG | Tuberculosis | 1 | from Birth until 12 months | `routine` | “Recién nacido”, one dose, for newborns of 2,000 g or more before leaving hospital or at the first contact with health services, “preferentemente antes del año de edad”. |
+| Hepatitis B | Hepatitis B | 1 | from Birth until 7 days | `may_not_be_needed` | “Recién nacido”: in the first 24 hours of life, late up to 7 days of life. A baby without this dose starts hepatitis B with the hexavalent at 2 months and needs no extra dose; doses then fill one line earlier by count, so no hepatitis B line is ever flagged overdue (the other hexavalent antigens flag a missed visit). |
 
 ## 2 months
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
 | Hexavalent | Diphtheria | 1 | from 2 months until 3 months (default window) | `routine` | “2 meses”: hexavalente acelular (DPaT+VIP+HB+Hib), 1st dose. |
-| Hexavalent | Hepatitis B | 2 | from 2 months until 3 months (default window) | `routine` | “2 meses”: hexavalente acelular, 1st dose; it is given whether or not the birth dose was given. |
+| Hexavalent | Hepatitis B | 2 | from 2 months until 3 months (default window) | `may_not_be_needed` | “2 meses”: hexavalente acelular, 1st dose; it is given whether or not the birth dose was given. |
 | Hexavalent | Haemophilus influenzae type b (Hib) | 1 | from 2 months until 3 months (default window) | `routine` | “2 meses”: hexavalente acelular, 1st dose. |
 | Hexavalent | Pertussis (whooping cough) | 1 | from 2 months until 3 months (default window) | `routine` | “2 meses”: hexavalente acelular (acellular pertussis), 1st dose. |
 | Hexavalent | Polio | 1 | from 2 months until 3 months (default window) | `routine` | “2 meses”: hexavalente acelular (inactivated polio), 1st dose. |
@@ -72,7 +71,7 @@ These lines carry `(verify)`: check them against the source first.
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
 | Hexavalent | Diphtheria | 2 | from 4 months until 5 months (default window) | `routine` | “4 meses”: hexavalente acelular, 2nd dose. |
-| Hexavalent | Hepatitis B | 3 | from 4 months until 5 months (default window) | `routine` | “4 meses”: hexavalente acelular, 2nd dose. |
+| Hexavalent | Hepatitis B | 3 | from 4 months until 5 months (default window) | `may_not_be_needed` | “4 meses”: hexavalente acelular, 2nd dose. |
 | Hexavalent | Haemophilus influenzae type b (Hib) | 2 | from 4 months until 5 months (default window) | `routine` | “4 meses”: hexavalente acelular, 2nd dose. |
 | Hexavalent | Pertussis (whooping cough) | 2 | from 4 months until 5 months (default window) | `routine` | “4 meses”: hexavalente acelular, 2nd dose. |
 | Hexavalent | Polio | 2 | from 4 months until 5 months (default window) | `routine` | “4 meses”: hexavalente acelular, 2nd dose. |
@@ -86,7 +85,7 @@ These lines carry `(verify)`: check them against the source first.
 |---|---|---|---|---|---|
 | COVID-19 | COVID-19 | 1 | from 6 months, every season | `recurring` | (verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; the source says the COVID-19 policy may change during 2026. |
 | Hexavalent | Diphtheria | 3 | from 6 months until 7 months (default window) | `routine` | “6 meses”: hexavalente acelular, 3rd dose. |
-| Hexavalent | Hepatitis B | 4 | from 6 months until 7 months (default window) | `routine` | “6 meses”: hexavalente acelular, 3rd dose. |
+| Hexavalent | Hepatitis B | 4 | from 6 months until 7 months (default window) | `may_not_be_needed` | “6 meses”: hexavalente acelular, 3rd dose. |
 | Hexavalent | Haemophilus influenzae type b (Hib) | 3 | from 6 months until 7 months (default window) | `routine` | “6 meses”: hexavalente acelular, 3rd dose. |
 | Hexavalent | Pertussis (whooping cough) | 3 | from 6 months until 7 months (default window) | `routine` | “6 meses”: hexavalente acelular, 3rd dose. |
 | Hexavalent | Polio | 3 | from 6 months until 7 months (default window) | `routine` | “6 meses”: hexavalente acelular, 3rd dose. |
@@ -138,4 +137,4 @@ These lines carry `(verify)`: check them against the source first.
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
-| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school campaign, and the Lineamientos class adolescent vaccines as not universal, so it is never flagged. |
+| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |
