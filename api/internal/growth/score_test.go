@@ -223,3 +223,77 @@ func scoreAtCurveAge(src Source, months float64, m Measure, sex Sex, v float64) 
 	}
 	return scoreAtMonths(src, m, sex, months, v)
 }
+
+func TestWHORestrictionOnlyWeightAndBMI(t *testing.T) {
+	plainZ := func(r row, y float64) float64 {
+		if r.l == 0 {
+			return math.Log(y/r.m) / r.s
+		}
+		return (math.Pow(y/r.m, r.l) - 1) / (r.l * r.s)
+	}
+	rowAt := func(name string, age float64) row {
+		for _, r := range tableFor(SourceWHO, name, Male).rows {
+			if r.age == age {
+				return r
+			}
+		}
+		t.Fatalf("%s: no row at %v", name, age)
+		return row{}
+	}
+	cases := []struct {
+		m          Measure
+		table      string
+		age        float64
+		day        bool
+		restricted bool
+		factors    [2]float64
+	}{
+		{Length, "lhfa-day", 400, true, false, [2]float64{1.3, 0.7}},
+		{Length, "lhfa-day", 1000, true, false, [2]float64{1.3, 0.7}},
+		{Head, "hcfa-day", 400, true, false, [2]float64{1.3, 0.7}},
+		{Length, "hfa-month", 100, false, false, [2]float64{1.3, 0.7}},
+		{Weight, "wfa-day", 400, true, true, [2]float64{2, 0.5}},
+		{BMI, "bfa-day", 400, true, true, [2]float64{2, 0.5}},
+		{Weight, "wfa-month", 100, false, true, [2]float64{2, 0.5}},
+		{BMI, "bfa-month", 100, false, true, [2]float64{2, 0.5}},
+	}
+	for _, c := range cases {
+		r := rowAt(c.table, c.age)
+		for _, f := range c.factors {
+			y := r.m * f
+			want := plainZ(r, y)
+			if math.Abs(want) <= 3 {
+				t.Fatalf("%s %v ×%v: plain z %v is within ±3", c.table, c.age, f, want)
+			}
+			var sc Score
+			var err error
+			if c.day {
+				sc, err = ScoreOf(SourceWHO, c.m, Male, int(c.age), y)
+			} else {
+				sc, err = scoreAtMonths(SourceWHO, c.m, Male, c.age, y)
+			}
+			if err != nil {
+				t.Fatalf("%s %v: %v", c.table, c.age, err)
+			}
+			if same := math.Abs(sc.Z-want) < 1e-9; same == c.restricted {
+				t.Errorf("%s %v ×%v: z %v, plain z %v, restricted %v", c.table, c.age, f, sc.Z, want, c.restricted)
+			}
+		}
+	}
+}
+
+func TestRestrictedPredicate(t *testing.T) {
+	// Pinned directly: the bundled WHO length, height and head tables have L = 1, where z* equals the plain z,
+	// so only the predicate can show the restriction reaching them. One predicate serves the 2006 and 2007 tables.
+	want := map[Source]map[Measure]bool{
+		SourceWHO: {Weight: true, BMI: true, Length: false, Head: false},
+		SourceCDC: {Weight: false, BMI: false, Length: false, Head: false},
+	}
+	for src, ms := range want {
+		for m, w := range ms {
+			if got := restricted(src, m); got != w {
+				t.Errorf("restricted(%s, %s) = %v, want %v", src, m, got, w)
+			}
+		}
+	}
+}
