@@ -75,6 +75,17 @@ const (
 
 	MaxMealTextLen = 200
 
+	MinWeightGrams     = 200
+	MaxWeightGrams     = 250000
+	MinLengthMM        = 150
+	MaxLengthMM        = 2500
+	MinHeadMM          = 150
+	MaxHeadMM          = 800
+	MaxGrowthPerKid    = 3000
+	ZScoreDecimals     = 2
+	PercentileDecimals = 1
+	BMIDecimals        = 2
+
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
 
