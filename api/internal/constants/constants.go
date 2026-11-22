@@ -58,6 +58,9 @@ const (
 	BandOverrideLookback = 60 * 24 * time.Hour
 	CursorIDPattern      = `^[A-Za-z0-9-]{1,64}$`
 
+	BandSecondStartMonths = 12
+	BandThirdStartMonths  = 24
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 

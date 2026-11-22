@@ -1,7 +1,11 @@
 // Package kidtime does calendar arithmetic in a kid's own time zone.
 package kidtime
 
-import "time"
+import (
+	"time"
+
+	"github.com/davcs86/happybabytracker/api/internal/constants"
+)
 
 // Band is an age band by whole calendar months.
 type Band int
@@ -10,11 +14,6 @@ const (
 	Band0to11 Band = iota
 	Band12to23
 	Band24Plus
-)
-
-const (
-	secondBandMonths = 12
-	thirdBandMonths  = 24
 )
 
 // DayBounds returns [start, end) of the local calendar day containing instant; end is the next local midnight.
@@ -46,9 +45,9 @@ func AgeMonths(birthDate string, loc *time.Location, now time.Time) (int, error)
 // BandFor maps whole months to a band.
 func BandFor(months int) Band {
 	switch {
-	case months >= thirdBandMonths:
+	case months >= constants.BandThirdStartMonths:
 		return Band24Plus
-	case months >= secondBandMonths:
+	case months >= constants.BandSecondStartMonths:
 		return Band12to23
 	}
 	return Band0to11
@@ -63,9 +62,9 @@ func BandStart(birthDate string, loc *time.Location, b Band) (time.Time, error) 
 	months := 0
 	switch b {
 	case Band12to23:
-		months = secondBandMonths
+		months = constants.BandSecondStartMonths
 	case Band24Plus:
-		months = thirdBandMonths
+		months = constants.BandThirdStartMonths
 	}
 	y, m, d := birth.Date()
 	return time.Date(y, m+time.Month(months), d, 0, 0, 0, 0, loc), nil
