@@ -88,7 +88,10 @@ func renderMarkdown(s Schema) string {
 			b.WriteString("| Vaccine | Antigen | Dose | Window | Kind | Note |\n|---|---|---|---|---|---|\n")
 		}
 		window := "from " + ageLabel(l.From) + " until " + defaultEnd(l.From) + " (default window)"
-		if l.Until != nil {
+		switch {
+		case l.Kind == KindRecurring:
+			window = "from " + ageLabel(l.From) + ", every season"
+		case l.Until != nil:
 			window = "from " + ageLabel(l.From) + " until " + ageLabel(*l.Until)
 		}
 		if l.BornFrom != "" || l.BornTo != "" {
@@ -136,6 +139,7 @@ func TestRenderMarkdown(t *testing.T) {
 	s := Schema{ID: "zz", Name: "Test", Omitted: []string{"Mpox", "Dengue"}, Lines: []Line{
 		line("b-1", "B|x", "rotavirus", 1, age(2, UnitMonth), nil, KindRoutine),
 		line("a-1", "A", "hepatitis_b", 1, age(0, UnitDay), until(1, UnitMonth), KindSupplementary),
+		line("influenza-1", "Flu", "influenza", 1, age(2, UnitYear), nil, KindRecurring),
 	}}
 	s.Lines[0].BornFrom = "2024-07-01"
 	got := renderMarkdown(s)
@@ -144,6 +148,7 @@ func TestRenderMarkdown(t *testing.T) {
 		"## 2 months\n", `| B\|x | Rotavirus | 1 | from 2 months until 3 months (default window); born 2024-07-01 to any date | ` + "`routine`",
 		"## Not transcribed from the source\n\n- Mpox\n- Dengue\n", "without `until` it is 1 month.",
 		"is due inside its window; afterwards it is listed as available and never overdue",
+		"| Flu | Influenza | 1 | from 2 years, every season | `recurring` |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("renderMarkdown lacks %q:\n%s", want, got)

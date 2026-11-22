@@ -27,7 +27,7 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 - Vaccination in pregnancy: influenza, pertussis from 16 weeks gestation and RSV from 28 weeks gestation
 - Additional vaccines for individuals with underlying medical conditions (asplenia, complement disorders, cochlear implants, chronic conditions, immunosuppression, homelessness from 16 years): MenACWY, MenB, PCV20, influenza, hepatitis A and B, RSV and shingles
 - MMRV selective catch-up from 1 November 2026 to 31 March 2028 for children born 1 January 2020 to 31 August 2022 who have not had chickenpox or 2 varicella doses
-- Hib/MenC at 12 months for children born on or before 30 June 2024 (the previous schedule: the vaccine is no longer available and a missed dose is caught up with the 6-in-1)
+- The MenC part of the Hib/MenC dose at 12 months for children born on or before 30 June 2024 (MenC-containing vaccine is no longer recommended for young children who missed it), and the catch-up of a missed Hib/MenC dose with the 6-in-1
 - The 6-in-1 in place of the 4-in-1 at 3 years 4 months for a child with no Hib dose after the first birthday
 - The infant timing before 1 July 2025 (second MenB at 16 weeks and first PCV at 12 weeks) for children who had their 12-week PCV before that date: doses are matched by count, so they fill the same lines
 - Catch-up and uncertain or incomplete immunisation status (UKHSA algorithm and Green Book chapter 11), and MMR or MMRV doses given before the first birthday, which are discounted
@@ -77,6 +77,7 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
+| Hib/MenC (previous schedule) | Haemophilus influenzae type b (Hib) | 4 | from 12 months until 13 months (default window); born any date to 2024-06-30 | `routine` | Born on or before 30 June 2024: “should have been offered Hib/MenC … at 12 months of age as per the previous schedule” (childhood schedule changes information). That vaccine is no longer available: “any child under 10 years of age who was eligible for Hib/MenC and did not receive it, should be caught up using the hexavalent DTaP/IPV/Hib/HepB vaccine”. Only the Hib part is transcribed. |
 | MMR | Measles | 1 | from 12 months until 13 months (default window); born any date to 2024-12-31 | `routine` | Born on or before 31 December 2024: “12 months: MMR” (MMRV information, Table 1). The complete schedule's one-year row says MMRV with no cohort split; children born before 1 January 2025 had MMR at one year. |
 | MMR | Mumps | 1 | from 12 months until 13 months (default window); born any date to 2024-12-31 | `routine` | Born on or before 31 December 2024: “12 months: MMR” (MMRV information, Table 1). |
 | MMR | Rubella | 1 | from 12 months until 13 months (default window); born any date to 2024-12-31 | `routine` | Born on or before 31 December 2024: “12 months: MMR” (MMRV information, Table 1). |
@@ -93,7 +94,7 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 |---|---|---|---|---|---|
 | 6-in-1 | Diphtheria | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, “Born on or after 1 July 2024”: DTaP/IPV/Hib/HepB. Born on or before 30 June 2024: “No appointment”. |
 | 6-in-1 | Hepatitis B | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB. |
-| 6-in-1 | Haemophilus influenzae type b (Hib) | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB, replacing the Hib part of the Hib/MenC dose that older children had at 12 months (not transcribed). |
+| 6-in-1 | Haemophilus influenzae type b (Hib) | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB, replacing the Hib part of the Hib/MenC dose that children born on or before 30 June 2024 had at 12 months. |
 | 6-in-1 | Pertussis (whooping cough) | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB. |
 | 6-in-1 | Polio | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB. |
 | 6-in-1 | Tetanus | 4 | from 18 months until 19 months (default window); born 2024-07-01 to any date | `routine` | “Eighteen months old”, born on or after 1 July 2024: DTaP/IPV/Hib/HepB. |
@@ -107,7 +108,7 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
-| Flu | Influenza | 1 | from 2 years until 2 years and 1 month (default window) | `recurring` | (verify) Eligibility is set each season by the annual flu letter: “Eligible paediatric age group, See annual flu letter”, “each year from September”, nasal (LAIV), or inactivated if LAIV is unsuitable. The 2026 to 2027 letter covers “all children aged 2 or 3 years on 31 August 2026” and school children “from reception to year 11”; a child who turns 2 during the season is not eligible unless in a clinical risk group. |
+| Flu | Influenza | 1 | from 2 years, every season | `recurring` | (verify) Eligibility is set each season by the annual flu letter: “Eligible paediatric age group, See annual flu letter”, “each year from September”, nasal (LAIV), or inactivated if LAIV is unsuitable. The 2026 to 2027 letter covers “all children aged 2 or 3 years on 31 August 2026” and school children “from reception to year 11”; a child who turns 2 during the season is not eligible unless in a clinical risk group. |
 
 ## 40 months
 
@@ -125,13 +126,13 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 | MMR | Mumps | 2 | from 40 months until 41 months (default window); born any date to 2022-08-31 | `routine` | Born on or before 31 August 2022: MMR dose 2 at 3 years 4 months (MMRV information, Table 1). |
 | MMR | Rubella | 2 | from 40 months until 41 months (default window); born any date to 2022-08-31 | `routine` | Born on or before 31 August 2022: MMR dose 2 at 3 years 4 months (MMRV information, Table 1). |
 | MMRV | Measles | 2 | from 40 months until 41 months (default window); born 2022-09-01 to 2024-06-30 | `routine` | Born 1 September 2022 to 30 June 2024: “12 months: MMR, 3 years 4 months: MMRV” (MMRV information, Table 1). |
-| MMRV | Measles | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: “12 months: MMR, 18 months: MMRV, 3 years 4 months: MMRV” (MMRV information, Table 1). “There are no safety concerns with giving 3 MMR-containing vaccines.” |
+| MMRV | Measles | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: “12 months: MMR, 18 months: MMRV, 3 years 4 months: MMRV” (MMRV information, Table 1). “There are no safety concerns with giving 3 MMR-containing vaccines.” (Table 1 Note 1: not required if MMRV was given in place of the 12-month dose; dismiss it.) |
 | MMRV | Mumps | 2 | from 40 months until 41 months (default window); born 2022-09-01 to 2024-06-30 | `routine` | Born 1 September 2022 to 30 June 2024: MMRV at 3 years 4 months (MMRV information, Table 1). |
-| MMRV | Mumps | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their third MMR-containing dose (MMRV information, Table 1). |
+| MMRV | Mumps | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their third MMR-containing dose (MMRV information, Table 1). (Table 1 Note 1: not required if MMRV was given in place of the 12-month dose; dismiss it.) |
 | MMRV | Rubella | 2 | from 40 months until 41 months (default window); born 2022-09-01 to 2024-06-30 | `routine` | Born 1 September 2022 to 30 June 2024: MMRV at 3 years 4 months (MMRV information, Table 1). |
-| MMRV | Rubella | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their third MMR-containing dose (MMRV information, Table 1). |
+| MMRV | Rubella | 3 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their third MMR-containing dose (MMRV information, Table 1). (Table 1 Note 1: not required if MMRV was given in place of the 12-month dose; dismiss it.) |
 | MMRV | Varicella (chickenpox) | 1 | from 40 months until 41 months (default window); born 2022-09-01 to 2024-06-30 | `routine` | Born 1 September 2022 to 30 June 2024: “1 dose of MMRV at 3 years 4 months” (MMRV information, Table 1); their only routine varicella dose. |
-| MMRV | Varicella (chickenpox) | 2 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their second varicella dose (MMRV information, Table 1). |
+| MMRV | Varicella (chickenpox) | 2 | from 40 months until 41 months (default window); born 2024-07-01 to 2024-12-31 | `routine` | Born 1 July 2024 to 31 December 2024: MMRV at 3 years 4 months, their second varicella dose (MMRV information, Table 1). (Table 1 Note 1: not required if MMRV was given in place of the 12-month dose; dismiss it.) |
 
 ## 12 years
 

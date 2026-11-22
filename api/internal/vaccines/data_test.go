@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -318,7 +319,9 @@ var ukLines = func() []cohortPinned {
 		ukLine("pneumococcus-2", "PCV", "12m", "", KindRoutine, "", ""),
 	)
 	sixInOne(4, "18m", "-b202407", ukNew18m, "", "diphtheria", "tetanus", "pertussis", "polio")
-	sixInOne(4, "18m", "", ukNew18m, "", "hib", "hepatitis_b")
+	sixInOne(4, "18m", "-b202407", ukNew18m, "", "hib")
+	sixInOne(4, "18m", "", ukNew18m, "", "hepatitis_b")
+	ls = append(ls, ukLine("hib-4-to202406", "Hib/MenC (previous schedule)", "12m", "", KindRoutine, "", ukOld18m))
 	booster := func(group string, series int, from, suffix, bornFrom, bornTo string, antigens ...string) {
 		for _, a := range antigens {
 			ls = append(ls, ukLine(fmt.Sprintf("%s-%d%s", a, series, suffix), group, from, "", KindRoutine, bornFrom, bornTo))
@@ -409,6 +412,11 @@ func TestUKKnownLines(t *testing.T) {
 			t.Errorf("omitted does not mention %s", want)
 		}
 	}
+	for _, id := range []string{"measles-3", "mumps-3", "rubella-3", "varicella-2-b202407"} {
+		if !strings.Contains(byID[id].Note, "Table 1 Note 1") {
+			t.Errorf("%s: note lacks the Table 1 Note 1 exception", id)
+		}
+	}
 	if strings.Contains(s.Attribution, "NHS") {
 		t.Error("attribution cites the NHS; OGL attribution must cite UKHSA only")
 	}
@@ -418,11 +426,12 @@ func TestUKKnownLines(t *testing.T) {
 var ukBrands = []string{
 	"infanrix", "vaxelis", "bexsero", "rotarix", "prevenar", "proquad", "priorix", "repevax", "gardasil",
 	"revaxis", "menquadfi", "engerix", "hbvaxpro", "menitorix", "pneumovax", "shingrix", "abrysvo", "adacel",
+	"boostrix", "nimenrix", "hexyon",
 }
 
 func TestUKHasNoBrandNames(t *testing.T) {
 	s := mustUK(t)
-	texts := append([]string{s.Name, s.Authority, s.Edition, s.Licence, s.Attribution}, s.Omitted...)
+	texts := append([]string{s.Name, s.Authority, s.Edition, s.Licence, s.Attribution, readmeRow(t, "uk")}, s.Omitted...)
 	for _, l := range s.Lines {
 		texts = append(texts, l.ID, l.Group, l.Note)
 	}
@@ -440,12 +449,29 @@ func TestUKHasNoBrandNames(t *testing.T) {
 	}
 }
 
+// readmeRow is the README's Third-party data row for a schedule file.
+func readmeRow(t *testing.T, id string) string {
+	t.Helper()
+	b, err := os.ReadFile("../../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := "| `api/internal/vaccines/data/" + id + ".csv` |"
+	for _, l := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return l
+		}
+	}
+	t.Fatalf("README has no row for %s.csv", id)
+	return ""
+}
+
 // ukSeries is what one birth cohort's kid must see: each antigen's from ages in series order.
 type ukSeries map[string][]string
 
-func ukCohort(dtp, pertussis, hibHepB, mmr, varicella []string) ukSeries {
+func ukCohort(dtp, pertussis, hib, hepB, mmr, varicella []string) ukSeries {
 	return ukSeries{
-		"diphtheria": dtp, "tetanus": dtp, "polio": dtp, "pertussis": pertussis, "hib": hibHepB, "hepatitis_b": hibHepB,
+		"diphtheria": dtp, "tetanus": dtp, "polio": dtp, "pertussis": pertussis, "hib": hib, "hepatitis_b": hepB,
 		"measles": mmr, "mumps": mmr, "rubella": mmr, "varicella": varicella,
 		"rotavirus": {"8w", "12w"}, "meningococcal_b": {"8w", "12w", "12m"}, "pneumococcus": {"16w", "12m"},
 		"hpv": {"12y"}, "meningococcal_acwy": {"14y"},
@@ -455,12 +481,13 @@ func ukCohort(dtp, pertussis, hibHepB, mmr, varicella []string) ukSeries {
 func TestUKCohortBoundaries(t *testing.T) {
 	s := mustUK(t)
 	old := ukCohort([]string{"8w", "12w", "16w", "40m", "14y"}, []string{"8w", "12w", "16w", "40m"},
-		[]string{"8w", "12w", "16w"}, []string{"12m", "40m"}, nil)
-	oneMMRV := ukCohort(old["diphtheria"], old["pertussis"], old["hib"], old["measles"], []string{"40m"})
+		[]string{"8w", "12w", "16w", "12m"}, []string{"8w", "12w", "16w"}, []string{"12m", "40m"}, nil)
+	oneMMRV := ukCohort(old["diphtheria"], old["pertussis"], old["hib"], old["hepatitis_b"], old["measles"], []string{"40m"})
 	threeMMR := ukCohort([]string{"8w", "12w", "16w", "18m", "40m", "14y"}, []string{"8w", "12w", "16w", "18m", "40m"},
-		[]string{"8w", "12w", "16w", "18m"}, []string{"12m", "18m", "40m"}, []string{"18m", "40m"})
-	mmrv := ukCohort(threeMMR["diphtheria"], threeMMR["pertussis"], threeMMR["hib"], []string{"12m", "18m"},
-		[]string{"12m", "18m"})
+		[]string{"8w", "12w", "16w", "18m"}, []string{"8w", "12w", "16w", "18m"}, []string{"12m", "18m", "40m"},
+		[]string{"18m", "40m"})
+	mmrv := ukCohort(threeMMR["diphtheria"], threeMMR["pertussis"], threeMMR["hib"], threeMMR["hepatitis_b"],
+		[]string{"12m", "18m"}, []string{"12m", "18m"})
 	for born, want := range map[string]ukSeries{
 		"2019-12-31": old, ukNoMMRV: old, ukOneMMRV: oneMMRV, ukOld18m: oneMMRV,
 		ukNew18m: threeMMR, ukMMRTo: threeMMR, ukMMRVFrom: mmrv, "2026-09-01": mmrv,
