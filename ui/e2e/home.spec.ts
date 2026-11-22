@@ -394,6 +394,37 @@ test('/timeline is a 303 to the current kid’s timeline, or home without kids',
 	expect(none.headers()['location']).toBe('/');
 });
 
+test('/growth is a 303 to the current kid’s growth page, or home without kids', async ({
+	page,
+	context
+}) => {
+	await signIn(page, ANA);
+	await expect(page.getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
+		'href',
+		'/growth'
+	);
+	const first = await page.request.get('/growth', { maxRedirects: 0 });
+	expect(first.status()).toBe(303);
+	expect(first.headers()['location']).toBe(`/kids/${MIA.id}/growth`);
+
+	await page.goto(`/kids/${LEO.id}`);
+	const second = await page.request.get('/growth', { maxRedirects: 0 });
+	expect(second.headers()['location']).toBe(`/kids/${LEO.id}/growth`);
+	await page.getByRole('link', { name: 'Growth', exact: true }).click();
+	await expect(page).toHaveURL(`/kids/${LEO.id}/growth`);
+	await expect(page.getByRole('heading', { name: 'Growth for Leo', level: 1 })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	);
+
+	await context.clearCookies();
+	await signIn(page, DAN);
+	const none = await page.request.get('/growth', { maxRedirects: 0 });
+	expect(none.status()).toBe(303);
+	expect(none.headers()['location']).toBe('/');
+});
+
 test('the kid home is not reachable signed out and sets no-store', async ({ page, request }) => {
 	const signedOut = await request.get(`/kids/${MIA.id}`, { maxRedirects: 0 });
 	expect(signedOut.status()).toBe(303);

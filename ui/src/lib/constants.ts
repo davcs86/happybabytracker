@@ -55,6 +55,8 @@ export const DAYS_PER_MONTH = 30.4375;
 export const PERCENTILE_SHOWN = { min: 0.1, max: 99.9 } as const;
 export const PERCENTILE_DECIMALS = 1;
 export const Z_SCORE_DECIMALS = 2;
+// Decimals of a chart value (curve or kid's point) in the chart's data table.
+export const CHART_VALUE_DECIMALS = 1;
 export const WEIGHT_UNITS = ['kg', 'lb'] as const satisfies readonly WeightUnit[];
 export const LENGTH_UNITS = ['cm', 'in'] as const satisfies readonly LengthUnit[];
 export const GROWTH_SCORE_REASONS = [

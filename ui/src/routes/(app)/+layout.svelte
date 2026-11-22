@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ChartLineIcon from '@lucide/svelte/icons/chart-line';
 	import HouseIcon from '@lucide/svelte/icons/house';
 	import ListIcon from '@lucide/svelte/icons/list';
 	import UserIcon from '@lucide/svelte/icons/user';
@@ -15,6 +16,12 @@
 			label: 'Timeline',
 			icon: ListIcon,
 			match: /^\/kids\/[^/]+\/timeline(\/|$)/
+		},
+		{
+			href: '/growth',
+			label: 'Growth',
+			icon: ChartLineIcon,
+			match: /^\/kids\/[^/]+\/growth(\/|$)/
 		},
 		{ href: '/account', label: 'Account', icon: UserIcon }
 	];

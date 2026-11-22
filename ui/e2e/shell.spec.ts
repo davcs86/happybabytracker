@@ -41,6 +41,7 @@ test('a bottom bar at phone width and side navigation at desktop width, same lin
 	expect(phone.links).toEqual([
 		{ text: 'Home', href: '/' },
 		{ text: 'Timeline', href: '/timeline' },
+		{ text: 'Growth', href: '/growth' },
 		{ text: 'Account', href: '/account' }
 	]);
 	expect(desktop.links).toEqual(phone.links);
