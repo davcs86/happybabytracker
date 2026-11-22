@@ -23,16 +23,11 @@ type homeView struct {
 
 func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	now := d.Now()
-	kid, loc, states, ok := d.kidModules(w, r, now)
+	kid, loc, km, ok := d.kidModules(w, r, now)
 	if !ok {
 		return
 	}
-	months, err := kidtime.AgeMonths(kid.BirthDate, loc, now)
-	if err != nil {
-		respondInternal(w, err)
-		return
-	}
-	v := homeView{AgeMonths: months, Band: bandNames[kidtime.BandFor(months)], Modules: newModuleViews(states)}
+	v := homeView{AgeMonths: km.AgeMonths, Band: bandNames[km.Band], Modules: newModuleViews(km.States)}
 	sleep, err := d.Store.RunningSleep(r.Context(), kid.ID)
 	if !entryOK(w, err) {
 		return

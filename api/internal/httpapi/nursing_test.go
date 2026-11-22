@@ -217,3 +217,46 @@ func TestNursingPatch(t *testing.T) {
 	wantErr(t, k.do(http.MethodPost, running+"/end", ana, map[string]any{}), http.StatusConflict, "not_running")
 	k.createNursing(ana, kid, map[string]any{"side": "left"})
 }
+
+// An unswitched running session feeds its side from its start, so moving the start moves side_since with it.
+func TestRunningNursingPatchMovesAnUnswitchedSideSince(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	base := "/v1/kids/" + kid + "/nursing"
+	for name, start := range map[string]time.Time{"earlier": t0.Add(-30 * time.Minute), "later": t0.Add(-10 * time.Minute)} {
+		one := base + "/" + k.createNursing(ana, kid, map[string]any{"side": "left", "started_at": ts(t0.Add(-20 * time.Minute))})
+		rec := k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(start)})
+		if m := bodyMap(t, rec); rec.Code != http.StatusOK || m["started_at"] != ts(start) || m["side_since"] != ts(start) {
+			t.Fatalf("%s: patch start: %d %v", name, rec.Code, m)
+		}
+		rec = k.do(http.MethodPost, one+"/end", ana, map[string]any{})
+		if m := bodyMap(t, rec); rec.Code != http.StatusOK || m["left_seconds"] != t0.Sub(start).Seconds() || m["right_seconds"] != 0.0 {
+			t.Errorf("%s: end: %d %v, want the whole shown duration on the left", name, rec.Code, m)
+		}
+	}
+
+	one := base + "/" + k.createNursing(ana, kid, map[string]any{"side": "left", "started_at": ts(t0.Add(-20 * time.Minute))})
+	k.do(http.MethodPost, one+"/side", ana, map[string]any{"side": "right", "at": ts(t0.Add(-10 * time.Minute))})
+	rec := k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(t0.Add(-30 * time.Minute))})
+	if m := bodyMap(t, rec); rec.Code != http.StatusOK || m["side_since"] != ts(t0.Add(-10*time.Minute)) || m["left_seconds"] != 600.0 {
+		t.Errorf("switched session: %d %v, want side_since and the credited seconds kept", rec.Code, m)
+	}
+}
+
+// A running timer cannot start in the future: it could be neither ended nor switched until the clock got there.
+func TestRunningNursingRefusesAFutureStart(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	base := "/v1/kids/" + kid + "/nursing"
+	wantInvalid2(t, "create", k.do(http.MethodPost, base, ana, map[string]any{"side": "left", "started_at": ts(t0.Add(time.Second))}), "started_at")
+	one := base + "/" + k.createNursing(ana, kid, map[string]any{"side": "left", "started_at": ts(t0.Add(-time.Minute))})
+	wantInvalid2(t, "patch", k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(t0.Add(time.Second))}), "started_at")
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(t0)}); rec.Code != http.StatusOK {
+		t.Errorf("start at now: %d %q", rec.Code, rec.Body.String())
+	}
+	k.do(http.MethodPost, one+"/end", ana, map[string]any{})
+	finished := finishedNursingBody(map[string]any{"started_at": ts(t0.Add(time.Minute)), "ended_at": ts(t0.Add(constants.MaxFutureSkew)), "left_seconds": 0, "right_seconds": 0})
+	if rec := k.do(http.MethodPost, base, ana, finished); rec.Code != http.StatusCreated {
+		t.Errorf("a finished session keeps the skew: %d %q", rec.Code, rec.Body.String())
+	}
+}

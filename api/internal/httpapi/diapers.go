@@ -28,10 +28,11 @@ type diaperInput struct {
 
 // mergeOnto applies in to d and names the first invalid field in the order at, kind, note; "" when valid.
 func (in diaperInput) mergeOnto(d model.Diaper, birth, now time.Time) (model.Diaper, string) {
+	stored := d.At
 	if in.At != nil {
 		d.At = wholeSecond(*in.At)
 	}
-	if !instantOK(d.At, birth, now) {
+	if !changedOK(d.At, stored, birth, now) {
 		return d, "at"
 	}
 	if in.Kind != nil {

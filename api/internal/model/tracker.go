@@ -113,6 +113,15 @@ func secondsFit(left, right int, span time.Duration) bool {
 	return int64(left) <= d && int64(right) <= d-int64(left)
 }
 
+// Restarted moves n's start to start; an unswitched running session (SideSince at the start) feeds from start.
+func (n NursingSession) Restarted(start time.Time) NursingSession {
+	if n.EndedAt == nil && n.SideSince != nil && n.SideSince.Equal(n.StartedAt) {
+		n.SideSince = &start
+	}
+	n.StartedAt = start
+	return n
+}
+
 // Ended closes the running n at at, crediting the side in use; false when n is not running or at precedes SideSince.
 func (n NursingSession) Ended(at time.Time) (NursingSession, bool) {
 	n, ok := n.credit(at)

@@ -320,3 +320,31 @@ func TestNursingSideIsSetIffRunning(t *testing.T) {
 		}
 	}
 }
+
+// Restarted moves an unswitched timer's side_since with its start, so ending it credits the whole shown duration.
+func TestRestartedUnswitchedNursingCreditsTheShownDuration(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	for _, start := range []time.Time{t0.Add(-30 * time.Minute), t0.Add(-10 * time.Minute)} {
+		n := mustNursing(t, s, k.ID, ana.ID, runningNursing(t0.Add(-20*time.Minute), "left"))
+		moved, err := s.UpdateNursing(ctx, k.ID, ana.ID, n.ID, t0, func(n model.NursingSession) (model.NursingSession, error) {
+			return n.Restarted(start), nil
+		})
+		if err != nil || !moved.SideSince.Equal(start) {
+			t.Fatalf("restart at %v: %+v, %v", start, moved, err)
+		}
+		ended, err := s.EndNursing(ctx, k.ID, ana.ID, n.ID, t0, t0)
+		if err != nil || ended.LeftSeconds != int(t0.Sub(start)/time.Second) || ended.RightSeconds != 0 {
+			t.Errorf("end after a restart at %v: %+v, %v", start, ended, err)
+		}
+	}
+	n := mustNursing(t, s, k.ID, ana.ID, runningNursing(t0.Add(-20*time.Minute), "left"))
+	switched, err := s.SwitchNursingSide(ctx, k.ID, ana.ID, n.ID, "right", t0.Add(-10*time.Minute), t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := switched.Restarted(t0.Add(-30 * time.Minute)); !got.SideSince.Equal(*switched.SideSince) || got.LeftSeconds != 600 {
+		t.Errorf("a switched session's side_since moved: %+v", got)
+	}
+}

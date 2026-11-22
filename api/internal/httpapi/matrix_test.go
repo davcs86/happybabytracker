@@ -267,22 +267,6 @@ func newMatrixFixture(t *testing.T) *fixture {
 	}
 	f.bottle, f.diaper, f.meal, f.pumping, f.sleep, f.nursing = bottle.ID, diaper.ID, meal.ID, pumping.ID, sleep.ID, nursing.ID
 
-	// The running timers live on a second kid so the probes of "Kid K"'s start routes never meet one.
-	running, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid R", BirthDate: "2026-03-04", Sex: "male", TimeZone: "UTC"}, f.parent[aG].ID, k.now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := k.Store.SetAccess(ctx, running.ID, f.parent[aG].ID, f.parent[aC].Username, model.RoleCaregiver, k.now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := k.Store.CreateSleep(ctx, running.ID, f.parent[aG].ID, model.SleepSession{StartedAt: k.now}, k.now); err != nil {
-		t.Fatal(err)
-	}
-	left := "left"
-	if _, err := k.Store.CreateNursing(ctx, running.ID, f.parent[aG].ID, model.NursingSession{StartedAt: k.now, Side: &left}, k.now); err != nil {
-		t.Fatal(err)
-	}
-
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {
 		t.Fatal(err)

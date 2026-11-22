@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 )
 
@@ -19,8 +20,8 @@ type DaySummary struct {
 	Meals   struct{ Count int64 }
 }
 
-// Summaries returns one DaySummary per local date from from to to inclusive in loc; the caller bounds the range.
-// Sessions count on the day they start, except sleep, which is clipped to each day and a running one at now.
+// Summaries returns one DaySummary per local date from from to to inclusive in loc, ErrSummaryRange past SummaryMaxDays
+// days. Sessions count on the day they start, except sleep, which is clipped to each day and a running one at now.
 func (s *Store) Summaries(ctx context.Context, kidID string, loc *time.Location, from, to, now time.Time) ([]DaySummary, error) {
 	last := to.In(loc).Format(time.DateOnly)
 	y, m, d := from.In(loc).Date()
@@ -32,6 +33,9 @@ func (s *Store) Summaries(ctx context.Context, kidID string, loc *time.Location,
 		date := start.Format(time.DateOnly)
 		if date > last {
 			break
+		}
+		if i == constants.SummaryMaxDays {
+			return nil, ErrSummaryRange
 		}
 		out = append(out, DaySummary{Date: date})
 		values = append(values, "(?, ?, ?)")

@@ -44,7 +44,7 @@ func (in nursingInput) newSession(birth, now time.Time) (model.NursingSession, s
 	if in.StartedAt != nil {
 		n.StartedAt = wholeSecond(*in.StartedAt)
 	}
-	if !instantOK(n.StartedAt, birth, now) {
+	if !instantOK(n.StartedAt, birth, now) || (in.EndedAt.V == nil && n.StartedAt.After(now)) {
 		return n, "started_at"
 	}
 	if in.EndedAt.V != nil {
@@ -79,11 +79,11 @@ func (in nursingInput) newSession(birth, now time.Time) (model.NursingSession, s
 // mergeOnto applies a PATCH to n in newSession's field order. The seconds are editable only once the session is
 // finished, the side only through the side route; an ended_at on a running session ends it there.
 func (in nursingInput) mergeOnto(n model.NursingSession, birth, now time.Time) (model.NursingSession, string) {
-	wasRunning := n.EndedAt == nil
+	wasRunning, stored := n.EndedAt == nil, n
 	if in.StartedAt != nil {
-		n.StartedAt = wholeSecond(*in.StartedAt)
+		n = n.Restarted(wholeSecond(*in.StartedAt))
 	}
-	if !instantOK(n.StartedAt, birth, now) {
+	if !startOK(n.StartedAt, stored.StartedAt, wasRunning && in.EndedAt.V == nil, birth, now) {
 		return n, "started_at"
 	}
 	if in.EndedAt.Set {
@@ -93,7 +93,7 @@ func (in nursingInput) mergeOnto(n model.NursingSession, birth, now time.Time) (
 			}
 		} else {
 			end := wholeSecond(*in.EndedAt.V)
-			if !instantOK(end, birth, now) {
+			if endChanged(end, stored.EndedAt) && !instantOK(end, birth, now) {
 				return n, "ended_at"
 			}
 			if !wasRunning {

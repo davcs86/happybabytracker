@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -334,23 +333,23 @@ func TestTimersNoValueInLogs(t *testing.T) {
 	k.do(http.MethodPatch, "/v1/kids/"+kid+"/nursing/"+n, ana, map[string]any{"note": note + "3", "left_seconds": 4321}) // a 422
 	k.do(http.MethodPost, "/v1/kids/"+kid+"/nursing/"+n+"/end", ana, map[string]any{})
 
-	lines := strings.Split(strings.TrimSpace(k.Log.String()), "\n")
-	if len(lines) != 8 {
-		t.Fatalf("%d log lines, want 8:\n%s", len(lines), k.Log.String())
+	wantCleanLog(t, k.Log.String(), 8, "xyzzy", "4321")
+}
+
+// A running timer cannot start in the future: it could not be ended until the clock got there.
+func TestRunningSleepRefusesAFutureStart(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	base := "/v1/kids/" + kid + "/sleep"
+	wantInvalid2(t, "create", k.do(http.MethodPost, base, ana, map[string]any{"started_at": ts(t0.Add(time.Second))}), "started_at")
+	one := base + "/" + k.createSleep(ana, kid, map[string]any{"started_at": ts(t0.Add(-time.Minute))})
+	wantInvalid2(t, "patch", k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(t0.Add(time.Second))}), "started_at")
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"started_at": ts(t0)}); rec.Code != http.StatusOK {
+		t.Errorf("start at now: %d %q", rec.Code, rec.Body.String())
 	}
-	allowed := []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
-	for _, line := range lines {
-		if strings.Contains(line, "xyzzy") || strings.Contains(line, "4321") {
-			t.Errorf("a value reached the log: %s", line)
-		}
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(line), &fields); err != nil {
-			t.Fatalf("%q: %v", line, err)
-		}
-		for key := range fields {
-			if !slices.Contains(allowed, key) {
-				t.Errorf("unexpected log field %q in %s", key, line)
-			}
-		}
+	k.do(http.MethodPost, one+"/end", ana, map[string]any{})
+	finished := map[string]any{"started_at": ts(t0.Add(time.Minute)), "ended_at": ts(t0.Add(constants.MaxFutureSkew))}
+	if rec := k.do(http.MethodPost, base, ana, finished); rec.Code != http.StatusCreated {
+		t.Errorf("a finished session keeps the skew: %d %q", rec.Code, rec.Body.String())
 	}
 }

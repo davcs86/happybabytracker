@@ -406,31 +406,5 @@ func TestNoValueInLogs(t *testing.T) {
 	d := k.do(http.MethodPost, "/v1/kids/"+kid+"/diapers", ana, map[string]any{"kind": "wet", "note": note})
 	k.do(http.MethodPatch, "/v1/kids/"+kid+"/diapers/"+bodyMap(t, d)["id"].(string), ana, map[string]any{"note": note + "3"})
 
-	lines := strings.Split(strings.TrimSpace(k.Log.String()), "\n")
-	if len(lines) != 6 {
-		t.Fatalf("%d log lines, want 6:\n%s", len(lines), k.Log.String())
-	}
-	allowed := []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
-	for _, line := range lines {
-		if strings.Contains(line, "xyzzy") {
-			t.Errorf("a note reached the log: %s", line)
-		}
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(line), &fields); err != nil {
-			t.Fatalf("%q: %v", line, err)
-		}
-		for key, v := range fields {
-			if !slices.Contains(allowed, key) {
-				t.Errorf("unexpected log field %q in %s", key, line)
-			}
-			s, _ := json.Marshal(v)
-			if key != "request_id" && key != "time" {
-				for _, banned := range []string{"639", "2161", "cow_milk", "formula", "contents", "volume"} {
-					if strings.Contains(string(s), banned) {
-						t.Errorf("log field %s = %s carries %q", key, s, banned)
-					}
-				}
-			}
-		}
-	}
+	wantCleanLog(t, k.Log.String(), 6, "xyzzy", "639", "2161", "cow_milk", "formula", "contents", "volume")
 }

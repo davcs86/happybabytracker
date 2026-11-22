@@ -28,10 +28,11 @@ type sleepInput struct {
 // mergeOnto applies in to v and names the first invalid field in the order started_at, ended_at, note, then the
 // session invariants; "" when valid. A null ended_at keeps a running session running and never re-opens one.
 func (in sleepInput) mergeOnto(v model.SleepSession, birth, now time.Time) (model.SleepSession, string) {
+	stored := v
 	if in.StartedAt != nil {
 		v.StartedAt = wholeSecond(*in.StartedAt)
 	}
-	if !instantOK(v.StartedAt, birth, now) {
+	if !startOK(v.StartedAt, stored.StartedAt, v.EndedAt == nil && in.EndedAt.V == nil, birth, now) {
 		return v, "started_at"
 	}
 	if in.EndedAt.Set {
@@ -41,7 +42,7 @@ func (in sleepInput) mergeOnto(v model.SleepSession, birth, now time.Time) (mode
 			}
 		} else {
 			end := wholeSecond(*in.EndedAt.V)
-			if !instantOK(end, birth, now) {
+			if endChanged(end, stored.EndedAt) && !instantOK(end, birth, now) {
 				return v, "ended_at"
 			}
 			v.EndedAt = &end

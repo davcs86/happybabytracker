@@ -36,10 +36,11 @@ type pumpingInput struct {
 
 // mergeOnto applies in to p and names the first invalid field in the order started_at, duration_seconds, volume, side, note; "" when valid.
 func (in pumpingInput) mergeOnto(p model.PumpingSession, birth, now time.Time) (model.PumpingSession, string) {
+	stored := p.StartedAt
 	if in.StartedAt != nil {
 		p.StartedAt = wholeSecond(*in.StartedAt)
 	}
-	if !instantOK(p.StartedAt, birth, now) {
+	if !changedOK(p.StartedAt, stored, birth, now) {
 		return p, "started_at"
 	}
 	if in.DurationSeconds != nil {

@@ -55,6 +55,10 @@ func entryOK(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusConflict, "already_running")
 	case errors.Is(err, store.ErrNotRunning):
 		respondError(w, http.StatusConflict, "not_running")
+	case errors.Is(err, store.ErrInvalidSession):
+		respondInvalid(w, "at")
+	case errors.Is(err, store.ErrInvalidContents):
+		respondInvalid(w, "contents")
 	default:
 		return kidWriteOK(w, err)
 	}
@@ -97,6 +101,20 @@ func optionalInstant(t *time.Time) *string {
 func instantOK(t, birth, now time.Time) bool {
 	return !t.After(now.Add(constants.MaxFutureSkew)) && !t.Before(birth)
 }
+
+// changedOK is instantOK for a time an edit changed from stored; an unchanged one stays valid, so a later birth-date
+// correction never locks an older entry.
+func changedOK(t, stored, birth, now time.Time) bool {
+	return t.Equal(stored) || instantOK(t, birth, now)
+}
+
+// startOK is changedOK for a timer's start; a running timer may not start after now, or it could not end yet.
+func startOK(t, stored time.Time, running bool, birth, now time.Time) bool {
+	return t.Equal(stored) || (instantOK(t, birth, now) && !(running && t.After(now)))
+}
+
+// endChanged is true when end differs from a stored end that may be absent.
+func endChanged(end time.Time, stored *time.Time) bool { return stored == nil || !end.Equal(*stored) }
 
 func noteOK(note *string) bool {
 	return note == nil || utf8.RuneCountInString(*note) <= constants.MaxNoteLen

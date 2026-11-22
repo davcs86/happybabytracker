@@ -29,6 +29,8 @@ var (
 	ErrNotRunning = errors.New("store: not running")
 	// ErrInvalidSession is a timer write that breaks a session invariant (model's InvalidField, or a re-opened session).
 	ErrInvalidSession = errors.New("store: invalid session")
+	// ErrSummaryRange is a Summaries range longer than constants.SummaryMaxDays days.
+	ErrSummaryRange = errors.New("store: summary range too long")
 	// ErrParentNotFound is an ErrNotFound naming the grant's target, not the kid or the actor.
 	ErrParentNotFound = fmt.Errorf("%w: parent", ErrNotFound)
 )

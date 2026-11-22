@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"slices"
@@ -333,32 +332,5 @@ func TestMealAndPumpingValuesStayOutOfLogs(t *testing.T) {
 	k.do(http.MethodPatch, pumpPath, ana, map[string]any{"volume": volumeBody("ml", 0)}) // a refusal
 	k.do(http.MethodDelete, pumpPath, ana, nil)
 
-	lines := strings.Split(strings.TrimSpace(k.Log.String()), "\n")
-	if len(lines) != 8 {
-		t.Fatalf("%d log lines, want 8:\n%s", len(lines), k.Log.String())
-	}
-	allowed := []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
-	for _, line := range lines {
-		if strings.Contains(line, "zz") {
-			t.Errorf("a text value reached the log: %s", line)
-		}
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(line), &fields); err != nil {
-			t.Fatalf("%q: %v", line, err)
-		}
-		for key, v := range fields {
-			if !slices.Contains(allowed, key) {
-				t.Errorf("unexpected log field %q in %s", key, line)
-			}
-			text, isText := v.(string)
-			if !isText || key == "request_id" || key == "time" {
-				continue
-			}
-			for _, banned := range []string{"1357", "4619", "777", "mango", "rash"} {
-				if strings.Contains(text, banned) {
-					t.Errorf("log field %s = %q carries %q", key, text, banned)
-				}
-			}
-		}
-	}
+	wantCleanLog(t, k.Log.String(), 8, "zz", "1357", "4619", "777", "mango", "rash")
 }

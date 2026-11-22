@@ -32,10 +32,11 @@ type mealInput struct {
 
 // mergeOnto applies in to m and names the first invalid field in the order at, what, reaction, note; "" when valid.
 func (in mealInput) mergeOnto(m model.Meal, birth, now time.Time) (model.Meal, string) {
+	stored := m.At
 	if in.At != nil {
 		m.At = wholeSecond(*in.At)
 	}
-	if !instantOK(m.At, birth, now) {
+	if !changedOK(m.At, stored, birth, now) {
 		return m, "at"
 	}
 	if in.What != nil {

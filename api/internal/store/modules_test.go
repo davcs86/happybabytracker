@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -22,10 +23,11 @@ func toddler(t *testing.T, s *Store, creator string) (kid model.Kid, loc *time.L
 
 func mustModules(t *testing.T, s *Store, kidID string, loc *time.Location, now time.Time) map[model.Module]ModuleState {
 	t.Helper()
-	states, err := s.Modules(ctx, kidID, loc, now)
+	got, err := s.Modules(ctx, kidID, loc, now)
 	if err != nil {
 		t.Fatal(err)
 	}
+	states := got.States
 	if len(states) != len(model.Modules) {
 		t.Fatalf("%d states, want %d", len(states), len(model.Modules))
 	}
@@ -274,5 +276,30 @@ func TestOffByDefaultModuleIsReEnabledByALaterEntryOnceAndAnOffIsFinal(t *testin
 	}
 	if got := storedModules(t, s, k.ID)["diapers"]; got.enabled {
 		t.Errorf("stored diapers = %+v, want the guardian's off", got)
+	}
+}
+
+// A read that writes no override never waits for the writer: here a held write transaction would block it.
+func TestModulesWithNothingToWriteStayOnTheReadPool(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	baby := mustKid(t, s, ana.ID, "Baby")
+	old, loc, _ := toddler(t, s, ana.ID)
+	mustDiaper(t, s, old.ID, ana.ID, model.Diaper{At: t0.Add(-400 * 24 * time.Hour), Kind: "wet"}) // outside the window
+	tx, err := s.w.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	for _, kidID := range []string{baby.ID, old.ID} {
+		short, cancel := context.WithTimeout(ctx, 2*time.Second)
+		got, err := s.Modules(short, kidID, loc, t0)
+		cancel()
+		if err != nil {
+			t.Errorf("Modules with the writer busy: %v", err)
+		}
+		if kidID == old.ID && (got.AgeMonths != 24 || got.Band != kidtime.Band24Plus) {
+			t.Errorf("toddler age = %d months, band %d; want 24, 24+", got.AgeMonths, got.Band)
+		}
 	}
 }

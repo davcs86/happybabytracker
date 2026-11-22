@@ -30,10 +30,11 @@ type bottleInput struct {
 
 // mergeOnto applies in to b and names the first invalid field in the order at, contents, volume, note; "" when valid.
 func (in bottleInput) mergeOnto(b model.BottleFeed, birth, now time.Time) (model.BottleFeed, string) {
+	stored := b.At
 	if in.At != nil {
 		b.At = wholeSecond(*in.At)
 	}
-	if !instantOK(b.At, birth, now) {
+	if !changedOK(b.At, stored, birth, now) {
 		return b, "at"
 	}
 	if in.Contents != nil {

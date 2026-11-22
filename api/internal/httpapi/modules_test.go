@@ -1,14 +1,11 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/http"
-	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
@@ -149,29 +146,5 @@ func TestModuleAndHomeRoutesLogNoValues(t *testing.T) {
 	k.do(http.MethodGet, "/v1/kids/"+kid+"/home", bob, nil)
 	k.do(http.MethodGet, "/v1/kids/"+kid+"/timeline", bob, nil)
 
-	lines := strings.Split(strings.TrimSpace(k.Log.String()), "\n")
-	if len(lines) != 5 {
-		t.Fatalf("%d log lines, want 5:\n%s", len(lines), k.Log.String())
-	}
-	allowed := []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
-	for _, line := range lines {
-		var fields map[string]any
-		if err := json.Unmarshal([]byte(line), &fields); err != nil {
-			t.Fatalf("%q: %v", line, err)
-		}
-		for key, v := range fields {
-			if !slices.Contains(allowed, key) {
-				t.Errorf("unexpected log field %q in %s", key, line)
-			}
-			s, _ := json.Marshal(v)
-			if key == "request_id" || key == "time" {
-				continue
-			}
-			for _, banned := range []string{"xyzzy", "639", "diapers", "nope", "enabled", testKidName, kid} {
-				if strings.Contains(string(s), banned) {
-					t.Errorf("log field %s = %s carries %q", key, s, banned)
-				}
-			}
-		}
-	}
+	wantCleanLog(t, k.Log.String(), 5, "xyzzy", "639", "diapers", "nope", "enabled", testKidName, kid)
 }

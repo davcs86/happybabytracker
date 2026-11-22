@@ -104,11 +104,11 @@ func (d Deps) timeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if types == nil {
-		_, _, states, ok := d.kidModules(w, r, d.Now())
+		_, _, km, ok := d.kidModules(w, r, d.Now())
 		if !ok {
 			return
 		}
-		types = defaultTimelineTypes(states)
+		types = defaultTimelineTypes(km.States)
 	}
 	items, err := d.Store.Timeline(r.Context(), r.PathValue("kid"), types, pageQuery(q))
 	if !entryOK(w, err) {

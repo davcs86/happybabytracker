@@ -1,9 +1,11 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/units"
@@ -157,5 +159,22 @@ func TestSummaryCountsAndSums(t *testing.T) {
 	}
 	if ml.Volume.FlOzHundredths == 0 || oz.Volume.ML == 0 {
 		t.Fatalf("volumes lack a converted column: %+v %+v", ml.Volume, oz.Volume)
+	}
+}
+
+func TestSummariesBoundTheirRange(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	madrid := mustLoc(t, "Europe/Madrid")
+	from := mustDate(t, "2026-08-01", madrid)
+	if days, err := s.Summaries(ctx, k.ID, madrid, from, from.AddDate(0, 0, constants.SummaryMaxDays-1), t0); err != nil || len(days) != constants.SummaryMaxDays {
+		t.Errorf("%d days: %d, %v", constants.SummaryMaxDays, len(days), err)
+	}
+	if _, err := s.Summaries(ctx, k.ID, madrid, from, from.AddDate(0, 0, constants.SummaryMaxDays), t0); !errors.Is(err, ErrSummaryRange) {
+		t.Errorf("%d days: %v, want ErrSummaryRange", constants.SummaryMaxDays+1, err)
+	}
+	if days := mustSummaries(t, s, k.ID, madrid, "2026-11-20", "2026-11-20", t0); len(days) != 1 {
+		t.Errorf("one day: %d", len(days))
 	}
 }

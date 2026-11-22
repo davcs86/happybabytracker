@@ -43,75 +43,102 @@ var moduleTables = map[model.Module]moduleTable{
 	"feeding": {"meals", "at", false},
 }
 
+// KidModules is a kid's age at a read and its module states in model.Modules order.
+type KidModules struct {
+	AgeMonths int
+	Band      kidtime.Band
+	States    []ModuleState
+}
+
 // Modules re-evaluates on every read: an entry since bandStart-lookback (or a running timer) re-enables an
-// off-by-default module once, as a stored row in this transaction; a stored row is final. ErrNotFound for no kid.
-func (s *Store) Modules(ctx context.Context, kidID string, loc *time.Location, now time.Time) ([]ModuleState, error) {
-	var out []ModuleState
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		var birthDate string
-		if err := tx.QueryRowContext(ctx, `SELECT birth_date FROM kids WHERE id = ?`, kidID).Scan(&birthDate); errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		} else if err != nil {
+// off-by-default module once, as a stored row; a stored row is final. ErrNotFound for no kid.
+func (s *Store) Modules(ctx context.Context, kidID string, loc *time.Location, now time.Time) (KidModules, error) {
+	out, pending, err := readModules(ctx, s.r, kidID, loc, now)
+	if err != nil || len(pending) == 0 {
+		return out, err
+	}
+	err = s.inTx(ctx, func(tx *sql.Tx) error {
+		var err error
+		if out, pending, err = readModules(ctx, tx, kidID, loc, now); err != nil {
 			return err
 		}
-		months, err := kidtime.AgeMonths(birthDate, loc, now)
-		if err != nil {
-			return err
-		}
-		band := kidtime.BandFor(months)
-		start, err := kidtime.BandStart(birthDate, loc, band)
-		if err != nil {
-			return err
-		}
-		rows, err := moduleRows(ctx, tx, kidID)
-		if err != nil {
-			return err
-		}
-		since := start.Add(-constants.BandOverrideLookback).Unix()
-		for _, m := range model.Modules {
-			t, tracked := moduleTables[m]
-			if _, stored := rows[m]; stored || !tracked || DefaultEnabled(m, band) {
-				continue
-			}
-			running := "0"
-			if t.timer {
-				running = "ended_at IS NULL"
-			}
-			var keep bool
-			if err := tx.QueryRowContext(ctx,
-				`SELECT EXISTS (SELECT 1 FROM `+t.table+` WHERE kid_id = ? AND ((`+t.timeCol+` >= ? AND `+t.timeCol+` <= ?) OR `+running+`))`,
-				kidID, since, now.Unix()).Scan(&keep); err != nil {
-				return err
-			}
-			if !keep {
-				continue
-			}
+		for _, m := range pending {
 			if _, err := tx.ExecContext(ctx,
 				`INSERT INTO kid_modules(kid_id, module, enabled, updated_at) VALUES (?, ?, 1, ?) ON CONFLICT DO NOTHING`,
 				kidID, m, now.Unix()); err != nil {
 				return err
 			}
-			rows[m] = true
-		}
-		out = make([]ModuleState, len(model.Modules))
-		for i, m := range model.Modules {
-			enabled, overridden := rows[m]
-			def := DefaultEnabled(m, band)
-			if !overridden {
-				enabled = def
-			}
-			out[i] = ModuleState{Module: m, Enabled: enabled, Default: def, Overridden: overridden}
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return KidModules{}, err
 	}
 	return out, nil
 }
 
-func moduleRows(ctx context.Context, tx *sql.Tx, kidID string) (map[model.Module]bool, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT module, enabled FROM kid_modules WHERE kid_id = ?`, kidID)
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// readModules computes the states as if the overrides it names in pending were already stored.
+func readModules(ctx context.Context, q querier, kidID string, loc *time.Location, now time.Time) (KidModules, []model.Module, error) {
+	var birthDate string
+	if err := q.QueryRowContext(ctx, `SELECT birth_date FROM kids WHERE id = ?`, kidID).Scan(&birthDate); errors.Is(err, sql.ErrNoRows) {
+		return KidModules{}, nil, ErrNotFound
+	} else if err != nil {
+		return KidModules{}, nil, err
+	}
+	months, err := kidtime.AgeMonths(birthDate, loc, now)
+	if err != nil {
+		return KidModules{}, nil, err
+	}
+	band := kidtime.BandFor(months)
+	start, err := kidtime.BandStart(birthDate, loc, band)
+	if err != nil {
+		return KidModules{}, nil, err
+	}
+	rows, err := moduleRows(ctx, q, kidID)
+	if err != nil {
+		return KidModules{}, nil, err
+	}
+	since := start.Add(-constants.BandOverrideLookback).Unix()
+	var pending []model.Module
+	for _, m := range model.Modules {
+		t, tracked := moduleTables[m]
+		if _, stored := rows[m]; stored || !tracked || DefaultEnabled(m, band) {
+			continue
+		}
+		running := "0"
+		if t.timer {
+			running = "ended_at IS NULL"
+		}
+		var keep bool
+		if err := q.QueryRowContext(ctx,
+			`SELECT EXISTS (SELECT 1 FROM `+t.table+` WHERE kid_id = ? AND ((`+t.timeCol+` >= ? AND `+t.timeCol+` <= ?) OR `+running+`))`,
+			kidID, since, now.Unix()).Scan(&keep); err != nil {
+			return KidModules{}, nil, err
+		}
+		if keep {
+			pending = append(pending, m)
+			rows[m] = true
+		}
+	}
+	out := KidModules{AgeMonths: months, Band: band, States: make([]ModuleState, len(model.Modules))}
+	for i, m := range model.Modules {
+		enabled, overridden := rows[m]
+		def := DefaultEnabled(m, band)
+		if !overridden {
+			enabled = def
+		}
+		out.States[i] = ModuleState{Module: m, Enabled: enabled, Default: def, Overridden: overridden}
+	}
+	return out, pending, nil
+}
+
+func moduleRows(ctx context.Context, q querier, kidID string) (map[model.Module]bool, error) {
+	rows, err := q.QueryContext(ctx, `SELECT module, enabled FROM kid_modules WHERE kid_id = ?`, kidID)
 	if err != nil {
 		return nil, err
 	}

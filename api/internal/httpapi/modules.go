@@ -25,29 +25,29 @@ func newModuleViews(states []store.ModuleState) []moduleView {
 }
 
 // kidModules loads the kid in the path and its module states at now; it answers itself on failure.
-func (d Deps) kidModules(w http.ResponseWriter, r *http.Request, now time.Time) (model.Kid, *time.Location, []store.ModuleState, bool) {
+func (d Deps) kidModules(w http.ResponseWriter, r *http.Request, now time.Time) (model.Kid, *time.Location, store.KidModules, bool) {
 	kid, ok := d.loadKid(w, r)
 	if !ok {
-		return model.Kid{}, nil, nil, false
+		return model.Kid{}, nil, store.KidModules{}, false
 	}
 	loc, zoneOK := kidLocation(kid.TimeZone)
 	if !zoneOK {
 		respondInternal(w, errKidZone)
-		return model.Kid{}, nil, nil, false
+		return model.Kid{}, nil, store.KidModules{}, false
 	}
-	states, err := d.Store.Modules(r.Context(), kid.ID, loc, now)
+	km, err := d.Store.Modules(r.Context(), kid.ID, loc, now)
 	if !kidWriteOK(w, err) {
-		return model.Kid{}, nil, nil, false
+		return model.Kid{}, nil, store.KidModules{}, false
 	}
-	return kid, loc, states, true
+	return kid, loc, km, true
 }
 
 func (d Deps) listModules(w http.ResponseWriter, r *http.Request) {
-	_, _, states, ok := d.kidModules(w, r, d.Now())
+	_, _, km, ok := d.kidModules(w, r, d.Now())
 	if !ok {
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"modules": newModuleViews(states)})
+	respondJSON(w, http.StatusOK, map[string]any{"modules": newModuleViews(km.States)})
 }
 
 func (d Deps) setModule(w http.ResponseWriter, r *http.Request) {
