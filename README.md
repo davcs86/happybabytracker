@@ -186,13 +186,13 @@ change is live only after those pins are changed there and the edge is deployed.
 ## Third-party data
 
 The API embeds growth reference tables from two sources, retrieved 2026-11-22 and converted by
-`scripts/growth/convert.py` with their values unchanged. Neither is covered by the MIT licence in
-`LICENSE`.
+`scripts/growth/convert.py` with their values unchanged. The repository's code stays under the MIT
+licence in `LICENSE`; the tables are not covered by it.
 
 | Directory | Source | Licence |
 |---|---|---|
 | `api/internal/growth/data/who/` | WHO Child Growth Standards (2006; head circumference 2007) and WHO Growth Reference 2007 for 5–19 years, from who.int | **CC BY-NC-SA 3.0 IGO, not MIT**: non-commercial use only, share-alike, attribution. See its `LICENSE` and `NOTICE` |
-| `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain; see its `NOTICE` (attribution, no endorsement by CDC) |
+| `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain, on CDC's conditions, which its `NOTICE` meets: attribution "Source: CDC"; no implication that CDC, ATSDR, HHS or the United States Government endorses this project or its use of the data; no change to the substance of the content (only the percentile columns were dropped and each file split by sex); and a note that the data are available free of charge on the CDC website |
 
 The published API image, `ghcr.io/davcs86/happybabytracker-api`, contains the WHO tables, which are
 licensed CC BY-NC-SA 3.0 IGO: non-commercial use only, share-alike, attribution. Bundling them is the

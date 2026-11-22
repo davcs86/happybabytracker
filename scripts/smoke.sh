@@ -498,8 +498,9 @@ WHO_ATTRIBUTION='Geneva: World Health Organization; 2006. Licence: CC BY-NC-SA 3
 CDC_ATTRIBUTION='Source: CDC, National Center for Health Statistics, 2000 CDC Growth Charts'
 N_GROWTH="$(note "growth-note-${SUFFIX}")"
 N_GROWTH_B="$(note "growth-caregiver-note-${SUFFIX}")"
-# 3200 g = 11288 and 4100 g = 14462 hundredths of an ounce; 500 mm = 1969 hundredths of an inch.
-for v in 3.2 3200 11288 50 500 1969 4.1 4100 14462; do remember_value "$v"; done
+N_GROWTH_EDIT="$(note "growth-edited-note-${SUFFIX}")"
+# 3200 g = 11288 and 4100 g = 14462 hundredths of an ounce; 500 mm = 1969 and 340 mm = 1339 hundredths of an inch.
+for v in 3.2 3200 11288 50 500 1969 4.1 4100 14462 34 340 1339; do remember_value "$v"; done
 GROWTH="$KID_PATH/growth"
 settings_sources() { # body-name -> the option values of the growth source select, one per line
   pieces "$1" '<select' | grep -F 'name="growth_source"' | sed 's|</select>.*||' |
@@ -514,6 +515,11 @@ growth_source() { # name source -> as smoke-a, saves the kid's settings with tha
 weight_line() { # body-name -> the weight line of the row that shows the growth note
   pieces "$1" '<li' | grep -F -- "$N_GROWTH" | grep -oE 'Weight 3\.2 kg: [^<]*' | head -n 1 || true
 }
+WEIGHT_SCORE_RE='^Weight 3\.2 kg: z -?[0-9]+\.[0-9]{2}, percentile [0-9]+\.[0-9]$'
+originals() { # body-name -> name=value of every hidden *_original input, one per line
+  grep -oE '<input type="hidden" name="[a-z_]+_original" value="[^"]*"' "$WORK/$1.body" |
+    sed -E 's/.*name="([a-z_]+)" value="([^"]*)"/\1=\2/' || true
+}
 code="$(req settings-a "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
 sources="$(settings_sources settings-a | tr '\n' ' ')"
 { [ "$code" = 200 ] && [ "$sources" = 'who cdc ' ]; } || fail "4h settings sources" "status $code, '$sources'"
@@ -523,7 +529,7 @@ code="$(form growth-new-a "$ADDR_A" "$SESSION_A" "$GROWTH/new?/save" measured_on
   fail "4h add measurement" "status $code, Location $(location growth-new-a)"
 code="$(req growth-who "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
 line_who="$(weight_line growth-who)"
-{ [ "$code" = 200 ] && [[ "$line_who" =~ ^Weight\ 3\.2\ kg:\ z\ -?[0-9]+\.[0-9]{2},\ percentile\ [0-9]+\.[0-9]$ ]] &&
+{ [ "$code" = 200 ] && [[ "$line_who" =~ $WEIGHT_SCORE_RE ]] &&
   body_has growth-who 'Length 50 cm: z ' && body_has growth-who 'Head circumference 34 cm: z ' &&
   body_has growth-who "$WHO_ATTRIBUTION"; } ||
   fail "4h growth page (who)" "status $code, weight line '$line_who'"
@@ -531,7 +537,7 @@ growth_source source-cdc cdc
 code="$(req growth-cdc "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
 line_cdc="$(weight_line growth-cdc)"
 { [ "$code" = 200 ] && [ "${line_cdc##*, percentile }" != "${line_who##*, percentile }" ] &&
-  [[ "$line_cdc" =~ percentile\ [0-9]+\.[0-9]$ ]] && body_has growth-cdc "$CDC_ATTRIBUTION"; } ||
+  [[ "$line_cdc" =~ $WEIGHT_SCORE_RE ]] && body_has growth-cdc "$CDC_ATTRIBUTION"; } ||
   fail "4h growth page (cdc)" "status $code, weight line '$line_cdc', with who '$line_who'"
 growth_source source-who who
 code="$(req growth-who-2 "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
@@ -557,7 +563,34 @@ for p in growth:"$GROWTH" growth-new:"$GROWTH/new" growth-entry:"$GROWTH_ENTRY";
   [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
     fail "4h admin GET ${p%%:*}" "status $code, Location $(location "admin-${p%%:*}")"
 done
-pass "4h the API image ships the WHO and CDC notices; settings offer who and cdc; a measurement shows its z and percentile ('${line_who#*: }' with who, '${line_cdc#*: }' with cdc, back with who); $USER_B adds one; $USER_C gets 404 and the admin a 303 on the growth pages"
+# The edit resends every shown text beside its original, clearing the head circumference.
+code="$(req growth-edit-page "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH_ENTRY")"
+mapfile -t kept < <(originals growth-edit-page)
+{ [ "$code" = 200 ] && [ "${#kept[@]}" = 9 ]; } || fail "4h edit page" "status $code, ${#kept[@]} originals"
+edit_fields=()
+for kv in "${kept[@]}"; do
+  shown="${kv%%=*}"
+  shown="${shown%_original}"
+  if [ "$shown" = head ]; then edit_fields+=("head="); else edit_fields+=("$shown=${kv#*=}"); fi
+  edit_fields+=("$kv")
+done
+code="$(form growth-edit "$ADDR_A" "$SESSION_A" "$GROWTH_ENTRY?/save" "${edit_fields[@]}" "note=$N_GROWTH_EDIT")"
+[ "$code $(location growth-edit)" = "303 $GROWTH?measure=weight" ] ||
+  fail "4h edit measurement" "status $code, Location $(location growth-edit)"
+code="$(req growth-edited "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+{ [ "$code" = 200 ] && body_has growth-edited "$N_GROWTH_EDIT" && ! body_has growth-edited "$N_GROWTH" &&
+  ! body_has growth-edited 'Head circumference 34 cm' && body_has growth-edited 'Length 50 cm: z '; } ||
+  fail "4h after edit" "status $code"
+GROWTH_ENTRY_B="$(pieces growth-b '<li' | grep -F -- "$N_GROWTH_B" | grep -oE '/growth/[0-9a-f-]+"' |
+  head -n 1 | tr -d '"' || true)"
+[ -n "$GROWTH_ENTRY_B" ] || fail "4h caregiver row" "no edit link"
+code="$(form growth-delete "$ADDR_B" "$SESSION_B" "$KID_PATH$GROWTH_ENTRY_B?/delete")"
+[ "$code $(location growth-delete)" = "303 $GROWTH?measure=weight" ] ||
+  fail "4h delete measurement" "status $code, Location $(location growth-delete)"
+code="$(req growth-deleted "$ADDR_B" "$SESSION_B" "$UI_URL$GROWTH")"
+{ [ "$code" = 200 ] && ! body_has growth-deleted "$N_GROWTH_B" && ! body_has growth-deleted 'Weight 4.1 kg' &&
+  body_has growth-deleted "$N_GROWTH_EDIT"; } || fail "4h after delete" "status $code"
+pass "4h the API image ships the WHO and CDC notices; settings offer who and cdc; a measurement shows its z and percentile ('${line_who#*: }' with who, '${line_cdc#*: }' with cdc, back with who); $USER_B adds one; $USER_C gets 404 and the admin a 303 on the growth pages; $USER_A edits a measurement, clearing its head circumference; $USER_B deletes theirs"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
