@@ -21,6 +21,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
 	"github.com/davcs86/happybabytracker/api/internal/store"
+	"github.com/davcs86/happybabytracker/api/internal/vaccines"
 )
 
 const fingerprintKey = "admin_fingerprint"
@@ -57,6 +58,9 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 	}
 
 	if err := growth.Load(); err != nil {
+		return err
+	}
+	if err := vaccines.Load(); err != nil {
 		return err
 	}
 

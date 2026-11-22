@@ -339,11 +339,11 @@ func TestDismissalsPerSchema(t *testing.T) {
 	if err := s.ClearDismissal(ctx, k.ID, ana.ID, "us", "rv-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ClearDismissal(ctx, k.ID, ana.ID, "us", "rv-1"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("clearing an absent dismissal: %v", err)
+	if err := s.ClearDismissal(ctx, k.ID, ana.ID, "us", "rv-1"); err != nil {
+		t.Errorf("clearing an absent dismissal: %v, want an idempotent nil", err)
 	}
-	if err := s.ClearDismissal(ctx, k.ID, ana.ID, "us", "mmr-1"); !errors.Is(err, ErrNotFound) {
-		t.Errorf("clearing another schema's line: %v", err)
+	if err := s.ClearDismissal(ctx, k.ID, ana.ID, "us", "mmr-1"); err != nil {
+		t.Errorf("clearing another schema's line: %v, want an idempotent nil", err)
 	}
 	check("us", map[string]string{"hepb-1": "given_unknown"})
 	check("uk", map[string]string{"mmr-1": "not_needed"})

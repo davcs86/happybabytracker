@@ -56,74 +56,85 @@ var matrixWant = map[Access][actorCount]want{
 // routeClasses pins the intended class of every route independently of routes.go, so a wrongly
 // declared class cannot make its own expectations pass.
 var routeClasses = map[string]Access{
-	"GET /healthz":                               Open,
-	"POST /v1/session":                           Internal,
-	"GET /v1/session":                            Session,
-	"DELETE /v1/session":                         Session,
-	"POST /v1/admin/parents":                     Admin,
-	"GET /v1/admin/parents":                      Admin,
-	"POST /v1/admin/parents/{parent}/reset-link": Admin,
-	"POST /v1/admin/parents/{parent}/disable":    Admin,
-	"POST /v1/admin/parents/{parent}/enable":     Admin,
-	"GET /v1/tokens/{token}":                     Internal,
-	"POST /v1/tokens/{token}/redeem":             Internal,
-	"PATCH /v1/me":                               Parent,
-	"POST /v1/me/password":                       Parent,
-	"GET /v1/me/sessions":                        Parent,
-	"DELETE /v1/me/sessions/{session}":           Parent,
-	"GET /v1/growth-sources":                     Parent,
-	"GET /v1/kids":                               Parent,
-	"POST /v1/kids":                              Parent,
-	"GET /v1/kids/{kid}":                         Caregiver,
-	"PATCH /v1/kids/{kid}":                       Guardian,
-	"DELETE /v1/kids/{kid}":                      Guardian,
-	"GET /v1/kids/{kid}/access":                  Guardian,
-	"PUT /v1/kids/{kid}/access/{username}":       Guardian,
-	"DELETE /v1/kids/{kid}/access/{parent}":      Caregiver,
-	"GET /v1/kids/{kid}/bottles":                 Caregiver,
-	"POST /v1/kids/{kid}/bottles":                Caregiver,
-	"GET /v1/kids/{kid}/bottles/{entry}":         Caregiver,
-	"PATCH /v1/kids/{kid}/bottles/{entry}":       Caregiver,
-	"DELETE /v1/kids/{kid}/bottles/{entry}":      Caregiver,
-	"GET /v1/kids/{kid}/diapers":                 Caregiver,
-	"POST /v1/kids/{kid}/diapers":                Caregiver,
-	"GET /v1/kids/{kid}/diapers/{entry}":         Caregiver,
-	"PATCH /v1/kids/{kid}/diapers/{entry}":       Caregiver,
-	"DELETE /v1/kids/{kid}/diapers/{entry}":      Caregiver,
-	"GET /v1/kids/{kid}/meals":                   Caregiver,
-	"POST /v1/kids/{kid}/meals":                  Caregiver,
-	"GET /v1/kids/{kid}/meals/{entry}":           Caregiver,
-	"PATCH /v1/kids/{kid}/meals/{entry}":         Caregiver,
-	"DELETE /v1/kids/{kid}/meals/{entry}":        Caregiver,
-	"GET /v1/kids/{kid}/pumping":                 Caregiver,
-	"POST /v1/kids/{kid}/pumping":                Caregiver,
-	"GET /v1/kids/{kid}/pumping/{entry}":         Caregiver,
-	"PATCH /v1/kids/{kid}/pumping/{entry}":       Caregiver,
-	"DELETE /v1/kids/{kid}/pumping/{entry}":      Caregiver,
-	"GET /v1/kids/{kid}/sleep":                   Caregiver,
-	"POST /v1/kids/{kid}/sleep":                  Caregiver,
-	"GET /v1/kids/{kid}/sleep/{entry}":           Caregiver,
-	"PATCH /v1/kids/{kid}/sleep/{entry}":         Caregiver,
-	"DELETE /v1/kids/{kid}/sleep/{entry}":        Caregiver,
-	"POST /v1/kids/{kid}/sleep/{entry}/end":      Caregiver,
-	"GET /v1/kids/{kid}/nursing":                 Caregiver,
-	"POST /v1/kids/{kid}/nursing":                Caregiver,
-	"GET /v1/kids/{kid}/nursing/{entry}":         Caregiver,
-	"PATCH /v1/kids/{kid}/nursing/{entry}":       Caregiver,
-	"DELETE /v1/kids/{kid}/nursing/{entry}":      Caregiver,
-	"POST /v1/kids/{kid}/nursing/{entry}/end":    Caregiver,
-	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
-	"GET /v1/kids/{kid}/growth":                  Caregiver,
-	"POST /v1/kids/{kid}/growth":                 Caregiver,
-	"GET /v1/kids/{kid}/growth/curves":           Caregiver,
-	"GET /v1/kids/{kid}/growth/{entry}":          Caregiver,
-	"PATCH /v1/kids/{kid}/growth/{entry}":        Caregiver,
-	"DELETE /v1/kids/{kid}/growth/{entry}":       Caregiver,
-	"GET /v1/kids/{kid}/timeline":                Caregiver,
-	"GET /v1/kids/{kid}/summary":                 Caregiver,
-	"GET /v1/kids/{kid}/modules":                 Caregiver,
-	"PUT /v1/kids/{kid}/modules/{module}":        Guardian,
-	"GET /v1/kids/{kid}/home":                    Caregiver,
+	"GET /healthz":                                        Open,
+	"POST /v1/session":                                    Internal,
+	"GET /v1/session":                                     Session,
+	"DELETE /v1/session":                                  Session,
+	"POST /v1/admin/parents":                              Admin,
+	"GET /v1/admin/parents":                               Admin,
+	"POST /v1/admin/parents/{parent}/reset-link":          Admin,
+	"POST /v1/admin/parents/{parent}/disable":             Admin,
+	"POST /v1/admin/parents/{parent}/enable":              Admin,
+	"GET /v1/tokens/{token}":                              Internal,
+	"POST /v1/tokens/{token}/redeem":                      Internal,
+	"PATCH /v1/me":                                        Parent,
+	"POST /v1/me/password":                                Parent,
+	"GET /v1/me/sessions":                                 Parent,
+	"DELETE /v1/me/sessions/{session}":                    Parent,
+	"GET /v1/growth-sources":                              Parent,
+	"GET /v1/vaccine-schemas":                             Parent,
+	"GET /v1/vaccine-catalogue":                           Parent,
+	"GET /v1/kids":                                        Parent,
+	"POST /v1/kids":                                       Parent,
+	"GET /v1/kids/{kid}":                                  Caregiver,
+	"PATCH /v1/kids/{kid}":                                Guardian,
+	"DELETE /v1/kids/{kid}":                               Guardian,
+	"GET /v1/kids/{kid}/access":                           Guardian,
+	"PUT /v1/kids/{kid}/access/{username}":                Guardian,
+	"DELETE /v1/kids/{kid}/access/{parent}":               Caregiver,
+	"GET /v1/kids/{kid}/bottles":                          Caregiver,
+	"POST /v1/kids/{kid}/bottles":                         Caregiver,
+	"GET /v1/kids/{kid}/bottles/{entry}":                  Caregiver,
+	"PATCH /v1/kids/{kid}/bottles/{entry}":                Caregiver,
+	"DELETE /v1/kids/{kid}/bottles/{entry}":               Caregiver,
+	"GET /v1/kids/{kid}/diapers":                          Caregiver,
+	"POST /v1/kids/{kid}/diapers":                         Caregiver,
+	"GET /v1/kids/{kid}/diapers/{entry}":                  Caregiver,
+	"PATCH /v1/kids/{kid}/diapers/{entry}":                Caregiver,
+	"DELETE /v1/kids/{kid}/diapers/{entry}":               Caregiver,
+	"GET /v1/kids/{kid}/meals":                            Caregiver,
+	"POST /v1/kids/{kid}/meals":                           Caregiver,
+	"GET /v1/kids/{kid}/meals/{entry}":                    Caregiver,
+	"PATCH /v1/kids/{kid}/meals/{entry}":                  Caregiver,
+	"DELETE /v1/kids/{kid}/meals/{entry}":                 Caregiver,
+	"GET /v1/kids/{kid}/pumping":                          Caregiver,
+	"POST /v1/kids/{kid}/pumping":                         Caregiver,
+	"GET /v1/kids/{kid}/pumping/{entry}":                  Caregiver,
+	"PATCH /v1/kids/{kid}/pumping/{entry}":                Caregiver,
+	"DELETE /v1/kids/{kid}/pumping/{entry}":               Caregiver,
+	"GET /v1/kids/{kid}/sleep":                            Caregiver,
+	"POST /v1/kids/{kid}/sleep":                           Caregiver,
+	"GET /v1/kids/{kid}/sleep/{entry}":                    Caregiver,
+	"PATCH /v1/kids/{kid}/sleep/{entry}":                  Caregiver,
+	"DELETE /v1/kids/{kid}/sleep/{entry}":                 Caregiver,
+	"POST /v1/kids/{kid}/sleep/{entry}/end":               Caregiver,
+	"GET /v1/kids/{kid}/nursing":                          Caregiver,
+	"POST /v1/kids/{kid}/nursing":                         Caregiver,
+	"GET /v1/kids/{kid}/nursing/{entry}":                  Caregiver,
+	"PATCH /v1/kids/{kid}/nursing/{entry}":                Caregiver,
+	"DELETE /v1/kids/{kid}/nursing/{entry}":               Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/end":             Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/side":            Caregiver,
+	"GET /v1/kids/{kid}/growth":                           Caregiver,
+	"POST /v1/kids/{kid}/growth":                          Caregiver,
+	"GET /v1/kids/{kid}/growth/curves":                    Caregiver,
+	"GET /v1/kids/{kid}/growth/{entry}":                   Caregiver,
+	"PATCH /v1/kids/{kid}/growth/{entry}":                 Caregiver,
+	"DELETE /v1/kids/{kid}/growth/{entry}":                Caregiver,
+	"GET /v1/kids/{kid}/vaccines":                         Caregiver,
+	"GET /v1/kids/{kid}/vaccinations":                     Caregiver,
+	"POST /v1/kids/{kid}/vaccinations":                    Caregiver,
+	"GET /v1/kids/{kid}/vaccinations/{administration}":    Caregiver,
+	"PATCH /v1/kids/{kid}/vaccinations/{administration}":  Caregiver,
+	"DELETE /v1/kids/{kid}/vaccinations/{administration}": Caregiver,
+	"PUT /v1/kids/{kid}/vaccine-dismissals/{line}":        Guardian,
+	"DELETE /v1/kids/{kid}/vaccine-dismissals/{line}":     Guardian,
+	"POST /v1/kids/{kid}/vaccine-dismissals":              Guardian,
+	"GET /v1/kids/{kid}/timeline":                         Caregiver,
+	"GET /v1/kids/{kid}/summary":                          Caregiver,
+	"GET /v1/kids/{kid}/modules":                          Caregiver,
+	"PUT /v1/kids/{kid}/modules/{module}":                 Guardian,
+	"GET /v1/kids/{kid}/home":                             Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -152,7 +163,7 @@ type fixture struct {
 	kit                                           *kit
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
-	growth                                        string
+	growth, administration                        string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -161,11 +172,13 @@ type fixture struct {
 
 // matrixParams is the only list of path parameters the matrix can fill.
 var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
-	"kid":      func(f *fixture, _ Route, _ actor) string { return f.kid },
-	"username": func(f *fixture, _ Route, _ actor) string { return f.parent[aX].Username },
-	"token":    func(f *fixture, _ Route, _ actor) string { return f.invite },
-	"session":  func(f *fixture, _ Route, a actor) string { return f.sid[a] },
-	"module":   func(*fixture, Route, actor) string { return "bottles" },
+	"kid":            func(f *fixture, _ Route, _ actor) string { return f.kid },
+	"username":       func(f *fixture, _ Route, _ actor) string { return f.parent[aX].Username },
+	"token":          func(f *fixture, _ Route, _ actor) string { return f.invite },
+	"session":        func(f *fixture, _ Route, a actor) string { return f.sid[a] },
+	"module":         func(*fixture, Route, actor) string { return "bottles" },
+	"administration": func(f *fixture, _ Route, _ actor) string { return f.administration },
+	"line":           func(*fixture, Route, actor) string { return "hepatitis_b-1" },
 	"parent": func(f *fixture, rt Route, a actor) string {
 		if rt.Access == Caregiver && (a == aC || a == aG) {
 			return f.parent[aC].ID
@@ -236,7 +249,9 @@ func newMatrixFixture(t *testing.T) *fixture {
 	f.token[aNoToken], f.sid[aNoToken] = f.token[aG], f.sid[aG]
 	f.sid[aNoSession] = f.sid[aG]
 
-	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who"}, f.parent[aG].ID, k.now)
+	schema := "us"
+	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who",
+		VaccineSchema: &schema}, f.parent[aG].ID, k.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +299,11 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.bottle, f.diaper, f.meal, f.pumping, f.sleep, f.nursing = bottle.ID, diaper.ID, meal.ID, pumping.ID, sleep.ID, nursing.ID
-	f.growth = measurement.ID
+	dose, err := k.Store.CreateAdministration(ctx, kid.ID, f.parent[aG].ID, model.Administration{GivenOn: "2026-03-04", Antigens: []string{"hepatitis_b"}}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.growth, f.administration = measurement.ID, dose.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

@@ -232,15 +232,15 @@ func (s *Store) SetDismissal(ctx context.Context, kidID, actorID, schema, line, 
 	})
 }
 
-// ClearDismissal is ErrNotFound when the line is not dismissed in schema; actorID must be a guardian.
+// ClearDismissal undoes a dismissal of line in schema, a no-op when there is none; actorID must be a guardian.
 func (s *Store) ClearDismissal(ctx context.Context, kidID, actorID, schema, line string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		res, err := tx.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`DELETE FROM vaccine_dismissals WHERE kid_id = ? AND schema = ? AND line = ?`, kidID, schema, line)
-		return oneRow(res, err)
+		return err
 	})
 }
 
