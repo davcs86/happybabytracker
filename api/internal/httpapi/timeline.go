@@ -10,14 +10,27 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
-// defaultTimelineTypes is the trackers an absent types parameter selects.
-func defaultTimelineTypes() []string { return slices.Clone(store.TimelineTypes) }
+// timelineModules maps each TimelineTypes name to the module that switches it.
+var timelineModules = map[string]model.Module{
+	"bottle": "bottles", "nursing": "nursing", "pumping": "pumping", "sleep": "sleep", "diaper": "diapers", "meal": "feeding",
+}
 
-// timelineTypes reads types, one comma list of distinct TimelineTypes names; false when it is invalid.
+// defaultTimelineTypes is the trackers an absent types parameter selects: those whose module is enabled.
+func defaultTimelineTypes(states []store.ModuleState) []string {
+	out := []string{}
+	for _, typ := range store.TimelineTypes {
+		if slices.ContainsFunc(states, func(st store.ModuleState) bool { return st.Module == timelineModules[typ] && st.Enabled }) {
+			out = append(out, typ)
+		}
+	}
+	return out
+}
+
+// timelineTypes reads types, one comma list of distinct TimelineTypes names; nil when absent, false when invalid.
 func timelineTypes(v url.Values) ([]string, bool) {
 	given, ok := v["types"]
 	if !ok {
-		return defaultTimelineTypes(), true
+		return nil, true
 	}
 	if len(given) != 1 {
 		return nil, false
@@ -89,6 +102,13 @@ func (d Deps) timeline(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		respondInvalid(w, "types")
 		return
+	}
+	if types == nil {
+		_, _, states, ok := d.kidModules(w, r, d.Now())
+		if !ok {
+			return
+		}
+		types = defaultTimelineTypes(states)
 	}
 	items, err := d.Store.Timeline(r.Context(), r.PathValue("kid"), types, pageQuery(q))
 	if !entryOK(w, err) {

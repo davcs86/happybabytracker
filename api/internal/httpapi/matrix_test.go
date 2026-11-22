@@ -114,6 +114,9 @@ var routeClasses = map[string]Access{
 	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
 	"GET /v1/kids/{kid}/timeline":                Caregiver,
 	"GET /v1/kids/{kid}/summary":                 Caregiver,
+	"GET /v1/kids/{kid}/modules":                 Caregiver,
+	"PUT /v1/kids/{kid}/modules/{module}":        Guardian,
+	"GET /v1/kids/{kid}/home":                    Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -154,6 +157,7 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 	"username": func(f *fixture, _ Route, _ actor) string { return f.parent[aX].Username },
 	"token":    func(f *fixture, _ Route, _ actor) string { return f.invite },
 	"session":  func(f *fixture, _ Route, a actor) string { return f.sid[a] },
+	"module":   func(*fixture, Route, actor) string { return "bottles" },
 	"parent": func(f *fixture, rt Route, a actor) string {
 		if rt.Access == Caregiver && (a == aC || a == aG) {
 			return f.parent[aC].ID

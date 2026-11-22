@@ -109,6 +109,9 @@ func Routes(d Deps) []Route {
 
 		{http.MethodGet, "/v1/kids/{kid}/timeline", Caregiver, d.timeline},
 		{http.MethodGet, "/v1/kids/{kid}/summary", Caregiver, d.summary},
+		{http.MethodGet, "/v1/kids/{kid}/modules", Caregiver, d.listModules},
+		{http.MethodPut, "/v1/kids/{kid}/modules/{module}", Guardian, d.setModule},
+		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},
 	}
 }
 
