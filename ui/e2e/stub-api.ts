@@ -14,7 +14,7 @@ export const ANA = { username: 'ana', password: 'fake-ana-password-0000', displa
 export const CLEO = { username: 'cleo', password: 'fake-cleo-password-0000', displayName: 'Cleo' };
 export const DAN = { username: 'dan', password: 'fake-dan-password-0000', displayName: 'Dan' };
 
-// Ana guards Mia alone and is Cleo's caregiver for Leo; Dan has no kids.
+// Ana guards Mia and Ivy alone and is Cleo's caregiver for Leo; Dan has no kids.
 export const MIA = {
 	id: 'k-mia',
 	name: 'Mia',
@@ -113,6 +113,9 @@ type KidRow = {
 	seq: number;
 };
 type Grant = { kidId: string; parentId: string; role: Role };
+type TrackerKey = 'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals';
+// view is the entry as the API answers it; every merge works on it directly.
+type Row = { kidId: string; view: Body & { id: string } };
 
 type State = {
 	scenario: Scenario;
@@ -122,11 +125,22 @@ type State = {
 	tokens: Map<string, TokenRow>;
 	kids: Map<string, KidRow>;
 	grants: Grant[];
+	entries: Record<TrackerKey, Row[]>;
+	// kid id + ':' + module id; a row is a guardian's choice (or a band-crossing re-enable).
+	modules: Map<string, boolean>;
 	nextId: number;
 };
 
 const iso = (unixS: number) => new Date(unixS * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const now = () => Math.floor(Date.now() / 1000);
+
+// Thirteen whole months old on the stub's clock, whatever day the suite runs.
+export const IVY = {
+	id: 'k-ivy',
+	name: 'Ivy',
+	birthDate: monthsBefore(todayIn('UTC'), 13),
+	timeZone: 'UTC'
+} as const;
 const DEFAULT_UNITS: Units = { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' };
 
 function account(id: string, username: string, displayName: string, password: string | null) {
@@ -155,6 +169,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		seq: 1
 	};
 	const leo: KidRow = { ...LEO, sex: 'male', gestationWeeks: 35, gestationDays: 2, seq: 2 };
+	const ivy: KidRow = { ...IVY, sex: 'female', gestationWeeks: null, gestationDays: null, seq: 3 };
 	return {
 		parents: new Map([ana, bo, cleo, dan, dee].map((p) => [p.id, p])),
 		sessions: new Map(),
@@ -166,12 +181,15 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false }],
 			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false }]
 		]),
-		kids: new Map([mia, leo].map((k) => [k.id, k])),
+		kids: new Map([mia, leo, ivy].map((k) => [k.id, k])),
 		grants: [
 			{ kidId: mia.id, parentId: ana.id, role: 'guardian' },
 			{ kidId: leo.id, parentId: cleo.id, role: 'guardian' },
-			{ kidId: leo.id, parentId: ana.id, role: 'caregiver' }
+			{ kidId: leo.id, parentId: ana.id, role: 'caregiver' },
+			{ kidId: ivy.id, parentId: ana.id, role: 'guardian' }
 		],
+		entries: { bottles: [], nursing: [], pumping: [], sleep: [], diapers: [], meals: [] },
+		modules: new Map(),
 		nextId: 1
 	};
 }
@@ -200,8 +218,42 @@ async function readBody(req: IncomingMessage): Promise<string> {
 	return data;
 }
 
-type FieldKind = 'string' | 'int' | 'units';
+type FieldKind = 'string' | 'int' | 'units' | 'bool' | 'time' | 'strings' | 'volume';
 type Body = Record<string, unknown>;
+
+const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const isObject = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v);
+const nullOr = (type: string) => (u: unknown) => u === null || typeof u === type;
+
+// The JSON type Go would decode each kind from; a mismatch is a 400.
+function typedAs(kind: FieldKind, v: unknown): boolean {
+	switch (kind) {
+		case 'string':
+			return typeof v === 'string';
+		case 'int':
+			return Number.isInteger(v);
+		case 'bool':
+			return typeof v === 'boolean';
+		case 'time':
+			return typeof v === 'string' && RFC3339.test(v) && !Number.isNaN(Date.parse(v));
+		case 'strings':
+			return Array.isArray(v) && v.every((u) => typeof u === 'string');
+		case 'volume':
+			return (
+				isObject(v) &&
+				nullOr('string')((v as Body).unit) &&
+				((v as Body).amount == null || Number.isInteger((v as Body).amount))
+			);
+		case 'units':
+			return isObject(v) && Object.values(v as Body).every(nullOr('string'));
+	}
+}
+
+// Keys a nested object may carry before decodeJSON refuses it.
+const NESTED_KEYS: Partial<Record<FieldKind, readonly string[]>> = {
+	units: Object.keys(UNIT_SETS),
+	volume: ['unit', 'amount']
+};
 
 // decodeJSON in respond.go: unknown key (also nested) -> 422 unknown_field, a wrong type or bad JSON -> 400.
 async function decodeBody(
@@ -220,7 +272,6 @@ async function decodeBody(
 		error(res, 400, 'bad_request');
 		return null;
 	}
-	const isObject = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v);
 	for (const [k, v] of Object.entries(value)) {
 		const kind = fields[k];
 		if (!kind) {
@@ -228,21 +279,15 @@ async function decodeBody(
 			return null;
 		}
 		if (v === null) continue;
-		const typed =
-			kind === 'string'
-				? typeof v === 'string'
-				: kind === 'int'
-					? Number.isInteger(v)
-					: isObject(v) &&
-						Object.values(v as Body).every((u) => u === null || typeof u === 'string');
-		if (kind === 'units' && isObject(v)) {
-			const unknown = Object.keys(v as Body).find((u) => !(u in UNIT_SETS));
+		const allowed = NESTED_KEYS[kind];
+		if (allowed && isObject(v)) {
+			const unknown = Object.keys(v as Body).find((u) => !allowed.includes(u));
 			if (unknown) {
 				error(res, 422, 'unknown_field', unknown);
 				return null;
 			}
 		}
-		if (!typed) {
+		if (!typedAs(kind, v)) {
 			error(res, 400, 'bad_request');
 			return null;
 		}
@@ -771,6 +816,740 @@ const routes: RouteDef[] = [
 		}
 	}
 ];
+
+// Trackers, timeline, summary, modules and home: the Go handlers' validation and 404/409 behaviour, in memory.
+
+const TRACKER_KEYS: readonly TrackerKey[] = [
+	'bottles',
+	'nursing',
+	'pumping',
+	'sleep',
+	'diapers',
+	'meals'
+];
+// The timeline names an entry by its singular type, REST paths by the route name.
+const TIMELINE_TYPES: Record<TrackerKey, string> = {
+	bottles: 'bottle',
+	nursing: 'nursing',
+	pumping: 'pumping',
+	sleep: 'sleep',
+	diapers: 'diaper',
+	meals: 'meal'
+};
+const MODULES = [
+	'bottles',
+	'nursing',
+	'pumping',
+	'diapers',
+	'sleep',
+	'feeding',
+	'milestones',
+	'growth',
+	'vaccination',
+	'sickness',
+	'medication'
+] as const;
+const MODULE_OF: Record<TrackerKey, string> = {
+	bottles: 'bottles',
+	nursing: 'nursing',
+	pumping: 'pumping',
+	diapers: 'diapers',
+	sleep: 'sleep',
+	meals: 'feeding'
+};
+const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication'];
+const BOTTLE_CONTENTS = ['breast_milk', 'formula', 'cow_milk', 'other'];
+const DIAPER_KINDS = ['wet', 'dirty', 'both', 'dry'];
+const NURSING_SIDES = ['left', 'right'];
+const PUMPING_SIDES = ['left', 'right', 'both'];
+// The API's limits (constants.go), mirrored for the stub only.
+const NOTE_MAX_LEN = 500;
+const MEAL_TEXT_MAX_LEN = 200;
+const MAX_FUTURE_SKEW_S = 5 * 60;
+const MAX_SESSION_S = 24 * 3600;
+const BOTTLE_ML = { min: 1, max: 1000 };
+const PUMPING_ML = { min: 1, max: 2000 };
+const MAX_VOLUME_AMOUNT = 1 << 24;
+const FLOZ_NUMERATOR = 295735;
+const FLOZ_DENOMINATOR = 10000 * 100;
+const PAGE_DEFAULT = 50;
+const PAGE_MAX = 100;
+const SUMMARY_MAX_DAYS = 93;
+const BAND_SECOND_MONTHS = 12;
+const BAND_THIRD_MONTHS = 24;
+const OVERRIDE_LOOKBACK_S = 60 * 24 * 3600;
+const DAY_S = 24 * 3600;
+const ENTRY_ID = /^[A-Za-z0-9-]{1,64}$/;
+const CURSOR = /^(\d+):([A-Za-z0-9-]{1,64})$/;
+
+const unix = (v: unknown) => Math.floor(Date.parse(v as string) / 1000);
+const runes = (s: string) => [...s].length;
+
+function wallOffsetMs(ms: number, zone: string): number {
+	const parts = new Intl.DateTimeFormat('en-CA', {
+		timeZone: zone,
+		hourCycle: 'h23',
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit'
+	}).formatToParts(new Date(ms));
+	const n = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+	const wall = Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute'), n('second'));
+	return wall - Math.floor(ms / 1000) * 1000;
+}
+
+// Local midnight of a YYYY-MM-DD date, as unix seconds.
+function midnight(date: string, zone: string): number {
+	const [y, m, d] = date.split('-').map(Number);
+	const wall = Date.UTC(y, m - 1, d);
+	const offsets = [wall - DAY_S * 1000, wall + DAY_S * 1000].map((t) => wallOffsetMs(t, zone));
+	const hits = offsets.map((o) => wall - o).filter((t) => wallOffsetMs(t, zone) === wall - t);
+	return Math.floor((hits.length > 0 ? Math.min(...hits) : wall - offsets[0]) / 1000);
+}
+
+const addDays = (date: string, days: number) => {
+	const [y, m, d] = date.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+};
+
+// An overflowing day rolls into the next month, as Go's time.Date does.
+function addMonths(date: string, months: number): string {
+	const [y, m, d] = date.split('-').map(Number);
+	return new Date(Date.UTC(y, m - 1 + months, d)).toISOString().slice(0, 10);
+}
+
+// The same day n months earlier, clamped to that month's last day.
+function monthsBefore(date: string, n: number): string {
+	const [y, m, d] = date.split('-').map(Number);
+	const lastDay = new Date(Date.UTC(y, m - 1 - n + 1, 0)).getUTCDate();
+	return new Date(Date.UTC(y, m - 1 - n, Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
+// AgeMonths in kidtime.go: whole calendar months, never negative.
+function ageMonths(birthDate: string, today: string): number {
+	const [by, bm, bd] = birthDate.split('-').map(Number);
+	const [ty, tm, td] = today.split('-').map(Number);
+	return Math.max((ty - by) * 12 + (tm - bm) - (td < bd ? 1 : 0), 0);
+}
+
+const bandOf = (months: number) =>
+	months >= BAND_THIRD_MONTHS ? '24+' : months >= BAND_SECOND_MONTHS ? '12-23' : '0-11';
+
+type Ctx = { now: number; birth: number };
+const ctxFor = (kid: KidRow): Ctx => ({ now: now(), birth: midnight(kid.birthDate, kid.timeZone) });
+const instantOK = (t: number, c: Ctx) => t <= c.now + MAX_FUTURE_SKEW_S && t >= c.birth;
+
+// A time in the body replaces the stored one (truncated to whole seconds); false when the result is refused.
+function mergeTime(view: Body, body: Body, key: string, c: Ctx): boolean {
+	if (typeof body[key] === 'string') view[key] = iso(unix(body[key]));
+	return instantOK(unix(view[key]), c);
+}
+
+// optionalString: absent keeps, null clears, a string replaces.
+function mergeNote(view: Body, body: Body): boolean {
+	if ('note' in body) view.note = body.note;
+	return view.note === null || runes(view.note as string) <= NOTE_MAX_LEN;
+}
+
+type Vol = { ml: number; floz_hundredths: number; typed_unit: string };
+const roundHalfUp = (n: number, d: number) => Math.floor((2 * n + d) / (2 * d));
+
+// units.NewVolume: whole ml, or hundredths of a US fl oz.
+function newVolume(unit: unknown, amount: unknown): Vol | null {
+	if ((unit !== 'ml' && unit !== 'floz') || !Number.isInteger(amount)) return null;
+	const a = amount as number;
+	if (a < 1 || a > MAX_VOLUME_AMOUNT) return null;
+	const ml = unit === 'ml' ? a : roundHalfUp(a * FLOZ_NUMERATOR, FLOZ_DENOMINATOR);
+	const floz = unit === 'floz' ? a : roundHalfUp(a * FLOZ_DENOMINATOR, FLOZ_NUMERATOR);
+	return ml < 1 || floz < 1 ? null : { ml, floz_hundredths: floz, typed_unit: unit };
+}
+
+// mergeVolume: absent or the unchanged typed value keeps the stored columns; the range is the tracker's.
+function mergeVolume(view: Body, body: Body, range: { min: number; max: number }): boolean {
+	const stored = view.volume as Vol;
+	const input = body.volume as { unit?: string | null; amount?: number | null } | null | undefined;
+	if (input) {
+		const typed = stored.typed_unit === 'floz' ? stored.floz_hundredths : stored.ml;
+		if (input.unit !== stored.typed_unit || input.amount !== typed) {
+			const v = newVolume(input.unit, input.amount);
+			if (!v) return false;
+			view.volume = v;
+		}
+	}
+	const ml = (view.volume as Vol).ml;
+	return ml >= range.min && ml <= range.max;
+}
+
+const BLANK_VOLUME: Vol = { ml: 0, floz_hundredths: 0, typed_unit: '' };
+
+// SleepSession.InvalidField and NursingSession.InvalidField in model/tracker.go.
+function invalidSession(key: TrackerKey, v: Body): string {
+	const started = unix(v.started_at);
+	const ended = v.ended_at === null ? null : unix(v.ended_at);
+	const span = (end: number) => (end < started || end - started > MAX_SESSION_S ? 'ended_at' : '');
+	if (key === 'sleep') return ended === null ? '' : span(ended);
+	const left = v.left_seconds as number;
+	const right = v.right_seconds as number;
+	const fits = (s: number) => left <= s && right <= s - left;
+	if (left < 0) return 'left_seconds';
+	if (right < 0) return 'right_seconds';
+	if (ended !== null) {
+		if (v.side !== null || v.side_since !== null) return 'side';
+		return span(ended) || (fits(ended - started) ? '' : 'left_seconds');
+	}
+	if (v.side_since === null || !NURSING_SIDES.includes(v.side as string)) return 'side';
+	const since = unix(v.side_since);
+	return since < started || !fits(since - started) ? 'started_at' : '';
+}
+
+// NursingSession.credit: the seconds since side_since go to the side in use; false when at precedes it.
+function credit(v: Body, at: number): boolean {
+	if (v.ended_at !== null || v.side_since === null || at < unix(v.side_since)) return false;
+	const key = v.side === 'left' ? 'left_seconds' : 'right_seconds';
+	v[key] = (v[key] as number) + (at - unix(v.side_since));
+	return true;
+}
+
+type Spec = {
+	timeKey: 'at' | 'started_at';
+	fields: Record<string, FieldKind>;
+	timer: boolean;
+	// The entry a POST starts from; merge validates the body onto it.
+	blank: (c: Ctx) => Body;
+	// A PATCH applied to the stored entry: the first invalid field, "" when valid.
+	merge: (view: Body, body: Body, c: Ctx) => string;
+	// A POST that is not a merge onto blank: the entry, or the first invalid field.
+	create?: (body: Body, c: Ctx) => Body | string;
+};
+
+const NOTE_FIELD: Record<string, FieldKind> = { note: 'string' };
+
+function createEntry(spec: Spec, body: Body, c: Ctx): Body | string {
+	if (spec.create) return spec.create(body, c);
+	const view = spec.blank(c);
+	return spec.merge(view, body, c) || view;
+}
+
+const SPECS: Record<TrackerKey, Spec> = {
+	bottles: {
+		timeKey: 'at',
+		timer: false,
+		fields: { at: 'time', contents: 'strings', volume: 'volume', ...NOTE_FIELD },
+		merge: (view, body, c) => {
+			if (!mergeTime(view, body, 'at', c)) return 'at';
+			if (Array.isArray(body.contents)) view.contents = body.contents;
+			const given = view.contents as string[];
+			const canonical = BOTTLE_CONTENTS.filter((n) => given.includes(n));
+			if (canonical.length === 0 || canonical.length !== given.length) return 'contents';
+			view.contents = canonical;
+			if (!mergeVolume(view, body, BOTTLE_ML)) return 'volume';
+			return mergeNote(view, body) ? '' : 'note';
+		},
+		blank: (c) => ({ at: iso(c.now), contents: [], volume: { ...BLANK_VOLUME }, note: null })
+	},
+	diapers: {
+		timeKey: 'at',
+		timer: false,
+		fields: { at: 'time', kind: 'string', ...NOTE_FIELD },
+		merge: (view, body, c) => {
+			if (!mergeTime(view, body, 'at', c)) return 'at';
+			if (typeof body.kind === 'string') view.kind = body.kind;
+			if (!DIAPER_KINDS.includes(view.kind as string)) return 'kind';
+			return mergeNote(view, body) ? '' : 'note';
+		},
+		blank: (c) => ({ at: iso(c.now), kind: '', note: null })
+	},
+	meals: {
+		timeKey: 'at',
+		timer: false,
+		fields: { at: 'time', what: 'string', reaction: 'string', ...NOTE_FIELD },
+		merge: (view, body, c) => {
+			if (!mergeTime(view, body, 'at', c)) return 'at';
+			if (typeof body.what === 'string') view.what = body.what.trim();
+			const what = view.what as string;
+			if (what === '' || runes(what) > MEAL_TEXT_MAX_LEN) return 'what';
+			if ('reaction' in body) view.reaction = body.reaction;
+			if (view.reaction !== null && runes(view.reaction as string) > MEAL_TEXT_MAX_LEN) {
+				return 'reaction';
+			}
+			return mergeNote(view, body) ? '' : 'note';
+		},
+		blank: (c) => ({ at: iso(c.now), what: '', reaction: null, note: null })
+	},
+	pumping: {
+		timeKey: 'started_at',
+		timer: false,
+		fields: {
+			started_at: 'time',
+			duration_seconds: 'int',
+			volume: 'volume',
+			side: 'string',
+			...NOTE_FIELD
+		},
+		merge: (view, body, c) => {
+			if (!mergeTime(view, body, 'started_at', c)) return 'started_at';
+			if (typeof body.duration_seconds === 'number') view.duration_seconds = body.duration_seconds;
+			const d = view.duration_seconds as number;
+			if (d < 1 || d > MAX_SESSION_S) return 'duration_seconds';
+			if (!mergeVolume(view, body, PUMPING_ML)) return 'volume';
+			if (typeof body.side === 'string') view.side = body.side;
+			if (!PUMPING_SIDES.includes(view.side as string)) return 'side';
+			return mergeNote(view, body) ? '' : 'note';
+		},
+		blank: (c) => ({
+			started_at: iso(c.now),
+			duration_seconds: 0,
+			volume: { ...BLANK_VOLUME },
+			side: '',
+			note: null
+		})
+	},
+	sleep: {
+		timeKey: 'started_at',
+		timer: true,
+		fields: { started_at: 'time', ended_at: 'time', ...NOTE_FIELD },
+		merge: (view, body, c) => {
+			if (!mergeTime(view, body, 'started_at', c)) return 'started_at';
+			if (body.ended_at === null && view.ended_at !== null) return 'ended_at';
+			if (typeof body.ended_at === 'string') {
+				view.ended_at = iso(unix(body.ended_at));
+				if (!instantOK(unix(view.ended_at), c)) return 'ended_at';
+			}
+			if (!mergeNote(view, body)) return 'note';
+			return invalidSession('sleep', view);
+		},
+		blank: (c) => ({ started_at: iso(c.now), ended_at: null, note: null })
+	},
+	nursing: {
+		timeKey: 'started_at',
+		timer: true,
+		fields: {
+			started_at: 'time',
+			ended_at: 'time',
+			left_seconds: 'int',
+			right_seconds: 'int',
+			side: 'string',
+			...NOTE_FIELD
+		},
+		// The seconds are editable once finished, the side only through the side route.
+		merge: (view, body, c) => {
+			const wasRunning = view.ended_at === null;
+			if (!mergeTime(view, body, 'started_at', c)) return 'started_at';
+			if (body.ended_at === null && !wasRunning) return 'ended_at';
+			if (typeof body.ended_at === 'string') {
+				const end = unix(body.ended_at);
+				if (!instantOK(end, c)) return 'ended_at';
+				if (wasRunning) {
+					if (!credit(view, end)) return 'ended_at';
+					Object.assign(view, { ended_at: iso(end), side: null, side_since: null });
+				} else view.ended_at = iso(end);
+			}
+			for (const key of ['left_seconds', 'right_seconds']) {
+				if (typeof body[key] !== 'number') continue;
+				if (wasRunning) return key;
+				view[key] = body[key];
+			}
+			if (typeof body.side === 'string') return 'side';
+			if (!mergeNote(view, body)) return 'note';
+			return invalidSession('nursing', view);
+		},
+		blank: (c) => ({
+			started_at: iso(c.now),
+			ended_at: null,
+			left_seconds: 0,
+			right_seconds: 0,
+			side: null,
+			side_since: null,
+			note: null
+		}),
+		create: (body, c) => {
+			const started = typeof body.started_at === 'string' ? unix(body.started_at) : c.now;
+			if (!instantOK(started, c)) return 'started_at';
+			const ended = typeof body.ended_at === 'string' ? unix(body.ended_at) : null;
+			if (ended !== null && !instantOK(ended, c)) return 'ended_at';
+			const running = ended === null;
+			const has = (k: string) => typeof body[k] === 'number';
+			if (has('left_seconds') === running) return 'left_seconds';
+			if (has('right_seconds') === running) return 'right_seconds';
+			if ((typeof body.side === 'string') !== running) return 'side';
+			const view: Body = {
+				started_at: iso(started),
+				ended_at: ended === null ? null : iso(ended),
+				left_seconds: running ? 0 : body.left_seconds,
+				right_seconds: running ? 0 : body.right_seconds,
+				side: running ? body.side : null,
+				side_since: running ? iso(started) : null,
+				note: null
+			};
+			if (!mergeNote(view, body)) return 'note';
+			return invalidSession('nursing', view) || view;
+		}
+	}
+};
+
+const rowOf = (state: State, key: TrackerKey, kidId: string, id: string) =>
+	ENTRY_ID.test(id)
+		? state.entries[key].find((r) => r.kidId === kidId && r.view.id === id)
+		: undefined;
+
+type Page = { from: number; to: number; limit: number; after: { at: number; id: string } | null };
+
+// parseListQuery in query.go: the first invalid parameter, in the order from, to, limit, cursor.
+function parsePage(url: URL): Page | string {
+	const q = url.searchParams;
+	const time = (k: string, fallback: number) =>
+		q.has(k) ? unixStrict(q.get(k) as string) : fallback;
+	const from = time('from', 0);
+	if (Number.isNaN(from)) return 'from';
+	const to = time('to', now() + MAX_FUTURE_SKEW_S);
+	if (Number.isNaN(to)) return 'to';
+	if (from > to) return 'from';
+	let limit = PAGE_DEFAULT;
+	if (q.has('limit')) {
+		limit = /^\d+$/.test(q.get('limit') ?? '') ? Number(q.get('limit')) : 0;
+		if (limit < 1 || limit > PAGE_MAX) return 'limit';
+	}
+	let after: Page['after'] = null;
+	if (q.has('cursor')) {
+		const m = CURSOR.exec(Buffer.from(q.get('cursor') ?? '', 'base64url').toString());
+		if (!m || String(Number(m[1])) !== m[1]) return 'cursor';
+		after = { at: Number(m[1]), id: m[2] };
+	}
+	return { from, to, limit, after };
+}
+
+const unixStrict = (s: string) => (RFC3339.test(s) ? unix(s) : NaN);
+
+type Item = { at: number; id: string; out: Body };
+
+// The list tail in store/entries.go: [from, to), strictly older than the cursor, newest first, one page.
+function respondPage(res: ServerResponse, key: string, items: Item[], q: Page) {
+	const rows = items
+		.filter((i) => i.at >= q.from && i.at < q.to)
+		.filter((i) => !q.after || i.at < q.after.at || (i.at === q.after.at && i.id < q.after.id))
+		.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : -1));
+	const page = rows.slice(0, q.limit);
+	const last = rows.length > q.limit ? page[page.length - 1] : null;
+	send(res, 200, {
+		[key]: page.map((i) => i.out),
+		next_cursor: last ? Buffer.from(`${last.at}:${last.id}`).toString('base64url') : null
+	});
+}
+
+const itemsOf = (state: State, key: TrackerKey, kidId: string): Item[] =>
+	state.entries[key]
+		.filter((r) => r.kidId === kidId)
+		.map((r) => ({
+			at: unix(r.view[SPECS[key].timeKey]),
+			id: r.view.id,
+			out: { ...r.view }
+		}));
+
+function trackerRoutes(key: TrackerKey): RouteDef[] {
+	const spec = SPECS[key];
+	const base = `^\\/v1\\/kids\\/([^/]+)\\/${key}`;
+	const kidOf = (state: State, id: string) => state.kids.get(id) as KidRow;
+	// The 404 an unknown entry, another kid's entry and a malformed id all share.
+	const entryOr404 = (state: State, res: ServerResponse, kidId: string, id: string) => {
+		const row = rowOf(state, key, kidId, id);
+		if (!row) noKid(res);
+		return row;
+	};
+	const routes: RouteDef[] = [
+		{
+			method: 'GET',
+			pattern: new RegExp(`${base}$`),
+			access: 'caregiver',
+			kidParam: true,
+			run: (state, req, res, _p, [kidId]) => {
+				const q = parsePage(new URL(req.url ?? '/', STUB_URL));
+				if (typeof q === 'string') return error(res, 422, 'invalid', q);
+				respondPage(res, key, itemsOf(state, key, kidId), q);
+			}
+		},
+		{
+			method: 'POST',
+			pattern: new RegExp(`${base}$`),
+			access: 'caregiver',
+			kidParam: true,
+			run: async (state, req, res, _p, [kidId]) => {
+				const body = await decodeBody(req, res, spec.fields);
+				if (!body) return;
+				const created = createEntry(spec, body, ctxFor(kidOf(state, kidId)));
+				if (typeof created === 'string') return error(res, 422, 'invalid', created);
+				const running = state.entries[key].some(
+					(r) => r.kidId === kidId && r.view.ended_at === null
+				);
+				if (spec.timer && created.ended_at === null && running) {
+					return error(res, 409, 'already_running');
+				}
+				const view = { id: nextId(state, 'e'), ...created };
+				state.entries[key].push({ kidId, view });
+				send(res, 201, view);
+			}
+		},
+		{
+			method: 'GET',
+			pattern: new RegExp(`${base}\\/([^/]+)$`),
+			access: 'caregiver',
+			kidParam: true,
+			run: (state, _req, res, _p, [kidId, id]) => {
+				const row = entryOr404(state, res, kidId, id);
+				if (row) send(res, 200, row.view);
+			}
+		},
+		{
+			method: 'PATCH',
+			pattern: new RegExp(`${base}\\/([^/]+)$`),
+			access: 'caregiver',
+			kidParam: true,
+			run: async (state, req, res, _p, [kidId, id]) => {
+				const body = await decodeBody(req, res, spec.fields);
+				if (!body) return;
+				const row = entryOr404(state, res, kidId, id);
+				if (!row) return;
+				const merged = structuredClone(row.view);
+				const field = spec.merge(merged, body, ctxFor(kidOf(state, kidId)));
+				if (field) return error(res, 422, 'invalid', field);
+				row.view = merged;
+				send(res, 200, merged);
+			}
+		},
+		{
+			method: 'DELETE',
+			pattern: new RegExp(`${base}\\/([^/]+)$`),
+			access: 'caregiver',
+			kidParam: true,
+			run: (state, _req, res, _p, [kidId, id]) => {
+				const row = entryOr404(state, res, kidId, id);
+				if (!row) return;
+				state.entries[key] = state.entries[key].filter((r) => r !== row);
+				send(res, 204);
+			}
+		}
+	];
+	if (!spec.timer) return routes;
+
+	// timerAction in entries.go: 404, then a bad body field, then at (default now), then the transition.
+	const action = (
+		suffix: string,
+		fields: Record<string, FieldKind>,
+		act: (view: Body, body: Body, at: number) => string | null
+	): RouteDef => ({
+		method: 'POST',
+		pattern: new RegExp(`${base}\\/([^/]+)\\/${suffix}$`),
+		access: 'caregiver',
+		kidParam: true,
+		run: async (state, req, res, _p, [kidId, id]) => {
+			const body = await decodeBody(req, res, { at: 'time', ...fields });
+			if (!body) return;
+			const row = entryOr404(state, res, kidId, id);
+			if (!row) return;
+			const c = ctxFor(kidOf(state, kidId));
+			const at = typeof body.at === 'string' ? unix(body.at) : c.now;
+			const next = structuredClone(row.view);
+			const refused = act(next, body, at);
+			if (refused === 'side') return error(res, 422, 'invalid', 'side');
+			if (!instantOK(at, c)) return error(res, 422, 'invalid', 'at');
+			if (refused === 'not_running') return error(res, 409, 'not_running');
+			if (refused === 'at' || invalidSession(key, next)) return error(res, 422, 'invalid', 'at');
+			row.view = next;
+			send(res, 200, next);
+		}
+	});
+	routes.push(
+		action('end', {}, (view, _body, at) => {
+			if (view.ended_at !== null) return 'not_running';
+			if (key === 'nursing' && !credit(view, at)) return 'at';
+			Object.assign(view, { ended_at: iso(at) });
+			if (key === 'nursing') Object.assign(view, { side: null, side_since: null });
+			return null;
+		})
+	);
+	if (key === 'nursing') {
+		routes.push(
+			action('side', { side: 'string' }, (view, body, at) => {
+				if (!NURSING_SIDES.includes(body.side as string)) return 'side';
+				if (view.ended_at !== null) return 'not_running';
+				if (!credit(view, at)) return 'at';
+				Object.assign(view, { side: body.side, side_since: iso(at) });
+				return null;
+			})
+		);
+	}
+	return routes;
+}
+
+function moduleEnabledByDefault(module: string, band: string) {
+	return band !== '24+' || OLDER_BAND_MODULES.includes(module);
+}
+
+// Re-evaluated on every read, as Modules in store/modules.go: a recent entry or a running timer turns an
+// off-by-default module on once, and a stored row is final.
+function moduleStates(state: State, kid: KidRow) {
+	const months = ageMonths(kid.birthDate, todayIn(kid.timeZone));
+	const band = bandOf(months);
+	const since =
+		midnight(addMonths(kid.birthDate, BAND_THIRD_MONTHS), kid.timeZone) - OVERRIDE_LOOKBACK_S;
+	for (const m of MODULES) {
+		const stored = `${kid.id}:${m}`;
+		const tracker = TRACKER_KEYS.find((k) => MODULE_OF[k] === m);
+		if (state.modules.has(stored) || moduleEnabledByDefault(m, band) || !tracker) continue;
+		const recent = state.entries[tracker].some((r) => {
+			if (r.kidId !== kid.id) return false;
+			const t = unix(r.view[SPECS[tracker].timeKey]);
+			return (t >= since && t <= now()) || (SPECS[tracker].timer && r.view.ended_at === null);
+		});
+		if (recent) state.modules.set(stored, true);
+	}
+	return MODULES.map((m) => {
+		const stored = state.modules.get(`${kid.id}:${m}`);
+		const fallback = moduleEnabledByDefault(m, band);
+		return {
+			module: m,
+			enabled: stored ?? fallback,
+			default: fallback,
+			overridden: stored !== undefined
+		};
+	});
+}
+
+// One kid-local day, as Summaries in store/summary.go.
+function daySummary(state: State, kid: KidRow, date: string) {
+	const start = midnight(date, kid.timeZone);
+	const end = midnight(addDays(date, 1), kid.timeZone);
+	const views = (key: TrackerKey) =>
+		state.entries[key].filter((r) => r.kidId === kid.id).map((r) => r.view);
+	const inDay = (v: Body, timeKey: string) => unix(v[timeKey]) >= start && unix(v[timeKey]) < end;
+	const sum = (vs: Body[], pick: (v: Body) => number) => vs.reduce((n, v) => n + pick(v), 0);
+	const volumes = (key: TrackerKey, timeKey: string) => {
+		const vs = views(key).filter((v) => inDay(v, timeKey));
+		return {
+			count: vs.length,
+			ml: sum(vs, (v) => (v.volume as Vol).ml),
+			floz_hundredths: sum(vs, (v) => (v.volume as Vol).floz_hundredths)
+		};
+	};
+	const nursing = views('nursing').filter((v) => inDay(v, 'started_at'));
+	const diapers = views('diapers').filter((v) => inDay(v, 'at'));
+	const kinds = (k: string) => diapers.filter((v) => v.kind === k).length;
+	const overlap = (v: Body) => {
+		const to = Math.min(v.ended_at === null ? now() : unix(v.ended_at), end);
+		return Math.max(0, to - Math.max(unix(v.started_at), start));
+	};
+	return {
+		date,
+		bottles: volumes('bottles', 'at'),
+		nursing: {
+			count: nursing.length,
+			seconds: sum(nursing, (v) => (v.left_seconds as number) + (v.right_seconds as number))
+		},
+		pumping: volumes('pumping', 'started_at'),
+		diapers: {
+			total: diapers.length,
+			wet: kinds('wet'),
+			dirty: kinds('dirty'),
+			both: kinds('both'),
+			dry: kinds('dry')
+		},
+		sleep: { seconds: sum(views('sleep'), overlap) },
+		meals: { count: views('meals').filter((v) => inDay(v, 'at')).length }
+	};
+}
+
+const runningOf = (state: State, key: TrackerKey, kidId: string) =>
+	state.entries[key].find((r) => r.kidId === kidId && r.view.ended_at === null)?.view ?? null;
+
+const kidRoute = (
+	method: string,
+	suffix: string,
+	access: 'caregiver' | 'guardian',
+	run: (state: State, req: IncomingMessage, res: ServerResponse, kid: KidRow) => unknown
+): RouteDef => ({
+	method,
+	pattern: new RegExp(`^\\/v1\\/kids\\/([^/]+)\\/${suffix}$`),
+	access,
+	kidParam: true,
+	run: (state, req, res, _p, [kidId]) => run(state, req, res, state.kids.get(kidId) as KidRow)
+});
+
+const overviewRoutes: RouteDef[] = [
+	kidRoute('GET', 'timeline', 'caregiver', (state, req, res, kid) => {
+		const url = new URL(req.url ?? '/', STUB_URL);
+		const q = parsePage(url);
+		if (typeof q === 'string') return error(res, 422, 'invalid', q);
+		const given = url.searchParams.getAll('types');
+		let keys: TrackerKey[];
+		if (given.length === 0) {
+			const on = moduleStates(state, kid)
+				.filter((m) => m.enabled)
+				.map((m) => m.module as string);
+			keys = TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]));
+		} else {
+			const names = given.length === 1 ? given[0].split(',') : [''];
+			const wanted = names.map((n) => TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n));
+			if (wanted.some((k, i) => !k || wanted.indexOf(k) !== i)) {
+				return error(res, 422, 'invalid', 'types');
+			}
+			keys = wanted as TrackerKey[];
+		}
+		const items = keys.flatMap((key) =>
+			itemsOf(state, key, kid.id).map((i) => ({
+				...i,
+				out: { type: TIMELINE_TYPES[key], at: iso(i.at), ...i.out }
+			}))
+		);
+		respondPage(res, 'items', items, q);
+	}),
+	kidRoute('GET', 'summary', 'caregiver', (state, req, res, kid) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const from = q.get('from') ?? '';
+		const to = q.get('to') ?? '';
+		if (!validDate(from)) return error(res, 422, 'invalid', 'from');
+		if (!validDate(to)) return error(res, 422, 'invalid', 'to');
+		const days = (Date.parse(to) - Date.parse(from)) / (DAY_S * 1000) + 1;
+		if (days < 1) return error(res, 422, 'invalid', 'from');
+		if (days > SUMMARY_MAX_DAYS) return error(res, 422, 'invalid', 'to');
+		send(res, 200, {
+			days: Array.from({ length: days }, (_, i) => daySummary(state, kid, addDays(from, i)))
+		});
+	}),
+	kidRoute('GET', 'modules', 'caregiver', (state, _req, res, kid) => {
+		send(res, 200, { modules: moduleStates(state, kid) });
+	}),
+	{
+		method: 'PUT',
+		pattern: /^\/v1\/kids\/([^/]+)\/modules\/([^/]+)$/,
+		access: 'guardian',
+		kidParam: true,
+		run: async (state, req, res, _p, [kidId, module]) => {
+			const body = await decodeBody(req, res, { enabled: 'bool' });
+			if (!body) return;
+			if (!(MODULES as readonly string[]).includes(module)) return noKid(res);
+			if (typeof body.enabled !== 'boolean') return error(res, 422, 'invalid', 'enabled');
+			state.modules.set(`${kidId}:${module}`, body.enabled);
+			send(res, 204);
+		}
+	},
+	kidRoute('GET', 'home', 'caregiver', (state, _req, res, kid) => {
+		const months = ageMonths(kid.birthDate, todayIn(kid.timeZone));
+		send(res, 200, {
+			age_months: months,
+			band: bandOf(months),
+			modules: moduleStates(state, kid),
+			running: {
+				sleep: runningOf(state, 'sleep', kid.id),
+				nursing: runningOf(state, 'nursing', kid.id)
+			},
+			today: daySummary(state, kid, todayIn(kid.timeZone))
+		});
+	})
+];
+
+routes.push(...TRACKER_KEYS.flatMap(trackerRoutes), ...overviewRoutes);
 
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {
 	const method = req.method ?? 'GET';

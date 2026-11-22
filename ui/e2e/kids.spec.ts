@@ -11,6 +11,7 @@ import {
 	ANA,
 	CLEO,
 	DAN,
+	IVY,
 	LEO,
 	MIA,
 	STUB_TOKEN,
@@ -73,7 +74,7 @@ test('home lists each kid with name and age; only guardians get settings and acc
 	await expect(leo).toContainText(formatAge(LEO.birthDate, todayIn(LEO.timeZone)));
 	await expect(leo.getByRole('link', { name: /Settings|Access/ })).toHaveCount(0);
 	const switcher = page.getByRole('navigation', { name: 'Children' });
-	await expect(switcher.getByRole('link')).toHaveText([MIA.name, LEO.name]);
+	await expect(switcher.getByRole('link')).toHaveText([MIA.name, LEO.name, IVY.name]);
 	await expectAccessible(page);
 });
 

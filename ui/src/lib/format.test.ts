@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatAge, formatInstant, todayIn } from './format';
+import {
+	ageMonths,
+	formatAge,
+	formatDuration,
+	formatInstant,
+	formatVolume,
+	todayIn
+} from './format';
 
 describe('formatAge', () => {
 	const cases: [string, string, string, string][] = [
@@ -75,4 +82,61 @@ describe('formatInstant', () => {
 	it('shows an RFC 3339 instant as a UTC date and minute', () => {
 		expect(formatInstant('2026-11-21T09:05:59Z')).toBe('2026-11-21 09:05 UTC');
 	});
+});
+
+describe('formatVolume', () => {
+	const bottle = { ml: 120, floz_hundredths: 406 };
+
+	it('shows whole millilitres', () => {
+		expect(formatVolume(bottle, 'ml')).toBe('120 ml');
+	});
+
+	it('shows fluid ounces with up to two decimals and no trailing zeros', () => {
+		expect(formatVolume(bottle, 'floz')).toBe('4.06 fl oz');
+		expect(formatVolume({ ml: 133, floz_hundredths: 450 }, 'floz')).toBe('4.5 fl oz');
+		expect(formatVolume({ ml: 118, floz_hundredths: 400 }, 'floz')).toBe('4 fl oz');
+		expect(formatVolume({ ml: 1, floz_hundredths: 3 }, 'floz')).toBe('0.03 fl oz');
+	});
+});
+
+describe('formatDuration', () => {
+	it.each([
+		[0, '0 s'],
+		[59, '59 s'],
+		[60, '1 min'],
+		[1023, '17 min'],
+		[3600, '1 h'],
+		[3660, '1 h 1 min'],
+		[26_400, '7 h 20 min'],
+		[86_400, '24 h']
+	])('%i seconds is %s', (seconds, want) => {
+		expect(formatDuration(seconds)).toBe(want);
+	});
+
+	it('never shows a negative or fractional duration', () => {
+		expect(formatDuration(-5)).toBe('0 s');
+		expect(formatDuration(59.9)).toBe('59 s');
+	});
+});
+
+describe('ageMonths', () => {
+	// The cases of TestAgeMonths in api/internal/kidtime/kidtime_test.go, with now as the kid's local date.
+	const cases: [string, string, string, number][] = [
+		['day before month', '2026-08-31', '2026-09-30', 0],
+		['month turns', '2026-08-31', '2026-10-01', 1],
+		['birth day itself', '2026-08-31', '2026-08-31', 0],
+		['leap day, day before first birthday', '2024-02-29', '2025-02-28', 11],
+		['leap day, first birthday', '2024-02-29', '2025-03-01', 12],
+		['leap day, next leap day', '2024-02-29', '2028-02-29', 48],
+		['born tomorrow', '2026-06-02', '2026-06-01', 0],
+		['born next year', '2027-01-15', '2026-06-01', 0],
+		['one year', '2025-06-01', '2026-06-01', 12],
+		['the kid zone already turned the day', '2026-06-02', '2026-06-02', 0],
+		['the kid zone decides the month turn', '2026-05-02', '2026-06-02', 1]
+	];
+	for (const [name, birth, today, want] of cases) {
+		it(`${name}: ${birth} on ${today} is ${want}`, () => {
+			expect(ageMonths(birth, today)).toBe(want);
+		});
+	}
 });

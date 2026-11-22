@@ -1,19 +1,51 @@
 import { API_TIMEOUT_MS, ID_PATTERN, TOKEN_PATTERN } from './constants';
 import type { Env } from './env';
+import {
+	AGE_BANDS,
+	BOTTLE_CONTENTS,
+	DIAPER_KINDS,
+	MODULES,
+	NURSING_SIDES,
+	PUMPING_SIDES,
+	TIMELINE_TYPE,
+	TRACKER_KINDS,
+	VOLUME_UNITS
+} from '../constants';
 import type {
 	AdminParent,
+	Bottle,
+	DaySummary,
+	Diaper,
+	EntryBody,
 	Grant,
+	Home,
 	Kid,
 	KidInput,
+	ListQuery,
+	Meal,
+	ModuleId,
+	ModuleState,
 	NewSession,
+	Nursing,
+	NursingSide,
+	Page,
 	Parent,
 	ParentLink,
+	Pumping,
 	Role,
 	Session,
 	SessionInfo,
 	SessionKind,
+	Sleep,
+	TimelineItem,
+	TimelineQuery,
+	TimerKind,
 	TokenInfo,
-	Units
+	TrackerEntries,
+	TrackerKind,
+	Units,
+	Volume,
+	VolumeTotal
 } from '../types';
 
 export type ApiReason =
@@ -53,7 +85,15 @@ type Endpoint =
 	| 'delete_kid'
 	| 'list_access'
 	| 'set_access'
-	| 'remove_access';
+	| 'remove_access'
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind}`
+	| 'end_timer'
+	| 'switch_side'
+	| 'timeline'
+	| 'summary'
+	| 'list_modules'
+	| 'set_module'
+	| 'home';
 
 // Thrown by a wire-shape parser; the call becomes reason 'error'.
 class ShapeError extends Error {}
@@ -112,10 +152,22 @@ function intOrNull(v: unknown): number | null {
 	return v as number;
 }
 
+function int(v: unknown): number {
+	if (!Number.isInteger(v)) throw new ShapeError();
+	return v as number;
+}
+
+function stringOrNull(v: unknown): string | null {
+	return v === null ? null : string(v);
+}
+
+function array<T>(v: unknown, item: (row: unknown) => T): T[] {
+	if (!Array.isArray(v)) throw new ShapeError();
+	return v.map(item);
+}
+
 function list<T>(v: unknown, key: string, item: (row: unknown) => T): T[] {
-	const rows = object(v)[key];
-	if (!Array.isArray(rows)) throw new ShapeError();
-	return rows.map(item);
+	return array(object(v)[key], item);
 }
 
 function oneOf<T extends string>(v: unknown, values: readonly T[]): T {
@@ -217,6 +269,168 @@ function toSessionInfo(v: unknown): SessionInfo {
 	};
 }
 
+function toVolume(v: unknown): Volume {
+	const o = object(v);
+	return {
+		ml: int(o.ml),
+		floz_hundredths: int(o.floz_hundredths),
+		typed_unit: oneOf(o.typed_unit, VOLUME_UNITS)
+	};
+}
+
+function toBottle(v: unknown): Bottle {
+	const o = object(v);
+	const contents = array(o.contents, (c) => oneOf(c, BOTTLE_CONTENTS));
+	if (contents.length === 0) throw new ShapeError();
+	return {
+		id: string(o.id),
+		at: string(o.at),
+		contents,
+		volume: toVolume(o.volume),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toDiaper(v: unknown): Diaper {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		at: string(o.at),
+		kind: oneOf(o.kind, DIAPER_KINDS),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toMeal(v: unknown): Meal {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		at: string(o.at),
+		what: string(o.what),
+		reaction: stringOrNull(o.reaction),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toPumping(v: unknown): Pumping {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		startedAt: string(o.started_at),
+		durationSeconds: int(o.duration_seconds),
+		volume: toVolume(o.volume),
+		side: oneOf(o.side, PUMPING_SIDES),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toSleep(v: unknown): Sleep {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		startedAt: string(o.started_at),
+		endedAt: stringOrNull(o.ended_at),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toNursing(v: unknown): Nursing {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		startedAt: string(o.started_at),
+		endedAt: stringOrNull(o.ended_at),
+		leftSeconds: int(o.left_seconds),
+		rightSeconds: int(o.right_seconds),
+		side: o.side === null ? null : oneOf(o.side, NURSING_SIDES),
+		sideSince: stringOrNull(o.side_since),
+		note: stringOrNull(o.note)
+	};
+}
+
+const PARSERS: { [K in TrackerKind]: (v: unknown) => TrackerEntries[K] } = {
+	bottles: toBottle,
+	nursing: toNursing,
+	pumping: toPumping,
+	sleep: toSleep,
+	diapers: toDiaper,
+	meals: toMeal
+};
+
+function toPage<K extends TrackerKind>(kind: K, v: unknown): Page<TrackerEntries[K]> {
+	return { items: list(v, kind, PARSERS[kind]), nextCursor: stringOrNull(object(v).next_cursor) };
+}
+
+// An item is its tracker's own view plus type and at; type is the singular name, kind the route name.
+function toTimelineItem(v: unknown): TimelineItem {
+	const o = object(v);
+	const kind = TRACKER_KINDS.find((k) => TIMELINE_TYPE[k] === o.type);
+	if (!kind) throw new ShapeError();
+	return { kind, at: string(o.at), entry: PARSERS[kind](o) } as TimelineItem;
+}
+
+function toVolumeTotal(v: unknown): VolumeTotal {
+	const o = object(v);
+	return { count: int(o.count), ml: int(o.ml), floz_hundredths: int(o.floz_hundredths) };
+}
+
+function toDaySummary(v: unknown): DaySummary {
+	const o = object(v);
+	const nursing = object(o.nursing);
+	const diapers = object(o.diapers);
+	return {
+		date: string(o.date),
+		bottles: toVolumeTotal(o.bottles),
+		nursing: { count: int(nursing.count), seconds: int(nursing.seconds) },
+		pumping: toVolumeTotal(o.pumping),
+		diapers: {
+			total: int(diapers.total),
+			wet: int(diapers.wet),
+			dirty: int(diapers.dirty),
+			both: int(diapers.both),
+			dry: int(diapers.dry)
+		},
+		sleep: { seconds: int(object(o.sleep).seconds) },
+		meals: { count: int(object(o.meals).count) }
+	};
+}
+
+function toModuleState(v: unknown): ModuleState {
+	const o = object(v);
+	return {
+		module: oneOf(o.module, MODULES),
+		enabled: boolean(o.enabled),
+		default: boolean(o.default),
+		overridden: boolean(o.overridden)
+	};
+}
+
+function toHome(v: unknown): Home {
+	const o = object(v);
+	const running = object(o.running);
+	return {
+		ageMonths: int(o.age_months),
+		band: oneOf(o.band, AGE_BANDS),
+		modules: list(o, 'modules', toModuleState),
+		running: {
+			sleep: running.sleep === null ? null : toSleep(running.sleep),
+			nursing: running.nursing === null ? null : toNursing(running.nursing)
+		},
+		today: toDaySummary(o.today)
+	};
+}
+
+function queryString(q: TimelineQuery): string {
+	const p = new URLSearchParams();
+	if (q.from !== undefined) p.set('from', q.from);
+	if (q.to !== undefined) p.set('to', q.to);
+	if (q.limit !== undefined) p.set('limit', String(q.limit));
+	if (q.cursor !== undefined) p.set('cursor', q.cursor);
+	if (q.types?.length) p.set('types', q.types.join(','));
+	const s = p.toString();
+	return s === '' ? '' : `?${s}`;
+}
+
 const kidBody = (k: KidInput) => ({
 	name: k.name,
 	birth_date: k.birthDate,
@@ -305,6 +519,12 @@ export function createApi(
 		return ID_PATTERN.test(id) ? run(id) : Promise.resolve<ApiResult<T>>(NOT_FOUND);
 	}
 
+	const withKidEntry = <T>(
+		kidId: string,
+		id: string,
+		run: (kidId: string, id: string) => Promise<ApiResult<T>>
+	) => withId(kidId, (k) => withId(id, (i) => run(k, i)));
+
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
 		login: (username: string, password: string) =>
@@ -381,6 +601,76 @@ export function createApi(
 				withId(parentId, (p) =>
 					call<null>('remove_access', 'DELETE', `/v1/kids/${k}/access/${p}`, null)
 				)
-			)
+			),
+
+		// input is the API's own JSON body, as readEntryForm builds it.
+		tracker<K extends TrackerKind>(kind: K) {
+			const parse = PARSERS[kind];
+			const path = (k: string) => `/v1/kids/${k}/${kind}`;
+			return {
+				list: (kidId: string, query: ListQuery = {}) =>
+					withId(kidId, (k) =>
+						call(`list_${kind}`, 'GET', `${path(k)}${queryString(query)}`, (b) => toPage(kind, b))
+					),
+				get: (kidId: string, id: string) =>
+					withKidEntry(kidId, id, (k, i) => call(`get_${kind}`, 'GET', `${path(k)}/${i}`, parse)),
+				create: (kidId: string, input: EntryBody) =>
+					withId(kidId, (k) => call(`create_${kind}`, 'POST', path(k), parse, input)),
+				update: (kidId: string, id: string, input: EntryBody) =>
+					withKidEntry(kidId, id, (k, i) =>
+						call(`update_${kind}`, 'PATCH', `${path(k)}/${i}`, parse, input)
+					),
+				remove: (kidId: string, id: string) =>
+					withKidEntry(kidId, id, (k, i) =>
+						call<null>(`delete_${kind}`, 'DELETE', `${path(k)}/${i}`, null)
+					)
+			};
+		},
+		// at is an RFC 3339 instant; left out it is now.
+		endTimer: <K extends TimerKind>(kind: K, kidId: string, id: string, at?: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call(
+					'end_timer',
+					'POST',
+					`/v1/kids/${k}/${kind}/${i}/end`,
+					PARSERS[kind],
+					at === undefined ? {} : { at }
+				)
+			),
+		switchNursingSide: (kidId: string, id: string, side: NursingSide, at?: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call(
+					'switch_side',
+					'POST',
+					`/v1/kids/${k}/nursing/${i}/side`,
+					toNursing,
+					at === undefined ? { side } : { side, at }
+				)
+			),
+		timeline: (kidId: string, query: TimelineQuery = {}) =>
+			withId(kidId, (k) =>
+				call('timeline', 'GET', `/v1/kids/${k}/timeline${queryString(query)}`, (b) => ({
+					items: list(b, 'items', toTimelineItem),
+					nextCursor: stringOrNull(object(b).next_cursor)
+				}))
+			),
+		// from and to are YYYY-MM-DD in the kid's zone.
+		summary: (kidId: string, from: string, to: string) =>
+			withId(kidId, (k) =>
+				call('summary', 'GET', `/v1/kids/${k}/summary?${new URLSearchParams({ from, to })}`, (b) =>
+					list(b, 'days', toDaySummary)
+				)
+			),
+		modules: (kidId: string) =>
+			withId(kidId, (k) =>
+				call('list_modules', 'GET', `/v1/kids/${k}/modules`, (b) =>
+					list(b, 'modules', toModuleState)
+				)
+			),
+		setModule: (kidId: string, module: ModuleId, enabled: boolean) =>
+			withId(kidId, (k) =>
+				call<null>('set_module', 'PUT', `/v1/kids/${k}/modules/${module}`, null, { enabled })
+			),
+		home: (kidId: string) => withId(kidId, (k) => call('home', 'GET', `/v1/kids/${k}/home`, toHome))
 	};
 }

@@ -1,5 +1,9 @@
+import { HUNDREDTHS_PER_FLOZ, SECONDS_PER_MINUTE } from './constants';
+import type { Volume, VolumeUnit } from './types';
+
 const MONTHS_PER_YEAR = 12;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MINUTES_PER_HOUR = 60;
 
 type Ymd = { y: number; m: number; d: number };
 
@@ -39,6 +43,29 @@ export function formatAge(birthDate: string, today: string): string {
 	const years = Math.floor(months / MONTHS_PER_YEAR);
 	const rest = months % MONTHS_PER_YEAR;
 	return rest === 0 ? plural(years, 'year') : `${plural(years, 'year')} ${plural(rest, 'month')}`;
+}
+
+// Both dates are YYYY-MM-DD in the kid's zone; the same rule as the API's AgeMonths.
+export function ageMonths(birthDate: string, today: string): number {
+	const b = parse(birthDate);
+	const t = parse(today);
+	const months = (t.y - b.y) * MONTHS_PER_YEAR + (t.m - b.m) - (t.d < b.d ? 1 : 0);
+	return Math.max(months, 0);
+}
+
+export function formatVolume(v: Pick<Volume, 'ml' | 'floz_hundredths'>, unit: VolumeUnit): string {
+	if (unit === 'ml') return `${v.ml} ml`;
+	return `${Number((v.floz_hundredths / HUNDREDTHS_PER_FLOZ).toFixed(2))} fl oz`;
+}
+
+export function formatDuration(seconds: number): string {
+	const total = Math.max(0, Math.floor(seconds));
+	if (total < SECONDS_PER_MINUTE) return `${total} s`;
+	const minutes = Math.floor(total / SECONDS_PER_MINUTE);
+	const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+	const rest = minutes % MINUTES_PER_HOUR;
+	if (hours === 0) return `${rest} min`;
+	return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }
 
 export function todayIn(timeZone: string, now = new Date()): string {
