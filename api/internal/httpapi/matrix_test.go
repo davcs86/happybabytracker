@@ -13,6 +13,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 type actor int
@@ -78,6 +79,16 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/access":                  Guardian,
 	"PUT /v1/kids/{kid}/access/{username}":       Guardian,
 	"DELETE /v1/kids/{kid}/access/{parent}":      Caregiver,
+	"GET /v1/kids/{kid}/bottles":                 Caregiver,
+	"POST /v1/kids/{kid}/bottles":                Caregiver,
+	"GET /v1/kids/{kid}/bottles/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/bottles/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/bottles/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/diapers":                 Caregiver,
+	"POST /v1/kids/{kid}/diapers":                Caregiver,
+	"GET /v1/kids/{kid}/diapers/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/diapers/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/diapers/{entry}":      Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -103,12 +114,13 @@ func (w want) String() string {
 const matrixBody = `{"matrix_probe":true}`
 
 type fixture struct {
-	kit    *kit
-	kid    string
-	invite string
-	parent [actorCount]model.Parent
-	token  [actorCount]string
-	sid    [actorCount]string
+	kit            *kit
+	kid            string
+	bottle, diaper string
+	invite         string
+	parent         [actorCount]model.Parent
+	token          [actorCount]string
+	sid            [actorCount]string
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -122,6 +134,16 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.parent[aC].ID
 		}
 		return f.parent[aX].ID
+	},
+	"entry": func(f *fixture, rt Route, _ actor) string {
+		switch {
+		case strings.Contains(rt.Pattern, "/bottles/"):
+			return f.bottle
+		case strings.Contains(rt.Pattern, "/diapers/"):
+			return f.diaper
+		}
+		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
+		return ""
 	},
 }
 
@@ -175,6 +197,20 @@ func newMatrixFixture(t *testing.T) *fixture {
 	if err := k.Store.SetAccess(ctx, kid.ID, f.parent[aG].ID, f.parent[aC].Username, model.RoleCaregiver, k.now); err != nil {
 		t.Fatal(err)
 	}
+	bottleVolume, err := units.NewVolume(units.UnitML, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bottle, err := k.Store.CreateBottle(ctx, kid.ID, f.parent[aG].ID,
+		model.BottleFeed{At: k.now, Contents: []string{model.ContentFormula}, Volume: bottleVolume}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diaper, err := k.Store.CreateDiaper(ctx, kid.ID, f.parent[aG].ID, model.Diaper{At: k.now, Kind: "wet"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.bottle, f.diaper = bottle.ID, diaper.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

@@ -58,6 +58,9 @@ const (
 	BandOverrideLookback = 60 * 24 * time.Hour
 	CursorIDPattern      = `^[A-Za-z0-9-]{1,64}$`
 
+	MinBottleVolumeML = 1
+	MaxBottleVolumeML = 1000
+
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
 

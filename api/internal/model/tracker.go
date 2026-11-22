@@ -1,6 +1,7 @@
 package model
 
 import (
+	"slices"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/units"
@@ -66,6 +67,23 @@ const (
 	ContentCowMilk    = "cow_milk"
 	ContentOther      = "other"
 )
+
+// ContentNames lists every bottle content name in storage order.
+var ContentNames = []string{ContentBreastMilk, ContentFormula, ContentCowMilk, ContentOther}
+
+// CanonicalContents returns in as a set in storage order; false for an empty set, a duplicate or an unknown name.
+func CanonicalContents(in []string) ([]string, bool) {
+	out := make([]string, 0, len(in))
+	for _, name := range ContentNames {
+		if slices.Contains(in, name) {
+			out = append(out, name)
+		}
+	}
+	return out, len(out) > 0 && len(out) == len(in) // a duplicate or unknown name leaves out shorter than in
+}
+
+// DiaperKinds lists every diaper kind.
+var DiaperKinds = []string{"wet", "dirty", "both", "dry"}
 
 // Module is a switchable tracker.
 type Module string
