@@ -1,0 +1,74 @@
+WHO growth tables in this directory: NOT MIT
+
+The *.csv files in this directory are adaptations of World Health Organization (WHO) material. They are
+not covered by the MIT licence of the rest of this repository. They are offered under the Creative
+Commons Attribution-NonCommercial-ShareAlike 3.0 IGO licence (CC BY-NC-SA 3.0 IGO): non-commercial use
+only, share-alike, with attribution. See LICENSE in this directory and
+https://creativecommons.org/licenses/by-nc-sa/3.0/igo/legalcode
+
+Not endorsed by WHO. The WHO name and logo are not used to imply any connection with or endorsement of
+this project.
+
+Attribution (WHO's suggested citation form, "[Title]. [Place of publication]: World Health Organization;
+[Year]. Licence: CC BY-NC-SA 3.0 IGO.", from https://www.who.int/about/policies/publishing/copyright)
+
+- wfa-day, lhfa-day, bfa-day:
+  WHO Child Growth Standards: length/height-for-age, weight-for-age, weight-for-length,
+  weight-for-height and body mass index-for-age: methods and development. Geneva: World Health
+  Organization; 2006. Licence: CC BY-NC-SA 3.0 IGO.
+- hcfa-day:
+  WHO Child Growth Standards: head circumference-for-age, arm circumference-for-age, triceps
+  skinfold-for-age and subscapular skinfold-for-age: methods and development. Geneva: World Health
+  Organization; 2007. Licence: CC BY-NC-SA 3.0 IGO.
+- wfa-month, hfa-month, bfa-month:
+  WHO Growth Reference 2007 for 5-19 years (https://www.who.int/tools/growth-reference-data-for-5to19-years).
+  Geneva: World Health Organization; 2007. Licence: CC BY-NC-SA 3.0 IGO.
+  WHO names this article as describing the sample and methods: "Development of a WHO growth reference
+  for school-aged children and adolescents", https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2636412/
+
+Adaptation disclaimer (WHO's wording for adaptations, applied to each work above):
+
+  This is an adaptation of an original work "[Title]. Geneva: World Health Organization (WHO); [Year].
+  Licence: CC BY-NC-SA 3.0 IGO". This adaptation was not created by WHO. WHO is not responsible for the
+  content or accuracy of this adaptation. The original edition shall be the binding and authentic
+  edition.
+
+What was changed: each WHO xlsx file was converted to CSV by scripts/growth/convert.py. Only the age
+(Day or Month), L, M and S columns were kept; the SD columns were dropped. Every kept value is the same
+number as in the source cell, written as the shortest decimal that reads back as that cell's value (the
+value Excel shows); nothing was rounded or recomputed. Each CSV starts with comment lines naming its
+source file, URL and SHA-256.
+
+Retrieved 2026-11-22 from cdn.who.int. Source pages:
+https://www.who.int/tools/child-growth-standards/standards/weight-for-age
+https://www.who.int/tools/child-growth-standards/standards/length-height-for-age
+https://www.who.int/tools/child-growth-standards/standards/head-circumference-for-age
+https://www.who.int/toolkits/child-growth-standards/standards/body-mass-index-for-age-bmi-for-age
+https://www.who.int/tools/growth-reference-data-for-5to19-years/indicators/weight-for-age-5to10-years
+https://www.who.int/tools/growth-reference-data-for-5to19-years/indicators/height-for-age
+https://www.who.int/tools/growth-reference-data-for-5to19-years/indicators/bmi-for-age
+
+Source files (SHA-256):
+ee3ae12cb96c6c5541cdf43665c03ce6c984f877859a183a5f6104eb06a49a6e  wfa-girls-zscore-expanded-tables.xlsx
+b5b4748c6bfa5230e2eddafa1767629c349178b08d457f400b59422b8bfef86c  wfa-boys-zscore-expanded-tables.xlsx
+6aa2876319449a6b1f4d825848128902114ff53c67b92b86a0c5140846013059  lhfa-girls-zscore-expanded-tables.xlsx
+c4b1c9029ab9751a5f0888e32f35c7c0287a16d361885cf911ecf23b3f7f6b4f  lhfa-boys-zscore-expanded-tables.xlsx
+8eec3770d1027ce1b3b96a7b89fd1e77070558a7791b17b4462cda8a813324a3  hcfa-girls-zscore-expanded-tables.xlsx
+89a657bc466e85f6c8f2e5e7f4635e969bdcf982bb71e519273e43896a1c3314  hcfa-boys-zscore-expanded-tables.xlsx
+d3817262a383cdd02553b004f1c6110527d30b729c70501d032e71caadc17529  bfa-girls-zscore-expanded-tables.xlsx
+58dcb2abea0e04b1c4f8ad3511d05ec1bea03741f230ac127b93f929e4cc6fc8  bfa-boys-zscore-expanded-tables.xlsx
+d747e068fcef4238cbaf1c201dd7788f266d9903685f4495360614eed0153562  hfa-girls-z-who-2007-exp_7ea58763-36a2-436d-bef0-7fcfbadd2820.xlsx (weight-for-age 5-10 years)
+a6ed0d9f3cfa209747afe49f7503b7cc24a1be6b6a8e7222e85a36b7850cb99f  hfa-boys-z-who-2007-exp_0ff9c43c-8cc0-4c23-9fc6-81290675e08b.xlsx (weight-for-age 5-10 years)
+df07ee16d3d2916569f1d869b7c874d7b880a41321d871215ed0254cb16679b3  hfa-girls-z-who-2007-exp.xlsx
+d78fa8cafcab77dcb5f03d71506d92bdcb28f89c642816b6bb0eef466b007466  hfa-boys-z-who-2007-exp.xlsx
+66f5c6284b44579ad6135fc639f22c09e36fe5a695b04390377113f6a00deb72  bmi-girls-z-who-2007-exp.xlsx
+0a60849673f34a06b8e2fe4defe5d00348de687b6c9fce0278f1525fff89eb6d  bmi-boys-z-who-2007-exp.xlsx
+
+The two weight-for-age 5-10 years files are named hfa-... by WHO but sit in WHO's
+weight-for-age-(5-10-years) folder, have wfa_* sheet names and hold weight values.
+
+Licence basis: the pages hosting these files carry no licence statement and link to WHO's website
+terms of use (https://www.who.int/about/policies/terms-of-use); WHO states that its publications are
+under CC BY-NC-SA 3.0 IGO (https://www.who.int/about/policies/publishing/copyright). The owner of this
+project chose to redistribute the tables under CC BY-NC-SA 3.0 IGO. This reading is not legal advice
+and has not been confirmed by WHO.

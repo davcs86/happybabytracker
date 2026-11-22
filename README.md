@@ -145,3 +145,20 @@ Merging to `main` deploys nothing. CI builds both images, smoke-tests them toget
 moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints both `@sha256:…`
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
+
+## Third-party data
+
+The API embeds growth reference tables from two sources, retrieved 2026-11-22 and converted by
+`scripts/growth/convert.py` with their values unchanged. Neither is covered by the MIT licence in
+`LICENSE`.
+
+| Directory | Source | Licence |
+|---|---|---|
+| `api/internal/growth/data/who/` | WHO Child Growth Standards (2006; head circumference 2007) and WHO Growth Reference 2007 for 5–19 years, from who.int | **CC BY-NC-SA 3.0 IGO, not MIT**: non-commercial use only, share-alike, attribution. See its `LICENSE` and `NOTICE` |
+| `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain; see its `NOTICE` (attribution, no endorsement by CDC) |
+
+The published images (`ghcr.io/davcs86/happybabytracker-api` in particular) contain the non-commercial
+WHO tables, so the CC BY-NC-SA 3.0 IGO terms apply to those tables wherever an image is redistributed;
+a commercial use of an image needs WHO's permission. WHO's pages for these files carry no licence
+statement of their own; applying CC BY-NC-SA 3.0 IGO to them is the owner's reading of WHO's publishing
+policy, not confirmed by WHO, and none of this is legal advice.
