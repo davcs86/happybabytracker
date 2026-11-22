@@ -77,6 +77,8 @@ const UNIT_SETS = {
 export type LoggedRequest = {
 	method: string;
 	path: string;
+	// The raw JSON of a write; absent for a request without a body.
+	body?: string;
 	authorized: boolean;
 	session: string | null;
 	clientAddress: string | null;
@@ -212,9 +214,14 @@ const error = (res: ServerResponse, status: number, code: string, field?: string
 // respondNoKid: one body for an unknown kid and for no grant.
 const noKid = (res: ServerResponse) => error(res, 404, 'not_found');
 
+const bodies = new WeakMap<IncomingMessage, string>();
+
 async function readBody(req: IncomingMessage): Promise<string> {
+	const read = bodies.get(req);
+	if (read !== undefined) return read;
 	let data = '';
 	for await (const chunk of req) data += chunk;
+	bodies.set(req, data);
 	return data;
 }
 
@@ -1653,9 +1660,11 @@ export function startStub(port = STUB_PORT) {
 	const server = createServer(async (req, res) => {
 		const url = new URL(req.url ?? '/', STUB_URL);
 		if (url.pathname.startsWith('/__')) return control(state, req, res, url);
+		const body = req.method === 'GET' ? '' : await readBody(req);
 		state.requests.push({
 			method: req.method ?? 'GET',
 			path: url.pathname,
+			body: body || undefined,
 			authorized: req.headers.authorization === `Bearer ${STUB_TOKEN}`,
 			session: header(req, 'x-session-token'),
 			clientAddress: header(req, 'x-client-address')
@@ -1713,6 +1722,24 @@ export async function openSession(username: string, password: string): Promise<s
 	});
 	if (res.status !== 200) throw new Error(`openSession: ${res.status}`);
 	return ((await res.json()) as { token: string }).token;
+}
+
+// Calls the stub as a parent, as another device would.
+export async function stubAs(who: { username: string; password: string }) {
+	const token = await openSession(who.username, who.password);
+	return async (method: string, path: string, body?: unknown) => {
+		const res = await fetch(`${STUB_URL}${path}`, {
+			method,
+			headers: {
+				authorization: `Bearer ${STUB_TOKEN}`,
+				'x-session-token': token,
+				'content-type': 'application/json'
+			},
+			body: body === undefined ? undefined : JSON.stringify(body)
+		});
+		const text = await res.text();
+		return { status: res.status, body: text ? JSON.parse(text) : null };
+	};
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) startStub();

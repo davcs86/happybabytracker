@@ -9,3 +9,5 @@ export const keepValues = () => {
 	return async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) =>
 		update({ reset: false });
 };
+
+export const END_RUNNING_HINT = 'Set the end to end the timer';

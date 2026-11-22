@@ -22,6 +22,8 @@ export const KID_NAME_MAX_LEN = 64;
 export const KID_MIN_BIRTH_DATE = '1900-01-01';
 export const GESTATION_WEEKS = { min: 22, max: 44 } as const;
 export const GESTATION_DAYS = { min: 0, max: 6 } as const;
+// Longest sleep, nursing or pumping session the API accepts (MaxSessionDuration).
+export const MAX_SESSION_HOURS = 24;
 export const DEFAULT_TIME_ZONE = 'UTC';
 export const INVITE_VALIDITY = '72 hours';
 export const RESET_VALIDITY = '1 hour';
@@ -44,6 +46,14 @@ export const TIMELINE_TYPE: Record<TrackerKind, TimelineType> = {
 	diapers: 'diaper',
 	meals: 'meal'
 };
+export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> = {
+	bottles: { log: 'Log a bottle', edit: 'Edit bottle' },
+	nursing: { log: 'Log nursing', edit: 'Edit nursing' },
+	pumping: { log: 'Log pumping', edit: 'Edit pumping' },
+	sleep: { log: 'Log sleep', edit: 'Edit sleep' },
+	diapers: { log: 'Log a diaper', edit: 'Edit diaper' },
+	meals: { log: 'Log a meal', edit: 'Edit meal' }
+};
 export const VOLUME_UNITS = ['ml', 'floz'] as const satisfies readonly VolumeUnit[];
 export const BOTTLE_CONTENTS = [
 	'breast_milk',
@@ -51,6 +61,12 @@ export const BOTTLE_CONTENTS = [
 	'cow_milk',
 	'other'
 ] as const satisfies readonly BottleContent[];
+export const BOTTLE_CONTENT_LABEL: Record<BottleContent, string> = {
+	breast_milk: 'Breast milk',
+	formula: 'Formula',
+	cow_milk: "Cow's milk",
+	other: 'Other'
+};
 export const DIAPER_KINDS = [
 	'wet',
 	'dirty',
@@ -102,4 +118,5 @@ export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {
 };
 export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly AgeBand[];
 export const SECONDS_PER_MINUTE = 60;
+export const SECONDS_PER_HOUR = 3600;
 export const HUNDREDTHS_PER_FLOZ = 100;

@@ -7,6 +7,7 @@ import {
 	SECONDS_PER_MINUTE,
 	VOLUME_UNITS
 } from '../constants';
+import { floorMinutes } from '../entry-edit';
 import { zonedLocalToInstant } from '../time-zone';
 import type { EntryBody, TrackerKind, VolumeUnit } from '../types';
 
@@ -33,8 +34,7 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 // create, or an edit of a running (running: true) or finished nursing session.
 export type EntryMode = { kind: 'create' } | { kind: 'edit'; running: boolean };
 
-// The minutes a finished session's seconds pre-fill; never rounded up, so an unchanged edit fits its span.
-export const floorMinutes = (seconds: number) => Math.floor(seconds / SECONDS_PER_MINUTE);
+export { floorMinutes };
 
 type Outcome = { input: EntryBody } | { field: string };
 
