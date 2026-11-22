@@ -112,6 +112,8 @@ var routeClasses = map[string]Access{
 	"DELETE /v1/kids/{kid}/nursing/{entry}":      Caregiver,
 	"POST /v1/kids/{kid}/nursing/{entry}/end":    Caregiver,
 	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
+	"GET /v1/kids/{kid}/timeline":                Caregiver,
+	"GET /v1/kids/{kid}/summary":                 Caregiver,
 }
 
 var accessNames = map[Access]string{

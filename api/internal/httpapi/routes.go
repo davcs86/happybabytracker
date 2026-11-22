@@ -106,6 +106,9 @@ func Routes(d Deps) []Route {
 		{http.MethodDelete, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.deleteNursing},
 		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/end", Caregiver, d.endNursing},
 		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/side", Caregiver, d.switchNursingSide},
+
+		{http.MethodGet, "/v1/kids/{kid}/timeline", Caregiver, d.timeline},
+		{http.MethodGet, "/v1/kids/{kid}/summary", Caregiver, d.summary},
 	}
 }
 
