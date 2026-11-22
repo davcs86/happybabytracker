@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	ageMonths,
 	formatAge,
+	formatAgeDays,
 	formatDuration,
 	formatInstant,
 	formatVolume,
@@ -139,4 +140,26 @@ describe('ageMonths', () => {
 			expect(ageMonths(birth, today)).toBe(want);
 		});
 	}
+});
+
+describe('formatAgeDays', () => {
+	// Months of DAYS_PER_MONTH days, as the API's age_months axis counts them.
+	it.each([
+		[0, '0 days'],
+		[1, '1 day'],
+		[30, '30 days'],
+		[31, '1 month'],
+		[45, '1 month 14 days'],
+		[61, '2 months'],
+		[365, '11 months 30 days'],
+		[366, '1 year'],
+		[400, '1 year 1 month'],
+		[1000, '2 years 8 months']
+	])('%i days is %s', (days, want) => {
+		expect(formatAgeDays(days)).toBe(want);
+	});
+
+	it('never shows a negative age', () => {
+		expect(formatAgeDays(-3)).toBe('0 days');
+	});
 });

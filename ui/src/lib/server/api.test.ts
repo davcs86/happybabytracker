@@ -353,6 +353,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		gestation_weeks: 35,
 		gestation_days: null,
 		time_zone: 'Europe/Madrid',
+		growth_source: 'cdc',
 		role: 'caregiver'
 	};
 	const KID = {
@@ -363,6 +364,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		gestationWeeks: 35,
 		gestationDays: null,
 		timeZone: 'Europe/Madrid',
+		growthSource: 'cdc',
 		role: 'caregiver'
 	};
 	const PARENT_WIRE = {
@@ -415,6 +417,21 @@ describe('createApi admin, account, kid and access calls', () => {
 		expect(sent(f, 1)).toEqual({ url: 'http://api:9210/v1/kids/k-1', method: 'PATCH', body });
 	});
 
+	it('sends growth_source only when the input has one', async () => {
+		const f = mockFetch(async () => json(KID_WIRE));
+		const input = {
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC',
+			growthSource: 'cdc'
+		};
+		await createApi(env, asFetch(f), SESSION).updateKid('k-1', input);
+		expect(sent(f).body).toMatchObject({ growth_source: 'cdc' });
+	});
+
 	it('deletes a kid with confirm_name', async () => {
 		const f = mockFetch(async () => new Response(null, { status: 204 }));
 		expect(await createApi(env, asFetch(f), SESSION).deleteKid('k-1', 'Mia')).toEqual({
@@ -429,7 +446,13 @@ describe('createApi admin, account, kid and access calls', () => {
 	});
 
 	it('refuses a kid with an unknown sex, role or a fractional gestation', async () => {
-		for (const bad of [{ sex: 'x' }, { role: 'owner' }, { gestation_weeks: 35.5 }]) {
+		for (const bad of [
+			{ sex: 'x' },
+			{ role: 'owner' },
+			{ gestation_weeks: 35.5 },
+			{ growth_source: 'uk-who' },
+			{ growth_source: undefined }
+		]) {
 			const f = mockFetch(async () => json({ ...KID_WIRE, ...bad }));
 			expect(await createApi(env, asFetch(f), SESSION).getKid('k-1')).toMatchObject({
 				ok: false,
@@ -1018,6 +1041,7 @@ describe('createApi tracker calls', () => {
 
 		const HOME = {
 			age_months: 8,
+			corrected_birth_date: '2026-03-10',
 			band: '0-11',
 			modules: [MODULE],
 			running: { sleep: ENTRIES.sleep.wire, nursing: null },
@@ -1030,6 +1054,7 @@ describe('createApi tracker calls', () => {
 				ok: true,
 				data: {
 					ageMonths: 8,
+					correctedBirthDate: '2026-03-10',
 					band: '0-11',
 					modules: [MODULE],
 					running: { sleep: ENTRIES.sleep.entry, nursing: null },
@@ -1047,7 +1072,8 @@ describe('createApi tracker calls', () => {
 				{ ...HOME, running: { sleep: { id: 1 }, nursing: null } }
 			],
 			['a missing today', { ...HOME, today: undefined }],
-			['a fractional age', { ...HOME, age_months: 8.5 }]
+			['a fractional age', { ...HOME, age_months: 8.5 }],
+			['a missing corrected birth date', { ...HOME, corrected_birth_date: undefined }]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
 		});
@@ -1113,6 +1139,293 @@ describe('createApi tracker calls', () => {
 			status: 422
 		});
 		expect(logged()).not.toContain('e-secret');
+		expect(logged()).not.toContain('private note');
+	});
+});
+
+describe('createApi growth calls', () => {
+	const KID = 'k-1';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+
+	const ROW_WIRE = {
+		id: 'g1',
+		measured_on: '2026-11-01',
+		weight: { grams: 3728, oz_hundredths: 13150, typed_unit: 'lb' },
+		length: { mm: 495, in_hundredths: 1949, typed_unit: 'cm' },
+		head: null,
+		note: null,
+		age: { days: 40, corrected_days: 7 },
+		scores: {
+			weight: { scored: true, z: 0.21, percentile: 58.2 },
+			length: { scored: false, reason: 'not_covered' },
+			head: null,
+			bmi: { scored: false, reason: 'before_term', value: 15.21 }
+		}
+	};
+	const ROW = {
+		id: 'g1',
+		measuredOn: '2026-11-01',
+		weight: { grams: 3728, ozHundredths: 13150, typedUnit: 'lb' },
+		length: { mm: 495, inHundredths: 1949, typedUnit: 'cm' },
+		head: null,
+		note: null,
+		ageDays: 40,
+		correctedDays: 7,
+		scores: {
+			weight: { scored: true, z: 0.21, percentile: 58.2 },
+			length: { scored: false, reason: 'not_covered' },
+			head: null,
+			bmi: { scored: false, reason: 'before_term', value: 15.21 }
+		}
+	};
+
+	it('lists measurements and reads one', async () => {
+		const f = respond({ growth: [ROW_WIRE] });
+		expect(await api(f).listGrowth(KID)).toEqual({ ok: true, data: [ROW] });
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/growth',
+			method: 'GET',
+			body: undefined
+		});
+		const g = respond(ROW_WIRE);
+		expect(await api(g).getGrowth(KID, 'g1')).toEqual({ ok: true, data: ROW });
+		expect(sent(g).url).toBe('http://api:9210/v1/kids/k-1/growth/g1');
+	});
+
+	it('creates with the body as given; a refusal is invalid with the API field', async () => {
+		const input = { measured_on: '2026-11-01', weight: { unit: 'kg', amount: 3200 } };
+		const f = respond(ROW_WIRE, 201);
+		expect(await api(f).createGrowth(KID, input)).toEqual({ ok: true, data: ROW });
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/growth',
+			method: 'POST',
+			body: input
+		});
+		expect(
+			await api(respond({ error: 'invalid', field: 'measured_on' }, 422)).createGrowth(KID, input)
+		).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'measured_on' });
+		expect(await api(respond({ error: 'limit' }, 409)).createGrowth(KID, input)).toMatchObject({
+			reason: 'conflict',
+			code: 'limit'
+		});
+	});
+
+	it('updates with PATCH and deletes', async () => {
+		const f = respond(ROW_WIRE);
+		await api(f).updateGrowth(KID, 'g1', { length: null });
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/kids/k-1/growth/g1',
+			method: 'PATCH',
+			body: { length: null }
+		});
+		const d = respond(null, 204);
+		expect(await api(d).deleteGrowth(KID, 'g1')).toEqual({ ok: true, data: null });
+		expect(sent(d)).toMatchObject({
+			url: 'http://api:9210/v1/kids/k-1/growth/g1',
+			method: 'DELETE'
+		});
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond(ROW_WIRE);
+		const a = api(f);
+		for (const r of [
+			await a.listGrowth('../x'),
+			await a.getGrowth(KID, '../x'),
+			await a.getGrowth('k/1', 'g1'),
+			await a.createGrowth('', {}),
+			await a.updateGrowth(KID, 'g 1', {}),
+			await a.deleteGrowth(KID, '..'),
+			await a.curves('../x', { measure: 'weight' })
+		]) {
+			expect(r).toEqual(NOT_FOUND);
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['a fractional gram', { weight: { ...ROW_WIRE.weight, grams: 3.5 } }],
+		['an unknown typed unit', { length: { ...ROW_WIRE.length, typed_unit: 'mm' } }],
+		['a missing age', { age: undefined }],
+		['a fractional corrected age', { age: { days: 40, corrected_days: 1.5 } }],
+		[
+			'a scored score without a z',
+			{ scores: { ...ROW_WIRE.scores, weight: { scored: true, percentile: 5 } } }
+		],
+		[
+			'an unknown reason',
+			{ scores: { ...ROW_WIRE.scores, length: { scored: false, reason: 'low' } } }
+		],
+		[
+			'a bmi without its value',
+			{ scores: { ...ROW_WIRE.scores, bmi: { scored: false, reason: 'not_covered' } } }
+		],
+		['a missing scores block', { scores: undefined }],
+		[
+			'a string percentile',
+			{ scores: { ...ROW_WIRE.scores, weight: { scored: true, z: 0, percentile: '5' } } }
+		]
+	])('maps a row with %s to error', async (_name, bad) => {
+		expect(await api(respond({ growth: [{ ...ROW_WIRE, ...bad }] })).listGrowth(KID)).toMatchObject(
+			{
+				ok: false,
+				reason: 'error'
+			}
+		);
+	});
+
+	const CURVES_WIRE = {
+		source: 'who',
+		measure: 'weight',
+		sex: 'male',
+		covered: true,
+		reason: null,
+		from_months: 0,
+		to_months: 24,
+		lines: [
+			{
+				percentile: 50,
+				points: [
+					{ age_months: 0, metric: 3.3, imperial: 7.28 },
+					{ age_months: 24.5, metric: 12.2, imperial: 26.9, gap: true }
+				]
+			}
+		],
+		corrected_age_axis: true
+	};
+	const CURVES = {
+		source: 'who',
+		measure: 'weight',
+		sex: 'male',
+		covered: true,
+		reason: null,
+		fromMonths: 0,
+		toMonths: 24,
+		lines: [
+			{
+				percentile: 50,
+				points: [
+					{ ageMonths: 0, metric: 3.3, imperial: 7.28, gap: false },
+					{ ageMonths: 24.5, metric: 12.2, imperial: 26.9, gap: true }
+				]
+			}
+		],
+		correctedAgeAxis: true
+	};
+
+	it('reads curves with the measure and the month range in the query', async () => {
+		const f = respond(CURVES_WIRE);
+		expect(await api(f).curves(KID, { measure: 'weight', fromMonths: 0, toMonths: 24 })).toEqual({
+			ok: true,
+			data: CURVES
+		});
+		expect(sent(f).url).toBe(
+			'http://api:9210/v1/kids/k-1/growth/curves?measure=weight&from_months=0&to_months=24'
+		);
+		const g = respond({
+			...CURVES_WIRE,
+			measure: 'bmi',
+			covered: false,
+			reason: 'not_covered',
+			lines: []
+		});
+		expect(await api(g).curves(KID, { measure: 'bmi' })).toMatchObject({
+			ok: true,
+			data: { covered: false, reason: 'not_covered', lines: [] }
+		});
+		expect(sent(g).url).toBe('http://api:9210/v1/kids/k-1/growth/curves?measure=bmi');
+	});
+
+	it.each(['../..', '', 'Weight', 'height', 'bmi/x', 'weight&x=1'])(
+		'curves for measure %j answers not_found without a request',
+		async (measure) => {
+			const f = respond(CURVES_WIRE);
+			expect(await api(f).curves(KID, { measure: measure as never })).toEqual(NOT_FOUND);
+			expect(f).not.toHaveBeenCalled();
+		}
+	);
+
+	it.each([
+		['an unknown source', { source: 'uk-who' }],
+		[
+			'a point without a metric',
+			{ lines: [{ percentile: 50, points: [{ age_months: 0, imperial: null }] }] }
+		],
+		[
+			'a string imperial',
+			{ lines: [{ percentile: 50, points: [{ age_months: 0, metric: 1, imperial: '2' }] }] }
+		],
+		['a missing corrected axis', { corrected_age_axis: undefined }]
+	])('maps curves with %s to error', async (_name, bad) => {
+		expect(
+			await api(respond({ ...CURVES_WIRE, ...bad })).curves(KID, { measure: 'weight' })
+		).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	const SOURCE_WIRE = {
+		id: 'cdc',
+		name: 'CDC 2000 Growth Charts',
+		attribution: 'Source: CDC',
+		licence: 'Public domain',
+		version: '2000',
+		origin_url: 'https://www.cdc.gov/growthcharts/data/zscore/',
+		retrieved: '2026-11-22',
+		coverage: [{ measure: 'bmi', from_months: 24, to_months: 240.5 }]
+	};
+
+	it('lists the growth sources', async () => {
+		const f = respond({ sources: [SOURCE_WIRE] });
+		expect(await api(f).growthSources()).toEqual({
+			ok: true,
+			data: [
+				{
+					id: 'cdc',
+					name: 'CDC 2000 Growth Charts',
+					attribution: 'Source: CDC',
+					licence: 'Public domain',
+					version: '2000',
+					originUrl: 'https://www.cdc.gov/growthcharts/data/zscore/',
+					retrieved: '2026-11-22',
+					coverage: [{ measure: 'bmi', fromMonths: 24, toMonths: 240.5 }]
+				}
+			]
+		});
+		expect(sent(f).url).toBe('http://api:9210/v1/growth-sources');
+		for (const bad of [
+			{ id: 'uk-who' },
+			{ coverage: [{ measure: 'height', from_months: 0, to_months: 1 }] }
+		]) {
+			expect(
+				await api(respond({ sources: [{ ...SOURCE_WIRE, ...bad }] })).growthSources()
+			).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		}
+	});
+
+	it('logs a growth call by its endpoint name, never the kid, the row or the body', async () => {
+		await api(respond({ error: 'invalid', field: 'note' }, 422)).updateGrowth(KID, 'g-secret', {
+			note: 'private note'
+		});
+		expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+			level: 'error',
+			msg: 'api call failed',
+			endpoint: 'update_growth',
+			status: 422
+		});
+		expect(logged()).not.toContain('g-secret');
 		expect(logged()).not.toContain('private note');
 	});
 });

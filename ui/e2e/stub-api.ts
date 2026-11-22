@@ -113,6 +113,7 @@ type KidRow = {
 	gestationWeeks: number | null;
 	gestationDays: number | null;
 	timeZone: string;
+	growthSource: string;
 	seq: number;
 };
 type Grant = { kidId: string; parentId: string; role: Role };
@@ -129,6 +130,7 @@ type State = {
 	kids: Map<string, KidRow>;
 	grants: Grant[];
 	entries: Record<TrackerKey, Row[]>;
+	growth: GrowthStub[];
 	// kid id + ':' + module id; a row is a guardian's choice (or a band-crossing re-enable).
 	modules: Map<string, boolean>;
 	nextId: number;
@@ -169,10 +171,25 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		sex: 'female',
 		gestationWeeks: null,
 		gestationDays: null,
+		growthSource: 'who',
 		seq: 1
 	};
-	const leo: KidRow = { ...LEO, sex: 'male', gestationWeeks: 35, gestationDays: 2, seq: 2 };
-	const ivy: KidRow = { ...IVY, sex: 'female', gestationWeeks: null, gestationDays: null, seq: 3 };
+	const leo: KidRow = {
+		...LEO,
+		sex: 'male',
+		gestationWeeks: 35,
+		gestationDays: 2,
+		growthSource: 'who',
+		seq: 2
+	};
+	const ivy: KidRow = {
+		...IVY,
+		sex: 'female',
+		gestationWeeks: null,
+		gestationDays: null,
+		growthSource: 'who',
+		seq: 3
+	};
 	return {
 		parents: new Map([ana, bo, cleo, dan, dee].map((p) => [p.id, p])),
 		sessions: new Map(),
@@ -192,6 +209,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 			{ kidId: ivy.id, parentId: ana.id, role: 'guardian' }
 		],
 		entries: { bottles: [], nursing: [], pumping: [], sleep: [], diapers: [], meals: [] },
+		growth: leoGrowth(),
 		modules: new Map(),
 		nextId: 1
 	};
@@ -226,7 +244,7 @@ async function readBody(req: IncomingMessage): Promise<string> {
 	return data;
 }
 
-type FieldKind = 'string' | 'int' | 'units' | 'bool' | 'time' | 'strings' | 'volume';
+type FieldKind = 'string' | 'int' | 'units' | 'bool' | 'time' | 'strings' | 'volume' | 'measure';
 type Body = Record<string, unknown>;
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -247,6 +265,7 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 		case 'strings':
 			return Array.isArray(v) && v.every((u) => typeof u === 'string');
 		case 'volume':
+		case 'measure':
 			return (
 				isObject(v) &&
 				nullOr('string')((v as Body).unit) &&
@@ -260,7 +279,8 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 // Keys a nested object may carry before decodeJSON refuses it.
 const NESTED_KEYS: Partial<Record<FieldKind, readonly string[]>> = {
 	units: Object.keys(UNIT_SETS),
-	volume: ['unit', 'amount']
+	volume: ['unit', 'amount'],
+	measure: ['unit', 'amount']
 };
 
 // decodeJSON in respond.go: unknown key (also nested) -> 422 unknown_field, a wrong type or bad JSON -> 400.
@@ -353,6 +373,7 @@ function kidView(k: KidRow, role: Role) {
 		gestation_weeks: k.gestationWeeks,
 		gestation_days: k.gestationDays,
 		time_zone: k.timeZone,
+		growth_source: k.growthSource,
 		role
 	};
 }
@@ -402,7 +423,8 @@ function validDate(s: string): boolean {
 const inRange = (n: number | null, r: { min: number; max: number }) =>
 	n !== null && n >= r.min && n <= r.max;
 
-// invalidKidField in kids.go, same order: name, birth_date, sex, gestation_weeks, gestation_days, time_zone.
+// invalidKidField in kids.go, same order: name, birth_date, sex, gestation_weeks, gestation_days, time_zone,
+// growth_source.
 function invalidKidField(k: KidRow): string {
 	const n = codePoints(k.name);
 	if (n < KID_NAME.min || n > KID_NAME.max) return 'name';
@@ -419,6 +441,7 @@ function invalidKidField(k: KidRow): string {
 	if ((w === null && d !== null) || (w !== null && !inRange(w, WEEKS))) return 'gestation_weeks';
 	if ((d === null && w !== null) || (d !== null && !inRange(d, DAYS))) return 'gestation_days';
 	if (!zoneOK) return 'time_zone';
+	if (!GROWTH_SOURCE_IDS.includes(k.growthSource)) return 'growth_source';
 	return '';
 }
 
@@ -429,7 +452,8 @@ function mergeKid(k: KidRow, body: Body): KidRow {
 		['name', 'name'],
 		['birth_date', 'birthDate'],
 		['sex', 'sex'],
-		['time_zone', 'timeZone']
+		['time_zone', 'timeZone'],
+		['growth_source', 'growthSource']
 	] as const) {
 		if (typeof body[key] === 'string') out[prop] = body[key] as string;
 	}
@@ -445,7 +469,8 @@ const KID_FIELDS: Record<string, FieldKind> = {
 	sex: 'string',
 	gestation_weeks: 'int',
 	gestation_days: 'int',
-	time_zone: 'string'
+	time_zone: 'string',
+	growth_source: 'string'
 };
 
 const roleFor = (state: State, kidId: string, parentId: string) =>
@@ -697,6 +722,7 @@ const routes: RouteDef[] = [
 				gestationWeeks: null,
 				gestationDays: null,
 				timeZone: '',
+				growthSource: 'who',
 				seq: 0
 			};
 			const kid = mergeKid(empty, body);
@@ -1543,9 +1569,12 @@ const overviewRoutes: RouteDef[] = [
 		}
 	},
 	kidRoute('GET', 'home', 'caregiver', (state, _req, res, kid) => {
-		const months = ageMonths(kid.birthDate, todayIn(kid.timeZone));
+		const today = todayIn(kid.timeZone);
+		const months = ageMonths(kid.birthDate, today);
+		const correction = correctionOn(kid, today);
 		send(res, 200, {
 			age_months: months,
+			corrected_birth_date: correction > 0 ? addDays(kid.birthDate, correction) : null,
 			band: bandOf(months),
 			modules: moduleStates(state, kid),
 			running: {
@@ -1557,7 +1586,421 @@ const overviewRoutes: RouteDef[] = [
 	})
 ];
 
-routes.push(...TRACKER_KEYS.flatMap(trackerRoutes), ...overviewRoutes);
+// Growth: the Go handlers' validation, conversions and 404s in memory; scores and curves are fake.
+
+const GROWTH_SOURCE_IDS = ['who', 'cdc'];
+const GROWTH_MEASURES = ['weight', 'length', 'head', 'bmi'] as const;
+type GrowthMeasure = (typeof GROWTH_MEASURES)[number];
+// The API's limits (constants.go), mirrored for the stub only.
+const GROWTH_RANGE = {
+	weight: { min: 200, max: 250000 },
+	length: { min: 150, max: 2500 },
+	head: { min: 150, max: 800 }
+};
+const MAX_GROWTH_PER_KID = 3000;
+const MAX_MEASURE_AMOUNT = 1 << 24;
+const GRAMS_PER_OZ = { num: 28349523125n, den: 1000000000n * 100n };
+const MM_PER_INCH = { num: 254n, den: 10n * 100n };
+const TERM_GESTATION_DAYS = 280;
+const PRETERM_BELOW_DAYS = 259;
+const CORRECTION_ENDS_MONTHS = 24;
+const DAYS_PER_MONTH = 30.4375;
+const CURVE_MAX_MONTHS = 240;
+const CURVE_DEFAULT_MIN_TO = 24;
+const CURVE_DEFAULT_AHEAD = 6;
+const CURVE_FINE_STEP = 0.5;
+const CURVE_FINE_UNTIL = 24;
+const POUNDS_PER_KG = 2.2046226218;
+const CM_PER_INCH = 2.54;
+
+type Weight = { grams: number; oz_hundredths: number; typed_unit: string };
+type Length = { mm: number; in_hundredths: number; typed_unit: string };
+type GrowthStub = {
+	kidId: string;
+	id: string;
+	measuredOn: string;
+	weight: Weight | null;
+	length: Length | null;
+	head: Length | null;
+	note: string | null;
+};
+
+const halfUp = (n: bigint, d: bigint) => Number((2n * n + d) / (2n * d));
+
+// units.NewWeight and units.NewLength: the typed amount is exact, the other column derived half-up.
+function newMeasure(
+	metric: string,
+	imperial: string,
+	ratio: { num: bigint; den: bigint },
+	unit: unknown,
+	amount: unknown
+): { typed_unit: string; metric: number; imperial: number } | null {
+	if ((unit !== metric && unit !== imperial) || !Number.isInteger(amount)) return null;
+	const a = amount as number;
+	if (a < 1 || a > MAX_MEASURE_AMOUNT) return null;
+	const big = BigInt(a);
+	const m = unit === metric ? a : halfUp(big * ratio.num, ratio.den);
+	const i = unit === imperial ? a : halfUp(big * ratio.den, ratio.num);
+	return m < 1 || i < 1 ? null : { typed_unit: unit, metric: m, imperial: i };
+}
+
+function newWeight(unit: unknown, amount: unknown): Weight | null {
+	const m = newMeasure('kg', 'lb', GRAMS_PER_OZ, unit, amount);
+	return m && { grams: m.metric, oz_hundredths: m.imperial, typed_unit: m.typed_unit };
+}
+
+function newLength(unit: unknown, amount: unknown): Length | null {
+	const m = newMeasure('cm', 'in', MM_PER_INCH, unit, amount);
+	return m && { mm: m.metric, in_hundredths: m.imperial, typed_unit: m.typed_unit };
+}
+
+// Leo's rows: one before his expected term, one at corrected age, one after his second birthday.
+function leoGrowth(): GrowthStub[] {
+	const row = (
+		id: string,
+		measuredOn: string,
+		grams: number,
+		mm: number | null,
+		head: number | null
+	) => ({
+		kidId: LEO.id,
+		id,
+		measuredOn,
+		weight: newWeight('kg', grams),
+		length: mm === null ? null : newLength('cm', mm),
+		head: head === null ? null : newLength('cm', head),
+		note: null
+	});
+	return [
+		row('g-leo-term', '2024-09-01', 2500, null, null),
+		row('g-leo-baby', '2025-02-20', 7000, 650, 430),
+		row('g-leo-two', '2026-09-01', 12500, 880, null)
+	];
+}
+
+const civilDay = (date: string) => Date.parse(`${date}T00:00:00Z`) / (DAY_S * 1000);
+
+// correctionOn in kidtime.go: the days born early, until the second birthday.
+function correctionOn(kid: KidRow, on: string): number {
+	const w = kid.gestationWeeks;
+	const d = kid.gestationDays;
+	if (w === null || d === null || on >= addMonths(kid.birthDate, CORRECTION_ENDS_MONTHS)) return 0;
+	const gestation = w * 7 + d;
+	return gestation >= PRETERM_BELOW_DAYS ? 0 : TERM_GESTATION_DAYS - gestation;
+}
+
+function ageBasis(kid: KidRow, on: string) {
+	const days = civilDay(on) - civilDay(kid.birthDate);
+	const correction = correctionOn(kid, on);
+	return { days, scoring: days - correction, corrected: correction > 0 };
+}
+
+// A STUB, not reference data: invented medians and spreads, so scores and curves are deterministic.
+const FAKE_REFERENCE: Record<GrowthMeasure, { at0: number; perMonth: number; sd: number }> = {
+	weight: { at0: 3.3, perMonth: 0.4, sd: 1.2 },
+	length: { at0: 50, perMonth: 1.8, sd: 3 },
+	head: { at0: 35, perMonth: 0.6, sd: 1.5 },
+	bmi: { at0: 13.5, perMonth: 0.05, sd: 1.5 }
+};
+// The months each source covers per measure (both sexes), close to the real tables' coverage.
+const COVERAGE: Record<string, Record<GrowthMeasure, [number, number]>> = {
+	who: { weight: [0, 120], length: [0, 228], head: [0, 60.98], bmi: [0, 228] },
+	cdc: { weight: [0, 240], length: [0, 240], head: [0, 36], bmi: [24, 240.5] }
+};
+const LINE_Z: Record<number, number> = {
+	3: -1.881,
+	5: -1.645,
+	10: -1.282,
+	15: -1.036,
+	25: -0.674,
+	50: 0,
+	75: 0.674,
+	85: 1.036,
+	90: 1.282,
+	95: 1.645,
+	97: 1.881
+};
+const CDC_BMI_EXTRA_LINE = 85;
+const LINES: Record<string, number[]> = {
+	who: [3, 15, 50, 85, 97],
+	cdc: [3, 5, 10, 25, 50, 75, 90, 95, 97]
+};
+
+const round = (x: number, places: number) => {
+	const r = Math.round(x * 10 ** places) / 10 ** places;
+	return r === 0 ? 0 : r;
+};
+const median = (m: GrowthMeasure, months: number) =>
+	FAKE_REFERENCE[m].at0 + FAKE_REFERENCE[m].perMonth * months;
+const covers = (source: string, m: GrowthMeasure, months: number) =>
+	months >= COVERAGE[source][m][0] && months <= COVERAGE[source][m][1];
+
+function fakeScore(kid: KidRow, m: GrowthMeasure, scoringDays: number, value: number) {
+	if (scoringDays < 0) return { scored: false, reason: 'before_term' };
+	const months = scoringDays / DAYS_PER_MONTH;
+	if (!covers(kid.growthSource, m, months)) return { scored: false, reason: 'not_covered' };
+	const z = (value - median(m, months)) / FAKE_REFERENCE[m].sd;
+	return { scored: true, z: round(z, 2), percentile: round(100 / (1 + Math.exp(-1.702 * z)), 1) };
+}
+
+function growthView(g: GrowthStub, kid: KidRow) {
+	const basis = ageBasis(kid, g.measuredOn);
+	const score = (m: GrowthMeasure, value: number) => fakeScore(kid, m, basis.scoring, value);
+	const bmiValue =
+		g.weight && g.length ? (g.weight.grams * 1000) / (g.length.mm * g.length.mm) : null;
+	return {
+		id: g.id,
+		measured_on: g.measuredOn,
+		weight: g.weight,
+		length: g.length,
+		head: g.head,
+		note: g.note,
+		age: { days: basis.days, corrected_days: basis.corrected ? basis.scoring : null },
+		scores: {
+			weight: g.weight && score('weight', g.weight.grams / 1000),
+			length: g.length && score('length', g.length.mm / 10),
+			head: g.head && score('head', g.head.mm / 10),
+			bmi: bmiValue === null ? null : { ...score('bmi', bmiValue), value: round(bmiValue, 2) }
+		}
+	};
+}
+
+type MeasureBody = { unit?: unknown; amount?: unknown } | null | undefined;
+
+// mergeWeight and mergeLength: absent keeps, null clears, the stored typed value keeps the columns.
+function mergeMeasure<T extends { typed_unit: string }>(
+	stored: T | null,
+	body: Body,
+	key: string,
+	typed: (v: T) => number,
+	make: (unit: unknown, amount: unknown) => T | null
+): { ok: boolean; v: T | null } {
+	if (!(key in body)) return { ok: true, v: stored };
+	const input = body[key] as MeasureBody;
+	if (!input) return { ok: true, v: null };
+	if (stored && input.unit === stored.typed_unit && input.amount === typed(stored)) {
+		return { ok: true, v: stored };
+	}
+	const v = make(input.unit ?? '', input.amount ?? 0);
+	return { ok: v !== null, v };
+}
+
+const inGrowthRange = (n: number | undefined, r: { min: number; max: number }) =>
+	n === undefined || (n >= r.min && n <= r.max);
+
+// growthInput.mergeOnto in growth.go: the first invalid field, "" when valid.
+function mergeGrowth(g: GrowthStub, body: Body, kid: KidRow): string {
+	const stored = g.measuredOn;
+	if (typeof body.measured_on === 'string') g.measuredOn = body.measured_on;
+	if (g.measuredOn === '' || g.measuredOn !== stored) {
+		if (
+			!validDate(g.measuredOn) ||
+			g.measuredOn > todayIn(kid.timeZone) ||
+			g.measuredOn < kid.birthDate
+		)
+			return 'measured_on';
+	}
+	const w = mergeMeasure(
+		g.weight,
+		body,
+		'weight',
+		(v) => (v.typed_unit === 'lb' ? v.oz_hundredths : v.grams),
+		newWeight
+	);
+	if (!w.ok || !inGrowthRange(w.v?.grams, GROWTH_RANGE.weight)) return 'weight';
+	g.weight = w.v;
+	const lengthTyped = (v: Length) => (v.typed_unit === 'in' ? v.in_hundredths : v.mm);
+	const l = mergeMeasure(g.length, body, 'length', lengthTyped, newLength);
+	if (!l.ok || !inGrowthRange(l.v?.mm, GROWTH_RANGE.length)) return 'length';
+	g.length = l.v;
+	const h = mergeMeasure(g.head, body, 'head', lengthTyped, newLength);
+	if (!h.ok || !inGrowthRange(h.v?.mm, GROWTH_RANGE.head)) return 'head';
+	g.head = h.v;
+	if ('note' in body) g.note = body.note as string | null;
+	if (g.note !== null && runes(g.note) > NOTE_MAX_LEN) return 'note';
+	if (!g.weight && !g.length && !g.head) return 'measurements';
+	return '';
+}
+
+const GROWTH_FIELDS: Record<string, FieldKind> = {
+	measured_on: 'string',
+	weight: 'measure',
+	length: 'measure',
+	head: 'measure',
+	note: 'string'
+};
+
+// monthsParam in growth_curves.go: a finite month count in [0, CURVE_MAX_MONTHS]; def when absent.
+function monthsParam(q: URLSearchParams, key: string, def: number): number | null {
+	if (!q.has(key)) return def;
+	const s = q.get(key) ?? '';
+	if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) return null;
+	const v = Number(s);
+	return v < 0 || v > CURVE_MAX_MONTHS ? null : v;
+}
+
+function curves(kid: KidRow, measure: GrowthMeasure, from: number, to: number) {
+	const [lo, hi] = COVERAGE[kid.growthSource][measure];
+	const ages: number[] = [];
+	for (let a = 0; a <= hi; a += a < CURVE_FINE_UNTIL ? CURVE_FINE_STEP : 1) {
+		if (a >= Math.max(from, lo) && a <= Math.min(to, hi)) ages.push(a);
+	}
+	if (ages.length === 0) return null;
+	const percentiles = [...LINES[kid.growthSource]];
+	if (kid.growthSource === 'cdc' && measure === 'bmi') percentiles.push(CDC_BMI_EXTRA_LINE);
+	percentiles.sort((a, b) => a - b);
+	const imperial = (v: number) =>
+		measure === 'weight' ? v * POUNDS_PER_KG : measure === 'bmi' ? null : v / CM_PER_INCH;
+	return {
+		from: ages[0],
+		to: ages[ages.length - 1],
+		lines: percentiles.map((p) => ({
+			percentile: p,
+			points: ages.map((a) => {
+				const metric = median(measure, a) + LINE_Z[p] * FAKE_REFERENCE[measure].sd;
+				return { age_months: a, metric, imperial: imperial(metric) };
+			})
+		}))
+	};
+}
+
+const SOURCE_INFO: Record<string, Record<string, string>> = {
+	who: {
+		name: 'WHO Child Growth Standards (2006) and Growth Reference (2007)',
+		attribution: 'Stub attribution: World Health Organization',
+		licence: 'CC BY-NC-SA 3.0 IGO',
+		version: '2006 and 2007',
+		origin_url: 'https://www.who.int/tools/child-growth-standards',
+		retrieved: '2026-11-22'
+	},
+	cdc: {
+		name: 'CDC 2000 Growth Charts',
+		attribution: 'Stub attribution: Source: CDC',
+		licence: 'Public domain',
+		version: '2000',
+		origin_url: 'https://www.cdc.gov/growthcharts/data/zscore/',
+		retrieved: '2026-11-22'
+	}
+};
+
+const growthRowOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.growth.find((g) => g.kidId === kidId && g.id === id) : undefined;
+
+// The 404 an unknown row, another kid's row and a malformed id all share.
+const growthEntryRoute = (
+	method: string,
+	run: (state: State, res: ServerResponse, kid: KidRow, row: GrowthStub, body: Body) => unknown
+): RouteDef => ({
+	method,
+	pattern: /^\/v1\/kids\/([^/]+)\/growth\/([^/]+)$/,
+	access: 'caregiver',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, id]) => {
+		const body = method === 'PATCH' ? await decodeBody(req, res, GROWTH_FIELDS) : {};
+		if (!body) return;
+		const row = growthRowOf(state, kidId, id);
+		if (!row) return noKid(res);
+		return run(state, res, state.kids.get(kidId) as KidRow, row, body);
+	}
+});
+
+const growthRoutes: RouteDef[] = [
+	kidRoute('GET', 'growth', 'caregiver', (state, _req, res, kid) => {
+		const rows = state.growth
+			.filter((g) => g.kidId === kid.id)
+			.sort((a, b) =>
+				a.measuredOn === b.measuredOn
+					? a.id < b.id
+						? 1
+						: -1
+					: a.measuredOn < b.measuredOn
+						? 1
+						: -1
+			);
+		send(res, 200, { growth: rows.map((g) => growthView(g, kid)) });
+	}),
+	kidRoute('POST', 'growth', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, GROWTH_FIELDS);
+		if (!body) return;
+		const g: GrowthStub = {
+			kidId: kid.id,
+			id: '',
+			measuredOn: '',
+			weight: null,
+			length: null,
+			head: null,
+			note: null
+		};
+		const field = mergeGrowth(g, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (state.growth.filter((r) => r.kidId === kid.id).length >= MAX_GROWTH_PER_KID) {
+			return error(res, 409, 'limit');
+		}
+		g.id = nextId(state, 'g');
+		state.growth.push(g);
+		send(res, 201, growthView(g, kid));
+	}),
+	kidRoute('GET', 'growth\\/curves', 'caregiver', (_state, req, res, kid) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const measure = q.get('measure') ?? '';
+		if (!(GROWTH_MEASURES as readonly string[]).includes(measure)) {
+			return error(res, 422, 'invalid', 'measure');
+		}
+		const basis = ageBasis(kid, todayIn(kid.timeZone));
+		const defTo = Math.min(
+			Math.max(CURVE_DEFAULT_MIN_TO, basis.scoring / DAYS_PER_MONTH + CURVE_DEFAULT_AHEAD),
+			CURVE_MAX_MONTHS
+		);
+		const from = monthsParam(q, 'from_months', 0);
+		if (from === null) return error(res, 422, 'invalid', 'from_months');
+		const to = monthsParam(q, 'to_months', defTo);
+		if (to === null) return error(res, 422, 'invalid', 'to_months');
+		if (from > to) return error(res, 422, 'invalid', 'from_months');
+		const c = curves(kid, measure as GrowthMeasure, from, to);
+		send(res, 200, {
+			source: kid.growthSource,
+			measure,
+			sex: kid.sex,
+			covered: c !== null,
+			reason: c === null ? 'not_covered' : null,
+			from_months: c?.from ?? from,
+			to_months: c?.to ?? to,
+			lines: c?.lines ?? [],
+			corrected_age_axis: basis.corrected
+		});
+	}),
+	growthEntryRoute('GET', (_state, res, kid, row) => send(res, 200, growthView(row, kid))),
+	growthEntryRoute('PATCH', (_state, res, kid, row, body) => {
+		const merged = structuredClone(row);
+		const field = mergeGrowth(merged, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		Object.assign(row, merged);
+		send(res, 200, growthView(row, kid));
+	}),
+	growthEntryRoute('DELETE', (state, res, _kid, row) => {
+		state.growth = state.growth.filter((g) => g !== row);
+		send(res, 204);
+	}),
+	{
+		method: 'GET',
+		pattern: /^\/v1\/growth-sources$/,
+		access: 'parent',
+		run: (_state, _req, res) => {
+			send(res, 200, {
+				sources: GROWTH_SOURCE_IDS.map((id) => ({
+					id,
+					...SOURCE_INFO[id],
+					coverage: GROWTH_MEASURES.map((m) => ({
+						measure: m,
+						from_months: COVERAGE[id][m][0],
+						to_months: COVERAGE[id][m][1]
+					}))
+				}))
+			});
+		}
+	}
+];
+routes.push(...TRACKER_KEYS.flatMap(trackerRoutes), ...overviewRoutes, ...growthRoutes);
 
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {
 	const method = req.method ?? 'GET';

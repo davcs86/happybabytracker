@@ -11,7 +11,13 @@ import {
 import type { Kid, KidInput } from '../types';
 
 export type KidField =
-	'name' | 'birth_date' | 'sex' | 'gestation_weeks' | 'gestation_days' | 'time_zone';
+	| 'name'
+	| 'birth_date'
+	| 'sex'
+	| 'gestation_weeks'
+	| 'gestation_days'
+	| 'time_zone'
+	| 'growth_source';
 
 export type KidFormValues = {
 	name: string;
@@ -21,6 +27,7 @@ export type KidFormValues = {
 	weeks: string;
 	days: string;
 	timeZone: string;
+	growthSource: string;
 };
 
 export const KID_FIELD_MESSAGES: Record<KidField, string> = {
@@ -29,7 +36,8 @@ export const KID_FIELD_MESSAGES: Record<KidField, string> = {
 	sex: 'Choose female or male',
 	gestation_weeks: `Enter weeks from ${GESTATION_WEEKS.min} to ${GESTATION_WEEKS.max}`,
 	gestation_days: `Enter days from ${GESTATION_DAYS.min} to ${GESTATION_DAYS.max}`,
-	time_zone: 'Choose a time zone from the list'
+	time_zone: 'Choose a time zone from the list',
+	growth_source: 'Choose a growth reference from the list'
 };
 
 const isKidField = (f: string | undefined): f is KidField =>
@@ -43,13 +51,15 @@ export function kidValues(kid?: Kid): KidFormValues {
 		bornEarly: kid ? kid.gestationWeeks !== null : false,
 		weeks: kid?.gestationWeeks?.toString() ?? '',
 		days: kid?.gestationDays?.toString() ?? '',
-		timeZone: kid?.timeZone ?? DEFAULT_TIME_ZONE
+		timeZone: kid?.timeZone ?? DEFAULT_TIME_ZONE,
+		growthSource: kid?.growthSource ?? ''
 	};
 }
 
 const wholeNumber = (s: string) => (/^\d{1,3}$/.test(s) ? Number(s) : null);
 
-// With "Born early?" off the gestation is sent as null, which clears it on PATCH.
+// With "Born early?" off the gestation is sent as null, which clears it on PATCH; a form without a growth
+// source sends none, which keeps the stored one (the API's default on create).
 export function readKidForm(form: FormData): {
 	values: KidFormValues;
 	input: KidInput | null;
@@ -63,7 +73,8 @@ export function readKidForm(form: FormData): {
 		bornEarly: form.get('born_early') !== null,
 		weeks: text('gestation_weeks').trim(),
 		days: text('gestation_days').trim(),
-		timeZone: text('time_zone')
+		timeZone: text('time_zone'),
+		growthSource: text('growth_source')
 	};
 	const weeks = values.bornEarly ? wholeNumber(values.weeks) : null;
 	const days = values.bornEarly ? wholeNumber(values.days) : null;
@@ -77,6 +88,7 @@ export function readKidForm(form: FormData): {
 		gestationDays: days,
 		timeZone: values.timeZone
 	};
+	if (values.growthSource !== '') input.growthSource = values.growthSource;
 	return { values, input, field: null };
 }
 

@@ -19,6 +19,9 @@ export type Role = 'guardian' | 'caregiver';
 
 export type Sex = 'female' | 'male';
 
+export type GrowthSourceId = 'who' | 'cdc';
+
+// growthSource left out keeps the stored source (the API's default on create).
 export type KidInput = {
 	name: string;
 	birthDate: string;
@@ -26,9 +29,15 @@ export type KidInput = {
 	gestationWeeks: number | null;
 	gestationDays: number | null;
 	timeZone: string;
+	growthSource?: string;
 };
 
-export type Kid = Omit<KidInput, 'sex'> & { id: string; sex: Sex; role: Role };
+export type Kid = Omit<KidInput, 'sex' | 'growthSource'> & {
+	id: string;
+	sex: Sex;
+	growthSource: GrowthSourceId;
+	role: Role;
+};
 
 export type Grant = { parentId: string; username: string; displayName: string; role: Role };
 
@@ -136,8 +145,67 @@ export type DaySummary = {
 
 export type Home = {
 	ageMonths: number;
+	// The due date while corrected age applies, else null.
+	correctedBirthDate: string | null;
 	band: AgeBand;
 	modules: ModuleState[];
 	running: { sleep: Sleep | null; nursing: Nursing | null };
 	today: DaySummary;
+};
+
+export type Measure = 'weight' | 'length' | 'head' | 'bmi';
+export type WeightUnit = Units['weight'];
+export type LengthUnit = Units['length'];
+export type GrowthScoreReason = 'not_covered' | 'before_term';
+export type GrowthScore =
+	{ scored: true; z: number; percentile: number } | { scored: false; reason: GrowthScoreReason };
+// Both columns; typedUnit names the exact one.
+export type GrowthWeight = { grams: number; ozHundredths: number; typedUnit: WeightUnit };
+export type GrowthLength = { mm: number; inHundredths: number; typedUnit: LengthUnit };
+export type GrowthRow = {
+	id: string;
+	measuredOn: string;
+	weight: GrowthWeight | null;
+	length: GrowthLength | null;
+	head: GrowthLength | null;
+	note: string | null;
+	ageDays: number;
+	// The scoring age while corrected age applies, negative before the expected term; else null.
+	correctedDays: number | null;
+	scores: {
+		weight: GrowthScore | null;
+		length: GrowthScore | null;
+		head: GrowthScore | null;
+		bmi: (GrowthScore & { value: number }) | null;
+	};
+};
+// gap marks the first point after a table seam: the line must not be joined across it.
+export type CurvePoint = {
+	ageMonths: number;
+	metric: number;
+	imperial: number | null;
+	gap: boolean;
+};
+export type CurveLine = { percentile: number; points: CurvePoint[] };
+export type Curves = {
+	source: GrowthSourceId;
+	measure: Measure;
+	sex: Sex;
+	covered: boolean;
+	reason: string | null;
+	fromMonths: number;
+	toMonths: number;
+	lines: CurveLine[];
+	correctedAgeAxis: boolean;
+};
+export type CurvesQuery = { measure: Measure; fromMonths?: number; toMonths?: number };
+export type GrowthSourceInfo = {
+	id: GrowthSourceId;
+	name: string;
+	attribution: string;
+	licence: string;
+	version: string;
+	originUrl: string;
+	retrieved: string;
+	coverage: { measure: Measure; fromMonths: number; toMonths: number }[];
 };

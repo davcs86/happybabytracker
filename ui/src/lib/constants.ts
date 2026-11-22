@@ -2,13 +2,18 @@ import type {
 	AgeBand,
 	BottleContent,
 	DiaperKind,
+	GrowthScoreReason,
+	GrowthSourceId,
+	LengthUnit,
+	Measure,
 	ModuleId,
 	NursingSide,
 	PumpingSide,
 	TimelineType,
 	TimerKind,
 	TrackerKind,
-	VolumeUnit
+	VolumeUnit,
+	WeightUnit
 } from './types';
 
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
@@ -30,6 +35,32 @@ export const VOLUME_ML_RANGE = {
 	pumping: { min: 1, max: 2000 }
 } as const;
 export const MEAL_TEXT_MAX_LEN = 200;
+// Growth (constants.go and growth.Sources): grams for weight, millimetres for length and head.
+export const MEASURES = ['weight', 'length', 'head', 'bmi'] as const satisfies readonly Measure[];
+export const GROWTH_SOURCES = ['who', 'cdc'] as const satisfies readonly GrowthSourceId[];
+export const GROWTH_RANGES = {
+	weight: { min: 200, max: 250000 },
+	length: { min: 150, max: 2500 },
+	head: { min: 150, max: 800 }
+} as const;
+export const MAX_GROWTH_PER_KID = 3000;
+export const OZ_PER_LB = 16;
+export const GRAMS_PER_KG = 1000;
+export const MM_PER_CM = 10;
+export const HUNDREDTHS_PER_OZ = 100;
+export const HUNDREDTHS_PER_INCH = 100;
+// The API's DaysPerMonth, for ages in days shown in months.
+export const DAYS_PER_MONTH = 30.4375;
+// Percentiles beyond these are shown as "<0.1" and ">99.9".
+export const PERCENTILE_SHOWN = { min: 0.1, max: 99.9 } as const;
+export const PERCENTILE_DECIMALS = 1;
+export const Z_SCORE_DECIMALS = 2;
+export const WEIGHT_UNITS = ['kg', 'lb'] as const satisfies readonly WeightUnit[];
+export const LENGTH_UNITS = ['cm', 'in'] as const satisfies readonly LengthUnit[];
+export const GROWTH_SCORE_REASONS = [
+	'not_covered',
+	'before_term'
+] as const satisfies readonly GrowthScoreReason[];
 export const DEFAULT_TIME_ZONE = 'UTC';
 export const INVITE_VALIDITY = '72 hours';
 export const RESET_VALIDITY = '1 hour';
