@@ -49,6 +49,15 @@ const (
 	FlOzMicroMLDenominator = 10000
 	MaxVolumeAmount        = 1 << 24
 
+	TrackerPageDefault   = 50
+	TrackerPageMax       = 100
+	MaxFutureSkew        = 5 * time.Minute
+	MaxSessionDuration   = 24 * time.Hour
+	MaxNoteLen           = 500
+	SummaryMaxDays       = 93
+	BandOverrideLookback = 60 * 24 * time.Hour
+	CursorIDPattern      = `^[A-Za-z0-9-]{1,64}$`
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
