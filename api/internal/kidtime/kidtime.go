@@ -72,8 +72,9 @@ func BandStart(birthDate string, loc *time.Location, b Band) (time.Time, error) 
 }
 
 // AddAge is date plus n units (d, w, m or y) by Go's AddDate, so 31 Jan + 1m and 29 Feb + 1y normalise forward.
+// The arithmetic runs on civil dates in UTC (a zone's missing midnight would shift a day); loc is unused for it.
 func AddAge(date string, n int, unit byte, loc *time.Location) (string, error) {
-	t, err := parseDay(date, loc)
+	t, err := parseDay(date, time.UTC)
 	if err != nil {
 		return "", err
 	}

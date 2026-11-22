@@ -396,3 +396,22 @@ func TestAddAge(t *testing.T) {
 		}
 	}
 }
+
+// Havana and Santiago start DST at midnight, so a local-midnight AddDate would land on the day before.
+func TestAddAgeIsCivilInEveryZone(t *testing.T) {
+	for _, name := range []string{"America/Havana", "America/Santiago"} {
+		loc := mustLoc(t, name)
+		for born := time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC); born.Year() < 2027; born = born.AddDate(0, 0, 3) {
+			date := born.Format(time.DateOnly)
+			for n := 0; n <= 20; n++ {
+				for _, u := range []byte{'d', 'w', 'm'} {
+					want, _ := AddAge(date, n, u, time.UTC)
+					got, err := AddAge(date, n, u, loc)
+					if err != nil || got != want {
+						t.Fatalf("%s: AddAge(%s, %d%c) = %q, %v; UTC gives %q", name, date, n, u, got, err, want)
+					}
+				}
+			}
+		}
+	}
+}

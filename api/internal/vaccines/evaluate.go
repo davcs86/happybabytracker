@@ -21,10 +21,11 @@ const (
 	StatusOverdue   Status = "overdue"
 	StatusDismissed Status = "dismissed"
 	// StatusAvailable is a supplementary line neither given nor dismissed; never due or overdue.
-	StatusAvailable Status = ""
+	StatusAvailable Status = "available"
 )
 
-// Dose is one antigen of a recorded administration; GivenOn is a kid-local YYYY-MM-DD date.
+// Dose is one antigen of a recorded administration; GivenOn is a kid-local YYYY-MM-DD date the caller
+// has already validated (the store does), compared here as a string.
 type Dose struct{ ID, Administration, Antigen, GivenOn string }
 
 // LineState is one schedule line evaluated for a kid; FromDate and UntilDate are kid-local, UntilDate exclusive.
@@ -57,7 +58,8 @@ type DueGroup struct {
 	Count    int
 }
 
-var errEmptyWindow = errors.New("vaccines: empty window")
+// ErrEmptyWindow is a schedule-data defect: a line whose until date is not after its from date; it names only the line id.
+var ErrEmptyWindow = errors.New("vaccines: empty window")
 
 // Evaluate places each line applicable to birthDate on the calendar in loc and matches doses to it;
 // birthDate and today are kid-local YYYY-MM-DD dates, dismissals map a line id to its reason.
@@ -138,16 +140,18 @@ func state(l Line, birthDate, today string, loc *time.Location) (LineState, erro
 	if err != nil {
 		return LineState{}, err
 	}
-	// No until: the default window runs VaccineDefaultWindowMonths from the from date, not from birth.
-	until, err := kidtime.AddAge(from, constants.VaccineDefaultWindowMonths, byte(UnitMonth), loc)
+	var until string
 	if l.Until != nil {
 		until, err = kidtime.AddAge(birthDate, l.Until.N, byte(l.Until.Unit), loc)
+	} else {
+		// No until: the default window runs VaccineDefaultWindowMonths from the from date, not from birth.
+		until, err = kidtime.AddAge(from, constants.VaccineDefaultWindowMonths, byte(UnitMonth), loc)
 	}
 	if err != nil {
 		return LineState{}, err
 	}
 	if until <= from {
-		return LineState{}, fmt.Errorf("%w: line %s", errEmptyWindow, l.ID)
+		return LineState{}, fmt.Errorf("%w: line %s", ErrEmptyWindow, l.ID)
 	}
 	ls := LineState{Line: l, FromDate: from, UntilDate: until}
 	switch {

@@ -75,6 +75,7 @@ func TestEvaluateStatuses(t *testing.T) {
 		{"default window still due", nil, nil, "2025-04-09", "rotavirus-1", StatusDue},
 		{"default window ends one month after from", nil, nil, "2025-04-10", "rotavirus-1", StatusOverdue},
 		{"given beats overdue", []Dose{{ID: "d1", Administration: "a1", Antigen: "hepatitis_b", GivenOn: "2025-01-11"}}, nil, "2025-06-01", "hepatitis_b-1", StatusGiven},
+		{"dismissed beats overdue", nil, map[string]string{"hepatitis_b-1": "not_needed"}, "2025-06-01", "hepatitis_b-1", StatusDismissed},
 		{"dismissed beats due", nil, map[string]string{"diphtheria-1": "not_needed"}, "2025-03-15", "diphtheria-1", StatusDismissed},
 		{"given beats dismissed", []Dose{{ID: "d1", Administration: "a1", Antigen: "hepatitis_b", GivenOn: "2025-01-11"}}, map[string]string{"hepatitis_b-1": "given_unknown"}, "2025-03-15", "hepatitis_b-1", StatusGiven},
 		{"may_not_be_needed due", nil, nil, "2025-05-10", "rotavirus-2", StatusDue},
@@ -167,14 +168,26 @@ func givenOn(e Evaluation, id string) string {
 
 func TestCountMatching(t *testing.T) {
 	s := dtSeries()
-	combo := []Dose{
-		{ID: "x-d", Administration: "x", Antigen: "diphtheria", GivenOn: "2025-03-10"},
-		{ID: "x-t", Administration: "x", Antigen: "tetanus", GivenOn: "2025-03-10"},
+	s.Lines = append(s.Lines,
+		line("hepatitis_b-1", "HepB", "hepatitis_b", 1, age(0, UnitDay), nil, KindRoutine),
+		line("hepatitis_b-2", "HepB", "hepatitis_b", 2, age(1, UnitMonth), nil, KindRoutine),
+		line("hepatitis_b-3", "HepB", "hepatitis_b", 3, age(6, UnitMonth), nil, KindRoutine))
+	history := []Dose{
+		{ID: "d1", Administration: "a1", Antigen: "diphtheria", GivenOn: "2025-03-10"},
+		{ID: "d2", Administration: "a2", Antigen: "diphtheria", GivenOn: "2025-05-10"},
+		{ID: "d3", Administration: "a3", Antigen: "diphtheria", GivenOn: "2025-07-10"},
+		{ID: "h1", Administration: "a4", Antigen: "hepatitis_b", GivenOn: "2025-01-10"},
+		{ID: "h2", Administration: "a5", Antigen: "hepatitis_b", GivenOn: "2025-02-10"},
+		{ID: "x-d", Administration: "x", Antigen: "diphtheria", GivenOn: "2026-04-10"},
+		{ID: "x-h", Administration: "x", Antigen: "hepatitis_b", GivenOn: "2026-04-10"},
 	}
-	e := mustEval(t, s, combo, nil, usBorn, "2025-03-20")
-	if givenOn(e, "diphtheria-1") != "x-d" || givenOn(e, "tetanus-1") != "x-t" {
-		t.Errorf("combination dose did not fill both antigens: %+v", e.Lines)
+	e := mustEval(t, s, history, nil, usBorn, "2026-04-20")
+	d4, _ := find(e, "diphtheria-4")
+	h3, _ := find(e, "hepatitis_b-3")
+	if d4.DoseID != "x-d" || h3.DoseID != "x-h" || d4.Administration != "x" || h3.Administration != "x" {
+		t.Errorf("one administration did not fill diphtheria-4 and hepatitis_b-3: %+v, %+v", d4, h3)
 	}
+	s = dtSeries()
 
 	var six []Dose
 	for i, d := range []string{"2025-03-10", "2025-05-10", "2025-07-10", "2026-04-10", "2029-01-10", "2029-06-01"} {
@@ -325,8 +338,8 @@ func TestEmptyWindowIsAnError(t *testing.T) {
 		t.Fatalf("a January birth has a window: %v", err)
 	}
 	_, err := Evaluate(s, nil, nil, "2025-02-01", "2025-03-01", time.UTC)
-	if err == nil {
-		t.Fatal("4w..1m from 2025-02-01 is empty; want an error")
+	if !errors.Is(err, ErrEmptyWindow) {
+		t.Fatalf("4w..1m from 2025-02-01 is empty: err = %v; want ErrEmptyWindow", err)
 	}
 	if strings.Contains(err.Error(), "2025") {
 		t.Errorf("error carries a date: %v", err)
@@ -339,5 +352,50 @@ func TestEvaluateBadDates(t *testing.T) {
 		if !errors.Is(err, kidtime.ErrBadDate) {
 			t.Errorf("Evaluate(%q, %q) err = %v; want ErrBadDate", c[0], c[1], err)
 		}
+	}
+}
+
+func TestDefaultWindowRunsFromTheFromDate(t *testing.T) {
+	cases := []struct {
+		born     string
+		from     Age
+		fromDate string
+		untilDay string
+		lastDue  string
+	}{
+		{"2025-01-31", age(1, UnitMonth), "2025-03-03", "2025-04-03", "2025-04-02"},
+		// birth + 13m would be 2025-03-29: a window counted from birth fails here.
+		{"2024-02-29", age(12, UnitMonth), "2025-03-01", "2025-04-01", "2025-03-31"},
+	}
+	for _, c := range cases {
+		s := Schema{Lines: []Line{line("rotavirus-1", "RV", "rotavirus", 1, c.from, nil, KindRoutine)}}
+		for today, want := range map[string]Status{c.lastDue: StatusDue, c.untilDay: StatusOverdue} {
+			e := mustEval(t, s, nil, nil, c.born, today)
+			l := e.Lines[0]
+			if l.FromDate != c.fromDate || l.UntilDate != c.untilDay || l.Status != want {
+				t.Errorf("born %s on %s = %s..%s %q; want %s..%s %q", c.born, today, l.FromDate, l.UntilDate, l.Status, c.fromDate, c.untilDay, want)
+			}
+		}
+	}
+}
+
+func TestEmptySchemaSendsEverythingToOther(t *testing.T) {
+	doses := []Dose{
+		{ID: "b", Administration: "b", Antigen: "measles", GivenOn: "2025-05-01"},
+		{ID: "a", Administration: "a", Antigen: "diphtheria", GivenOn: "2025-03-01"},
+	}
+	e := mustEval(t, Schema{}, doses, map[string]string{"diphtheria-1": "not_needed"}, usBorn, "2025-06-01")
+	if len(e.Lines)+len(e.Also)+len(e.Recurring) != 0 || len(e.Other) != 2 || e.Other[0].ID != "a" || e.Other[1].ID != "b" {
+		t.Errorf("empty schema = %+v", e)
+	}
+	if len(e.Due()) != 0 {
+		t.Errorf("Due() = %+v", e.Due())
+	}
+}
+
+func TestStatusAvailableIsNotTheZeroValue(t *testing.T) {
+	var zero Status
+	if StatusAvailable == zero {
+		t.Error("StatusAvailable is the zero value")
 	}
 }
