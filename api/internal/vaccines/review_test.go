@@ -62,7 +62,7 @@ func renderMarkdown(s Schema) string {
 	}
 	b.WriteString("\n## Kinds\n\n")
 	b.WriteString("- `routine`: due inside its window, overdue after it.\n")
-	b.WriteString("- `may_not_be_needed`: depends on the product or history; due from `from`, stays due after its window, never overdue, until given or dismissed.\n")
+	b.WriteString("- `may_not_be_needed`: depends on the product or history; is due inside its window; afterwards it is listed as available and never overdue.\n")
 	b.WriteString("- `supplementary`: shared decision-making or risk groups; listed under \"Also available\", never due or overdue.\n")
 	b.WriteString("- `recurring`: seasonal; listed with the doses given, never due or overdue.\n\n")
 	fmt.Fprintf(&b, "A window runs from the age in `from` up to, not including, the age in `until`; without `until` it is %s.\n",
@@ -143,7 +143,7 @@ func TestRenderMarkdown(t *testing.T) {
 		"## Birth\n", "| A | Hepatitis B | 1 | from Birth until 1 month | `supplementary` |  |\n",
 		"## 2 months\n", `| B\|x | Rotavirus | 1 | from 2 months until 3 months (default window); born 2024-07-01 to any date | ` + "`routine`",
 		"## Not transcribed from the source\n\n- Mpox\n- Dengue\n", "without `until` it is 1 month.",
-		"stays due after its window, never overdue, until given or dismissed",
+		"is due inside its window; afterwards it is listed as available and never overdue",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("renderMarkdown lacks %q:\n%s", want, got)

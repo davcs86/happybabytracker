@@ -79,7 +79,14 @@ func TestEvaluateStatuses(t *testing.T) {
 		{"dismissed beats due", nil, map[string]string{"diphtheria-1": "not_needed"}, "2025-03-15", "diphtheria-1", StatusDismissed},
 		{"given beats dismissed", []Dose{{ID: "d1", Administration: "a1", Antigen: "hepatitis_b", GivenOn: "2025-01-11"}}, map[string]string{"hepatitis_b-1": "given_unknown"}, "2025-03-15", "hepatitis_b-1", StatusGiven},
 		{"may_not_be_needed due", nil, nil, "2025-05-10", "rotavirus-2", StatusDue},
-		{"may_not_be_needed never overdue", nil, nil, "2027-01-01", "rotavirus-2", StatusDue},
+		{"may_not_be_needed day before until", nil, nil, "2025-06-09", "rotavirus-2", StatusDue},
+		{"may_not_be_needed on until is available", nil, nil, "2025-06-10", "rotavirus-2", StatusAvailable},
+		{"may_not_be_needed long after is available", nil, nil, "2027-01-01", "rotavirus-2", StatusAvailable},
+		{"may_not_be_needed given beats available", []Dose{
+			{ID: "r1", Administration: "a1", Antigen: "rotavirus", GivenOn: "2025-03-10"},
+			{ID: "r2", Administration: "a2", Antigen: "rotavirus", GivenOn: "2025-05-10"},
+		}, nil, "2027-01-01", "rotavirus-2", StatusGiven},
+		{"may_not_be_needed dismissed beats available", nil, map[string]string{"rotavirus-2": "not_needed"}, "2027-01-01", "rotavirus-2", StatusDismissed},
 		{"may_not_be_needed upcoming", nil, nil, "2025-05-09", "rotavirus-2", StatusUpcoming},
 		{"supplementary available", nil, nil, "2027-01-01", "covid19-1", StatusAvailable},
 		{"supplementary given", []Dose{{ID: "c1", Administration: "a2", Antigen: "covid19", GivenOn: "2025-08-01"}}, nil, "2027-01-01", "covid19-1", StatusGiven},
@@ -308,6 +315,8 @@ func TestDueGroups(t *testing.T) {
 		line("influenza-1", "Influenza", "influenza", 1, age(2, UnitMonth), nil, KindRecurring),
 		line("diphtheria-2", "DTaP", "diphtheria", 2, age(4, UnitMonth), until(8, UnitMonth), KindRoutine),
 		line("rotavirus-2", "RV", "rotavirus", 2, age(4, UnitMonth), until(5, UnitMonth), KindMayNotBeNeeded),
+		line("hib-1", "Hib", "hib", 1, age(1, UnitMonth), until(2, UnitMonth), KindMayNotBeNeeded),
+		line("pertussis-1", "DTaP", "pertussis", 1, age(2, UnitMonth), until(3, UnitMonth), KindMayNotBeNeeded),
 		line("diphtheria-3", "DTaP", "diphtheria", 3, age(6, UnitMonth), nil, KindRoutine),
 	}}
 	e := mustEval(t, s, nil, nil, usBorn, "2025-06-01")
@@ -318,6 +327,11 @@ func TestDueGroups(t *testing.T) {
 	}
 	if got := e.Due(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Due() = %+v; want %+v", got, want)
+	}
+	for _, id := range []string{"hib-1", "pertussis-1"} {
+		if got := statusOf(t, e, id); got != StatusAvailable {
+			t.Errorf("%s past its window = %q; want available (and not counted)", id, got)
+		}
 	}
 
 	doses := []Dose{

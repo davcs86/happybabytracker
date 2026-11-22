@@ -13,7 +13,7 @@ Generated from `api/internal/vaccines/data/us.csv`; do not edit. After changing 
 ## Kinds
 
 - `routine`: due inside its window, overdue after it.
-- `may_not_be_needed`: depends on the product or history; due from `from`, stays due after its window, never overdue, until given or dismissed.
+- `may_not_be_needed`: depends on the product or history; is due inside its window; afterwards it is listed as available and never overdue.
 - `supplementary`: shared decision-making or risk groups; listed under "Also available", never due or overdue.
 - `recurring`: seasonal; listed with the doses given, never due or overdue.
 

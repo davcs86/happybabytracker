@@ -20,7 +20,8 @@ const (
 	StatusUpcoming  Status = "upcoming"
 	StatusOverdue   Status = "overdue"
 	StatusDismissed Status = "dismissed"
-	// StatusAvailable is a supplementary line neither given nor dismissed; never due or overdue.
+	// StatusAvailable: a supplementary line, or a may_not_be_needed one past its window, neither given
+	// nor dismissed; never due or overdue.
 	StatusAvailable Status = "available"
 )
 
@@ -161,6 +162,8 @@ func state(l Line, birthDate, today string, loc *time.Location) (LineState, erro
 		ls.Status = StatusUpcoming
 	case today >= until && l.Kind == KindRoutine:
 		ls.Status = StatusOverdue
+	case today >= until:
+		ls.Status = StatusAvailable
 	default:
 		ls.Status = StatusDue
 	}

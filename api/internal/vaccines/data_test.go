@@ -236,9 +236,9 @@ func TestUSAtFifteenYears(t *testing.T) {
 		}
 	}
 	want := map[Status][]string{
-		StatusOverdue:  wantOverdue,
-		StatusDue:      {"hib-4", "rotavirus-3", "rsv-1"},
-		StatusUpcoming: {"meningococcal_acwy-2"},
+		StatusOverdue:   wantOverdue,
+		StatusAvailable: {"hib-4", "rotavirus-3", "rsv-1"},
+		StatusUpcoming:  {"meningococcal_acwy-2"},
 	}
 	for st, ids := range want {
 		if !sameSet(byStatus[st], ids) {
