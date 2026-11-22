@@ -8,6 +8,7 @@ import {
 	NURSING_SIDES,
 	PUMPING_SIDES,
 	TIMELINE_TYPE,
+	TIMER_KINDS,
 	TRACKER_KINDS,
 	VOLUME_UNITS
 } from '../constants';
@@ -519,6 +520,10 @@ export function createApi(
 		return ID_PATTERN.test(id) ? run(id) : Promise.resolve<ApiResult<T>>(NOT_FOUND);
 	}
 
+	// A kind or module outside its list never reaches a path, whatever the caller cast.
+	const known = <T>(ok: boolean, run: () => Promise<ApiResult<T>>) =>
+		ok ? run() : Promise.resolve<ApiResult<T>>(NOT_FOUND);
+
 	const withKidEntry = <T>(
 		kidId: string,
 		id: string,
@@ -607,34 +612,47 @@ export function createApi(
 		tracker<K extends TrackerKind>(kind: K) {
 			const parse = PARSERS[kind];
 			const path = (k: string) => `/v1/kids/${k}/${kind}`;
+			const ok = (TRACKER_KINDS as readonly string[]).includes(kind);
 			return {
 				list: (kidId: string, query: ListQuery = {}) =>
-					withId(kidId, (k) =>
-						call(`list_${kind}`, 'GET', `${path(k)}${queryString(query)}`, (b) => toPage(kind, b))
+					known(ok, () =>
+						withId(kidId, (k) =>
+							call(`list_${kind}`, 'GET', `${path(k)}${queryString(query)}`, (b) => toPage(kind, b))
+						)
 					),
 				get: (kidId: string, id: string) =>
-					withKidEntry(kidId, id, (k, i) => call(`get_${kind}`, 'GET', `${path(k)}/${i}`, parse)),
+					known(ok, () =>
+						withKidEntry(kidId, id, (k, i) => call(`get_${kind}`, 'GET', `${path(k)}/${i}`, parse))
+					),
 				create: (kidId: string, input: EntryBody) =>
-					withId(kidId, (k) => call(`create_${kind}`, 'POST', path(k), parse, input)),
+					known(ok, () =>
+						withId(kidId, (k) => call(`create_${kind}`, 'POST', path(k), parse, input))
+					),
 				update: (kidId: string, id: string, input: EntryBody) =>
-					withKidEntry(kidId, id, (k, i) =>
-						call(`update_${kind}`, 'PATCH', `${path(k)}/${i}`, parse, input)
+					known(ok, () =>
+						withKidEntry(kidId, id, (k, i) =>
+							call(`update_${kind}`, 'PATCH', `${path(k)}/${i}`, parse, input)
+						)
 					),
 				remove: (kidId: string, id: string) =>
-					withKidEntry(kidId, id, (k, i) =>
-						call<null>(`delete_${kind}`, 'DELETE', `${path(k)}/${i}`, null)
+					known(ok, () =>
+						withKidEntry(kidId, id, (k, i) =>
+							call<null>(`delete_${kind}`, 'DELETE', `${path(k)}/${i}`, null)
+						)
 					)
 			};
 		},
 		// at is an RFC 3339 instant; left out it is now.
 		endTimer: <K extends TimerKind>(kind: K, kidId: string, id: string, at?: string) =>
-			withKidEntry(kidId, id, (k, i) =>
-				call(
-					'end_timer',
-					'POST',
-					`/v1/kids/${k}/${kind}/${i}/end`,
-					PARSERS[kind],
-					at === undefined ? {} : { at }
+			known((TIMER_KINDS as readonly string[]).includes(kind), () =>
+				withKidEntry(kidId, id, (k, i) =>
+					call(
+						'end_timer',
+						'POST',
+						`/v1/kids/${k}/${kind}/${i}/end`,
+						PARSERS[kind],
+						at === undefined ? {} : { at }
+					)
 				)
 			),
 		switchNursingSide: (kidId: string, id: string, side: NursingSide, at?: string) =>
@@ -668,8 +686,10 @@ export function createApi(
 				)
 			),
 		setModule: (kidId: string, module: ModuleId, enabled: boolean) =>
-			withId(kidId, (k) =>
-				call<null>('set_module', 'PUT', `/v1/kids/${k}/modules/${module}`, null, { enabled })
+			known((MODULES as readonly string[]).includes(module), () =>
+				withId(kidId, (k) =>
+					call<null>('set_module', 'PUT', `/v1/kids/${k}/modules/${module}`, null, { enabled })
+				)
 			),
 		home: (kidId: string) => withId(kidId, (k) => call('home', 'GET', `/v1/kids/${k}/home`, toHome))
 	};

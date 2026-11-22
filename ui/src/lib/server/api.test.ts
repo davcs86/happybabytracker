@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { MODULES, TRACKER_KINDS } from '../constants';
 import { createApi } from './api';
 import type { Env } from './env';
 
@@ -1049,6 +1050,54 @@ describe('createApi tracker calls', () => {
 			['a fractional age', { ...HOME, age_months: 8.5 }]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
+		});
+	});
+
+	describe('path segments that are not a known kind or module', () => {
+		const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+		// A caller's careless cast must not reach a path: ../.. would walk to another API route.
+		const BAD = ['../..', '..', '', 'diaper', 'milestones', 'Bottles', 'bottles/e1', 'sleep?x=1'];
+
+		it.each(BAD)('tracker(%j) answers not_found on every call without a request', async (kind) => {
+			const f = respond({});
+			const t = api(f).tracker(kind as never);
+			for (const r of [
+				await t.list(KID),
+				await t.get(KID, 'e1'),
+				await t.create(KID, {}),
+				await t.update(KID, 'e1', {}),
+				await t.remove(KID, 'e1')
+			]) {
+				expect(r).toEqual(NOT_FOUND);
+			}
+			expect(f).not.toHaveBeenCalled();
+		});
+
+		it.each([...BAD, 'bottles', 'diapers', 'meals', 'pumping'])(
+			'endTimer(%j) answers not_found for a kind that is not a timer, without a request',
+			async (kind) => {
+				const f = respond({});
+				expect(await api(f).endTimer(kind as never, KID, 'e1')).toEqual(NOT_FOUND);
+				expect(f).not.toHaveBeenCalled();
+			}
+		);
+
+		it.each([...BAD.filter((m) => m !== 'milestones'), 'bottle', 'feedings', 'Growth'])(
+			'setModule(%j) answers not_found without a request',
+			async (module) => {
+				const f = respond({});
+				expect(await api(f).setModule(KID, module as never, true)).toEqual(NOT_FOUND);
+				expect(f).not.toHaveBeenCalled();
+			}
+		);
+
+		it('still reaches the API for every known kind, timer kind and module', async () => {
+			const f = respond({});
+			const a = api(f);
+			for (const kind of TRACKER_KINDS) await a.tracker(kind).remove(KID, 'e1');
+			for (const kind of ['sleep', 'nursing'] as const) await a.endTimer(kind, KID, 'e1');
+			for (const module of MODULES) await a.setModule(KID, module, true);
+			expect(f).toHaveBeenCalledTimes(TRACKER_KINDS.length + 2 + MODULES.length);
 		});
 	});
 

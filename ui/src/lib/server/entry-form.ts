@@ -18,8 +18,23 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 	meals: ['at', 'what', 'reaction', 'note'],
 	pumping: ['started_at', 'duration_minutes', 'volume', 'volume_unit', 'side', 'note'],
 	sleep: ['started_at', 'ended_at', 'note'],
-	nursing: ['started_at', 'ended_at', 'left_minutes', 'right_minutes', 'side', 'note']
+	nursing: [
+		'started_at',
+		'ended_at',
+		'left_minutes',
+		'right_minutes',
+		'left_seconds_original',
+		'right_seconds_original',
+		'side',
+		'note'
+	]
 };
+
+// create, or an edit of a running (running: true) or finished nursing session.
+export type EntryMode = { kind: 'create' } | { kind: 'edit'; running: boolean };
+
+// The minutes a finished session's seconds pre-fill; never rounded up, so an unchanged edit fits its span.
+export const floorMinutes = (seconds: number) => Math.floor(seconds / SECONDS_PER_MINUTE);
 
 type Outcome = { input: EntryBody } | { field: string };
 
@@ -62,10 +77,17 @@ function seconds(text: string, optional: boolean): number | null {
 	return Number.isSafeInteger(n) ? n : null;
 }
 
+// The hidden stored seconds of a finished session; anything but a whole number is refused, never read as 0.
+function storedSeconds(text: string): number | null {
+	if (!/^\d+$/.test(text)) return null;
+	const n = Number(text);
+	return Number.isSafeInteger(n) ? n : null;
+}
+
 const orNull = (text: string) => text.trim() || null;
 
 // Fields are checked in the API's order, so the one named is the one the API would name.
-function build(kind: TrackerKind, v: EntryFormValues, zone: string): Outcome {
+function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryMode): Outcome {
 	const s = (k: string) => v[k] as string;
 	const input: EntryBody = {};
 	const bad = (field: string): Outcome => ({ field });
@@ -108,13 +130,19 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string): Outcome {
 			break;
 		case 'nursing': {
 			if (!putTime(input, 'ended_at', s('ended_at'), zone)) return bad('ended_at');
-			// The seconds belong to a finished session; a running one takes its side instead.
-			if (input.ended_at !== undefined) {
-				const left = seconds(s('left_minutes'), true);
-				if (left === null) return bad('left_seconds');
-				const right = seconds(s('right_minutes'), true);
-				if (right === null) return bad('right_seconds');
-				Object.assign(input, { left_seconds: left, right_seconds: right });
+			// A running edit never sends seconds; a finished edit sends a side's only once its minutes changed.
+			const finishedCreate = mode.kind === 'create' && input.ended_at !== undefined;
+			const finishedEdit = mode.kind === 'edit' && !mode.running;
+			for (const side of finishedCreate || finishedEdit ? (['left', 'right'] as const) : []) {
+				const typed = seconds(s(`${side}_minutes`), true);
+				if (typed === null) return bad(`${side}_seconds`);
+				if (finishedCreate) {
+					input[`${side}_seconds`] = typed;
+					continue;
+				}
+				const stored = storedSeconds(s(`${side}_seconds_original`));
+				if (stored === null) return bad(`${side}_seconds`);
+				if (typed !== floorMinutes(stored) * SECONDS_PER_MINUTE) input[`${side}_seconds`] = typed;
 			}
 			if (s('side') !== '') {
 				if (!includes(NURSING_SIDES, s('side'))) return bad('side');
@@ -132,13 +160,14 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string): Outcome {
 export function readEntryForm(
 	kind: TrackerKind,
 	form: FormData,
-	zone: string
+	zone: string,
+	mode: EntryMode
 ): { values: EntryFormValues; input: EntryBody | null; field: string | null } {
 	const values: EntryFormValues = Object.fromEntries(
 		TEXT_FIELDS[kind].map((k) => [k, String(form.get(k) ?? '')])
 	);
 	if (kind === 'bottles') values.contents = form.getAll('contents').map(String);
-	const r = build(kind, values, zone);
+	const r = build(kind, values, zone, mode);
 	return 'field' in r
 		? { values, input: null, field: r.field }
 		: { values, input: r.input, field: null };

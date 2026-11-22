@@ -6,6 +6,7 @@ import type {
 	NursingSide,
 	PumpingSide,
 	TimelineType,
+	TimerKind,
 	TrackerKind,
 	VolumeUnit
 } from './types';
@@ -33,6 +34,7 @@ export const TRACKER_KINDS: readonly TrackerKind[] = [
 	'diapers',
 	'meals'
 ];
+export const TIMER_KINDS = ['sleep', 'nursing'] as const satisfies readonly TimerKind[];
 // The one place the timeline's singular type names meet the route names that paths and TrackerKind use.
 export const TIMELINE_TYPE: Record<TrackerKind, TimelineType> = {
 	bottles: 'bottle',
