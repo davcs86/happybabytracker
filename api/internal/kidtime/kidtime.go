@@ -71,6 +71,27 @@ func BandStart(birthDate string, loc *time.Location, b Band) (time.Time, error) 
 	return time.Date(y, m+time.Month(months), d, 0, 0, 0, 0, loc), nil
 }
 
+// AddAge is date plus n units (d, w, m or y) by Go's AddDate, so 31 Jan + 1m and 29 Feb + 1y normalise forward.
+func AddAge(date string, n int, unit byte, loc *time.Location) (string, error) {
+	t, err := parseDay(date, loc)
+	if err != nil {
+		return "", err
+	}
+	switch unit {
+	case 'd':
+		t = t.AddDate(0, 0, n)
+	case 'w':
+		t = t.AddDate(0, 0, 7*n)
+	case 'm':
+		t = t.AddDate(0, n, 0)
+	case 'y':
+		t = t.AddDate(n, 0, 0)
+	default:
+		return "", ErrBadDate
+	}
+	return t.Format(time.DateOnly), nil
+}
+
 // ErrBadDate reports a date that is not "YYYY-MM-DD"; it never carries the input.
 var ErrBadDate = errors.New("kidtime: invalid date")
 

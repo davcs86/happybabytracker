@@ -359,3 +359,40 @@ func TestAgeMonthsAndBandStartHideTheBadDate(t *testing.T) {
 		t.Errorf("BandStart error = %v, want ErrBadDate without the input", err)
 	}
 }
+
+func TestAddAge(t *testing.T) {
+	utc := time.UTC
+	cases := []struct {
+		date string
+		n    int
+		unit byte
+		want string
+	}{
+		{"2025-01-10", 8, 'w', "2025-03-07"},
+		{"2025-01-10", 12, 'm', "2026-01-10"},
+		{"2025-01-10", 4, 'y', "2029-01-10"},
+		{"2025-01-10", 0, 'd', "2025-01-10"},
+		{"2025-01-10", 3, 'd', "2025-01-13"},
+		{"2025-01-31", 1, 'm', "2025-03-03"},
+		{"2024-01-31", 1, 'm', "2024-03-02"},
+		{"2024-02-29", 1, 'y', "2025-03-01"},
+	}
+	for _, c := range cases {
+		got, err := AddAge(c.date, c.n, c.unit, utc)
+		if err != nil || got != c.want {
+			t.Errorf("AddAge(%s, %d%c) = %q, %v; want %q", c.date, c.n, c.unit, got, err, c.want)
+		}
+	}
+	for _, bad := range []struct {
+		date string
+		unit byte
+	}{{"2025-02-30", 'd'}, {"not-a-date", 'm'}, {"2025-01-10", 'x'}} {
+		_, err := AddAge(bad.date, 1, bad.unit, utc)
+		if !errors.Is(err, ErrBadDate) {
+			t.Errorf("AddAge(%q, %c) err = %v; want ErrBadDate", bad.date, bad.unit, err)
+		}
+		if err != nil && strings.Contains(err.Error(), bad.date) {
+			t.Errorf("AddAge error carries the input: %v", err)
+		}
+	}
+}
