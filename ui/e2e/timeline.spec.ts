@@ -180,8 +180,11 @@ async function seedMoreThanAPage(api: Api) {
 		await seed(api, 'diapers', { at: at.toISOString().replace(/\.\d{3}Z$/, 'Z'), kind: 'wet' });
 	}
 }
+// Resolved targets: the raw href is relative before hydration and absolute after it.
 const rowLinks = async (page: Page) =>
-	page.locator('a[href*="/log/diapers/"]').evaluateAll((a) => a.map((e) => e.getAttribute('href')));
+	page
+		.locator('a[href*="/log/diapers/"]')
+		.evaluateAll((a) => a.map((e) => (e as HTMLAnchorElement).href));
 
 async function pageThroughOlder(page: Page) {
 	await seedMoreThanAPage(await stubAs(ANA));
