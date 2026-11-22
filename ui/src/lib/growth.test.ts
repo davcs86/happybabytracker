@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	ageHeader,
 	correctedAgeLabel,
 	coverageHint,
 	formatLength,
@@ -103,5 +104,25 @@ describe('coverageHint', () => {
 				{ measure: 'bmi', fromMonths: 23.5, toMonths: 240.5 }
 			])
 		).toBe('Months covered: weight 0–120, length 0–228, head circumference 0–60, BMI 24–240');
+	});
+});
+
+describe('ageHeader', () => {
+	it('shows the age alone when no correction applies', () => {
+		expect(ageHeader('3 months', null, '2026-11-22')).toBe('3 months');
+	});
+
+	it('says before expected term while the due date is still ahead, never a zero age', () => {
+		expect(ageHeader('20 days', '2026-12-31', '2026-11-22')).toBe('20 days (before expected term)');
+	});
+
+	it('counts the due date itself as a corrected age of zero', () => {
+		expect(ageHeader('70 days', '2026-11-22', '2026-11-22')).toBe('70 days (corrected 0 days)');
+	});
+
+	it('shows the corrected age after the due date', () => {
+		expect(ageHeader('4 months', '2026-10-01', '2026-11-22')).toBe(
+			'4 months (corrected 1 month 21 days)'
+		);
 	});
 });

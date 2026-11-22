@@ -12,7 +12,7 @@
 	}: { entries: QuickLogEntry[]; kidId: string; message?: string | null } = $props();
 
 	const href = (entry: QuickLogEntry) =>
-		entry.kind ? logPath(kidId, entry.kind) : (PAGE_ROUTE[entry.module]?.(kidId) ?? '');
+		entry.kind ? logPath(kidId, entry.kind) : PAGE_ROUTE[entry.module]?.(kidId);
 
 	const TILE =
 		'flex min-h-14 w-full items-center justify-center rounded-lg border px-4 py-3 text-center font-medium hover:bg-muted';

@@ -1,5 +1,6 @@
 import { MEASURES } from '#lib/constants.js';
 import { formatAge } from '#lib/format.js';
+import { ageHeader } from '#lib/growth.js';
 import { todayInOrUtc } from '#lib/time-zone.js';
 import { setKidCookie } from '#lib/server/cookie.js';
 import { failPage } from '#lib/server/outcome.js';
@@ -30,11 +31,9 @@ export const load: PageServerLoad = async ({ locals, params, url, cookies, paren
 	setKidCookie(cookies, kid.data.id);
 	const units = session?.parent?.units;
 	const today = todayInOrUtc(kid.data.timeZone);
-	const corrected = home.data.correctedBirthDate;
 	return {
 		kid: kid.data,
-		age: formatAge(kid.data.birthDate, today),
-		correctedAge: corrected === null ? null : formatAge(corrected, today),
+		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		measure,
 		units: units ? { weight: units.weight, length: units.length } : METRIC,
 		rows: rows.data,

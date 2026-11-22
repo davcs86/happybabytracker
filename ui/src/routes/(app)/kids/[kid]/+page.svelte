@@ -30,7 +30,7 @@
 <KidSwitcher kids={data.kids} currentId={data.kid.id} />
 <h1 class="text-xl font-semibold">{data.kid.name}</h1>
 <p class="text-muted-foreground">
-	{data.correctedAge ? `${data.age} (corrected ${data.correctedAge})` : data.age}
+	{data.age}
 </p>
 <KidLinks kid={data.kid} />
 

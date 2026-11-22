@@ -253,6 +253,12 @@ test('a caregiver can add and edit', async ({ page }) => {
 	await save(page);
 	await onGrowth(page, LEO.id, 'weight');
 	expect(await written('PATCH', apiPath(LEO.id, added?.id))).toEqual({ note: 'by the caregiver' });
+
+	await page.goto(entryUrl(LEO.id, added?.id));
+	await page.getByText('Delete this measurement', { exact: true }).click();
+	await page.getByRole('button', { name: 'Yes, delete this measurement' }).click();
+	await onGrowth(page, LEO.id, 'weight');
+	expect((await stored(api, LEO.id)).some((r) => r.id === added?.id)).toBe(false);
 });
 
 test('no grant, an unknown entry and another kid’s entry are the same 404 page', async ({
@@ -343,6 +349,31 @@ test('a corrected kid shows the corrected age beside the age on the home and the
 		page.getByText(formatAge(LEO.birthDate, todayIn(LEO.timeZone)), { exact: true })
 	).toBeVisible();
 	await expect(page.getByText(/\(corrected /)).toHaveCount(0);
+});
+
+test('a preterm kid before the due date says before expected term, never a zero corrected age', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const today = todayIn('UTC');
+	const born = addDays(today, -20);
+	const kid = await api('POST', '/v1/kids', {
+		name: 'Noa',
+		birth_date: born,
+		sex: 'female',
+		gestation_weeks: 30,
+		gestation_days: 0,
+		time_zone: 'UTC'
+	});
+	expect(kid.status).toBe(201);
+	const ages = `${formatAge(born, today)} (before expected term)`;
+	await signIn(page, ANA);
+	for (const path of [`/kids/${kid.body.id}`, `/kids/${kid.body.id}/growth`]) {
+		await page.goto(path);
+		await expect(page.getByText(ages, { exact: true })).toBeVisible();
+		await expect(page.getByText(/corrected 0 days/)).toHaveCount(0);
+	}
+	await expectAccessible(page);
 });
 
 test('the Growth tile leads the 24+ band and is gone with the module off', async ({ page }) => {

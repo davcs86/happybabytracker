@@ -23,7 +23,7 @@
 	<div>
 		<h1 class="text-xl font-semibold">Growth for {data.kid.name}</h1>
 		<p class="text-muted-foreground">
-			{data.correctedAge ? `${data.age} (corrected ${data.correctedAge})` : data.age}
+			{data.age}
 		</p>
 	</div>
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->

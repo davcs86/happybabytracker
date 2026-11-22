@@ -8,7 +8,7 @@ import {
 	PERCENTILE_SHOWN,
 	Z_SCORE_DECIMALS
 } from './constants';
-import { formatAgeDays } from './format';
+import { formatAge, formatAgeDays } from './format';
 import type { GrowthLength, GrowthSourceInfo, GrowthWeight, LengthUnit, WeightUnit } from './types';
 
 // Ounces are shown to one decimal: hundredths per shown tenth.
@@ -60,6 +60,13 @@ export function correctedAgeLabel(chronologicalDays: number, correctedDays: numb
 	if (correctedDays === null) return lived;
 	if (correctedDays < 0) return `${lived} (before expected term)`;
 	return `${lived} (corrected ${formatAgeDays(correctedDays)})`;
+}
+
+// The header's age; a due date still ahead (ISO dates compare as strings) has no corrected age yet.
+export function ageHeader(age: string, correctedBirthDate: string | null, today: string) {
+	if (correctedBirthDate === null) return age;
+	if (correctedBirthDate > today) return `${age} (before expected term)`;
+	return `${age} (corrected ${formatAge(correctedBirthDate, today)})`;
 }
 
 const COVERAGE_LABEL = {
