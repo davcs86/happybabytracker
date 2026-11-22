@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 )
 
 const reviewDocsDir = "../../../docs/vaccine-schedules"
@@ -30,6 +32,18 @@ func ageLabel(a Age) string {
 	return fmt.Sprintf("%d %s", a.N, names[1])
 }
 
+// defaultEnd labels the end of a line without until, VaccineDefaultWindowMonths after its from age.
+func defaultEnd(from Age) string {
+	m := Age{constants.VaccineDefaultWindowMonths, UnitMonth}
+	switch {
+	case from.Unit == UnitMonth:
+		return ageLabel(Age{from.N + m.N, UnitMonth})
+	case from.N == 0:
+		return ageLabel(m)
+	}
+	return ageLabel(from) + " and " + ageLabel(m)
+}
+
 func cell(s string) string {
 	return strings.ReplaceAll(strings.ReplaceAll(s, "|", `\|`), "\n", " ")
 }
@@ -48,10 +62,21 @@ func renderMarkdown(s Schema) string {
 	}
 	b.WriteString("\n## Kinds\n\n")
 	b.WriteString("- `routine`: due inside its window, overdue after it.\n")
-	b.WriteString("- `may_not_be_needed`: depends on the product or history; due inside its window, never overdue.\n")
+	b.WriteString("- `may_not_be_needed`: depends on the product or history; due from `from`, stays due after its window, never overdue, until given or dismissed.\n")
 	b.WriteString("- `supplementary`: shared decision-making or risk groups; listed under \"Also available\", never due or overdue.\n")
 	b.WriteString("- `recurring`: seasonal; listed with the doses given, never due or overdue.\n\n")
-	b.WriteString("A window runs from the age in `from` up to, not including, the age in `until`; without `until` it is one month.\n")
+	fmt.Fprintf(&b, "A window runs from the age in `from` up to, not including, the age in `until`; without `until` it is %s.\n",
+		ageLabel(Age{constants.VaccineDefaultWindowMonths, UnitMonth}))
+	if len(s.Omitted) > 0 {
+		b.WriteString("\n## Not transcribed from the source\n\n")
+		for _, o := range s.Omitted {
+			fmt.Fprintf(&b, "- %s\n", o)
+		}
+	}
+	names := map[string]string{}
+	for _, a := range Antigens() {
+		names[a.ID] = a.Name
+	}
 	lines := slices.Clone(s.Lines)
 	slices.SortStableFunc(lines, func(x, y Line) int {
 		return cmp.Or(cmp.Compare(x.From.approxDays(), y.From.approxDays()), cmp.Compare(x.Group, y.Group),
@@ -62,14 +87,14 @@ func renderMarkdown(s Schema) string {
 			fmt.Fprintf(&b, "\n## %s\n\n", ageLabel(l.From))
 			b.WriteString("| Vaccine | Antigen | Dose | Window | Kind | Note |\n|---|---|---|---|---|---|\n")
 		}
-		window := "from " + ageLabel(l.From) + " (default window)"
+		window := "from " + ageLabel(l.From) + " until " + defaultEnd(l.From) + " (default window)"
 		if l.Until != nil {
 			window = "from " + ageLabel(l.From) + " until " + ageLabel(*l.Until)
 		}
 		if l.BornFrom != "" || l.BornTo != "" {
 			window += fmt.Sprintf("; born %s to %s", cmp.Or(l.BornFrom, "any date"), cmp.Or(l.BornTo, "any date"))
 		}
-		fmt.Fprintf(&b, "| %s | %s | %d | %s | `%s` | %s |\n", cell(l.Group), l.Antigen, l.Series, window, l.Kind, cell(l.Note))
+		fmt.Fprintf(&b, "| %s | %s | %d | %s | `%s` | %s |\n", cell(l.Group), cell(names[l.Antigen]), l.Series, window, l.Kind, cell(l.Note))
 	}
 	return b.String()
 }
@@ -94,18 +119,31 @@ func TestReviewDocsAreCurrent(t *testing.T) {
 			t.Errorf("docs/vaccine-schedules/%s.md is missing or stale: run UPDATE_DOCS=1 go test ./internal/vaccines/ in api/", s.ID)
 		}
 	}
+	docs, err := filepath.Glob(filepath.Join(reviewDocsDir, "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range docs {
+		base := filepath.Base(d)
+		if _, ok := GetSchema(strings.TrimSuffix(base, ".md")); !ok && base != "README.md" {
+			t.Errorf("docs/vaccine-schedules/%s has no shipped schedule: delete it", base)
+		}
+	}
 }
 
 func TestRenderMarkdown(t *testing.T) {
-	s := Schema{ID: "zz", Name: "Test", Lines: []Line{
+	mustLoad(t)
+	s := Schema{ID: "zz", Name: "Test", Omitted: []string{"Mpox", "Dengue"}, Lines: []Line{
 		line("b-1", "B|x", "rotavirus", 1, age(2, UnitMonth), nil, KindRoutine),
 		line("a-1", "A", "hepatitis_b", 1, age(0, UnitDay), until(1, UnitMonth), KindSupplementary),
 	}}
 	s.Lines[0].BornFrom = "2024-07-01"
 	got := renderMarkdown(s)
 	for _, want := range []string{
-		"## Birth\n", "| A | hepatitis_b | 1 | from Birth until 1 month | `supplementary` |  |\n",
-		"## 2 months\n", `| B\|x | rotavirus | 1 | from 2 months (default window); born 2024-07-01 to any date | ` + "`routine`",
+		"## Birth\n", "| A | Hepatitis B | 1 | from Birth until 1 month | `supplementary` |  |\n",
+		"## 2 months\n", `| B\|x | Rotavirus | 1 | from 2 months until 3 months (default window); born 2024-07-01 to any date | ` + "`routine`",
+		"## Not transcribed from the source\n\n- Mpox\n- Dengue\n", "without `until` it is 1 month.",
+		"stays due after its window, never overdue, until given or dismissed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("renderMarkdown lacks %q:\n%s", want, got)
@@ -113,5 +151,13 @@ func TestRenderMarkdown(t *testing.T) {
 	}
 	if strings.Index(got, "## Birth") > strings.Index(got, "## 2 months") {
 		t.Error("tables are not in age order")
+	}
+	for from, want := range map[Age]string{
+		age(0, UnitDay): "1 month", age(2, UnitMonth): "3 months", age(8, UnitWeek): "8 weeks and 1 month",
+		age(16, UnitYear): "16 years and 1 month",
+	} {
+		if got := defaultEnd(from); got != want {
+			t.Errorf("defaultEnd(%v) = %q, want %q", from, got, want)
+		}
 	}
 }

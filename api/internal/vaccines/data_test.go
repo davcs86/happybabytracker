@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,8 @@ import (
 
 // mandatoryAttribution is the wording each schedule's licence requires in its attribution.
 var mandatoryAttribution = map[string][]string{
-	"us": {"Source: CDC", "CDC does not endorse this application or its use of the material."},
+	"us": {"Source: CDC", "CDC does not endorse this application or its use of the material.",
+		"available free of charge on the CDC website at https://", "must not be read as CDC's own text"},
 }
 
 func TestShippedSchedulesLoad(t *testing.T) {
@@ -72,7 +74,7 @@ type pinned struct {
 
 // usLines is every line of us.csv; a change to the file must change this table.
 var usLines = []pinned{
-	{"rsv-1", "RSV", "0d", "8m", KindSupplementary},
+	{"rsv-1", "RSV", "0d", "8m", KindMayNotBeNeeded},
 	{"rsv-2", "RSV", "8m", "20m", KindSupplementary},
 	{"hepatitis_b-1", "Hepatitis B", "0d", "", KindRoutine},
 	{"hepatitis_b-2", "Hepatitis B", "1m", "3m", KindRoutine},
@@ -97,7 +99,7 @@ var usLines = []pinned{
 	{"pertussis-5", "DTaP", "4y", "7y", KindRoutine},
 	{"hib-1", "Hib", "2m", "", KindRoutine},
 	{"hib-2", "Hib", "4m", "", KindRoutine},
-	{"hib-3", "Hib", "6m", "", KindMayNotBeNeeded},
+	{"hib-3", "Hib", "6m", "16m", KindRoutine},
 	{"hib-4", "Hib", "12m", "16m", KindMayNotBeNeeded},
 	{"pneumococcus-1", "PCV", "2m", "", KindRoutine},
 	{"pneumococcus-2", "PCV", "4m", "", KindRoutine},
@@ -118,12 +120,12 @@ var usLines = []pinned{
 	{"varicella-1", "Varicella", "12m", "16m", KindRoutine},
 	{"varicella-2", "Varicella", "4y", "7y", KindRoutine},
 	{"hepatitis_a-1", "Hepatitis A", "12m", "24m", KindRoutine},
-	{"hepatitis_a-2", "Hepatitis A", "12m", "24m", KindRoutine},
+	{"hepatitis_a-2", "Hepatitis A", "18m", "24m", KindRoutine},
 	{"diphtheria-6", "Tdap", "11y", "13y", KindRoutine},
 	{"tetanus-6", "Tdap", "11y", "13y", KindRoutine},
 	{"pertussis-6", "Tdap", "11y", "13y", KindRoutine},
 	{"hpv-1", "HPV", "11y", "13y", KindRoutine},
-	{"hpv-2", "HPV", "11y", "13y", KindRoutine},
+	{"hpv-2", "HPV", "138m", "13y", KindRoutine},
 	{"meningococcal_acwy-1", "MenACWY", "11y", "13y", KindRoutine},
 	{"meningococcal_acwy-2", "MenACWY", "16y", "17y", KindRoutine},
 	{"meningococcal_b-1", "MenB", "16y", "24y", KindSupplementary},
@@ -159,9 +161,18 @@ func TestUSKnownLines(t *testing.T) {
 		if l.BornFrom != "" || l.BornTo != "" {
 			t.Errorf("%s: has a cohort", p.id)
 		}
+		if l.ID != fmt.Sprintf("%s-%d", l.Antigen, l.Series) {
+			t.Errorf("%s: id is not <antigen>-<series>", l.ID)
+		}
 	}
 	if len(s.Lines) != len(usLines) {
 		t.Errorf("us.csv has %d lines, the table pins %d", len(s.Lines), len(usLines))
+	}
+	omitted := strings.Join(s.Omitted, "\n")
+	for _, want := range []string{"COVID-19", "HPV", "MenACWY", "MenB", "cardiac", "IPV", "Tdap", "Abrysvo", "Dengue", "Mpox"} {
+		if !strings.Contains(omitted, want) {
+			t.Errorf("omitted does not mention %s", want)
+		}
 	}
 }
 
@@ -210,27 +221,51 @@ func hasTwoMonthGroup(groups []DueGroup) bool {
 	return false
 }
 
-func TestUSNeverFlagsOptionalLinesOverdue(t *testing.T) {
+func TestUSAtFifteenYears(t *testing.T) {
 	mustLoad(t)
 	s, _ := GetSchema("us")
 	e := mustEval(t, s, nil, nil, "2010-01-10", "2025-01-10")
+	byStatus := map[Status][]string{}
 	for _, l := range e.Lines {
-		if l.Status == StatusOverdue && l.Line.Kind != KindRoutine {
-			t.Errorf("%s (%s) is overdue at 15 years", l.Line.ID, l.Line.Kind)
-		}
-		if l.Line.Kind == KindSupplementary || l.Line.Kind == KindRecurring {
-			t.Errorf("%s (%s) is listed with the routine lines", l.Line.ID, l.Line.Kind)
+		byStatus[l.Status] = append(byStatus[l.Status], l.Line.ID)
+	}
+	var wantOverdue []string
+	for _, p := range usLines {
+		if p.kind == KindRoutine && p.id != "meningococcal_acwy-2" {
+			wantOverdue = append(wantOverdue, p.id)
 		}
 	}
-	if len(e.Also) == 0 {
-		t.Error("no supplementary lines at 15 years")
+	want := map[Status][]string{
+		StatusOverdue:  wantOverdue,
+		StatusDue:      {"hib-4", "rotavirus-3", "rsv-1"},
+		StatusUpcoming: {"meningococcal_acwy-2"},
 	}
+	for st, ids := range want {
+		if !sameSet(byStatus[st], ids) {
+			t.Errorf("%s = %v, want %v", st, byStatus[st], ids)
+		}
+	}
+	if len(byStatus) != len(want) {
+		t.Errorf("statuses = %v", byStatus)
+	}
+	var also []string
 	for _, l := range e.Also {
+		also = append(also, l.Line.ID)
 		if l.Status != StatusAvailable {
 			t.Errorf("%s = %s, want available", l.Line.ID, l.Status)
 		}
 	}
-	if len(e.Recurring) != 1 || e.Recurring[0].Line.Antigen != "influenza" {
-		t.Errorf("Recurring = %+v, want influenza only", e.Recurring)
+	if !sameSet(also, []string{"covid19-1", "meningococcal_b-1", "meningococcal_b-2", "rsv-2"}) {
+		t.Errorf("Also = %v", also)
 	}
+	if len(e.Recurring) != 1 || e.Recurring[0].Line.ID != "influenza-1" {
+		t.Errorf("Recurring = %+v, want influenza-1 only", e.Recurring)
+	}
+}
+
+func sameSet(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }

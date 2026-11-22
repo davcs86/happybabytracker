@@ -41,9 +41,11 @@ type Line struct {
 	Note               string
 }
 
-// Schema is one schedule file: its provenance and its lines in file order.
+// Schema is one schedule file: its provenance and its lines in file order. Omitted lists what the
+// source recommends that the file does not transcribe; nil when the file has no omitted key.
 type Schema struct {
 	ID, Name, Authority, Edition, Retrieved, OriginURL, Licence, Attribution string
+	Omitted                                                                  []string
 	Lines                                                                    []Line
 }
 
@@ -80,6 +82,9 @@ const (
 const dateLayout = "2006-01-02"
 
 var provenanceKeys = []string{"schema", "name", "authority", "edition", "retrieved", "origin_url", "licence", "attribution"}
+
+// omittedKey is the one optional provenance key: semicolon-separated items, none empty.
+const omittedKey = "omitted"
 
 var schemaHeader = []string{"line", "group", "antigen", "series", "from", "until", "kind", "born_from", "born_to", "note"}
 
@@ -133,6 +138,11 @@ func parse(name string, r io.Reader) (Schema, error) {
 		Retrieved: meta["retrieved"], OriginURL: meta["origin_url"], Licence: meta["licence"],
 		Attribution: meta["attribution"],
 	}
+	if v, ok := meta[omittedKey]; ok {
+		for _, o := range strings.Split(v, ";") {
+			s.Omitted = append(s.Omitted, strings.TrimSpace(o))
+		}
+	}
 	seen := map[string]bool{}
 	for _, row := range rows {
 		l, err := parseLine(name, row)
@@ -156,7 +166,7 @@ func provenance(name string, n int, l, id string, meta map[string]string) error 
 	if !strings.HasPrefix(l, "# ") || !ok || k == "" {
 		return fail(name, n, "key", reasonProvLine)
 	}
-	if !slices.Contains(provenanceKeys, k) {
+	if !slices.Contains(provenanceKeys, k) && k != omittedKey {
 		return fail(name, n, "key", reasonUnknownKey)
 	}
 	if _, dup := meta[k]; dup {
@@ -174,6 +184,8 @@ func provenance(name string, n int, l, id string, meta map[string]string) error 
 		return fail(name, n, k, reasonDate)
 	case k == "origin_url" && !isHTTPS(v):
 		return fail(name, n, k, reasonURL)
+	case k == omittedKey && slices.ContainsFunc(strings.Split(v, ";"), func(o string) bool { return strings.TrimSpace(o) == "" }):
+		return fail(name, n, k, reasonEmpty)
 	}
 	meta[k] = v
 	return nil

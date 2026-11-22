@@ -126,6 +126,7 @@ func GetSchema(id string) (Schema, bool) {
 }
 
 func cloneSchema(s Schema) Schema {
+	s.Omitted = slices.Clone(s.Omitted)
 	s.Lines = slices.Clone(s.Lines)
 	for i, l := range s.Lines {
 		if l.Until != nil {

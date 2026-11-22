@@ -296,3 +296,31 @@ func addAge(born time.Time, a Age) time.Time {
 	}
 	return born.AddDate(0, 0, a.N)
 }
+
+func TestParseOmitted(t *testing.T) {
+	ok := testFile("measles-1,MMR,measles,1,12m,16m,routine,,,")
+	withOmitted := func(v string) string {
+		return strings.Replace(ok, "# attribution: Test authority\n", "# attribution: Test authority\n# omitted: "+v+"\n", 1)
+	}
+	s, err := parseString(t, ok)
+	if err != nil || s.Omitted != nil {
+		t.Errorf("absent omitted = %q, %v; want nil, nil", s.Omitted, err)
+	}
+	s, err = parseString(t, withOmitted("Dengue (9–16 years); Mpox ;Tdap in pregnancy"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"Dengue (9–16 years)", "Mpox", "Tdap in pregnancy"}; strings.Join(s.Omitted, "|") != strings.Join(want, "|") {
+		t.Errorf("Omitted = %q, want %q", s.Omitted, want)
+	}
+	dup := strings.Replace(withOmitted("Mpox"), "# omitted: Mpox\n", "# omitted: Mpox\n# omitted: Dengue\n", 1)
+	for _, c := range []struct{ name, in, want string }{
+		{"empty omitted", withOmitted(""), "vaccines: us.csv:9: column omitted: is empty"},
+		{"empty omitted item", withOmitted("Mpox; ;Dengue"), "vaccines: us.csv:9: column omitted: is empty"},
+		{"duplicate omitted", dup, "vaccines: us.csv:10: column omitted: duplicate provenance key"},
+	} {
+		if _, err := parseString(t, c.in); err == nil || err.Error() != c.want {
+			t.Errorf("%s: err = %v, want %s", c.name, err, c.want)
+		}
+	}
+}
