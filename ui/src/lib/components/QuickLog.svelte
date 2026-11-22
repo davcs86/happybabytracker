@@ -27,7 +27,7 @@
 							<button type="submit" class={TILE}>{entry.label}</button>
 						</form>
 					{:else}
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the log pages are not typed routes yet -->
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
 						<a href={logPath(kidId, entry.kind)} class={TILE}>{entry.label}</a>
 					{/if}
 				</li>

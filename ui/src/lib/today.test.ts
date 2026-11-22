@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MODULES } from './constants';
-import { todayRows } from './today';
+import { dayRows, todayRows } from './today';
 import type { DaySummary, ModuleId } from './types';
 
 const day: DaySummary = {
@@ -55,5 +55,17 @@ describe('todayRows', () => {
 			todayRows(day, new Set<ModuleId>(['sleep', 'bottles']), 'ml').map((r) => r.label)
 		).toEqual(['Bottles', 'Sleep']);
 		expect(todayRows(day, new Set<ModuleId>(['growth']), 'ml')).toEqual([]);
+	});
+});
+
+describe('dayRows', () => {
+	it('shows only the shown trackers that have something on the day', () => {
+		const empty = { ...day, bottles: { count: 0, ml: 0, floz_hundredths: 0 } };
+		expect(dayRows(empty, all, 'ml').map((r) => r.label)).toEqual(['Nursing', 'Diapers', 'Sleep']);
+		expect(dayRows(day, new Set<ModuleId>(['bottles', 'sleep']), 'ml')).toEqual([
+			{ label: 'Bottles', value: '5 · 650 ml' },
+			{ label: 'Sleep', value: '9 h 20 min' }
+		]);
+		expect(dayRows(day, new Set<ModuleId>(), 'ml')).toEqual([]);
 	});
 });

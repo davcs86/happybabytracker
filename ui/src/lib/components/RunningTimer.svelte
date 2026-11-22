@@ -61,7 +61,7 @@
 	{#if overrun}
 		<p class={ERROR_CLASS} role="alert">
 			This timer ran over 24 hours:
-			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the entry page is not a typed route yet -->
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
 			<a href={entryPath(kidId, timer.kind, timer.entry.id)} class="underline">set the end time</a>
 		</p>
 	{:else if message}

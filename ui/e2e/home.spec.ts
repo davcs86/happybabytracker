@@ -391,6 +391,9 @@ test('/timeline is a 303 to the current kid’s timeline, or home without kids',
 	await page.goto(`/kids/${LEO.id}`);
 	const second = await page.request.get('/timeline', { maxRedirects: 0 });
 	expect(second.headers()['location']).toBe(`/kids/${LEO.id}/timeline`);
+	await page.getByRole('link', { name: 'Timeline' }).click();
+	await expect(page).toHaveURL(`/kids/${LEO.id}/timeline`);
+	await expect(page.getByRole('heading', { name: 'Timeline for Leo', level: 1 })).toBeVisible();
 
 	await context.clearCookies();
 	await signIn(page, DAN);

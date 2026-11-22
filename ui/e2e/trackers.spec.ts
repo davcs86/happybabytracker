@@ -47,7 +47,11 @@ const written = async (method: string, path: string) => {
 
 const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
 const save = (page: Page) => page.getByRole('button', { name: 'Save', exact: true }).click();
-const onTimeline = (page: Page) => page.waitForURL(TIMELINE_DAY);
+// The save lands on a timeline page that exists, not just on its URL.
+async function onTimeline(page: Page) {
+	await page.waitForURL(TIMELINE_DAY);
+	await expect(page.getByRole('heading', { name: /^Timeline for /, level: 1 })).toBeVisible();
+}
 
 async function deleteEntry(page: Page) {
 	await page.getByText('Delete this entry', { exact: true }).click();
@@ -357,6 +361,7 @@ test('a time in the skipped hour of a Madrid night saves an hour later, in the k
 	await page.getByRole('radio', { name: 'Wet' }).check();
 	await save(page);
 	await page.waitForURL(/\/timeline\?from=2026-03-29&to=2026-03-29$/);
+	await expect(page.getByRole('heading', { name: 'Timeline for Leo', level: 1 })).toBeVisible();
 	const [stored] = await rows(api, 'diapers', LEO.id);
 	expect(stored.at).toBe('2026-03-29T01:30:00Z');
 
@@ -659,6 +664,8 @@ test.describe('without JavaScript', () => {
 		expect(hop?.headers()['location']).toBe(
 			`/kids/${MIA.id}/timeline?from=${day(String(stored.at))}&to=${day(String(stored.at))}`
 		);
+		await expect(page.getByText(/Bottle 90 ml, breast milk \+ formula/)).toBeVisible();
+		await expect(page.getByText('no script')).toBeVisible();
 	});
 
 	test('a field error keeps the typed values', async ({ page }) => {

@@ -39,13 +39,27 @@ const rows: {
 	}
 ];
 
+const valued = (day: DaySummary, enabled: ReadonlySet<ModuleId>, unit: VolumeUnit) =>
+	rows
+		.filter((r) => enabled.has(r.module))
+		.map((r) => ({ label: r.label, value: r.value(day, unit) }));
+
 // One row per enabled module that has a tracker summary; the volume is in the parent's unit.
 export function todayRows(
 	day: DaySummary,
 	enabled: ReadonlySet<ModuleId>,
 	unit: VolumeUnit
 ): TodayRow[] {
-	return rows
-		.filter((r) => enabled.has(r.module))
-		.map((r) => ({ label: r.label, value: r.value(day, unit) ?? NONE }));
+	return valued(day, enabled, unit).map((r) => ({ label: r.label, value: r.value ?? NONE }));
+}
+
+// The same rows for a past day, leaving out a tracker with nothing on that day.
+export function dayRows(
+	day: DaySummary,
+	shown: ReadonlySet<ModuleId>,
+	unit: VolumeUnit
+): TodayRow[] {
+	return valued(day, shown, unit).flatMap((r) =>
+		r.value === null ? [] : [{ label: r.label, value: r.value }]
+	);
 }

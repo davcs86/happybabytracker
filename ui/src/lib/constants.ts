@@ -54,6 +54,16 @@ export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> =
 	diapers: { log: 'Log a diaper', edit: 'Edit diaper' },
 	meals: { log: 'Log a meal', edit: 'Edit meal' }
 };
+export const TRACKER_LABEL: Record<TrackerKind, string> = {
+	bottles: 'Bottle',
+	nursing: 'Nursing',
+	pumping: 'Pumping',
+	sleep: 'Sleep',
+	diapers: 'Diaper',
+	meals: 'Solids'
+};
+// Longest range the summary endpoint answers (SummaryMaxDays), so a longer timeline range is refused here.
+export const SUMMARY_MAX_DAYS = 93;
 export const VOLUME_UNITS = ['ml', 'floz'] as const satisfies readonly VolumeUnit[];
 export const BOTTLE_CONTENTS = [
 	'breast_milk',

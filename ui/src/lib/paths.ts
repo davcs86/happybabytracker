@@ -1,6 +1,6 @@
 import type { TrackerKind } from './types';
 
-// The log, entry and timeline pages are not typed routes until their tasks land.
+// Absolute paths for redirects and for links that stay absolute without JavaScript (resolve() is relative there).
 export const logPath = (kidId: string, kind: TrackerKind) => `/kids/${kidId}/log/${kind}`;
 export const entryPath = (kidId: string, kind: TrackerKind, id: string) =>
 	`${logPath(kidId, kind)}/${id}`;
