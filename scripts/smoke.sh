@@ -9,6 +9,7 @@ UI_IMAGE="${2:?usage: smoke.sh <api-image> <ui-image>}"
 API_MEM_LIMIT_MIB=60
 UI_MEM_LIMIT_MIB=140
 UI_PORT="${SMOKE_UI_PORT:-9212}"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 rand() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 
@@ -41,7 +42,7 @@ SECRETS_FILE="$WORK/secrets"
 printf '%s\n' "$INTERNAL_API_TOKEN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD" "$ADMIN_PASSWORD_2" \
   "$PASSWORD_A" "$PASSWORD_B" "$PASSWORD_C" "$USER_A" "$USER_B" "$USER_C" "$KID_NAME" >"$SECRETS_FILE"
 remember() { printf '%s\n' "$1" >>"$SECRETS_FILE"; }
-# Tracker notes and texts (also in SECRETS_FILE), and volume figures, matched on digit boundaries.
+# Tracker notes and texts (also in SECRETS_FILE), and volume and growth figures, matched on digit boundaries.
 NOTES_FILE="$WORK/notes"
 VALUES_FILE="$WORK/values"
 : >"$NOTES_FILE"
@@ -244,7 +245,7 @@ modules_on() { # body-name -> the module fields of every ticked box on the modul
 count() { { grep -oF -- "$2" "$WORK/$1.body" || true; } | wc -l | tr -d ' '; }
 
 # A figure may sit beside digits only in timestamps, durations, statuses and ids, so those go first.
-logged_value() { # log-file -> succeeds when a remembered volume figure is in it
+logged_value() { # log-file -> succeeds when a remembered volume or growth figure is in it
   local v plain="$1.plain"
   sed -E 's/"(time|request_id)":"[^"]*"//g; s/"(status|duration_ms|timeout_ms)":[0-9]+//g
     s/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}//g' "$1" >"$plain"
@@ -486,6 +487,78 @@ code_i="$(req icon "$ADDR_C" - "$UI_URL/icons/icon-192.png")"
   fail "4g install files" "manifest $code, icon $code_i"
 pass "4g /manifest.webmanifest and /icons/icon-192.png answer 200 with their types and no cookie"
 
+# 4h. Growth through the real engine in the read-only image: scores follow the kid's source.
+for f in who/LICENSE who/NOTICE cdc/NOTICE; do
+  docker cp "$API:/usr/share/doc/happybabytracker-api/$f" "$WORK/notice" >/dev/null 2>&1 ||
+    fail "4h notices" "the API image lacks $f"
+  cmp -s "$WORK/notice" "$REPO/api/internal/growth/data/$f" || fail "4h notices" "$f differs from the repository"
+  rm -f "$WORK/notice"
+done
+WHO_ATTRIBUTION='Geneva: World Health Organization; 2006. Licence: CC BY-NC-SA 3.0 IGO.'
+CDC_ATTRIBUTION='Source: CDC, National Center for Health Statistics, 2000 CDC Growth Charts'
+N_GROWTH="$(note "growth-note-${SUFFIX}")"
+N_GROWTH_B="$(note "growth-caregiver-note-${SUFFIX}")"
+# 3200 g = 11288 and 4100 g = 14462 hundredths of an ounce; 500 mm = 1969 hundredths of an inch.
+for v in 3.2 3200 11288 50 500 1969 4.1 4100 14462; do remember_value "$v"; done
+GROWTH="$KID_PATH/growth"
+settings_sources() { # body-name -> the option values of the growth source select, one per line
+  pieces "$1" '<select' | grep -F 'name="growth_source"' | sed 's|</select>.*||' |
+    grep -oE '<option[^>]*value="[^"]*"' | sed -E 's/.*value="([^"]*)"/\1/' || true
+}
+growth_source() { # name source -> as smoke-a, saves the kid's settings with that growth source
+  local code
+  code="$(form "$1" "$ADDR_A" "$SESSION_A" "$KID_PATH/settings?/save" "name=$KID_NAME" \
+    'birth_date=2026-01-15' 'sex=female' "time_zone=$KID_ZONE" "growth_source=$2")"
+  { [ "$code" = 200 ] && body_has "$1" 'Saved'; } || fail "4h source $2" "status $code"
+}
+weight_line() { # body-name -> the weight line of the row that shows the growth note
+  pieces "$1" '<li' | grep -F -- "$N_GROWTH" | grep -oE 'Weight 3\.2 kg: [^<]*' | head -n 1 || true
+}
+code="$(req settings-a "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
+sources="$(settings_sources settings-a | tr '\n' ' ')"
+{ [ "$code" = 200 ] && [ "$sources" = 'who cdc ' ]; } || fail "4h settings sources" "status $code, '$sources'"
+code="$(form growth-new-a "$ADDR_A" "$SESSION_A" "$GROWTH/new?/save" measured_on=2026-01-15 \
+  weight_unit=kg weight_kg=3.2 length_unit=cm length=50 head_unit=cm head=34 "note=$N_GROWTH")"
+[ "$code $(location growth-new-a)" = "303 $GROWTH?measure=weight" ] ||
+  fail "4h add measurement" "status $code, Location $(location growth-new-a)"
+code="$(req growth-who "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+line_who="$(weight_line growth-who)"
+{ [ "$code" = 200 ] && [[ "$line_who" =~ ^Weight\ 3\.2\ kg:\ z\ -?[0-9]+\.[0-9]{2},\ percentile\ [0-9]+\.[0-9]$ ]] &&
+  body_has growth-who 'Length 50 cm: z ' && body_has growth-who 'Head circumference 34 cm: z ' &&
+  body_has growth-who "$WHO_ATTRIBUTION"; } ||
+  fail "4h growth page (who)" "status $code, weight line '$line_who'"
+growth_source source-cdc cdc
+code="$(req growth-cdc "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+line_cdc="$(weight_line growth-cdc)"
+{ [ "$code" = 200 ] && [ "${line_cdc##*, percentile }" != "${line_who##*, percentile }" ] &&
+  [[ "$line_cdc" =~ percentile\ [0-9]+\.[0-9]$ ]] && body_has growth-cdc "$CDC_ATTRIBUTION"; } ||
+  fail "4h growth page (cdc)" "status $code, weight line '$line_cdc', with who '$line_who'"
+growth_source source-who who
+code="$(req growth-who-2 "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+line_back="$(weight_line growth-who-2)"
+{ [ "$code" = 200 ] && [ "$line_back" = "$line_who" ]; } ||
+  fail "4h growth page (who again)" "status $code, weight line '$line_back', first '$line_who'"
+code="$(form growth-new-b "$ADDR_B" "$SESSION_B" "$GROWTH/new?/save" measured_on=2026-02-01 \
+  weight_unit=kg weight_kg=4.1 length_unit=cm length= head_unit=cm head= "note=$N_GROWTH_B")"
+code_g="$(req growth-b "$ADDR_B" "$SESSION_B" "$UI_URL$GROWTH")"
+{ [ "$code $(location growth-new-b)" = "303 $GROWTH?measure=weight" ] && [ "$code_g" = 200 ] &&
+  body_has growth-b "$N_GROWTH_B" && body_has growth-b 'Weight 4.1 kg: z '; } ||
+  fail "4h caregiver measurement" "status $code, Location $(location growth-new-b), page $code_g"
+GROWTH_ENTRY="$(pieces growth-b '<li' | grep -F -- "$N_GROWTH" | grep -oE '/growth/[0-9a-f-]+"' |
+  head -n 1 | tr -d '"' || true)"
+[ -n "$GROWTH_ENTRY" ] || fail "4h measurement row" "no edit link"
+GROWTH_ENTRY="$KID_PATH$GROWTH_ENTRY"
+for p in growth:"$GROWTH" growth-new:"$GROWTH/new" growth-entry:"$GROWTH_ENTRY"; do
+  code="$(req "nogrant-${p%%:*}" "$ADDR_C" "$SESSION_C" "$UI_URL${p#*:}")"
+  { [ "$code" = 404 ] && body_has "nogrant-${p%%:*}" 'Not found' &&
+    ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-${p%%:*}.body" &&
+    ! body_has "nogrant-${p%%:*}" "$KID_NAME"; } || fail "4h no grant ${p%%:*}" "status $code"
+  code="$(req "admin-${p%%:*}" "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL${p#*:}")"
+  [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
+    fail "4h admin GET ${p%%:*}" "status $code, Location $(location "admin-${p%%:*}")"
+done
+pass "4h the API image ships the WHO and CDC notices; settings offer who and cdc; a measurement shows its z and percentile ('${line_who#*: }' with who, '${line_cdc#*: }' with cdc, back with who); $USER_B adds one; $USER_C gets 404 and the admin a 303 on the growth pages"
+
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
 code="$(req admin-parents "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
@@ -604,9 +677,9 @@ docker logs "$UI" >"$WORK/ui.log" 2>&1
 for f in api-1.log api-2.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
-  if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume figure"; fi
+  if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text or volume"
+pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text, volume or measurement"
 
 # 10. Memory of each API process and of the UI, with the login burst in the last API process.
 fail_if_oom "10 memory"
