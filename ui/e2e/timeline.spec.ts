@@ -198,15 +198,15 @@ async function pageThroughOlder(page: Page) {
 	await page.getByRole('link', { name: 'Older' }).click();
 	await expect(page).toHaveURL(/cursor=/);
 	await expect(page.getByRole('link', { name: 'Older' })).toHaveCount(0);
+	await expect.poll(() => rowLinks(page)).toHaveLength(1);
 	const second = await rowLinks(page);
-	expect(second).toHaveLength(1);
 	expect(first).not.toContain(second[0]);
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(PAGE_DAY);
 	await expect(entries(page, PAGE_DAY).first()).toHaveText('06:00 Diaper wet');
 
 	await page.getByRole('link', { name: 'Back to newest' }).click();
 	await expect(page).not.toHaveURL(/cursor=/);
-	expect(await rowLinks(page)).toEqual(first);
+	await expect.poll(() => rowLinks(page)).toEqual(first);
 }
 
 test('Older reaches the second page without repeating an entry, Back to newest returns', async ({
@@ -229,10 +229,11 @@ test('Older carries a narrowed filter to the next page', async ({ page }) => {
 	await show(page);
 	await page.waitForURL(/types=/);
 	await page.getByRole('link', { name: 'Older' }).click();
+	await expect(page).toHaveURL(/cursor=/);
 	await expect(page).toHaveURL(/types=diaper/);
 	await expect(page).not.toHaveURL(/types=bottle/);
 	await expect(box(page, 'Bottle')).not.toBeChecked();
-	expect(await rowLinks(page)).toHaveLength(1);
+	await expect.poll(() => rowLinks(page)).toHaveLength(1);
 	await expect(page.getByText('Bottle 60 ml')).toHaveCount(0);
 });
 
