@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
@@ -280,7 +281,7 @@ func TestVaccinesRoutesRoles(t *testing.T) {
 }
 
 func TestVaccinationValidation(t *testing.T) {
-	k := newKit(t)
+	k, db := fileKit(t)
 	kid, ana, _ := k.vaccineKid("us")
 	path := "/v1/kids/" + kid + "/vaccinations"
 	long := func(n int) string { return strings.Repeat("x", n) }
@@ -362,11 +363,11 @@ func TestVaccinationValidation(t *testing.T) {
 	}
 	wantInvalid2(t, "a changed early date", k.do(http.MethodPatch, one, ana, map[string]any{"given_on": "2025-01-11"}), "given_on")
 
-	for i := 2; i < 500; i++ {
-		if _, err := k.Store.CreateAdministration(context.Background(), kid, k.parentID("ana"),
-			model.Administration{GivenOn: "2025-02-01", Antigens: []string{"polio"}}, k.now); err != nil {
-			t.Fatal(err)
-		}
+	if _, err := db.Exec(`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?)
+		INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, created_by, updated_by, created_at, updated_at)
+		SELECT 'dose-' || i, ?, 'administration-' || i, '2025-02-01', 'polio', ?, ?, 100, 100 FROM n`,
+		constants.MaxVaccineAdministrationsPerKid-2, kid, k.parentID("ana"), k.parentID("ana")); err != nil {
+		t.Fatal(err)
 	}
 	wantErr(t, k.do(http.MethodPost, path, ana, ok), http.StatusConflict, "limit")
 
@@ -568,16 +569,24 @@ func TestFailedLoadAnswers503(t *testing.T) {
 		{http.MethodDelete, base + "/vaccine-dismissals/rsv-1", nil},
 		{http.MethodPost, base + "/vaccine-dismissals", map[string]any{"before": "2025-03-01", "reason": "not_needed"}},
 		{http.MethodPatch, base, map[string]any{"vaccine_schema": "uk"}},
-		{http.MethodPatch, base, map[string]any{"name": "Nova"}},
-		{http.MethodPost, "/v1/kids", kidBody(map[string]any{"vaccine_schema": "us"})},
+		{http.MethodPost, "/v1/kids", kidBody(map[string]any{"birth_date": "2025-01-10", "vaccine_schema": "us"})},
 	} {
 		wantErr(t, k.do(rq.method, rq.path, ana, rq.body), http.StatusServiceUnavailable, "unavailable")
 	}
 	if rec := k.do(http.MethodGet, base+"/vaccinations", ana, nil); rec.Code != http.StatusOK {
 		t.Errorf("list needs no schedule: %d", rec.Code)
 	}
-	if rec := k.do(http.MethodPatch, "/v1/kids/"+plain, ana, map[string]any{"name": "Nova"}); rec.Code != http.StatusOK {
-		t.Errorf("a kid without a schedule is still editable: %d %q", rec.Code, rec.Body.String())
+	for _, rq := range []struct {
+		path string
+		body map[string]any
+	}{
+		{"/v1/kids/" + plain, map[string]any{"name": "Nova"}},
+		{base, map[string]any{"name": "Nova"}},
+		{base, map[string]any{"vaccine_schema": "us"}},
+	} {
+		if rec := k.do(http.MethodPatch, rq.path, ana, rq.body); rec.Code != http.StatusOK {
+			t.Errorf("patch %v leaving the schedule as stored: %d %q", rq.body, rec.Code, rec.Body.String())
+		}
 	}
 }
 
@@ -633,5 +642,124 @@ func TestKidVaccineSchema(t *testing.T) {
 	rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"vaccine_schema": nil})
 	if rec.Code != http.StatusOK || bodyMap(t, rec)["vaccine_schema"] != nil || schema(kid) != nil {
 		t.Errorf("clear: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRetiredSchemaNeverBlocksAKidEdit(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.vaccineKid(nil)
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-02-01", "antigens": []string{"polio"}})
+	stored, err := k.Store.Kid(context.Background(), kid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired := "ch"
+	stored.VaccineSchema = &retired
+	if err := k.Store.UpdateKid(context.Background(), stored, k.parentID("ana"), k.now); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []map[string]any{{"name": "Nova"}, {"time_zone": "Europe/Madrid"}, {"vaccine_schema": "ch"}} {
+		rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, body)
+		if rec.Code != http.StatusOK || bodyMap(t, rec)["vaccine_schema"] != "ch" {
+			t.Errorf("patch %v: %d %q", body, rec.Code, rec.Body.String())
+		}
+	}
+	wantInvalid(t, k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"vaccine_schema": "zz"}), "vaccine_schema")
+	v := k.vaccines(ana, kid)
+	if v["schema"] != nil || len(v["groups"].([]any)) != 0 || len(v["other"].([]any)) != 1 {
+		t.Errorf("vaccines of a retired schedule = %v", v)
+	}
+}
+
+func TestDismissalOnlyForLinesTheKidSees(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.vaccineKid("uk")
+	dismiss := "/v1/kids/" + kid + "/vaccine-dismissals/"
+	put := map[string]any{"reason": "not_needed"}
+	// influenza-1 is recurring; measles-1-to202412 is the cohort born on or before 2024-12-31.
+	for _, line := range []string{"influenza-1", "measles-1-to202412", "no-such-line"} {
+		wantErr(t, k.do(http.MethodPut, dismiss+line, ana, put), http.StatusNotFound, "not_found")
+		wantErr(t, k.do(http.MethodDelete, dismiss+line, ana, nil), http.StatusNotFound, "not_found")
+	}
+	if rec := k.do(http.MethodPut, dismiss+"measles-1-b202501", ana, put); rec.Code != http.StatusOK {
+		t.Errorf("applicable cohort line: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := k.do(http.MethodDelete, dismiss+"rotavirus-1", ana, nil); rec.Code != http.StatusNoContent {
+		t.Errorf("undo of a line never dismissed: %d %q", rec.Code, rec.Body.String())
+	}
+
+	us, _, _ := k.vaccineKid("us")
+	for _, line := range []string{"covid19-1", "rsv-2", "influenza-1"} {
+		wantErr(t, k.do(http.MethodPut, "/v1/kids/"+us+"/vaccine-dismissals/"+line, ana, put), http.StatusNotFound, "not_found")
+	}
+	rec := k.do(http.MethodPost, "/v1/kids/"+us+"/vaccine-dismissals", ana, map[string]any{"before": "2030-01-01", "reason": "not_needed"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bulk: %d %q", rec.Code, rec.Body.String())
+	}
+	n := bodyMap(t, rec)["dismissed"].(float64)
+	d, err := k.Store.Dismissals(context.Background(), us, "us")
+	if err != nil || int(n) != len(d) || n == 0 {
+		t.Errorf("dismissed %v, stored %d rows (%v)", n, len(d), err)
+	}
+	for _, line := range []string{"covid19-1", "rsv-2", "influenza-1"} {
+		if _, found := d[line]; found {
+			t.Errorf("bulk dismissed %s, which the kid never sees as due", line)
+		}
+	}
+}
+
+func TestVaccinationEdgesOverHTTP(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.vaccineKid("us")
+	base := "/v1/kids/" + kid + "/vaccinations/"
+	id := k.recordDose(ana, kid, map[string]any{"given_on": "2025-02-01", "antigens": []string{"polio"}, "lot": "A1"})
+	wantInvalid2(t, "empty antigens", k.do(http.MethodPatch, base+id, ana, map[string]any{"antigens": []string{}}), "antigens")
+	rec := k.do(http.MethodPatch, base+id, ana, map[string]any{"lots": "x"})
+	if rec.Code != http.StatusUnprocessableEntity || strings.TrimSpace(rec.Body.String()) != `{"error":"unknown_field","field":"lots"}` {
+		t.Errorf("unknown field: %d %q", rec.Code, rec.Body.String())
+	}
+	wantInvalid2(t, "long lot and product", k.do(http.MethodPatch, base+id, ana,
+		map[string]any{"lot": strings.Repeat("x", 41), "product": strings.Repeat("x", 81)}), "lot")
+	wantInvalid2(t, "long product", k.do(http.MethodPatch, base+id, ana, map[string]any{"product": strings.Repeat("x", 81)}), "product")
+
+	other := k.createKid(ana, map[string]any{"birth_date": "2025-01-10", "time_zone": "UTC"})
+	foreign := k.recordDose(ana, other, map[string]any{"given_on": "2025-02-01", "antigens": []string{"tetanus"}, "note": "theirs"})
+	noKid := k.do(http.MethodGet, base+model.NewID(), ana, nil).Body.String()
+	for _, method := range []string{http.MethodGet, http.MethodPatch, http.MethodDelete} {
+		var body any
+		if method == http.MethodPatch {
+			body = map[string]any{"note": "mine"}
+		}
+		if rec := k.do(method, base+foreign, ana, body); rec.Code != http.StatusNotFound || rec.Body.String() != noKid {
+			t.Errorf("%s another kid's administration: %d %q, want %q", method, rec.Code, rec.Body.String(), noKid)
+		}
+	}
+	if m := bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+other+"/vaccinations/"+foreign, ana, nil)); m["note"] != "theirs" {
+		t.Errorf("the other kid's administration changed: %v", m)
+	}
+
+	hep := func(date string) string {
+		return k.recordDose(ana, kid, map[string]any{"given_on": date, "antigens": []string{"hepatitis_b"}})
+	}
+	first, second, third := hep("2025-01-10"), hep("2025-02-10"), hep("2025-03-01")
+	given := func() (map[string]any, []any) {
+		v := k.vaccines(ana, kid)
+		return map[string]any{"1": allLines(v)["hepatitis_b-1"]["administration"], "2": allLines(v)["hepatitis_b-2"]["administration"],
+			"3": allLines(v)["hepatitis_b-3"]["administration"]}, v["other"].([]any)
+	}
+	if g, _ := given(); g["1"] != first || g["2"] != second || g["3"] != third {
+		t.Fatalf("three doses = %v", g)
+	}
+	if rec := k.do(http.MethodDelete, base+second, ana, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	if g, _ := given(); g["1"] != first || g["2"] != third || g["3"] != nil {
+		t.Errorf("after deleting the 2nd = %v, want the 3rd moved up one line", g)
+	}
+	hep("2025-03-05")
+	extra := hep("2025-03-06")
+	g, others := given()
+	if g["3"] == nil || len(others) != 1 || others[0].(map[string]any)["administration"] != extra {
+		t.Errorf("a 4th dose of a 3-line series: lines %v, other %v", g, others)
 	}
 }

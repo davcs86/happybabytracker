@@ -262,21 +262,33 @@ func (s *Store) Dismissals(ctx context.Context, kidID, schema string) (map[strin
 	return out, rows.Err()
 }
 
-// DismissLines dismisses every line in one transaction, leaving an already dismissed line as it is.
-// actorID must be a guardian.
-func (s *Store) DismissLines(ctx context.Context, kidID, actorID, schema string, lines []string, reason string, now time.Time) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+// DismissLines dismisses every line in one transaction, leaving an already dismissed line as it is, and returns
+// how many it inserted (0 when the transaction fails). actorID must be a guardian.
+func (s *Store) DismissLines(ctx context.Context, kidID, actorID, schema string, lines []string, reason string, now time.Time) (int, error) {
+	var inserted int64
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := actorIsGuardian(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
+		inserted = 0
 		for _, line := range lines {
-			if _, err := tx.ExecContext(ctx,
+			res, err := tx.ExecContext(ctx,
 				`INSERT INTO vaccine_dismissals(kid_id, schema, line, reason, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
 				 ON CONFLICT(kid_id, schema, line) DO NOTHING`,
-				kidID, schema, line, reason, actorID, now.Unix()); err != nil {
+				kidID, schema, line, reason, actorID, now.Unix())
+			if err != nil {
 				return err
 			}
+			n, err := res.RowsAffected()
+			if err != nil {
+				return err
+			}
+			inserted += n
 		}
 		return nil
 	})
+	if err != nil {
+		return 0, err
+	}
+	return int(inserted), nil
 }

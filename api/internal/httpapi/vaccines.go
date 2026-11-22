@@ -465,15 +465,25 @@ func (d Deps) deleteVaccination(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// dismissalLine is the kid's schedule and its {line}; it answers 404 when no schedule is chosen or the line is not in it.
+// dismissalLine is the kid's schedule and its {line}; it answers 404 unless the line is one of the kid's
+// Evaluation.Lines (applicable routine or may_not_be_needed), so recurring, supplementary and other cohorts' are refused.
 func (d Deps) dismissalLine(w http.ResponseWriter, r *http.Request) (model.Kid, vaccines.Schema, string, bool) {
-	kid, ok := d.loadKid(w, r)
+	kid, loc, ok := d.growthKid(w, r)
 	if !ok {
 		return model.Kid{}, vaccines.Schema{}, "", false
 	}
 	s, ok := kidSchema(kid)
+	if !ok {
+		respondNoKid(w)
+		return model.Kid{}, vaccines.Schema{}, "", false
+	}
+	e, _, _, err := d.evaluateKid(r.Context(), kid, &s, loc)
+	if err != nil {
+		respondInternal(w, err)
+		return model.Kid{}, vaccines.Schema{}, "", false
+	}
 	line := r.PathValue("line")
-	if !ok || !slices.ContainsFunc(s.Lines, func(l vaccines.Line) bool { return l.ID == line }) {
+	if !slices.ContainsFunc(e.Lines, func(l vaccines.LineState) bool { return l.Line.ID == line }) {
 		respondNoKid(w)
 		return model.Kid{}, vaccines.Schema{}, "", false
 	}
@@ -560,8 +570,8 @@ func (d Deps) dismissBefore(w http.ResponseWriter, r *http.Request) {
 			lines = append(lines, l.Line.ID)
 		}
 	}
-	err = d.Store.DismissLines(r.Context(), kid.ID, PrincipalFrom(r.Context()).ParentID, s.ID, lines, in.Reason, d.Now())
+	n, err := d.Store.DismissLines(r.Context(), kid.ID, PrincipalFrom(r.Context()).ParentID, s.ID, lines, in.Reason, d.Now())
 	if kidWriteOK(w, err) {
-		respondJSON(w, http.StatusOK, map[string]int{"dismissed": len(lines)})
+		respondJSON(w, http.StatusOK, map[string]int{"dismissed": n})
 	}
 }

@@ -255,7 +255,7 @@ func TestVaccineWriteByDisabledActor(t *testing.T) {
 		if err := s.ClearDismissal(ctx, k.ID, actor, "us", "hepb-1"); !errors.Is(err, ErrNotFound) {
 			t.Errorf("%s clear dismissal: %v", name, err)
 		}
-		if err := s.DismissLines(ctx, k.ID, actor, "us", []string{"rv-1"}, "not_needed", t0); !errors.Is(err, ErrNotFound) {
+		if _, err := s.DismissLines(ctx, k.ID, actor, "us", []string{"rv-1"}, "not_needed", t0); !errors.Is(err, ErrNotFound) {
 			t.Errorf("%s dismiss lines: %v", name, err)
 		}
 	}
@@ -348,8 +348,8 @@ func TestDismissalsPerSchema(t *testing.T) {
 	check("us", map[string]string{"hepb-1": "given_unknown"})
 	check("uk", map[string]string{"mmr-1": "not_needed"})
 
-	if err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1", "pcv-1"}, "not_needed", t0); err != nil {
-		t.Fatal(err)
+	if n, err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1", "pcv-1"}, "not_needed", t0); err != nil || n != 2 {
+		t.Fatalf("dismiss lines = %d, %v; want 2 inserted (hepb-1 was already dismissed)", n, err)
 	}
 	check("us", map[string]string{"hepb-1": "given_unknown", "rv-1": "not_needed", "pcv-1": "not_needed"})
 	if err := s.SetDismissal(ctx, k.ID, ana.ID, "us", "x-1", "forgot", t0); err == nil {
@@ -365,16 +365,16 @@ func TestDismissLinesIsAtomic(t *testing.T) {
 		BEGIN SELECT RAISE(ABORT, 'injected'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "bad", "rv-1"}, "not_needed", t0); err == nil ||
+	if _, err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "bad", "rv-1"}, "not_needed", t0); err == nil ||
 		!strings.Contains(err.Error(), "injected") {
 		t.Fatalf("a failing line: %v, want the injected failure", err)
 	}
-	if err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1"}, "maybe", t0); err == nil {
+	if _, err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1"}, "maybe", t0); err == nil {
 		t.Fatal("an unknown reason was accepted")
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if err := s.DismissLines(cancelled, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1"}, "not_needed", t0); err == nil {
+	if _, err := s.DismissLines(cancelled, k.ID, ana.ID, "us", []string{"hepb-1", "rv-1"}, "not_needed", t0); err == nil {
 		t.Fatal("a cancelled context wrote")
 	}
 	if n := countRows(t, s, "vaccine_dismissals", k.ID); n != 0 {
@@ -396,7 +396,7 @@ func TestCaregiverCannotDismiss(t *testing.T) {
 	if err := s.ClearDismissal(ctx, k.ID, bo.ID, "us", "hepb-1"); !errors.Is(err, ErrForbidden) {
 		t.Errorf("clear: %v", err)
 	}
-	if err := s.DismissLines(ctx, k.ID, bo.ID, "us", []string{"rv-1"}, "not_needed", t0); !errors.Is(err, ErrForbidden) {
+	if _, err := s.DismissLines(ctx, k.ID, bo.ID, "us", []string{"rv-1"}, "not_needed", t0); !errors.Is(err, ErrForbidden) {
 		t.Errorf("dismiss lines: %v", err)
 	}
 	if d, err := s.Dismissals(ctx, k.ID, "us"); err != nil || !maps.Equal(d, map[string]string{"hepb-1": "not_needed"}) {

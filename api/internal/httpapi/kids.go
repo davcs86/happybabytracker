@@ -93,8 +93,8 @@ func kidLocation(name string) (*time.Location, bool) {
 	return loc, err == nil
 }
 
-// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source,
-// vaccine_schema; "" when valid. A chosen schedule needs the loaded schedules (schedulesLoaded).
+// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source;
+// "" when valid. vaccine_schema follows it (newSchemaOK).
 func invalidKidField(k model.Kid, now time.Time) string {
 	if n := utf8.RuneCountInString(k.Name); n < constants.KidNameMinLen || n > constants.KidNameMaxLen {
 		return "name"
@@ -121,12 +121,24 @@ func invalidKidField(k model.Kid, now time.Time) string {
 	if !slices.Contains(growth.Sources, growth.Source(k.GrowthSource)) {
 		return "growth_source"
 	}
-	if k.VaccineSchema != nil {
-		if _, ok := vaccines.GetSchema(*k.VaccineSchema); !ok {
-			return "vaccine_schema"
-		}
-	}
 	return ""
+}
+
+// newSchemaOK checks a vaccine_schema the body sets to an id other than stored; a stored id stays valid even once
+// no longer shipped. It answers 503 or 422 itself and is false then.
+func newSchemaOK(w http.ResponseWriter, in kidInput, stored *string) bool {
+	id := in.VaccineSchema.V
+	if id == nil || (stored != nil && *id == *stored) {
+		return true
+	}
+	if !schedulesLoaded(w) {
+		return false
+	}
+	if _, ok := vaccines.GetSchema(*id); !ok {
+		respondInvalid(w, "vaccine_schema")
+		return false
+	}
+	return true
 }
 
 func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
@@ -136,11 +148,11 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 	}
 	now := d.Now()
 	kid := in.mergeOnto(model.Kid{GrowthSource: string(growth.SourceWHO)})
-	if kid.VaccineSchema != nil && !schedulesLoaded(w) {
-		return
-	}
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
+		return
+	}
+	if !newSchemaOK(w, in, nil) {
 		return
 	}
 	kid, err := d.Store.CreateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
@@ -204,11 +216,11 @@ func (d Deps) updateKid(w http.ResponseWriter, r *http.Request) {
 	}
 	now := d.Now()
 	kid := in.mergeOnto(stored)
-	if kid.VaccineSchema != nil && !schedulesLoaded(w) {
-		return
-	}
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
+		return
+	}
+	if !newSchemaOK(w, in, stored.VaccineSchema) {
 		return
 	}
 	err := d.Store.UpdateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
