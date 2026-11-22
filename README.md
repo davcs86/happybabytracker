@@ -10,8 +10,8 @@ What a parent can do so far:
 - Daily trackers: bottles (one or more of breast milk, formula, cow's milk, other, with one total volume),
   nursing (a timer that switches sides, or a finished session in minutes per side), pumping, diapers, solids and sleep.
   Times are read and shown in the kid's time zone; volumes in each parent's unit (ml or US fl oz).
-  Sleep and nursing run as timers from the home; a timer can last at most 24 hours. Every entry can be
-  edited or deleted by any parent with access.
+  Sleep and nursing run as timers from the home; a timer over 24 hours is settled from its edit page.
+  Every entry can be edited or deleted by any parent with access.
 - The kid's home: quick-log buttons ordered for the kid's age, the running timers and today's totals.
 - A timeline per kid: entries newest first, grouped by the kid's days with each day's totals, filtered
   by date range and tracker. A day's sleep total counts the part of each sleep inside that day, so an

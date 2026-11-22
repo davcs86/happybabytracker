@@ -106,7 +106,8 @@ log.
 ## Things found during design that are easy to trip on
 
 - **Nothing reads the VAPID or `NTFY_*` variables yet.** Plan 6 adds them, and VAPID becomes
-  required at start then, so the edge must hold the VAPID key before plan 6 deploys.
+  required at start then. The edge already generates and stores `happybabytracker_vapid_private_key`
+  but does not render it into the API's environment yet; plan 6 must add that before it deploys.
 - **Tailnet grants are per port, not per name.** Anyone allowed to reach `tag:edge:443` reaches every
   `*.private` service. This is why other parents are not given tailnet access now.
 - **A `*.private` name is wired in four places** in `homelab-edge` (rule EDGE-07): the hostname

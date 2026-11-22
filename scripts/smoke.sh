@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runs both images together and asserts the contract end to end, through the UI only.
+# Needs Linux, GNU coreutils, bash >= 4.
 set -euo pipefail
 
 API_IMAGE="${1:?usage: smoke.sh <api-image> <ui-image>}"
@@ -205,6 +206,21 @@ ago() { # minutes -> that instant as datetime-local text in the kid's zone (GNU 
   TZ="$KID_ZONE" date -d "@$((NOW - $1 * 60))" '+%Y-%m-%dT%H:%M'
 }
 
+today() { TZ="$KID_ZONE" date '+%Y-%m-%d'; }
+
+# The two 4a bottles are 163 ml (ago 50) and 4.25 fl oz = 126 ml (ago 45); either may fall on yesterday.
+bottles_on() { # kid-local date -> what that day's Bottles row shows for them
+  local n=0 ml=0
+  if [ "$(ago 50 | cut -c1-10)" = "$1" ]; then n=$((n + 1)) ml=$((ml + 163)); fi
+  if [ "$(ago 45 | cut -c1-10)" = "$1" ]; then n=$((n + 1)) ml=$((ml + 126)); fi
+  if [ "$n" = 0 ]; then echo 'None yet'; else echo "$n · $ml ml"; fi
+}
+
+today_value() { # body-name label -> the value the home's Today card shows beside label
+  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<[^>]*>| |g' |
+    sed -E "s|^[[:space:]]*$2[[:space:]]*||; s|[[:space:]]+\$||" || true
+}
+
 pieces() { # name marker -> the body on one line, split before every marker
   tr -d '\n' <"$WORK/$1.body" | sed "s|$2|\n&|g"
 }
@@ -328,7 +344,8 @@ N_TIMER="$(note "nursing-timer-note-${SUFFIX}")"
 N_DIAPER_EDIT="$(note "diaper-edited-note-${SUFFIX}")"
 MEAL_WHAT="$(note "pear-${SUFFIX}")"
 MEAL_REACTION="$(note "liked-${SUFFIX}")"
-for v in 163 4.25 425 211; do remember_value "$v"; done
+# 126 is the 4.25 fl oz bottle in ml, 551 and 713 the ml bottle and pumping in hundredths of an ounce.
+for v in 163 4.25 425 211 126 551 713; do remember_value "$v"; done
 log_entry() { # name tracker field=value... -> as smoke-a, expects the 303 to the timeline
   local name="$1" tracker="$2" code
   shift 2
@@ -381,19 +398,23 @@ code="$(form end-nursing "$ADDR_A" "$SESSION_A" "$KID_PATH?/endNursing" "id=$NUR
 pass "4b a sleep timer starts and ends from the home, a second one is refused (409), a nursing timer switches side and ends"
 
 # 4c. The timeline of the kid's days shows every entry; the home shows today's card.
-TIMELINE="$KID_PATH/timeline?from=$(ago 240 | cut -c1-10)&to=$(ago 0 | cut -c1-10)"
+# to= is the day after NOW, so entries stamped after a midnight the run crosses still fall in the range.
+TIMELINE="$KID_PATH/timeline?from=$(ago 240 | cut -c1-10)&to=$(ago -1440 | cut -c1-10)"
 code="$(req timeline-a "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE")"
 [ "$code" = 200 ] || fail "4c timeline" "status $code"
 for t in "$N_BOTTLE_ML" "$N_BOTTLE_OZ" "$N_NURSING" "$N_PUMPING" "$N_DIAPER" "$N_MEAL" "$N_SLEEP" \
   "$N_TIMER" "Solids: $MEAL_WHAT · $MEAL_REACTION" 'Bottle 163 ml, breast milk + cow' \
   'Bottle 126 ml, formula' 'Nursing L 8 min · R 7 min' 'Pumping 12 min, 211 ml (both)' \
-  'Diaper wet' 'aria-label="Totals"'; do
+  'Diaper wet' 'aria-label="Totals"' ">Bottles $(bottles_on "$(ago 50 | cut -c1-10)")<" \
+  ">Bottles $(bottles_on "$(ago 45 | cut -c1-10)")<"; do
   body_has timeline-a "$t" || fail "4c timeline" "missing '$(printf '%s' "$t" | scrub)'"
 done
 code="$(req home-today "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
-{ [ "$code" = 200 ] && body_has home-today 'id="today-heading"' && body_has home-today 'Bottles' &&
-  body_has home-today 'Diapers'; } || fail "4c today card" "status $code"
-pass "4c the timeline shows every note, both bottle contents, fl oz in ml and the day totals; the home shows Today"
+shown="$(today_value home-today Bottles)"
+want="$(bottles_on "$(today)")"
+{ [ "$code" = 200 ] && body_has home-today 'id="today-heading"' && [ "$shown" = "$want" ] &&
+  body_has home-today 'Diapers'; } || fail "4c today card" "status $code, Bottles '$shown', want '$want'"
+pass "4c the timeline shows every note, both bottle contents, fl oz in ml and the day totals; Today shows Bottles $shown"
 
 # 4d. The caregiver edits smoke-a's diaper and deletes the meal.
 code="$(req timeline-b "$ADDR_B" "$SESSION_B" "$UI_URL$TIMELINE")"
@@ -495,6 +516,13 @@ for p in home:/ kid:"$KID_PATH" kid-access:"$KID_PATH/access" kid-timeline:"$TIM
   [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
     fail "6 admin GET ${p#*:}" "status $code, Location $(location "admin-${p%%:*}")"
 done
+code="$(form admin-log-bottle "$ADDR_ADMIN" "$ADMIN_SESSION" "$KID_PATH/log/bottles?/save" \
+  contents=formula volume=90 volume_unit=ml note=)"
+[ "$code $(location admin-log-bottle)" = '303 /admin/parents' ] ||
+  fail "6 admin POST log/bottles" "status $code, Location $(location admin-log-bottle)"
+code="$(req timeline-after-admin "$ADDR_B" "$SESSION_B" "$UI_URL$TIMELINE")"
+{ [ "$code" = 200 ] && body_has timeline-after-admin "$N_BOTTLE_ML" &&
+  ! body_has timeline-after-admin 'Bottle 90 ml'; } || fail "6 admin POST created an entry" "status $code"
 code="$(req admin-kid-data "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL$KID_PATH/__data.json")"
 { [ "$code" = 200 ] && body_has admin-kid-data '"type":"redirect"' &&
   body_has admin-kid-data '/admin/parents'; } || fail "6 admin kid page data" "status $code"
@@ -506,7 +534,7 @@ for f in "$WORK"/admin-*.body "$WORK"/admin-*.headers; do
   n=$((n + 1))
   if leaks "$f"; then fail "6 admin sees no kid" "$(basename "$f")"; fi
 done
-pass "6 none of the admin's $n captured bodies and headers contain the kid's name or a note (controls match)"
+pass "6 the admin's GETs and its bottle POST are 303s; none of its $n captured bodies and headers contain the kid's name or a note (controls match)"
 
 API_MEM_1="$(mem "$API")"
 UI_MEM_1="$(mem "$UI")"
@@ -567,6 +595,10 @@ for i in $(seq 1 "$BURST"); do
 done
 
 # 9. No identifier, password or token in either container's logs.
+printf '%s\n' '{"x":126}' >"$WORK/control-hit.log"
+printf '%s\n' '{"duration_ms":126,"status":200}' >"$WORK/control-miss.log"
+{ logged_value "$WORK/control-hit.log" && ! logged_value "$WORK/control-miss.log"; } ||
+  fail "9 control" "logged_value misses a figure or matches a measured one"
 docker logs "$API" >"$WORK/api-2.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
 for f in api-1.log api-2.log ui.log; do

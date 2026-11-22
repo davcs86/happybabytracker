@@ -33,7 +33,7 @@ Failure modes the spec implies that no single task's happy path exercises; each 
 2. A day that is 23 or 25 hours long, a kid whose zone differs from the server's UTC and from the device's: "today", daily summaries and a sleep that crosses midnight split on the kid's local boundaries (Tasks 2, 7).
 3. Two devices start the same timer at once, end a timer twice, or switch the nursing side on a finished session: exactly one running row, `already_running` / `not_running` 409s, no negative durations (Task 6).
 4. Ounces: 4.00 oz typed, then only the note edited, keeps the typed value; editing the volume recomputes the other column; 0, negative and huge amounts are refused (Tasks 1, 4).
-5. Timeline paging with equal timestamps across trackers: no entry is repeated or skipped across pages; a bad cursor, `from` after `to`, an unknown type and a huge limit are 400s, never a 500 or an unbounded query (Task 7).
+5. Timeline paging with equal timestamps across trackers: no entry is repeated or skipped across pages; a bad cursor, `from` after `to`, an unknown type and a huge limit are 422s naming the `field`, never a 500 or an unbounded query (Task 7).
 
 ---
 
@@ -45,14 +45,14 @@ Rule 1 (never assume an owner value): these are proposals. Each is marked **(cal
 |---|---|---|---|
 | 1 | Module ids | Eleven, one per tracker: `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding`, `milestones`, `growth`, `vaccination`, `sickness`, `medication`. The API knows all eleven now; the UI shows entry points only for built ones | G7 says every tracker is switchable; the 7.2 table groups three rows |
 | 2 | Age bands | 0–11, 12–23, 24+ whole calendar months from the birth date in the kid's zone | 7.2 |
-| 3 | Band-crossing rule | Persisted on the first home or modules read inside the new band: a module whose default is off there, with no override, that has an entry in the 60 days before the band's start date (or since) or a running timer, gets an explicit `enabled = 1` row | 7.2 (call: 30 days); **owner chose 60 days**; no worker exists before plan 6 |
+| 3 | Band-crossing rule | Re-evaluated on every home or modules read inside the new band (a stored row is final, no marker): a module whose default is off there, with no override, that has an entry in the 60 days before the band's start date (or since) or a running timer, gets an explicit `enabled = 1` row | 7.2 (call: 30 days); **owner chose 60 days**; no worker exists before plan 6 |
 | 4 | Timeline | Newest first; default `types` = enabled trackers; an explicit `types=` returns those trackers even when switched off | 6.4 silent on order and on switched-off trackers |
 | 5 | Entry-time validation | `at`/`started_at` at most 5 minutes after now and not before the kid's birth date (start of day, kid zone); a session lasts at most 24 hours; `ended_at` not before `started_at` | spec silent; typo guard |
 | 6 | Other limits | Bottle volume 1–1000 ml; pumping 1–2000 ml; note 500 characters; meal text 200 and reaction 200; list/timeline page default 50, max 100; summary range at most 93 days | spec silent |
 | 7 | Volume input | Integer millilitres, or hundredths of a US fl oz; half-up rounding of the derived column | 6.2 (fixed-point) |
 | 8 | Quick-log | Sleep is one tap (POST starts it now). Nursing, bottle, diaper, pumping and solids open a short form with the time prefilled to now. Ending any timer uses server time | 7.3 mock-up shows buttons only |
 | 9 | Home route | `/kids/[kid]` becomes the home screen; `/` redirects to the current kid (cookie, else first); with no kid `/` keeps the Welcome and add-a-child state. Bottom bar: Home, Timeline, Account. No "Due" section until plans 5–6 | 7.3 shows `Home Timeline Growth More`; Growth and More arrive later |
-| 10 | Editing a timer | A finished session cannot be re-opened (PATCH may not null `ended_at`); a running one may be ended through PATCH or the end route | spec silent |
+| 10 | Editing a timer | A finished session's `ended_at` can be corrected to another time but never re-opened (PATCH may not null it); a running one may be ended through PATCH or the end route | spec silent |
 | 11 | Date-time input | `datetime-local` read in the kid's zone, not the device's; a time in a DST gap moves forward by the gap, a repeated time takes the earlier instant | 6.1 (kid zone) |
 | 12 | Summaries | Per kid-local day: counts and sums; both volume columns summed independently; nursing = left + right seconds of sessions that start that day (a running one counts what is stored); sleep = seconds clipped to the day, a running one clipped at now | 6.4 |
 | 13 | PWA | `static/manifest.webmanifest` (name "Happy Baby Tracker", short name "HappyBaby", `start_url "/"`, `display standalone`), three PNG icons (192, 512, 512 maskable) rendered from one plain placeholder SVG, `theme-color`, apple touch icon; no service worker. Installability without a service worker is believed fine in current Chrome and is checked by manifest tests only, not on a device | 14 (installable) ; 4.1 |
