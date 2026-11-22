@@ -1,7 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { instantToLocalInput } from '../src/lib/time-zone.js';
 import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
-import { ANA, CLEO, DAN, LEO, MIA, receivedRequests, resetStub, stubAs } from './stub-api.js';
+import {
+	ANA,
+	CLEO,
+	DAN,
+	LEO,
+	MIA,
+	receivedRequests,
+	resetStub,
+	setScenario,
+	stubAs
+} from './stub-api.js';
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -451,8 +461,8 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 	});
 });
 
-// The timer is ended elsewhere between the page loading and the save.
-async function staleNursingEdit(page: Page) {
+// The timer is ended elsewhere between the page loading and the save; the page then shows the finished form.
+async function openStaleNursingEdit(page: Page) {
 	const api = await stubAs(ANA);
 	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
 	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
@@ -467,14 +477,23 @@ async function staleNursingEdit(page: Page) {
 	await save(page);
 	const message = page.getByRole('alert').filter({ hasText: 'This timer has ended' });
 	await expect(message).toHaveText('This timer has ended; check the times and save again');
-	await expect(field(page, 'Left minutes')).toHaveValue('0');
-	await expect(field(page, 'Right minutes')).toHaveValue(String(Math.floor(right / 60)));
-	await expect(page.locator('input[name="left_seconds_original"]')).toHaveValue('0');
-	await expect(page.locator('input[name="right_seconds_original"]')).toHaveValue(String(right));
+	await expectFreshForm(page, right);
 	await expect(field(page, 'Ended at')).toHaveValue(inUtc(String(ended.ended_at)));
 	await expect(field(page, 'Note')).toHaveValue('');
 	expect((await receivedRequests()).filter((r) => r.method === 'PATCH')).toEqual([]);
+	return { api, path, right };
+}
 
+// The finished form: floored minutes, and the stored seconds as the hidden originals.
+async function expectFreshForm(page: Page, right: number) {
+	await expect(field(page, 'Left minutes')).toBeVisible();
+	await expect(page.locator('input[name="left_seconds_original"]')).toHaveValue('0');
+	await expect(page.locator('input[name="right_seconds_original"]')).toHaveValue(String(right));
+	await expect(field(page, 'Right minutes')).toHaveValue(String(Math.floor(right / 60)));
+}
+
+async function staleNursingEdit(page: Page) {
+	const { api, path, right } = await openStaleNursingEdit(page);
 	await field(page, 'Note').fill('after the end');
 	await save(page);
 	await onTimeline(page);
@@ -485,10 +504,61 @@ async function staleNursingEdit(page: Page) {
 	});
 }
 
-test('a nursing edit opened while the timer ran shows a message and the fresh form', async ({
-	page
-}) => {
-	await staleNursingEdit(page);
+// Later failures keep the finished form: the field error needs its minutes input.
+async function staleNursingEditThenInvalid(page: Page) {
+	const { api, path, right } = await openStaleNursingEdit(page);
+	await field(page, 'Left minutes').fill('abc');
+	await save(page);
+	await expectFieldError(field(page, 'Left minutes'), 'whole minutes');
+	await expectFreshForm(page, right);
+	await expect(page.getByText('This timer has ended')).toHaveCount(0);
+
+	await field(page, 'Left minutes').fill('0');
+	await field(page, 'Note').fill('fixed');
+	await save(page);
+	await onTimeline(page);
+	expect(await written('PATCH', path)).toEqual({ note: 'fixed' });
+	expect((await rows(api, 'nursing'))[0]).toMatchObject({ right_seconds: right, note: 'fixed' });
+}
+
+async function staleNursingEditThenUnavailable(page: Page) {
+	const { api, path, right } = await openStaleNursingEdit(page);
+	await setScenario('patch_unavailable');
+	await field(page, 'Note').fill('unsent');
+	await save(page);
+	await expect(
+		page.getByRole('alert').filter({ hasText: 'cannot reach its server' })
+	).toBeVisible();
+	await expectFreshForm(page, right);
+	await setScenario('normal');
+	await save(page);
+	await onTimeline(page);
+	expect(await written('PATCH', path)).toEqual({ note: 'unsent' });
+	expect((await rows(api, 'nursing'))[0]).toMatchObject({ right_seconds: right, note: 'unsent' });
+}
+
+const staleTests = [
+	['shows a message and the fresh form', staleNursingEdit],
+	['keeps the fresh form when the next save is invalid', staleNursingEditThenInvalid],
+	['keeps the fresh form when the next save finds the API down', staleNursingEditThenUnavailable]
+] as const;
+
+for (const [name, run] of staleTests) {
+	test(`a nursing edit opened while the timer ran ${name}`, async ({ page }) => {
+		await run(page);
+	});
+}
+
+test('a failed save on a running nursing page stays on the running form', async ({ page }) => {
+	const api = await stubAs(ANA);
+	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
+	await signIn(page, ANA);
+	await page.goto(entryUrl('nursing', nursing.id));
+	await field(page, 'Ended at').fill(inUtc(minute(60)));
+	await save(page);
+	await expectFieldError(field(page, 'Ended at'), 'after the start');
+	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
+	await expect(page.locator('input[name$="_seconds_original"]')).toHaveCount(0);
 });
 
 test('a timer over 24 hours says how to fix it; an end within 24 hours of the start ends it', async ({
@@ -564,11 +634,11 @@ test('a parent without a grant gets the same 404 page for the log and the entry'
 test.describe('without JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
 
-	test('a nursing edit opened while the timer ran shows a message and the fresh form', async ({
-		page
-	}) => {
-		await staleNursingEdit(page);
-	});
+	for (const [name, run] of staleTests) {
+		test(`a nursing edit opened while the timer ran ${name}`, async ({ page }) => {
+			await run(page);
+		});
+	}
 
 	test('a bottle with two contents posts plainly and redirects 303 to its day', async ({
 		page

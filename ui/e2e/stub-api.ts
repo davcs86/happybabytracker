@@ -48,7 +48,8 @@ export const SCENARIOS = [
 	'rate_limited',
 	'leave_unavailable',
 	'leave_rate_limited',
-	'leave_forbidden'
+	'leave_forbidden',
+	'patch_unavailable'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -1642,6 +1643,9 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 		const params = m.slice(1).map((s) => decodeURIComponent(s));
 		const p = admit(state, res, sessionToken, r.access, r.kidParam ? params[0] : undefined);
 		if (!p) return;
+		if (method === 'PATCH' && state.scenario === 'patch_unavailable') {
+			return error(res, 503, 'unavailable');
+		}
 		// Failures of one access removal, for the leave action's error paths.
 		if (method === 'DELETE' && r.pattern.source.includes('access')) {
 			if (state.scenario === 'leave_unavailable') return error(res, 503, 'unavailable');

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import TrackerFields from '#lib/components/entry/TrackerFields.svelte';
 	import TrackerForm from '#lib/components/entry/TrackerForm.svelte';
 	import { ERROR_CLASS } from '#lib/components/field.js';
@@ -12,18 +13,20 @@
 
 	const save = $derived(form?.form === 'save' ? form : null);
 	const del = $derived(form?.form === 'delete' ? form : null);
-	const stale = $derived(!!save && 'stale' in save);
-	// The originals are the loaded ones, never the posted; after a stale post the fresh values are the loaded ones.
-	const values = $derived(
-		save && 'stale' in save
-			? save.values
-			: {
-					...data.values,
-					...Object.fromEntries(
-						Object.entries(save?.values ?? {}).filter(([name]) => !name.endsWith('_original'))
-					)
-				}
-	);
+	// Once a stale result brings the finished values they stay: the session cannot run again, and
+	// enhance keeps the loaded data, so every later failure must still show them.
+	let seen = $state<{ entry: string; values: typeof data.values } | null>(null);
+	$effect.pre(() => {
+		if (save && 'stale' in save) seen = { entry: page.params.entry ?? '', values: save.values };
+	});
+	const ended = $derived(seen && seen.entry === page.params.entry ? seen.values : null);
+	// The originals are the loaded ones (or the finished ones), never the posted.
+	const values = $derived({
+		...(ended ?? data.values),
+		...Object.fromEntries(
+			Object.entries(save?.values ?? {}).filter(([name]) => !name.endsWith('_original'))
+		)
+	});
 	const error = (name: string) => (save?.field === name ? save.message : null);
 	const title = $derived(TRACKER_TITLE[data.kind].edit);
 </script>
@@ -50,7 +53,7 @@
 >
 	<TrackerFields
 		kind={data.kind}
-		stage={data.running && !stale ? 'running' : 'done'}
+		stage={data.running && !ended ? 'running' : 'done'}
 		{values}
 		{error}
 	/>
