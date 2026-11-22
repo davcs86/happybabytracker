@@ -1,6 +1,6 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-22 at the end of plan 4 (growth). Read this first in a new session, then the
+Updated 2026-11-22 at the end of plan 5 (vaccination). Read this first in a new session, then the
 design and the plan of the next item.
 
 ## State
@@ -11,8 +11,10 @@ design and the plan of the next item.
 | Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | done, merged to `main` (PR #3) |
 | Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | merged by the owner in `davcs86/homelab-edge` PR #100 on 2026-11-22 and deployed |
 | Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done, merged to `main` (PR #4) |
-| Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #6, not merged yet; after it merges the edge needs its `bump-happybabytracker` PR and a deploy |
-| Plans 5–7 | not written | see "Order of work" below |
+| Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done, merged to `main` (PR #6) |
+| Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #7, not merged; it is merged only with the owner's go-ahead |
+| Plan 6, sickness, medication, reminders, Web Push, ntfy | not in this repository yet | a draft and its research exist outside this branch and will be added by a later PR; ask the owner |
+| Plan 7, milestones and PDF export | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -20,17 +22,16 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. After PR #6 is merged, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
-   two pins and a deploy makes plan 4 live. Nothing in plan 4 changes the edge otherwise; the API
-   image's licence label is now `MIT AND CC-BY-NC-SA-3.0-IGO` and it carries the WHO and CDC notices
-   under `/usr/share/doc/happybabytracker-api/`.
-2. Write plan 5 (vaccination) with the `superpowers:writing-plans` skill, starting from the code on
-   `main` after PR #6. Its age arithmetic starts from `api/internal/kidtime` and uses chronological age
-   only (`AgeMonths`, `AgeDays`, `BandStart`); the corrected-age functions there (`CorrectionDays`,
-   `CorrectedBirthDate`, `AgeBasisOn`) are for growth and must not be used for vaccination. The module
-   table already knows `vaccination` (on in every band); the access matrix, the store/handler helpers
-   (`api/internal/store/entries.go`, `api/internal/httpapi/entries.go`), the UI forms and the smoke
-   script are what it extends. The home has no "Due" section until plans 5 and 6.
+1. The owner reviews PR #7, including the generated schedule tables in `docs/vaccine-schedules/*.md`,
+   and decides whether to merge it. After the merge, CI publishes both images. The edge's
+   `bump-happybabytracker` PR then changes the two pins, and a deploy makes plan 5 live. Plan 5 changes
+   nothing else on the edge: no new variable, volume or notice file. The schedules are embedded in the
+   API image.
+2. Plan 6 (sickness, medication, the reminder worker, Web Push, ntfy): ask the owner for the draft and
+   its research, settle its open values with the owner, and add it to `docs/superpowers/plans/` in its
+   own PR from `main` after PR #7. The home read model's `due` list is where medication joins: each
+   entry already carries `kind` (`"vaccine"` today), so plan 6 adds `kind: "medication"` entries
+   without a breaking change.
 3. Start implementation only when the owner asks for it.
 
 ## Owner decisions in plan 3 (do not reopen)
@@ -66,13 +67,32 @@ what a new session needs to start correctly.
 - Charts are hand-written inline SVG; no chart dependency.
 - Navigation: Home, Timeline, Growth, Account.
 
+## Owner decisions in plan 5 (do not reopen)
+
+- Schedules: `us`, `uk` (England only) and `mx`. Switzerland is left out pending the BAG's written
+  consent, which reproduction needs in advance and which was not asked for; its research note stays in
+  `docs/superpowers/research/vaccination/ch-bag.md`.
+- Mexico: no open licence, so the file is a facts-only transcription (antigen, dose number, age) with
+  the citation the gob.mx terms ask for (the URL and the consultation date). The README says it is not
+  endorsed by, or a copy of, the Secretaría de Salud's publication.
+- US edition: the CDC 2025 edition, revised 2025-07-02, which is what cdc.gov serves.
+- Window rule: a source range's dash means "through" (`12–15 months` is `from 12m until 16m`, with
+  `until` exclusive). A line without `until` gets a one-month default window, and overdue starts at
+  `until`. `supplementary`, `recurring` and `may_not_be_needed` lines are never overdue. Cohorts are
+  inclusive `born_from` and `born_to` dates.
+- Navigation unchanged (Home, Timeline, Growth, Account). The Vaccines page is reached from the home's
+  Due section, the kid links and the quick-log tile.
+- A new kid has no schedule until a guardian chooses one. The home shows no Due list until then.
+- Updating a schedule is easy by design: one CSV per schedule, a generated review document checked by a
+  test, and stable line ids. The procedure is `docs/runbooks/updating-vaccine-schedules.md`.
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
 2. **Edge** (`davcs86/homelab-edge`) — compose, the private name, secrets, backup, Gatus, bump workflow, runbook — done.
 3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
 4. Growth — done.
-5. Vaccination.
+5. Vaccination — done (PR #7, not merged).
 6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
 7. Milestones and PDF export.
 
@@ -112,9 +132,10 @@ log.
 - Growth sources: WHO and CDC required; UK-WHO and Euro-Growth included only if their tables can be
   obtained and their licence permits bundling in a public repository. BMI-for-age and corrected age
   for preterm babies are in.
-- Vaccination schemas: United States, Mexico, United Kingdom, Switzerland. Canada is out for now.
-  Doses are matched by count per antigen; the app never judges validity. Overdue is a soft flag only.
-  The owner reviews the transcribed schedule files in the pull request.
+- Vaccination schemas: United States, Mexico, United Kingdom; Switzerland waits for the BAG's written
+  consent (plan 5). Canada is out for now. Doses are matched by count per antigen; the app never judges
+  validity. Overdue is a soft flag only. The owner reviews the transcribed schedule files in the pull
+  request.
 - Reminders are for medication only in this phase. "Every N hours" is a fixed clock grid and is never
   recomputed from the last dose logged.
 - Notification text is generic: "<Category> due for <kid's name>". It never names the medication.
@@ -146,8 +167,9 @@ log.
   own origin instead; the owner was told and did not object.
 - **commsgun's UI tests run against a stub API**, so they stay green on a broken contract. The smoke
   script, which runs both real images together, is the real check. This repo keeps that pattern; since
-  plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms, and
-  since plan 4 it scores a measurement under both growth sources.
+  plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms,
+  since plan 4 it scores a measurement under both growth sources, and since plan 5 it records, edits
+  and deletes a 6-in-1 dose against the real US schedule and switches the kid to the UK schedule.
 
 ## Not yet verified (verify in the plan that needs it)
 
@@ -159,7 +181,15 @@ log.
   been checked against AAP's own text.
 - Installing the app on a real phone (plan 3 checks the manifest, icons and head links only; there is
   no service worker until plan 6).
-- The current published vaccination schedule of each of the four countries (plan 5).
+- Mexico's reuse terms: shipping a facts-only transcription is the owner's reading of the gob.mx terms
+  and of the Ley Federal del Derecho de Autor, art. 14. Not confirmed by the Secretaría de Salud.
+- The US January 2026 revision: it is reported stayed by a court, by secondary sources only. CDC's own
+  2026 text could not be retrieved.
+- Mexico's Anexo 1 ages (minimum and maximum ages and intervals): a low-resolution scan with an
+  illegible digit. No age in `mx.csv` comes from it.
+- The rows marked `(verify)` in the schedule files, listed in the update runbook.
+- The licence readings for all three schedules are not legal advice, and no authority (CDC, UKHSA, the
+  Secretaría de Salud, the BAG) was contacted.
 
 ## How to verify a plan is done
 
@@ -176,9 +206,9 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker` after PR #6 (plan 4) is merged. Read
-> `docs/superpowers/HANDOFF.md`, then the design. Write plan 5 (vaccination) with the
-> `superpowers:writing-plans` skill, settle its owner values first (the four countries' current
-> schedules, their sources), and execute it with subagent-driven development on a new branch from `main`.
-> `davcs86/commsgun` is the reference to mirror; attach it read-only. Do not change
-> `davcs86/homelab-edge` in this plan beyond its bot's image bump.
+> Start from `main` of `davcs86/happybabytracker` after PR #7 (plan 5) is merged. Read
+> `docs/superpowers/HANDOFF.md`, then the design. Ask the owner for the plan 6 draft (sickness,
+> medication, reminders, Web Push, ntfy) and its research, settle its open values with the owner, and
+> execute it with subagent-driven development on a new branch from `main`. `davcs86/commsgun` is the
+> reference to mirror; attach it read-only. Plan 6 changes `davcs86/homelab-edge` (the VAPID key in the
+> API's environment, the ntfy switch) in its own PR there.

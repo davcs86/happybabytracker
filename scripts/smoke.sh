@@ -502,8 +502,8 @@ N_GROWTH_EDIT="$(note "growth-edited-note-${SUFFIX}")"
 # 3200 g = 11288 and 4100 g = 14462 hundredths of an ounce; 500 mm = 1969 and 340 mm = 1339 hundredths of an inch.
 for v in 3.2 3200 11288 50 500 1969 4.1 4100 14462 34 340 1339; do remember_value "$v"; done
 GROWTH="$KID_PATH/growth"
-settings_sources() { # body-name -> the option values of the growth source select, one per line
-  pieces "$1" '<select' | grep -F 'name="growth_source"' | sed 's|</select>.*||' |
+select_options() { # body-name select-name -> the option values of that select, one per line
+  pieces "$1" '<select' | grep -F "name=\"$2\"" | sed 's|</select>.*||' |
     grep -oE '<option[^>]*value="[^"]*"' | sed -E 's/.*value="([^"]*)"/\1/' || true
 }
 growth_source() { # name source -> as smoke-a, saves the kid's settings with that growth source
@@ -521,7 +521,7 @@ originals() { # body-name -> name=value of every hidden *_original input, one pe
     sed -E 's/.*name="([a-z_]+)" value="([^"]*)"/\1=\2/' || true
 }
 code="$(req settings-a "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
-sources="$(settings_sources settings-a | tr '\n' ' ')"
+sources="$(select_options settings-a growth_source | tr '\n' ' ')"
 { [ "$code" = 200 ] && [ "$sources" = 'who cdc ' ]; } || fail "4h settings sources" "status $code, '$sources'"
 code="$(form growth-new-a "$ADDR_A" "$SESSION_A" "$GROWTH/new?/save" measured_on=2026-01-15 \
   weight_unit=kg weight_kg=3.2 length_unit=cm length=50 head_unit=cm head=34 "note=$N_GROWTH")"
@@ -591,6 +591,158 @@ code="$(req growth-deleted "$ADDR_B" "$SESSION_B" "$UI_URL$GROWTH")"
 { [ "$code" = 200 ] && ! body_has growth-deleted "$N_GROWTH_B" && ! body_has growth-deleted 'Weight 4.1 kg' &&
   body_has growth-deleted "$N_GROWTH_EDIT"; } || fail "4h after delete" "status $code"
 pass "4h the API image ships the WHO and CDC notices; settings offer who and cdc; a measurement shows its z and percentile ('${line_who#*: }' with who, '${line_cdc#*: }' with cdc, back with who); $USER_B adds one; $USER_C gets 404 and the admin a 303 on the growth pages; $USER_A edits a measurement, clearing its head circumference; $USER_B deletes theirs"
+
+# 4i. Vaccination through the real schedules: a 6-in-1 fills its lines once; a switch keeps the doses.
+VACCINES="$KID_PATH/vaccines"
+US_CAPTION='Schedule: Centers for Disease Control and Prevention (CDC), CDC Child and Adolescent Immunization Schedule by Age, 2025 (addendum updated July 2, 2025)'
+US_ATTRIBUTION='Source: CDC, Recommended Child and Adolescent Immunization Schedule for Ages 18 Years or Younger, United States, 2025 (revised 07/02/2025). CDC does not endorse this application or its use of the material.'
+UK_CAPTION='Schedule: UK Health Security Agency (UKHSA), Complete routine immunisation schedule from 1 September 2026'
+HEXAVALENT=(antigens=diphtheria antigens=tetanus antigens=pertussis antigens=polio antigens=hib antigens=hepatitis_b)
+HEXAVALENT_LINES='diphtheria-1 tetanus-1 pertussis-1 polio-1 hib-1 hepatitis_b-1'
+DOSE_ON=2026-03-16
+remember "$DOSE_ON"
+V_LOT="$(note "lot-${SUFFIX}")"
+V_LOT_EDIT="$(note "lot-edited-${SUFFIX}")"
+V_LOT_B="$(note "lot-caregiver-${SUFFIX}")"
+V_PRODUCT="$(note "product-${SUFFIX}")"
+N_VACCINE="$(note "vaccine-note-${SUFFIX}")"
+N_VACCINE_B="$(note "vaccine-caregiver-note-${SUFFIX}")"
+vaccine_schedule() { # name schedule -> as smoke-a, saves the kid's settings with that schedule
+  local code
+  code="$(form "$1" "$ADDR_A" "$SESSION_A" "$KID_PATH/settings?/save" "name=$KID_NAME" \
+    'birth_date=2026-01-15' 'sex=female' "time_zone=$KID_ZONE" growth_source=who "vaccine_schema=$2")"
+  { [ "$code" = 200 ] && body_has "$1" 'Saved'; } || fail "4i schedule $2" "status $code"
+}
+line_status() { # body-name line-id -> the status badge of that schedule line
+  grep -oE "id=\"vline-$2-status\"[^>]*>[^<]*" "$WORK/$1.body" | head -n 1 | sed 's/.*>//' || true
+}
+group_status() { # body-name from-date -> the status badge of that age group
+  tr -d '\n' <"$WORK/$1.body" | grep -oE "id=\"vgroup-$2\"[^>]*>[^<]*<span[^>]*>[^<]*" | head -n 1 |
+    sed 's/.*>//' || true
+}
+active_groups() { # body-name -> the from dates of the groups shown before Completed, in page order
+  tr -d '\n' <"$WORK/$1.body" | sed 's|Completed (.*||' | grep -oE 'id="vgroup-[0-9-]{10}"' |
+    sed -E 's/id="vgroup-(.*)"/\1/' || true
+}
+given_lines() { # body-name date -> how many lines and Other entries show a dose given that day
+  echo $(($(count "$1" ">Given $2<") + $(count "$1" ", given $2<")))
+}
+administration() { # body-name line-id -> the edit path of the dose that fills that line
+  local tail
+  tail="$(pieces "$1" '<li' | grep -F "id=\"vline-$2-name\"" | grep -oE '/vaccines/[0-9a-f-]+"' |
+    head -n 1 | tr -d '"' || true)"
+  if [ -n "$tail" ]; then echo "$KID_PATH$tail"; fi
+}
+code="$(req settings-v "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
+schedules="$(select_options settings-v vaccine_schema | tr '\n' ' ')"
+{ [ "$code" = 200 ] && [ "$schedules" = ' us uk mx ' ] && body_has settings-v '>None yet</option>'; } ||
+  fail "4i settings schedules" "status $code, '$schedules'"
+vaccine_schedule schedule-us us
+code="$(req vaccines-us "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+mapfile -t groups < <(active_groups vaccines-us)
+{ [ "$code" = 200 ] && body_has vaccines-us "$US_CAPTION" && body_has vaccines-us "$US_ATTRIBUTION" &&
+  body_has vaccines-us '>What is not included</summary>' &&
+  body_has vaccines-us 'Tdap: 1 dose during each pregnancy' && [ "${#groups[@]}" -ge 2 ] &&
+  printf '%s\n' "${groups[@]}" | sort -c && [ "${groups[0]}" = 2026-01-15 ] &&
+  [ "$(group_status vaccines-us 2026-01-15)" = Overdue ] &&
+  [ "$(line_status vaccines-us hepatitis_b-1)" = Overdue ] &&
+  body_has vaccines-us 'Due from 2026-01-15 · overdue from 2026-02-15' &&
+  [ "$(count vaccines-us 'action="?/dismiss"')" -gt 0 ]; } ||
+  fail "4i vaccines page (us)" "status $code, groups '${groups[*]}', birth $(group_status vaccines-us 2026-01-15)"
+code="$(req home-due "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+due_href="$(grep -oE '<a href="[^"]*"[^>]*>Birth · Overdue \(1\)</a>' "$WORK/home-due.body" |
+  sed -E 's/<a href="([^"]*)".*/\1/' || true)"
+{ [ "$code" = 200 ] && body_has home-due 'id="due-heading"' && [[ "$due_href" == *"$VACCINES" ]]; } ||
+  fail "4i home Due" "status $code, link '$due_href'"
+code="$(form vaccine-new-a "$ADDR_A" "$SESSION_A" "$VACCINES/new?/save" "given_on=$DOSE_ON" \
+  product_shortcut=hexavalent "${HEXAVALENT[@]}" "lot=$V_LOT" "product=$V_PRODUCT" "note=$N_VACCINE")"
+[ "$code $(location vaccine-new-a)" = "303 $VACCINES" ] ||
+  fail "4i record a 6-in-1" "status $code, Location $(location vaccine-new-a)"
+code="$(req vaccines-given "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+[ "$code" = 200 ] || fail "4i after the 6-in-1" "status $code"
+for l in $HEXAVALENT_LINES; do
+  [ "$(line_status vaccines-given "$l")" = Given ] || fail "4i 6-in-1 line $l" "$(line_status vaccines-given "$l")"
+done
+{ [ "$(given_lines vaccines-given "$DOSE_ON")" = 6 ] && [ "$(count vaccines-given ", given $DOSE_ON<")" = 0 ] &&
+  [ "$(line_status vaccines-given hepatitis_b-2)" = Overdue ]; } ||
+  fail "4i 6-in-1 listed once" "$(given_lines vaccines-given "$DOSE_ON") entries for the dose"
+DOSE_A="$(administration vaccines-given diphtheria-1)"
+[ -n "$DOSE_A" ] || fail "4i dose link" "no edit link on diphtheria-1"
+code="$(req vaccine-edit-page "$ADDR_A" "$SESSION_A" "$UI_URL$DOSE_A")"
+mapfile -t kept < <(originals vaccine-edit-page)
+{ [ "$code" = 200 ] && [ "${#kept[@]}" = 5 ] && body_has vaccine-edit-page "value=\"$V_LOT\""; } ||
+  fail "4i edit page" "status $code, ${#kept[@]} originals"
+edit_fields=()
+for kv in "${kept[@]}"; do
+  shown="${kv%%=*}"
+  shown="${shown%_original}"
+  case "$shown" in
+    antigens)
+      IFS=, read -ra ticked <<<"${kv#*=}"
+      for a in "${ticked[@]}"; do edit_fields+=("antigens=$a"); done
+      ;;
+    lot) edit_fields+=("lot=$V_LOT_EDIT") ;;
+    *) edit_fields+=("$shown=${kv#*=}") ;;
+  esac
+  edit_fields+=("$kv")
+done
+code="$(form vaccine-edit "$ADDR_A" "$SESSION_A" "$DOSE_A?/save" "${edit_fields[@]}")"
+code_e="$(req vaccine-edited "$ADDR_A" "$SESSION_A" "$UI_URL$DOSE_A")"
+{ [ "$code $(location vaccine-edit)" = "303 $VACCINES" ] && [ "$code_e" = 200 ] &&
+  body_has vaccine-edited "value=\"$V_LOT_EDIT\"" && body_has vaccine-edited "value=\"$V_PRODUCT\"" &&
+  body_has vaccine-edited "value=\"$N_VACCINE\"" && [ "$(count vaccine-edited 'checked')" = 6 ]; } ||
+  fail "4i edit lot" "status $code, Location $(location vaccine-edit), page $code_e"
+code="$(form vaccine-delete "$ADDR_A" "$SESSION_A" "$DOSE_A?/delete")"
+code_d="$(req vaccine-deleted "$ADDR_A" "$SESSION_A" "$UI_URL$DOSE_A")"
+code_v="$(req vaccines-deleted "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+{ [ "$code $(location vaccine-delete)" = "303 $VACCINES" ] && [ "$code_d" = 404 ] && [ "$code_v" = 200 ] &&
+  [ "$(given_lines vaccines-deleted "$DOSE_ON")" = 0 ] &&
+  [ "$(line_status vaccines-deleted hepatitis_b-1)" = Overdue ]; } ||
+  fail "4i delete dose" "status $code, Location $(location vaccine-delete), dose $code_d, page $code_v"
+code="$(form vaccine-new-b "$ADDR_B" "$SESSION_B" "$VACCINES/new?/save" "given_on=$DOSE_ON" \
+  product_shortcut=hexavalent "${HEXAVALENT[@]}" "lot=$V_LOT_B" product= "note=$N_VACCINE_B")"
+code_v="$(req vaccines-b "$ADDR_B" "$SESSION_B" "$UI_URL$VACCINES")"
+{ [ "$code $(location vaccine-new-b)" = "303 $VACCINES" ] && [ "$code_v" = 200 ] &&
+  [ "$(given_lines vaccines-b "$DOSE_ON")" = 6 ] && [ "$(count vaccines-b 'action="?/dismiss"')" = 0 ]; } ||
+  fail "4i caregiver records" "status $code, Location $(location vaccine-new-b), page $code_v"
+DOSE_B="$(administration vaccines-b diphtheria-1)"
+[ -n "$DOSE_B" ] || fail "4i caregiver dose link" "no edit link on diphtheria-1"
+code="$(form dismiss-b "$ADDR_B" "$SESSION_B" "$VACCINES?/dismiss" line=rotavirus-1 reason=not_needed)"
+{ [ "$code" = 403 ] && body_has dismiss-b 'Only a guardian can dismiss vaccines'; } ||
+  fail "4i caregiver dismiss" "status $code"
+code="$(form dismiss-a "$ADDR_A" "$SESSION_A" "$VACCINES?/dismiss" line=rotavirus-1 reason=not_needed)"
+code_v="$(req vaccines-dismissed "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+{ [ "$code $(location dismiss-a)" = "303 $VACCINES" ] && [ "$code_v" = 200 ] &&
+  [ "$(line_status vaccines-dismissed rotavirus-1)" = Dismissed ] &&
+  body_has vaccines-dismissed 'Dismissed: not needed'; } || fail "4i dismiss" "status $code, page $code_v"
+code="$(form undo-a "$ADDR_A" "$SESSION_A" "$VACCINES?/undoDismiss" line=rotavirus-1)"
+code_v="$(req vaccines-undone "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+{ [ "$code $(location undo-a)" = "303 $VACCINES" ] && [ "$code_v" = 200 ] &&
+  [ "$(line_status vaccines-undone rotavirus-1)" = Overdue ] &&
+  ! body_has vaccines-undone 'Dismissed: '; } || fail "4i undo dismissal" "status $code, page $code_v"
+code="$(form dismiss-before "$ADDR_A" "$SESSION_A" "$VACCINES?/dismissBefore" before=2026-03-01 \
+  reason=given_unknown)"
+code_v="$(req vaccines-before "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+{ [ "$code" = 200 ] && body_has dismiss-before 'Dismissed 1 line.' && [ "$code_v" = 200 ] &&
+  [ "$(line_status vaccines-before hepatitis_b-2)" = Dismissed ] &&
+  body_has vaccines-before 'Dismissed: given, date unknown'; } ||
+  fail "4i dismiss before" "status $code, page $code_v, hepatitis_b-2 $(line_status vaccines-before hepatitis_b-2)"
+vaccine_schedule schedule-uk uk
+code="$(req vaccines-uk "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+{ [ "$code" = 200 ] && body_has vaccines-uk "$UK_CAPTION" && ! body_has vaccines-uk "$US_CAPTION" &&
+  [ "$(given_lines vaccines-uk "$DOSE_ON")" = 6 ] && ! body_has vaccines-uk 'Dismissed: ' &&
+  [ "$(count vaccines-uk 'Dismissed<')" = 0 ] && [ -n "$(administration vaccines-uk diphtheria-1)" ]; } ||
+  fail "4i switch to uk" "status $code, $(given_lines vaccines-uk "$DOSE_ON") entries for the dose"
+for p in vaccines:"$VACCINES" vaccines-new:"$VACCINES/new" vaccine-dose:"$DOSE_B"; do
+  code="$(req "nogrant-${p%%:*}" "$ADDR_C" "$SESSION_C" "$UI_URL${p#*:}")"
+  { [ "$code" = 404 ] && body_has "nogrant-${p%%:*}" 'Not found' &&
+    ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-${p%%:*}.body" &&
+    ! body_has "nogrant-${p%%:*}" "$KID_NAME"; } || fail "4i no grant ${p%%:*}" "status $code"
+  code="$(req "admin-${p%%:*}" "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL${p#*:}")"
+  [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
+    fail "4i admin GET ${p%%:*}" "status $code, Location $(location "admin-${p%%:*}")"
+done
+pass "4i settings offer us, uk and mx; the us page shows the CDC caption, attribution and omissions, groups in age order, birth overdue; the home shows Due; a 6-in-1 fills its 6 lines once, its lot is edited and it is deleted; $USER_B records one and may not dismiss; a dismissal is undone; dismiss-before dismisses 1 line; with uk the dose stays and the us dismissal is gone; $USER_C gets 404 and the admin a 303 on the vaccine pages"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
@@ -712,7 +864,7 @@ for f in api-1.log api-2.log ui.log; do
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text, volume or measurement"
+pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, volume or measurement"
 
 # 10. Memory of each API process and of the UI, with the login burst in the last API process.
 fail_if_oom "10 memory"

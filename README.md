@@ -19,6 +19,8 @@ What a parent can do so far:
 - Modules: a guardian switches any module off or on per kid; its entries stay.
 - Growth: measurements of weight, length/height and head circumference, each scored as a z-score and a
   percentile against the kid's growth source and drawn on charts (see "Growth" below).
+- Vaccination: recorded doses shown against a national schedule a guardian chooses for the kid, with a
+  soft "Due" list on the home (see "Vaccination" below).
 - Installable from the browser (a web app manifest and icons); online only, no service worker.
 
 Modules and their defaults by age (whole months from the birth date, in the kid's zone):
@@ -28,7 +30,8 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding` (solids) | built | on | on | off |
 | `milestones` | later plan | on | on | off |
 | `growth` | built | on | on | on |
-| `vaccination`, `sickness`, `medication` | later plans | on | on | on |
+| `vaccination` | built | on | on | on |
+| `sickness`, `medication` | later plans | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -77,6 +80,65 @@ expected term", unscored and not plotted.
 
 The app records and displays; it never interprets a percentile and says nothing like "normal" or "low".
 The tables and their licences are under "Third-party data" below.
+
+## Vaccination
+
+A guardian chooses the kid's schedule in the kid's settings; a new kid has none, and the Vaccines page
+asks for one. Shipped schedules:
+
+| Id | Authority and edition |
+|---|---|
+| `us` | Centers for Disease Control and Prevention (CDC), Child and Adolescent Immunization Schedule by Age, 2025 (revised 2025-07-02) |
+| `uk` | UK Health Security Agency (UKHSA), Complete routine immunisation schedule from 1 September 2026 (updated 2026-09-24), England only |
+| `mx` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal 2026 |
+
+Switzerland is left out: the BAG requires written consent in advance to reproduce its schedule, and none
+has been asked for. Each schedule is a partial, simplified transcription; what is left out is listed under
+"Not transcribed from the source" in its review document, `docs/vaccine-schedules/<id>.md`.
+
+Any parent with access records a dose: the date it was given (in the kid's zone, not in the future and not
+before the birth date), the vaccines it covered (a product shortcut such as "6-in-1" ticks them), and an
+optional lot number, product name and note; a kid holds at most 500. One dose of a combination vaccine
+counts once for each vaccine it covers. Doses are kept per kid and never depend on the schedule:
+switching the schedule changes only what is shown.
+
+The Vaccines page (`/kids/{kid}/vaccines`, reached from the home's Due list, the kid's links and the
+quick-log tile) shows "Schedule: <authority>, <edition>" with the retrieval date, the licence and
+attribution, what is not included, then the schedule by age, each line as given, due, upcoming,
+overdue, dismissed or available. The kid's Nth recorded dose of a vaccine fills its Nth line, whenever it
+was given. **The app never judges validity:** it does not say whether a dose was too early, too late or
+too close to another. Doses that the schedule has no line for are listed under "Other recorded
+vaccinations".
+
+The window rule, in plain words: a line is upcoming before the age the schedule names and due from that
+age. A range such as "12–15 months" runs through the last month named: the line is due until the kid
+turns 16 months and overdue from that day. A line with a single age ("8 weeks", "2 months") is due for
+one calendar month and overdue after it. Some lines exist only for kids born in a given range of dates (UK
+and Mexico cohorts). **Overdue is a soft flag:** a label and a place in the home's Due list, never a push
+or a block. It never applies to these lines:
+
+- lines that depend on the product used or on the kid's history ("may not be needed": due inside their
+  window, then listed as available);
+- lines for risk groups or shared decisions (listed under "Also available");
+- seasonal lines (influenza, COVID-19), listed with the doses given.
+
+A guardian can dismiss a line ("not needed" or "given, date unknown") and undo it. For a kid added
+part-way through a schedule, "Dismiss older lines" dismisses in one go every line whose window starts
+before a date and that is not given or dismissed yet. A dismissal belongs to the schedule it was made in.
+The home's Due section lists the ages with a due or overdue line, three at most, linking to the Vaccines
+page; it hides when the module is off.
+
+Licences, per schedule (the full text is under "Third-party data" below):
+
+- `us`: public domain, on CDC's four conditions. These are: credit CDC; imply no endorsement; do not
+  change the substance; say the material is free on the CDC website.
+- `uk`: Open Government Licence v3.0, citing UKHSA. No brand names or logos are included.
+- `mx`: no open licence was found. Only facts are transcribed (vaccine, dose number, age), with the
+  citation the gob.mx terms ask for: the document's URL and the date it was consulted. Those terms also
+  limit downloads to personal, non-commercial use. Shipping a facts-only transcription is the owner's
+  decision, not legal advice. It is not endorsed by, or a copy of, the Secretaría de Salud's publication.
+
+Updating a schedule: `docs/runbooks/updating-vaccine-schedules.md`.
 
 ## Configuration
 
@@ -197,7 +259,8 @@ licence in `LICENSE`; the tables are not covered by it.
 The API also embeds national vaccination schedules, transcribed by hand from each authority's
 published schedule: one CSV per schedule under `api/internal/vaccines/data/`, each with its own
 provenance header, and a generated review table per schedule in `docs/vaccine-schedules/`. They are
-not covered by the MIT licence.
+not covered by the MIT licence. Switzerland's schedule (BAG) is not included: reproducing it needs the
+BAG's written consent, which has not been asked for.
 
 | File | Authority and edition | Licence | Attribution |
 |---|---|---|---|
