@@ -1,0 +1,408 @@
+import { expect, test } from '@playwright/test';
+import { ageMonths, todayIn } from '../src/lib/format.js';
+import {
+	ANA,
+	CLEO,
+	IVY,
+	LEO,
+	MIA,
+	STUB_TOKEN,
+	STUB_URL,
+	openSession,
+	resetStub
+} from './stub-api.js';
+
+// The stub's tracker routes answer as the Go API does; the UI specs that build on them rely on it.
+
+test.beforeEach(async () => {
+	await resetStub();
+});
+
+type Reply = { status: number; body: ReturnType<typeof JSON.parse> };
+
+async function as(who: { username: string; password: string }) {
+	const token = await openSession(who.username, who.password);
+	return async (method: string, path: string, body?: unknown): Promise<Reply> => {
+		const res = await fetch(`${STUB_URL}${path}`, {
+			method,
+			headers: {
+				authorization: `Bearer ${STUB_TOKEN}`,
+				'x-session-token': token,
+				'content-type': 'application/json'
+			},
+			body: body === undefined ? undefined : JSON.stringify(body)
+		});
+		const text = await res.text();
+		return { status: res.status, body: text ? JSON.parse(text) : null };
+	};
+}
+
+const invalid = (field: string) => ({ status: 422, body: { error: 'invalid', field } });
+// Fixed for the whole file, so two instants minutes apart stay exactly that far apart.
+const T0 = Math.floor(Date.now() / 1000) * 1000;
+const minutesAgo = (m: number) => new Date(T0 - m * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+test('Ivy is thirteen months old on the stub clock, Mia is young and Leo is in the 24+ band', async () => {
+	const ana = await as(ANA);
+	const kids = (await ana('GET', '/v1/kids')).body.kids;
+	expect(kids.map((k: { id: string }) => k.id)).toEqual([MIA.id, LEO.id, IVY.id]);
+	expect(ageMonths(IVY.birthDate, todayIn(IVY.timeZone))).toBe(13);
+	expect(ageMonths(MIA.birthDate, todayIn(MIA.timeZone))).toBeLessThan(12);
+	expect(ageMonths(LEO.birthDate, todayIn(LEO.timeZone))).toBeGreaterThanOrEqual(24);
+	expect((await ana('GET', `/v1/kids/${IVY.id}/home`)).body).toMatchObject({
+		age_months: 13,
+		band: '12-23'
+	});
+});
+
+test('bottles: validation names the field, volumes convert, an unchanged volume is kept', async () => {
+	const ana = await as(ANA);
+	const path = `/v1/kids/${IVY.id}/bottles`;
+	const volume = { unit: 'ml', amount: 120 };
+	expect(await ana('POST', path, { contents: [], volume })).toMatchObject(invalid('contents'));
+	expect(await ana('POST', path, { contents: ['formula', 'formula'], volume })).toMatchObject(
+		invalid('contents')
+	);
+	expect(await ana('POST', path, { contents: ['juice'], volume })).toMatchObject(
+		invalid('contents')
+	);
+	expect(await ana('POST', path, { contents: ['formula'] })).toMatchObject(invalid('volume'));
+	expect(
+		await ana('POST', path, { contents: ['formula'], volume: { unit: 'ml', amount: 1001 } })
+	).toMatchObject(invalid('volume'));
+	expect(
+		await ana('POST', path, { contents: ['formula'], volume, at: '2001-01-01T00:00:00Z' })
+	).toMatchObject(invalid('at'));
+	expect(
+		await ana('POST', path, { contents: ['formula'], volume, note: 'n'.repeat(501) })
+	).toMatchObject(invalid('note'));
+	expect(await ana('POST', path, { contents: ['formula'], volume, extra: 1 })).toMatchObject({
+		status: 422,
+		body: { error: 'unknown_field' }
+	});
+	expect(await ana('POST', path, { contents: 'formula', volume })).toMatchObject({ status: 400 });
+
+	const made = await ana('POST', path, {
+		contents: ['formula', 'breast_milk'],
+		volume: { unit: 'floz', amount: 400 }
+	});
+	expect(made.status).toBe(201);
+	expect(made.body).toMatchObject({
+		contents: ['breast_milk', 'formula'],
+		volume: { ml: 118, floz_hundredths: 400, typed_unit: 'floz' },
+		note: null
+	});
+	const patched = await ana('PATCH', `${path}/${made.body.id}`, {
+		volume: { unit: 'floz', amount: 400 },
+		note: 'warm'
+	});
+	expect(patched.body).toMatchObject({ volume: made.body.volume, note: 'warm' });
+	expect(await ana('PATCH', `${path}/${made.body.id}`, { contents: [] })).toMatchObject(
+		invalid('contents')
+	);
+	expect((await ana('GET', `${path}/${made.body.id}`)).body.note).toBe('warm');
+});
+
+test('a kid never sees another kid’s entry, and an unknown or malformed id is the same 404', async () => {
+	const ana = await as(ANA);
+	const cleo = await as(CLEO);
+	const made = await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' });
+	const id = made.body.id;
+	const notFound = { status: 404, body: { error: 'not_found' } };
+	// Ana is Leo's caregiver, so the kid is hers; the entry is not.
+	expect(await ana('GET', `/v1/kids/${LEO.id}/diapers/${id}`)).toEqual(notFound);
+	expect(await ana('PATCH', `/v1/kids/${LEO.id}/diapers/${id}`, { kind: 'dry' })).toEqual(notFound);
+	expect(await ana('DELETE', `/v1/kids/${LEO.id}/diapers/${id}`)).toEqual(notFound);
+	expect(await ana('GET', `/v1/kids/${IVY.id}/diapers/nope`)).toEqual(notFound);
+	expect(await ana('GET', `/v1/kids/${IVY.id}/diapers/a%20b`)).toEqual(notFound);
+	// No grant on Ivy at all: the same body as an unknown kid.
+	expect(await cleo('GET', `/v1/kids/${IVY.id}/diapers/${id}`)).toEqual(notFound);
+	expect(await cleo('GET', `/v1/kids/${IVY.id}/diapers`)).toEqual(notFound);
+	expect(await ana('GET', `/v1/kids/${IVY.id}/diapers/${id}`)).toMatchObject({ status: 200 });
+});
+
+test('lists newest first, in pages of the asked size, with an opaque cursor and a half-open range', async () => {
+	const ana = await as(ANA);
+	const path = `/v1/kids/${IVY.id}/meals`;
+	for (const [what, ago] of [
+		['a', 50],
+		['b', 40],
+		['c', 30],
+		['d', 20],
+		['e', 10]
+	] as const) {
+		await ana('POST', path, { what, at: minutesAgo(ago) });
+	}
+	const first = (await ana('GET', `${path}?limit=2`)).body;
+	expect(first.meals.map((m: { what: string }) => m.what)).toEqual(['e', 'd']);
+	const second = (await ana('GET', `${path}?limit=2&cursor=${first.next_cursor}`)).body;
+	expect(second.meals.map((m: { what: string }) => m.what)).toEqual(['c', 'b']);
+	const third = (await ana('GET', `${path}?limit=2&cursor=${second.next_cursor}`)).body;
+	expect(third).toMatchObject({ meals: [{ what: 'a' }], next_cursor: null });
+
+	const from = encodeURIComponent(minutesAgo(40));
+	const to = encodeURIComponent(minutesAgo(20));
+	const ranged = (await ana('GET', `${path}?from=${from}&to=${to}`)).body;
+	expect(ranged.meals.map((m: { what: string }) => m.what)).toEqual(['c', 'b']);
+
+	for (const [query, field] of [
+		['limit=0', 'limit'],
+		['limit=101', 'limit'],
+		['cursor=!!', 'cursor'],
+		['from=yesterday', 'from'],
+		[`from=${to}&to=${from}`, 'from'],
+		['to=x', 'to']
+	]) {
+		expect(await ana('GET', `${path}?${query}`)).toMatchObject(invalid(field));
+	}
+});
+
+test('one timer of each kind at a time; ending twice or a day late is refused', async () => {
+	const ana = await as(ANA);
+	const base = `/v1/kids/${IVY.id}`;
+	const sleep = await ana('POST', `${base}/sleep`, {});
+	expect(sleep).toMatchObject({ status: 201, body: { ended_at: null } });
+	expect(await ana('POST', `${base}/sleep`, {})).toEqual({
+		status: 409,
+		body: { error: 'already_running' }
+	});
+	// A finished session needs no free timer.
+	expect(
+		await ana('POST', `${base}/sleep`, { started_at: minutesAgo(120), ended_at: minutesAgo(60) })
+	).toMatchObject({ status: 201 });
+	expect((await ana('GET', `${base}/home`)).body.running.sleep.id).toBe(sleep.body.id);
+
+	const ended = await ana('POST', `${base}/sleep/${sleep.body.id}/end`, {});
+	expect(ended.status).toBe(200);
+	expect(ended.body.ended_at).not.toBeNull();
+	expect(await ana('POST', `${base}/sleep/${sleep.body.id}/end`, {})).toEqual({
+		status: 409,
+		body: { error: 'not_running' }
+	});
+	expect((await ana('GET', `${base}/home`)).body.running.sleep).toBeNull();
+
+	// A timer left running for more than a day cannot be ended: 422 at, as the API says.
+	const forgotten = await ana('POST', `${base}/sleep`, { started_at: minutesAgo(25 * 60) });
+	expect(forgotten.status).toBe(201);
+	expect(await ana('POST', `${base}/sleep/${forgotten.body.id}/end`, {})).toMatchObject(
+		invalid('at')
+	);
+	expect(
+		await ana('POST', `${base}/sleep/${forgotten.body.id}/end`, { at: minutesAgo(-60) })
+	).toMatchObject(invalid('at'));
+	expect(await ana('POST', `${base}/sleep/${forgotten.body.id}/end`, { at: 'noon' })).toMatchObject(
+		{
+			status: 400
+		}
+	);
+	expect(await ana('POST', `${base}/sleep/nope/end`, {})).toMatchObject({ status: 404 });
+});
+
+test('nursing: a side is required to start, switching credits the side in use, ending finishes', async () => {
+	const ana = await as(ANA);
+	const base = `/v1/kids/${IVY.id}/nursing`;
+	expect(await ana('POST', base, {})).toMatchObject(invalid('side'));
+	expect(await ana('POST', base, { side: 'both' })).toMatchObject(invalid('side'));
+	expect(await ana('POST', base, { side: 'left', left_seconds: 5 })).toMatchObject(
+		invalid('left_seconds')
+	);
+	const started = await ana('POST', base, { side: 'left', started_at: minutesAgo(30) });
+	expect(started.body).toMatchObject({ side: 'left', left_seconds: 0, right_seconds: 0 });
+	expect(await ana('POST', base, { side: 'right' })).toMatchObject({ status: 409 });
+
+	const id = started.body.id;
+	expect(await ana('POST', `${base}/${id}/side`, { side: 'middle' })).toMatchObject(
+		invalid('side')
+	);
+	const switched = await ana('POST', `${base}/${id}/side`, { side: 'right', at: minutesAgo(20) });
+	expect(switched.body).toMatchObject({ side: 'right', left_seconds: 600, right_seconds: 0 });
+	expect(
+		await ana('POST', `${base}/${id}/side`, { side: 'left', at: minutesAgo(25) })
+	).toMatchObject(invalid('at'));
+	const ended = await ana('POST', `${base}/${id}/end`, { at: minutesAgo(10) });
+	expect(ended.body).toMatchObject({
+		side: null,
+		side_since: null,
+		left_seconds: 600,
+		right_seconds: 600
+	});
+	expect(await ana('POST', `${base}/${id}/side`, { side: 'left' })).toEqual({
+		status: 409,
+		body: { error: 'not_running' }
+	});
+	expect(await ana('PATCH', `${base}/${id}`, { side: 'left' })).toMatchObject(invalid('side'));
+	expect(await ana('PATCH', `${base}/${id}`, { left_seconds: 100000 })).toMatchObject(
+		invalid('left_seconds')
+	);
+	expect(await ana('PATCH', `${base}/${id}`, { left_seconds: 300 })).toMatchObject({
+		status: 200,
+		body: { left_seconds: 300 }
+	});
+});
+
+test('timeline merges the trackers newest first, filters by type, and pages', async () => {
+	const ana = await as(ANA);
+	const base = `/v1/kids/${IVY.id}`;
+	await ana('POST', `${base}/diapers`, { kind: 'dirty', at: minutesAgo(50) });
+	await ana('POST', `${base}/meals`, { what: 'pear', at: minutesAgo(40) });
+	await ana('POST', `${base}/pumping`, {
+		started_at: minutesAgo(30),
+		duration_seconds: 600,
+		volume: { unit: 'ml', amount: 80 },
+		side: 'both'
+	});
+	await ana('POST', `${base}/bottles`, {
+		at: minutesAgo(20),
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 100 }
+	});
+	await ana('POST', `${base}/sleep`, { started_at: minutesAgo(10) });
+	const all = (await ana('GET', `${base}/timeline`)).body;
+	expect(all.items.map((i: { type: string }) => i.type)).toEqual([
+		'sleep',
+		'bottle',
+		'pumping',
+		'meal',
+		'diaper'
+	]);
+	expect(all.items[0]).toMatchObject({
+		type: 'sleep',
+		ended_at: null,
+		at: all.items[0].started_at
+	});
+	expect(all.items[4]).toMatchObject({ type: 'diaper', kind: 'dirty' });
+	const some = (await ana('GET', `${base}/timeline?types=meal,diaper`)).body;
+	expect(some.items.map((i: { type: string }) => i.type)).toEqual(['meal', 'diaper']);
+	const paged = (await ana('GET', `${base}/timeline?limit=2`)).body;
+	expect(paged.items).toHaveLength(2);
+	const next = (await ana('GET', `${base}/timeline?limit=2&cursor=${paged.next_cursor}`)).body;
+	expect(next.items.map((i: { type: string }) => i.type)).toEqual(['pumping', 'meal']);
+	for (const types of ['bottles', 'meal,meal', 'meal,', '', 'Meal']) {
+		expect(await ana('GET', `${base}/timeline?types=${types}`)).toMatchObject(invalid('types'));
+	}
+	expect(await ana('GET', `${base}/timeline?types=meal&types=diaper`)).toMatchObject(
+		invalid('types')
+	);
+});
+
+test('summary counts one kid-local day at a time and refuses a bad range', async () => {
+	test.skip(T0 % 86_400_000 < 10 * 60_000, 'the entries would fall on yesterday');
+	const ana = await as(ANA);
+	const base = `/v1/kids/${IVY.id}`;
+	const today = todayIn(IVY.timeZone);
+	await ana('POST', `${base}/bottles`, {
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 120 }
+	});
+	await ana('POST', `${base}/diapers`, { kind: 'both' });
+	await ana('POST', `${base}/diapers`, { kind: 'wet' });
+	await ana('POST', `${base}/meals`, { what: 'pear' });
+	await ana('POST', `${base}/nursing`, {
+		started_at: minutesAgo(5),
+		ended_at: minutesAgo(1),
+		left_seconds: 120,
+		right_seconds: 60
+	});
+	const days = (await ana('GET', `${base}/summary?from=${today}&to=${today}`)).body.days;
+	expect(days).toEqual([
+		{
+			date: today,
+			bottles: { count: 1, ml: 120, floz_hundredths: 406 },
+			nursing: { count: 1, seconds: 180 },
+			pumping: { count: 0, ml: 0, floz_hundredths: 0 },
+			diapers: { total: 2, wet: 1, dirty: 0, both: 1, dry: 0 },
+			sleep: { seconds: 0 },
+			meals: { count: 1 }
+		}
+	]);
+	const week = (await ana('GET', `${base}/summary?from=2026-01-01&to=2026-01-07`)).body.days;
+	expect(week).toHaveLength(7);
+	expect(week[0]).toMatchObject({ date: '2026-01-01', bottles: { count: 0 } });
+	for (const [query, field] of [
+		['to=2026-01-01', 'from'],
+		['from=2026-01-01', 'to'],
+		['from=2026-1-1&to=2026-01-02', 'from'],
+		['from=2026-01-02&to=2026-01-01', 'from'],
+		['from=2026-01-01&to=2026-04-04', 'to']
+	]) {
+		expect(await ana('GET', `${base}/summary?${query}`)).toMatchObject(invalid(field));
+	}
+	expect(
+		(await ana('GET', `${base}/summary?from=2026-01-01&to=2026-04-03`)).body.days
+	).toHaveLength(93);
+});
+
+test('modules follow the age band; only a guardian switches one; a recent entry re-enables once', async () => {
+	const ana = await as(ANA);
+	const ivy = (await ana('GET', `/v1/kids/${IVY.id}/modules`)).body.modules;
+	expect(ivy).toHaveLength(11);
+	expect(ivy.every((m: { enabled: boolean; default: boolean }) => m.enabled && m.default)).toBe(
+		true
+	);
+
+	const leo = `/v1/kids/${LEO.id}`;
+	const states = (await ana('GET', `${leo}/modules`)).body.modules;
+	const on = states
+		.filter((m: { enabled: boolean }) => m.enabled)
+		.map((m: { module: string }) => m.module);
+	expect(on).toEqual(['growth', 'vaccination', 'sickness', 'medication']);
+	// Ana is only Leo's caregiver.
+	expect(await ana('PUT', `${leo}/modules/diapers`, { enabled: true })).toEqual({
+		status: 403,
+		body: { error: 'forbidden' }
+	});
+	await ana('POST', `${leo}/diapers`, { kind: 'wet' });
+	const after = (await ana('GET', `${leo}/modules`)).body.modules.find(
+		(m: { module: string }) => m.module === 'diapers'
+	);
+	expect(after).toEqual({ module: 'diapers', enabled: true, default: false, overridden: true });
+
+	const cleo = await as(CLEO);
+	expect(await cleo('PUT', `${leo}/modules/diapers`, { enabled: false })).toMatchObject({
+		status: 204
+	});
+	await ana('POST', `${leo}/diapers`, { kind: 'dry' });
+	expect(
+		(await ana('GET', `${leo}/modules`)).body.modules.find(
+			(m: { module: string }) => m.module === 'diapers'
+		)
+	).toMatchObject({ enabled: false, overridden: true });
+	// An entry of a switched-off tracker is kept and listed.
+	expect((await ana('GET', `${leo}/diapers`)).body.diapers).toHaveLength(2);
+	expect((await ana('GET', `${leo}/timeline`)).body.items).toEqual([]);
+	expect((await ana('GET', `${leo}/timeline?types=diaper`)).body.items).toHaveLength(2);
+
+	expect(await cleo('PUT', `${leo}/modules/teething`, { enabled: true })).toMatchObject({
+		status: 404
+	});
+	expect(await cleo('PUT', `${leo}/modules/growth`, {})).toMatchObject(invalid('enabled'));
+	expect(await cleo('PUT', `${leo}/modules/growth`, { enabled: 'no' })).toMatchObject({
+		status: 400
+	});
+});
+
+test('home reads the age, the modules, the running timers and today', async () => {
+	const ana = await as(ANA);
+	const base = `/v1/kids/${MIA.id}`;
+	const idle = (await ana('GET', `${base}/home`)).body;
+	expect(idle).toMatchObject({
+		age_months: ageMonths(MIA.birthDate, todayIn(MIA.timeZone)),
+		band: '0-11',
+		running: { sleep: null, nursing: null },
+		today: { date: todayIn(MIA.timeZone), bottles: { count: 0 } }
+	});
+	expect(idle.modules).toHaveLength(11);
+	const nursing = await ana('POST', `${base}/nursing`, { side: 'right' });
+	expect((await ana('GET', `${base}/home`)).body.running.nursing).toEqual(nursing.body);
+});
+
+test('a deleted kid takes its entries and module choices with it', async () => {
+	const ana = await as(ANA);
+	await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' });
+	await ana('PUT', `/v1/kids/${IVY.id}/modules/sleep`, { enabled: false });
+	expect(await ana('DELETE', `/v1/kids/${IVY.id}`, { confirm_name: IVY.name })).toMatchObject({
+		status: 204
+	});
+	expect(await ana('GET', `/v1/kids/${IVY.id}/diapers`)).toMatchObject({ status: 404 });
+	expect(await ana('GET', `/v1/kids/${IVY.id}/home`)).toMatchObject({ status: 404 });
+});

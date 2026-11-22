@@ -67,6 +67,51 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/access", Guardian, d.listAccess},
 		{http.MethodPut, "/v1/kids/{kid}/access/{username}", Guardian, d.setAccess},
 		{http.MethodDelete, "/v1/kids/{kid}/access/{parent}", Caregiver, d.removeAccess},
+
+		{http.MethodGet, "/v1/kids/{kid}/bottles", Caregiver, d.listBottles},
+		{http.MethodPost, "/v1/kids/{kid}/bottles", Caregiver, d.createBottle},
+		{http.MethodGet, "/v1/kids/{kid}/bottles/{entry}", Caregiver, d.getBottle},
+		{http.MethodPatch, "/v1/kids/{kid}/bottles/{entry}", Caregiver, d.updateBottle},
+		{http.MethodDelete, "/v1/kids/{kid}/bottles/{entry}", Caregiver, d.deleteBottle},
+
+		{http.MethodGet, "/v1/kids/{kid}/diapers", Caregiver, d.listDiapers},
+		{http.MethodPost, "/v1/kids/{kid}/diapers", Caregiver, d.createDiaper},
+		{http.MethodGet, "/v1/kids/{kid}/diapers/{entry}", Caregiver, d.getDiaper},
+		{http.MethodPatch, "/v1/kids/{kid}/diapers/{entry}", Caregiver, d.updateDiaper},
+		{http.MethodDelete, "/v1/kids/{kid}/diapers/{entry}", Caregiver, d.deleteDiaper},
+
+		{http.MethodGet, "/v1/kids/{kid}/meals", Caregiver, d.listMeals},
+		{http.MethodPost, "/v1/kids/{kid}/meals", Caregiver, d.createMeal},
+		{http.MethodGet, "/v1/kids/{kid}/meals/{entry}", Caregiver, d.getMeal},
+		{http.MethodPatch, "/v1/kids/{kid}/meals/{entry}", Caregiver, d.updateMeal},
+		{http.MethodDelete, "/v1/kids/{kid}/meals/{entry}", Caregiver, d.deleteMeal},
+
+		{http.MethodGet, "/v1/kids/{kid}/pumping", Caregiver, d.listPumping},
+		{http.MethodPost, "/v1/kids/{kid}/pumping", Caregiver, d.createPumping},
+		{http.MethodGet, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.getPumping},
+		{http.MethodPatch, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.updatePumping},
+		{http.MethodDelete, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.deletePumping},
+
+		{http.MethodGet, "/v1/kids/{kid}/sleep", Caregiver, d.listSleep},
+		{http.MethodPost, "/v1/kids/{kid}/sleep", Caregiver, d.createSleep},
+		{http.MethodGet, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.getSleep},
+		{http.MethodPatch, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.updateSleep},
+		{http.MethodDelete, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.deleteSleep},
+		{http.MethodPost, "/v1/kids/{kid}/sleep/{entry}/end", Caregiver, d.endSleep},
+
+		{http.MethodGet, "/v1/kids/{kid}/nursing", Caregiver, d.listNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing", Caregiver, d.createNursing},
+		{http.MethodGet, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.getNursing},
+		{http.MethodPatch, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.updateNursing},
+		{http.MethodDelete, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.deleteNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/end", Caregiver, d.endNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/side", Caregiver, d.switchNursingSide},
+
+		{http.MethodGet, "/v1/kids/{kid}/timeline", Caregiver, d.timeline},
+		{http.MethodGet, "/v1/kids/{kid}/summary", Caregiver, d.summary},
+		{http.MethodGet, "/v1/kids/{kid}/modules", Caregiver, d.listModules},
+		{http.MethodPut, "/v1/kids/{kid}/modules/{module}", Guardian, d.setModule},
+		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},
 	}
 }
 

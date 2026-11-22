@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, login, sessionCookie } from './helpers.js';
-import { ANA, resetStub, setScenario, type Scenario } from './stub-api.js';
+import { expectAccessible, expectLanding, login, sessionCookie } from './helpers.js';
+import { ANA, MIA, resetStub, setScenario, type Scenario } from './stub-api.js';
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -20,7 +20,7 @@ for (const [what, scenario] of cases) {
 		if (scenario === 'slow') test.setTimeout(30_000);
 		await page.goto('/login');
 		await login(page, ANA.username, ANA.password);
-		await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+		await expectLanding(page, { kid: MIA });
 		const before = await sessionCookie(context);
 
 		await setScenario(scenario);
@@ -35,7 +35,7 @@ for (const [what, scenario] of cases) {
 
 		await setScenario('normal');
 		await page.reload();
-		await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+		await expectLanding(page, { kid: MIA });
 	});
 }
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { MODULES, TRACKER_KINDS } from '../constants';
 import { createApi } from './api';
 import type { Env } from './env';
 
@@ -622,5 +623,496 @@ describe('createApi admin, account, kid and access calls', () => {
 			ok: false,
 			reason: 'error'
 		});
+	});
+});
+
+describe('createApi tracker calls', () => {
+	const KID = 'k-1';
+	const VOLUME_WIRE = { ml: 120, floz_hundredths: 406, typed_unit: 'ml' };
+	const VOLUME = VOLUME_WIRE;
+	const T0 = '2026-11-20T10:00:00Z';
+	const T1 = '2026-11-20T10:30:00Z';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+
+	// The wire shape of each tracker, as the Go views write it, and what the client makes of it.
+	const ENTRIES = {
+		bottles: {
+			wire: {
+				id: 'e1',
+				at: T0,
+				contents: ['breast_milk', 'formula'],
+				volume: VOLUME_WIRE,
+				note: null
+			},
+			entry: { id: 'e1', at: T0, contents: ['breast_milk', 'formula'], volume: VOLUME, note: null }
+		},
+		diapers: {
+			wire: { id: 'e1', at: T0, kind: 'both', note: 'rash' },
+			entry: { id: 'e1', at: T0, kind: 'both', note: 'rash' }
+		},
+		meals: {
+			wire: { id: 'e1', at: T0, what: 'pear', reaction: null, note: null },
+			entry: { id: 'e1', at: T0, what: 'pear', reaction: null, note: null }
+		},
+		pumping: {
+			wire: {
+				id: 'e1',
+				started_at: T0,
+				duration_seconds: 600,
+				volume: VOLUME_WIRE,
+				side: 'both',
+				note: null
+			},
+			entry: {
+				id: 'e1',
+				startedAt: T0,
+				durationSeconds: 600,
+				volume: VOLUME,
+				side: 'both',
+				note: null
+			}
+		},
+		sleep: {
+			wire: { id: 'e1', started_at: T0, ended_at: null, note: null },
+			entry: { id: 'e1', startedAt: T0, endedAt: null, note: null }
+		},
+		nursing: {
+			wire: {
+				id: 'e1',
+				started_at: T0,
+				ended_at: null,
+				left_seconds: 60,
+				right_seconds: 0,
+				side: 'right',
+				side_since: T1,
+				note: null
+			},
+			entry: {
+				id: 'e1',
+				startedAt: T0,
+				endedAt: null,
+				leftSeconds: 60,
+				rightSeconds: 0,
+				side: 'right',
+				sideSince: T1,
+				note: null
+			}
+		}
+	} as const;
+	const KINDS = Object.keys(ENTRIES) as (keyof typeof ENTRIES)[];
+
+	it.each(KINDS)('lists %s newest first with the query and the cursor', async (kind) => {
+		const f = respond({ [kind]: [ENTRIES[kind].wire], next_cursor: 'abc_-9' });
+		const r = await api(f)
+			.tracker(kind)
+			.list(KID, { from: T0, to: T1, limit: 2, cursor: 'prev/cursor' });
+		expect(r).toEqual({ ok: true, data: { items: [ENTRIES[kind].entry], nextCursor: 'abc_-9' } });
+		expect(sent(f)).toEqual({
+			url: `http://api:9210/v1/kids/k-1/${kind}?from=${encodeURIComponent(T0)}&to=${encodeURIComponent(T1)}&limit=2&cursor=prev%2Fcursor`,
+			method: 'GET',
+			body: undefined
+		});
+	});
+
+	it('lists without a query string and reads the last page as a null cursor', async () => {
+		const f = respond({ diapers: [], next_cursor: null });
+		expect(await api(f).tracker('diapers').list(KID)).toEqual({
+			ok: true,
+			data: { items: [], nextCursor: null }
+		});
+		expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/diapers');
+	});
+
+	it.each(KINDS)('gets, updates and removes one %s', async (kind) => {
+		const f = mockFetch(async (_u, init) =>
+			init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json(ENTRIES[kind].wire)
+		);
+		const t = api(f).tracker(kind);
+		expect(await t.get(KID, 'e1')).toEqual({ ok: true, data: ENTRIES[kind].entry });
+		expect(await t.update(KID, 'e1', { note: null })).toEqual({
+			ok: true,
+			data: ENTRIES[kind].entry
+		});
+		expect(await t.remove(KID, 'e1')).toEqual({ ok: true, data: null });
+		expect([sent(f, 0), sent(f, 1), sent(f, 2)]).toEqual([
+			{ url: `http://api:9210/v1/kids/k-1/${kind}/e1`, method: 'GET', body: undefined },
+			{ url: `http://api:9210/v1/kids/k-1/${kind}/e1`, method: 'PATCH', body: { note: null } },
+			{ url: `http://api:9210/v1/kids/k-1/${kind}/e1`, method: 'DELETE', body: undefined }
+		]);
+	});
+
+	it('creates with the body as given and parses the 201 entry', async () => {
+		const f = respond(ENTRIES.diapers.wire, 201);
+		const body = { at: T0, kind: 'both', note: 'rash' };
+		expect(await api(f).tracker('diapers').create(KID, body)).toEqual({
+			ok: true,
+			data: ENTRIES.diapers.entry
+		});
+		expect(sent(f)).toEqual({ url: 'http://api:9210/v1/kids/k-1/diapers', method: 'POST', body });
+	});
+
+	it('a refused create is invalid with the API field and code', async () => {
+		const f = respond({ error: 'invalid', field: 'contents' }, 422);
+		expect(await api(f).tracker('bottles').create(KID, { contents: [] })).toEqual({
+			ok: false,
+			status: 422,
+			reason: 'invalid',
+			code: 'invalid',
+			field: 'contents'
+		});
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond({});
+		const t = api(f).tracker('bottles');
+		for (const r of [
+			await t.list('a/b'),
+			await t.get(KID, '..?x'),
+			await t.update('a/b', 'e1', {}),
+			await t.remove(KID, 'a b'),
+			await t.create('', {})
+		]) {
+			expect(r).toEqual({ ok: false, status: 404, reason: 'not_found' });
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['a body without its list key', { items: [], next_cursor: null }],
+		['a list that is not an array', { bottles: 'none', next_cursor: null }],
+		[
+			'an entry with an unknown content',
+			{
+				bottles: [{ ...ENTRIES.bottles.wire, contents: ['juice'] }],
+				next_cursor: null
+			}
+		],
+		[
+			'an entry with no content',
+			{
+				bottles: [{ ...ENTRIES.bottles.wire, contents: [] }],
+				next_cursor: null
+			}
+		],
+		[
+			'an entry with a fractional volume',
+			{
+				bottles: [{ ...ENTRIES.bottles.wire, volume: { ...VOLUME_WIRE, ml: 1.5 } }],
+				next_cursor: null
+			}
+		],
+		[
+			'an entry without an id',
+			{ bottles: [{ ...ENTRIES.bottles.wire, id: 7 }], next_cursor: null }
+		],
+		['a cursor that is not a string', { bottles: [], next_cursor: 4 }],
+		['a missing cursor', { bottles: [] }]
+	])('maps %s to error', async (_name, body) => {
+		const f = respond(body);
+		expect(await api(f).tracker('bottles').list(KID)).toEqual({
+			ok: false,
+			status: 200,
+			reason: 'error'
+		});
+		expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+			level: 'error',
+			msg: 'api call failed',
+			endpoint: 'list_bottles',
+			status: 200
+		});
+	});
+
+	it('refuses a nursing entry with a side no one can feed on', async () => {
+		const f = respond({ ...ENTRIES.nursing.wire, side: 'both' });
+		expect(await api(f).tracker('nursing').get(KID, 'e1')).toMatchObject({ reason: 'error' });
+	});
+
+	describe('timers', () => {
+		it.each(['sleep', 'nursing'] as const)('ends a %s at an instant', async (kind) => {
+			const f = respond(ENTRIES[kind].wire);
+			expect(await api(f).endTimer(kind, KID, 'e1', T1)).toEqual({
+				ok: true,
+				data: ENTRIES[kind].entry
+			});
+			expect(sent(f)).toEqual({
+				url: `http://api:9210/v1/kids/k-1/${kind}/e1/end`,
+				method: 'POST',
+				body: { at: T1 }
+			});
+		});
+
+		it('ends now when no instant is given', async () => {
+			const f = respond(ENTRIES.sleep.wire);
+			await api(f).endTimer('sleep', KID, 'e1');
+			expect(sent(f).body).toEqual({});
+		});
+
+		it('a timer that is not running is a conflict with its code', async () => {
+			const f = respond({ error: 'not_running' }, 409);
+			expect(await api(f).endTimer('sleep', KID, 'e1')).toEqual({
+				ok: false,
+				status: 409,
+				reason: 'conflict',
+				code: 'not_running'
+			});
+		});
+
+		it('a second timer is a conflict with its code', async () => {
+			const f = respond({ error: 'already_running' }, 409);
+			expect(await api(f).tracker('nursing').create(KID, { side: 'left' })).toEqual({
+				ok: false,
+				status: 409,
+				reason: 'conflict',
+				code: 'already_running'
+			});
+		});
+
+		it('a timer that ran over a day cannot end: invalid at at', async () => {
+			const f = respond({ error: 'invalid', field: 'at' }, 422);
+			expect(await api(f).endTimer('nursing', KID, 'e1', T1)).toEqual({
+				ok: false,
+				status: 422,
+				reason: 'invalid',
+				code: 'invalid',
+				field: 'at'
+			});
+		});
+
+		it('switches the nursing side, with or without an instant', async () => {
+			const f = respond(ENTRIES.nursing.wire);
+			expect(await api(f).switchNursingSide(KID, 'e1', 'right')).toEqual({
+				ok: true,
+				data: ENTRIES.nursing.entry
+			});
+			await api(f).switchNursingSide(KID, 'e1', 'left', T1);
+			expect(sent(f, 0)).toEqual({
+				url: 'http://api:9210/v1/kids/k-1/nursing/e1/side',
+				method: 'POST',
+				body: { side: 'right' }
+			});
+			expect(sent(f, 1).body).toEqual({ side: 'left', at: T1 });
+		});
+
+		it('an unsafe id never reaches an end or side path', async () => {
+			const f = respond({});
+			expect(await api(f).endTimer('sleep', KID, '../x')).toMatchObject({ reason: 'not_found' });
+			expect(await api(f).switchNursingSide('a/b', 'e1', 'left')).toMatchObject({
+				reason: 'not_found'
+			});
+			expect(f).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('timeline, summary, modules and home', () => {
+		const DAY = {
+			date: '2026-11-20',
+			bottles: { count: 1, ml: 120, floz_hundredths: 406 },
+			nursing: { count: 1, seconds: 120 },
+			pumping: { count: 0, ml: 0, floz_hundredths: 0 },
+			diapers: { total: 2, wet: 1, dirty: 0, both: 1, dry: 0 },
+			sleep: { seconds: 1800 },
+			meals: { count: 1 }
+		};
+		const MODULE = { module: 'bottles', enabled: true, default: true, overridden: false };
+		const TYPES = [
+			['bottle', 'bottles'],
+			['nursing', 'nursing'],
+			['pumping', 'pumping'],
+			['sleep', 'sleep'],
+			['diaper', 'diapers'],
+			['meal', 'meals']
+		] as const;
+
+		it('maps every timeline type to its route name and keeps the entry', async () => {
+			const items = TYPES.map(([type, kind]) => ({ type, at: T0, ...ENTRIES[kind].wire }));
+			const f = respond({ items, next_cursor: 'c' });
+			const r = await api(f).timeline(KID, { from: T0, limit: 6, types: ['bottle', 'meal'] });
+			expect(r).toEqual({
+				ok: true,
+				data: {
+					items: TYPES.map(([, kind]) => ({ kind, at: T0, entry: ENTRIES[kind].entry })),
+					nextCursor: 'c'
+				}
+			});
+			expect(sent(f).url).toBe(
+				`http://api:9210/v1/kids/k-1/timeline?from=${encodeURIComponent(T0)}&limit=6&types=bottle%2Cmeal`
+			);
+		});
+
+		it('sends no types when none are given, so the API applies the kid modules', async () => {
+			const f = respond({ items: [], next_cursor: null });
+			await api(f).timeline(KID);
+			await api(f).timeline(KID, { types: [] });
+			expect(sent(f, 0).url).toBe('http://api:9210/v1/kids/k-1/timeline');
+			expect(sent(f, 1).url).toBe('http://api:9210/v1/kids/k-1/timeline');
+		});
+
+		it('maps a timeline item of an unknown type, or whose entry is malformed, to error', async () => {
+			for (const item of [
+				{ type: 'growth', at: T0, id: 'e1' },
+				{ type: 'diaper', ...ENTRIES.diapers.wire, kind: 'soggy' },
+				{ type: 'sleep', ...ENTRIES.sleep.wire }
+			]) {
+				const f = respond({ items: [item], next_cursor: null });
+				expect(await api(f).timeline(KID)).toMatchObject({ ok: false, reason: 'error' });
+			}
+		});
+
+		it('reads day summaries for a date range', async () => {
+			const f = respond({ days: [DAY] });
+			expect(await api(f).summary(KID, '2026-11-20', '2026-11-22')).toEqual({
+				ok: true,
+				data: [DAY]
+			});
+			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/summary?from=2026-11-20&to=2026-11-22');
+			const bad = respond({ days: [{ ...DAY, sleep: {} }] });
+			expect(await api(bad).summary(KID, '2026-11-20', '2026-11-20')).toMatchObject({
+				reason: 'error'
+			});
+		});
+
+		it('a range the API refuses names its field', async () => {
+			const f = respond({ error: 'invalid', field: 'to' }, 422);
+			expect(await api(f).summary(KID, '2026-01-01', '2026-11-20')).toMatchObject({
+				reason: 'invalid',
+				field: 'to'
+			});
+		});
+
+		it('reads and sets modules', async () => {
+			const f = mockFetch(async (_u, init) =>
+				init?.method === 'PUT' ? new Response(null, { status: 204 }) : json({ modules: [MODULE] })
+			);
+			const a = api(f);
+			expect(await a.modules(KID)).toEqual({ ok: true, data: [MODULE] });
+			expect(await a.setModule(KID, 'feeding', false)).toEqual({ ok: true, data: null });
+			expect(sent(f, 1)).toEqual({
+				url: 'http://api:9210/v1/kids/k-1/modules/feeding',
+				method: 'PUT',
+				body: { enabled: false }
+			});
+			const bad = respond({ modules: [{ ...MODULE, module: 'teething' }] });
+			expect(await api(bad).modules(KID)).toMatchObject({ reason: 'error' });
+		});
+
+		it('a caregiver switching a module is forbidden', async () => {
+			expect(await api(respond({ error: 'forbidden' }, 403)).setModule(KID, 'sleep', true)).toEqual(
+				{
+					ok: false,
+					status: 403,
+					reason: 'forbidden',
+					code: 'forbidden'
+				}
+			);
+		});
+
+		const HOME = {
+			age_months: 8,
+			band: '0-11',
+			modules: [MODULE],
+			running: { sleep: ENTRIES.sleep.wire, nursing: null },
+			today: DAY
+		};
+
+		it('reads the home model, a running timer and an idle one', async () => {
+			const f = respond(HOME);
+			expect(await api(f).home(KID)).toEqual({
+				ok: true,
+				data: {
+					ageMonths: 8,
+					band: '0-11',
+					modules: [MODULE],
+					running: { sleep: ENTRIES.sleep.entry, nursing: null },
+					today: DAY
+				}
+			});
+			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/home');
+		});
+
+		it.each([
+			['an unknown band', { ...HOME, band: '36+' }],
+			['a missing running block', { ...HOME, running: undefined }],
+			[
+				'a running sleep that is malformed',
+				{ ...HOME, running: { sleep: { id: 1 }, nursing: null } }
+			],
+			['a missing today', { ...HOME, today: undefined }],
+			['a fractional age', { ...HOME, age_months: 8.5 }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
+		});
+	});
+
+	describe('path segments that are not a known kind or module', () => {
+		const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+		// A caller's careless cast must not reach a path: ../.. would walk to another API route.
+		const BAD = ['../..', '..', '', 'diaper', 'milestones', 'Bottles', 'bottles/e1', 'sleep?x=1'];
+
+		it.each(BAD)('tracker(%j) answers not_found on every call without a request', async (kind) => {
+			const f = respond({});
+			const t = api(f).tracker(kind as never);
+			for (const r of [
+				await t.list(KID),
+				await t.get(KID, 'e1'),
+				await t.create(KID, {}),
+				await t.update(KID, 'e1', {}),
+				await t.remove(KID, 'e1')
+			]) {
+				expect(r).toEqual(NOT_FOUND);
+			}
+			expect(f).not.toHaveBeenCalled();
+		});
+
+		it.each([...BAD, 'bottles', 'diapers', 'meals', 'pumping'])(
+			'endTimer(%j) answers not_found for a kind that is not a timer, without a request',
+			async (kind) => {
+				const f = respond({});
+				expect(await api(f).endTimer(kind as never, KID, 'e1')).toEqual(NOT_FOUND);
+				expect(f).not.toHaveBeenCalled();
+			}
+		);
+
+		it.each([...BAD.filter((m) => m !== 'milestones'), 'bottle', 'feedings', 'Growth'])(
+			'setModule(%j) answers not_found without a request',
+			async (module) => {
+				const f = respond({});
+				expect(await api(f).setModule(KID, module as never, true)).toEqual(NOT_FOUND);
+				expect(f).not.toHaveBeenCalled();
+			}
+		);
+
+		it('still reaches the API for every known kind, timer kind and module', async () => {
+			const f = respond({});
+			const a = api(f);
+			for (const kind of TRACKER_KINDS) await a.tracker(kind).remove(KID, 'e1');
+			for (const kind of ['sleep', 'nursing'] as const) await a.endTimer(kind, KID, 'e1');
+			for (const module of MODULES) await a.setModule(KID, module, true);
+			expect(f).toHaveBeenCalledTimes(TRACKER_KINDS.length + 2 + MODULES.length);
+		});
+	});
+
+	it('logs a tracker call by its endpoint name, never the kid, the entry or the body', async () => {
+		await api(respond({ error: 'invalid', field: 'note' }, 422))
+			.tracker('meals')
+			.update(KID, 'e-secret', { note: 'private note' });
+		expect(logSpy).toHaveBeenCalledTimes(1);
+		expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+			level: 'error',
+			msg: 'api call failed',
+			endpoint: 'update_meals',
+			status: 422
+		});
+		expect(logged()).not.toContain('e-secret');
+		expect(logged()).not.toContain('private note');
 	});
 });

@@ -1,17 +1,17 @@
 # Handoff: happybabytracker
 
-Written 2026-11-20 at the end of the design session. Read this first in a new session, then the two
-documents it points to. **No product code exists yet.**
+Updated 2026-11-22 at the end of plan 3 (daily trackers). Read this first in a new session, then the
+design and the plan of the next item.
 
 ## State
 
 | Item | Where | Status |
 |---|---|---|
 | Design | `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` | approved by the owner |
-| Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | approved by the owner, not started |
-| Plans 2–7 | not written | see "Order of work" below |
-| Design, plan 1 and this file | `main` of `davcs86/happybabytracker` | merged by PR #1 (docs only) |
-| Implementation branch | none yet | create it from `main` when plan 1 starts |
+| Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | done, merged to `main` (PR #3) |
+| Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | merged by the owner in `davcs86/homelab-edge` PR #100 on 2026-11-22 and deployed |
+| Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #4, not merged yet; after it merges the edge needs its `bump-happybabytracker` PR and a deploy |
+| Plans 4–7 | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -19,19 +19,36 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. Execute plan 1, task by task, test first. The owner chose **subagent-driven execution** (a fresh
-   agent per task, a fresh reviewer per task, then a whole-branch review); separate sessions per task
-   are also acceptable. Use the `superpowers:subagent-driven-development` skill.
-2. The owner said **do not start implementation** in the design session. Start only when the owner
-   asks for it in the new session.
-3. After plan 1 is merged and CI has published both images, write plan 2 (edge) with the
-   `superpowers:writing-plans` skill, in `davcs86/homelab-edge` under `docs/superpowers/plans/`.
+1. After PR #4 is merged, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
+   two pins and a deploy makes plan 3 live. Nothing in plan 3 changes the edge otherwise.
+2. Write plan 4 (growth) with the `superpowers:writing-plans` skill, starting from the code on `main`
+   after PR #4: the per-kid module table already knows `growth` (on in every band), the access matrix,
+   the tracker store/handler helpers (`api/internal/store/entries.go`, `api/internal/httpapi/entries.go`),
+   the kid-zone helpers (`api/internal/kidtime`), the UI tracker client and entry forms, and the
+   smoke script are what a new tracker extends. The home has no "Due" section until plans 5 and 6.
+3. Start implementation only when the owner asks for it.
+
+## Owner decisions in plan 3 (do not reopen)
+
+- Band lookback: a module that is off by default in a kid's new band stays on when it has an entry from
+  60 days before the band's start date onwards, or a running timer (the design said 30 days).
+- Mixed bottles: contents are a non-empty set of breast milk, formula, cow's milk and other, with one
+  total volume and no per-component split.
+- R12, re-evaluation: the band rule is re-checked on every home or modules read, with no "already
+  evaluated" marker. Such an entry at any time from 60 days before the band's start turns the module
+  on once, as a stored row; a guardian's stored switch is never overridden.
+- R13, nursing seconds: a finished session is created with minutes x 60 per side. Its edit form shows
+  floor(seconds / 60) and sends a side's seconds only when its minutes changed. A running session's
+  edit never sends seconds.
+- R11, 24-hour timers: a timer that ran over 24 hours cannot be ended through the end route (422 `at`);
+  the home says so and links to the edit page, where an end within 24 hours of the start, or a delete,
+  settles it.
 
 ## Order of work (design section 16)
 
-1. **Foundation** (this repo) — plan written.
-2. **Edge** (`davcs86/homelab-edge`) — compose, the private name, secrets, backup, Gatus, bump workflow, runbook.
-3. Daily trackers, timeline, modules, age-adaptive home, PWA install.
+1. **Foundation** (this repo) — done.
+2. **Edge** (`davcs86/homelab-edge`) — compose, the private name, secrets, backup, Gatus, bump workflow, runbook — done.
+3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
 4. Growth.
 5. Vaccination.
 6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
@@ -43,9 +60,9 @@ One plan per item, each its own PR, each written just before it is built.
 
 | Repository | Role | Branch for this work |
 |---|---|---|
-| `davcs86/happybabytracker` | the app | a new branch from `main` |
+| `davcs86/happybabytracker` | the app | a new branch from `main` per plan |
 | `davcs86/commsgun` | the architecture and tooling to mirror; read-only reference | none needed |
-| `davcs86/homelab-edge` | deployment (Ansible); changed from plan 2 on | a new branch from its `main`, in plan 2 |
+| `davcs86/homelab-edge` | deployment (Ansible); image pins change through its `bump-happybabytracker` PR | a new branch from its `main` only when a plan changes the edge (plan 6) |
 | `davcs86/xstockstrat` | public; reference for Web Push with VAPID (`services/xstockstrat-notify/src/fanout/webPush.ts`, `services/xstockstrat-ui/docs/pwa-push.md`) | read-only |
 
 Both `commsgun` and `homelab-edge` have a `CLAUDE.md` whose rules bind any work there: list
@@ -88,18 +105,16 @@ log.
 
 ## Things found during design that are easy to trip on
 
-- **`.gitignore` in this repo is the Python template.** It ignores `lib/` and `build/`, which would
-  silently drop `ui/src/lib`. Plan 1, task 1 replaces it. Do this before adding any UI file.
-- **Plan 1 does not read the VAPID or `NTFY_*` variables.** Plan 6 adds them, and VAPID becomes
-  required at start then. Plan 2 must therefore provision the VAPID key on the edge already.
+- **Nothing reads the VAPID or `NTFY_*` variables yet.** Plan 6 adds them, and VAPID becomes
+  required at start then. The edge already generates and stores `happybabytracker_vapid_private_key`
+  but does not render it into the API's environment yet; plan 6 must add that before it deploys.
 - **Tailnet grants are per port, not per name.** Anyone allowed to reach `tag:edge:443` reaches every
   `*.private` service. This is why other parents are not given tailnet access now.
 - **A `*.private` name is wired in four places** in `homelab-edge` (rule EDGE-07): the hostname
   variable, a `host` handle in `Caddyfile.j2`, `_names` in `roles/tailscale/tasks/main.yml`, and a
   Gatus probe.
-- **The edge's nightly backup covers headscale only** (`roles/backup/templates/edge-backup.sh.j2`).
-  Plan 2 adds this database to the same archive and its restore drill, and moves the timer to twice a
-  day. The Gatus heartbeat endpoint name must not change (rule EDGE-10).
+- **The edge's backup** (`roles/backup/templates/edge-backup.sh.j2`) snapshots this database with
+  headscale since plan 2. The Gatus heartbeat endpoint name must not change (rule EDGE-10).
 - **The edge's ntfy denies by default** and declares users, topic permissions and tokens in
   `roles/stack/templates/ntfy-server.yml.j2`. The app's publisher is a new write-only user there.
   ntfy's `base-url` name is the only one an iOS subscription works under.
@@ -108,19 +123,21 @@ log.
 - **xstockstrat's real VAPID subject is SOPS-encrypted** and was not read. The design uses this app's
   own origin instead; the owner was told and did not object.
 - **commsgun's UI tests run against a stub API**, so they stay green on a broken contract. The smoke
-  script, which runs both real images together, is the real check. Plan 1 keeps that pattern.
+  script, which runs both real images together, is the real check. This repo keeps that pattern; since
+  plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms.
 
 ## Not yet verified (verify in the plan that needs it)
 
 - Licence and availability of the UK-WHO and Euro-Growth tables, and that the WHO and CDC tables may
   be redistributed in a public repository (plan 4). If a required source cannot be bundled, stop and
   ask the owner.
-- Actual resident memory of both containers against the 60 MiB and 140 MiB ceilings (plan 1 smoke).
+- Installing the app on a real phone (plan 3 checks the manifest, icons and head links only; there is
+  no service worker until plan 6).
 - The corrected-age rule (until the second birthday) against the guidance published with each growth
   source (plan 4).
 - The current published vaccination schedule of each of the four countries (plan 5).
 
-## How to verify plan 1 is done
+## How to verify a plan is done
 
 ```sh
 cd api && gofmt -l . && go vet ./... \
@@ -135,7 +152,9 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker`. Read `docs/superpowers/HANDOFF.md`, then the
-> design and plan 1 it points to. Execute plan 1 with subagent-driven development on a new branch
-> created from `main`, and open a pull request against `main` when it is done. `davcs86/commsgun` is
-> the reference to mirror; attach it read-only. Do not change `davcs86/homelab-edge` in this plan.
+> Start from `main` of `davcs86/happybabytracker` after PR #4 (plan 3) is merged. Read
+> `docs/superpowers/HANDOFF.md`, then the design. Write plan 4 (growth) with the
+> `superpowers:writing-plans` skill, settle its owner values first (growth sources and their licences,
+> the corrected-age rule), and execute it with subagent-driven development on a new branch from `main`.
+> `davcs86/commsgun` is the reference to mirror; attach it read-only. Do not change
+> `davcs86/homelab-edge` in this plan beyond its bot's image bump.

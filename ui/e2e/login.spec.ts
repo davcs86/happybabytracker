@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, login, sessionCookie } from './helpers.js';
-import { ADMIN, ANA, receivedRequests, resetStub, setScenario } from './stub-api.js';
+import { expectAccessible, expectLanding, login, sessionCookie } from './helpers.js';
+import { ADMIN, ANA, MIA, receivedRequests, resetStub, setScenario } from './stub-api.js';
 
 const ADDRESS = '198.51.100.23';
 
@@ -15,12 +15,14 @@ test('an unauthenticated visit to / goes to /login with next', async ({ page }) 
 	await expectAccessible(page);
 });
 
-test('a parent logs in and lands on / with a hardened 30-day cookie', async ({ page, context }) => {
+test('a parent logs in and lands on the kid home with a hardened 30-day cookie', async ({
+	page,
+	context
+}) => {
 	await page.goto('/login');
 	await expectAccessible(page);
 	await login(page, ANA.username, ANA.password);
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
-	await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 	await expectAccessible(page);
 	const cookie = await sessionCookie(context);
 	expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Strict', path: '/' });
@@ -69,10 +71,10 @@ test('a rate-limited login says to wait a minute', async ({ page, context }) => 
 });
 
 test('next is honoured for a same-origin path', async ({ page }) => {
-	await page.goto('/?tab=1');
-	await expect(page).toHaveURL(/\/login\?next=%2F%3Ftab%3D1$/);
+	await page.goto('/account?tab=1');
+	await expect(page).toHaveURL(/\/login\?next=%2Faccount%3Ftab%3D1$/);
 	await login(page, ANA.username, ANA.password);
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/\?tab=1$/);
+	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/account\?tab=1$/);
 });
 
 for (const next of [
@@ -84,8 +86,7 @@ for (const next of [
 	test(`next=${next} is ignored`, async ({ page }) => {
 		await page.goto(`/login?next=${encodeURIComponent(next)}`);
 		await login(page, ANA.username, ANA.password);
-		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
-		await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+		await expectLanding(page, { kid: MIA });
 	});
 }
 
@@ -93,7 +94,7 @@ test('a signed-in visit to /login goes home', async ({ page }) => {
 	await page.goto('/login');
 	await login(page, ANA.username, ANA.password);
 	await page.goto('/login');
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+	await expectLanding(page, { kid: MIA });
 });
 
 test('GET /logout is 405', async ({ request }) => {
@@ -106,6 +107,6 @@ test.describe('without JavaScript', () => {
 	test('the login form still works', async ({ page }) => {
 		await page.goto('/login');
 		await login(page, ANA.username, ANA.password);
-		await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+		await expectLanding(page, { kid: MIA });
 	});
 });

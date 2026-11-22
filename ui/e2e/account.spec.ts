@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, expectFieldError, signIn } from './helpers.js';
-import { ANA, STUB_TOKEN, STUB_URL, openSession, resetStub } from './stub-api.js';
+import { expectAccessible, expectFieldError, expectLanding, signIn } from './helpers.js';
+import { ANA, MIA, STUB_TOKEN, STUB_URL, openSession, resetStub } from './stub-api.js';
 
 const NEW_PASSWORD = 'a brand new password';
 
@@ -47,7 +47,7 @@ test('units and display name persist', async ({ page }) => {
 	await expect(page.getByLabel('Volume')).toHaveValue('floz');
 	await expect(page.getByLabel('Temperature')).toHaveValue('f');
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: 'Welcome, Ana B' })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 });
 
 test('a blank display name is refused on its field', async ({ page }) => {
@@ -88,7 +88,7 @@ test('changing the password keeps this session and ends the others', async ({ pa
 	await expectAccessible(page);
 
 	await page.goto('/');
-	await expect(page.getByRole('heading', { name: 'Welcome, Ana' })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 });
 
 test('sign out another session', async ({ page }) => {

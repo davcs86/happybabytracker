@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, sessionCookie } from './helpers.js';
+import { expectAccessible, expectLanding, sessionCookie } from './helpers.js';
 import { INVITEE, TOKENS, receivedRequests, resetStub } from './stub-api.js';
 
 const ADDRESS = '198.51.100.40';
@@ -47,7 +47,7 @@ test('success logs in and the link is then spent', async ({ page, context }) => 
 	await page.goto(`/invite/${TOKENS.invite}`);
 	await fill(page, GOOD, GOOD);
 	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
-	await expect(page.getByRole('heading', { name: 'Welcome, Bo' })).toBeVisible();
+	await expectLanding(page, { welcome: 'Bo' });
 	expect(await sessionCookie(context)).toMatchObject({ httpOnly: true, secure: true });
 	expect(await redeems()).toMatchObject([
 		{ method: 'POST', authorized: true, clientAddress: ADDRESS }
@@ -86,6 +86,6 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByText('Use at least 12 characters')).toBeVisible();
 		expect(await redeems()).toEqual([]);
 		await fill(page, GOOD, GOOD);
-		await expect(page.getByRole('heading', { name: 'Welcome, Bo' })).toBeVisible();
+		await expectLanding(page, { welcome: 'Bo' });
 	});
 });

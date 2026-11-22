@@ -4,6 +4,7 @@ import {
 	KID_COOKIE,
 	expectAccessible,
 	expectFieldError,
+	expectLanding,
 	expectNotFoundPage,
 	signIn
 } from './helpers.js';
@@ -11,6 +12,7 @@ import {
 	ANA,
 	CLEO,
 	DAN,
+	IVY,
 	LEO,
 	MIA,
 	STUB_TOKEN,
@@ -23,8 +25,9 @@ test.beforeEach(async () => {
 	await resetStub();
 });
 
-const kidCard = (page: Page, name: string) =>
-	page.getByRole('article').filter({ has: page.getByRole('heading', { name, exact: true }) });
+const ageOf = (kid: { birthDate: string; timeZone: string }) =>
+	formatAge(kid.birthDate, todayIn(kid.timeZone));
+const switcherOf = (page: Page) => page.getByRole('navigation', { name: 'Children' });
 
 type KidForm = {
 	name?: string;
@@ -54,26 +57,29 @@ test('home with no kids says "Add your first child"', async ({ page }) => {
 	await expectAccessible(page);
 });
 
-test('home lists each kid with name and age; only guardians get settings and access', async ({
+test('the kid home shows name and age; only guardians get settings, access and modules', async ({
 	page
 }) => {
 	await signIn(page, ANA);
-	await expect(page.getByRole('heading', { name: 'Welcome, Ana' })).toBeVisible();
-	const mia = kidCard(page, MIA.name);
-	await expect(mia).toContainText(formatAge(MIA.birthDate, todayIn(MIA.timeZone)));
-	await expect(mia.getByRole('link', { name: `Settings for ${MIA.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${MIA.id}/settings`
-	);
-	await expect(mia.getByRole('link', { name: `Access for ${MIA.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${MIA.id}/access`
-	);
-	const leo = kidCard(page, LEO.name);
-	await expect(leo).toContainText(formatAge(LEO.birthDate, todayIn(LEO.timeZone)));
-	await expect(leo.getByRole('link', { name: /Settings|Access/ })).toHaveCount(0);
-	const switcher = page.getByRole('navigation', { name: 'Children' });
-	await expect(switcher.getByRole('link')).toHaveText([MIA.name, LEO.name]);
+	await expectLanding(page, { kid: MIA });
+	await expect(page.getByText(ageOf(MIA))).toBeVisible();
+	for (const [name, path] of [
+		['Settings', 'settings'],
+		['Access', 'access'],
+		['Modules', 'modules']
+	]) {
+		await expect(page.getByRole('link', { name: `${name} for ${MIA.name}` })).toHaveAttribute(
+			'href',
+			`/kids/${MIA.id}/${path}`
+		);
+	}
+	await expect(switcherOf(page).getByRole('link')).toHaveText([MIA.name, LEO.name, IVY.name]);
+	await expectAccessible(page);
+
+	await switcherOf(page).getByRole('link', { name: LEO.name }).click();
+	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
+	await expect(page.getByText(ageOf(LEO))).toBeVisible();
+	await expect(page.getByRole('link', { name: /Settings|Access|Modules/ })).toHaveCount(0);
 	await expectAccessible(page);
 });
 
@@ -91,7 +97,7 @@ test('the last visited kid is remembered in hbt_kid and preselected on /', async
 	context
 }) => {
 	await signIn(page, ANA);
-	const switcher = page.getByRole('navigation', { name: 'Children' });
+	const switcher = switcherOf(page);
 	await expect(switcher.getByRole('link', { name: MIA.name })).toHaveAttribute(
 		'aria-current',
 		'true'
@@ -151,9 +157,7 @@ test.describe('a device zone ICU lists only under an older name', () => {
 		await page.getByRole('button', { name: 'Add child' }).click();
 		await expect(page.getByRole('heading', { name: 'Anu', level: 1 })).toBeVisible();
 		await page.goto('/');
-		await expect(kidCard(page, 'Anu')).toContainText(
-			formatAge('2026-09-01', todayIn('Asia/Kolkata'))
-		);
+		await expect(page.getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))).toBeVisible();
 		await expectAccessible(page);
 	});
 });
@@ -190,9 +194,7 @@ test('settings keeps a stored zone missing from the ICU list selected', async ({
 	await page.reload();
 	await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
 	await page.goto('/');
-	await expect(kidCard(page, 'Anu')).toContainText(
-		formatAge('2026-09-01', todayIn('Asia/Kolkata'))
-	);
+	await expect(page.getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))).toBeVisible();
 });
 
 test('create a child without "born early"', async ({ page }) => {
@@ -338,10 +340,10 @@ test('delete needs the exact name', async ({ page, context }) => {
 
 	await confirm.fill(MIA.name);
 	await page.getByRole('button', { name: `Delete ${MIA.name}` }).click();
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
-	await expect(kidCard(page, MIA.name)).toHaveCount(0);
-	await expect(kidCard(page, LEO.name)).toBeVisible();
-	expect((await context.cookies()).find((c) => c.name === KID_COOKIE)).toBeUndefined();
+	await expectLanding(page, { kid: LEO });
+	await expect(switcherOf(page).getByRole('link')).toHaveText([LEO.name, IVY.name]);
+	// The landing remembers the kid it showed, so this cannot tell whether the deleted kid's cookie was cleared.
+	expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(LEO.id);
 	await expectNotFoundPage(page, `/kids/${MIA.id}`);
 });
 
@@ -383,7 +385,7 @@ test.describe('without JavaScript', () => {
 		await page.getByRole('button', { name: 'Add child' }).click();
 		await expect(page.getByRole('heading', { name: 'Zoe', level: 1 })).toBeVisible();
 		await page.goto('/');
-		await expect(kidCard(page, 'Zoe')).toContainText(formatAge('2026-08-01', todayIn('UTC')));
+		await expect(page.getByText(formatAge('2026-08-01', todayIn('UTC')))).toBeVisible();
 	});
 
 	test('settings renders a stored zone missing from the ICU list as selected', async ({ page }) => {

@@ -4,6 +4,7 @@ import {
 	SESSION_COOKIE,
 	expectAccessible,
 	expectFieldError,
+	expectLanding,
 	expectNotFoundPage,
 	signIn
 } from './helpers.js';
@@ -97,7 +98,7 @@ test(`once the other guardian left, the remaining one cannot leave: "${LAST_GUAR
 	await page.goto(`/kids/${MIA.id}/access`);
 	await add(page, 'cleo', 'Guardian');
 	await grant(page, 'Ana').getByRole('button', { name: 'Leave' }).click();
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+	await expectLanding(page, { kid: LEO });
 
 	await page.getByRole('button', { name: 'Sign out', exact: true }).click();
 	await signIn(page, CLEO);
@@ -113,7 +114,7 @@ test('leaving as one of two guardians goes home without the kid', async ({ page 
 	await add(page, 'cleo', 'Guardian');
 	await expect(grant(page, 'Cleo')).toContainText('Guardian');
 	await grant(page, 'Ana').getByRole('button', { name: 'Leave' }).click();
-	await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+	await expectLanding(page, { kid: LEO });
 	await expect(page.getByRole('heading', { name: MIA.name, exact: true })).toHaveCount(0);
 	await expectAccessible(page);
 	await expectNotFoundPage(page, `/kids/${MIA.id}`);
@@ -150,7 +151,7 @@ test.describe('a caregiver leaves a kid', () => {
 	}
 
 	async function expectLeft(page: Page) {
-		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		await expectLanding(page, { kid: MIA });
 		await expect(page.getByRole('heading', { name: LEO.name, exact: true })).toHaveCount(0);
 		const unknown = await expectNotFoundPage(page, '/kids/k-unknown');
 		for (const path of [`/kids/${LEO.id}`, `/kids/${LEO.id}/settings`, `/kids/${LEO.id}/access`]) {
@@ -192,7 +193,8 @@ test.describe('a caregiver leaves a kid', () => {
 		await openLeave(page);
 		await confirm(page).click();
 		await expectLeft(page);
-		expect((await context.cookies()).find((c) => c.name === KID_COOKIE)).toBeUndefined();
+		// The cookie follows the kid home the redirect landed on, never the kid just left.
+		expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(MIA.id);
 		await page.goto('/');
 		await expectAccessible(page);
 		expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
@@ -220,7 +222,7 @@ test.describe('a caregiver leaves a kid', () => {
 			}
 		]);
 		await confirm(page).click();
-		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		await expectLanding(page, { kid: MIA });
 		expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(MIA.id);
 	});
 
@@ -238,7 +240,7 @@ test.describe('a caregiver leaves a kid', () => {
 			}
 		});
 		await confirm(page).click();
-		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		await expectLanding(page, { kid: MIA });
 		expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
 		await expect(page.getByRole('heading', { name: MIA.name, exact: true })).toBeVisible();
 
@@ -258,7 +260,7 @@ test.describe('a caregiver leaves a kid', () => {
 		});
 		expect(revoke.status).toBe(204);
 		await confirm(page).click();
-		await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+		await expectLanding(page, { kid: MIA });
 		// Cleo's revoke, then Ana's leave, which the stub answers 404.
 		expect((await deletes()).map((r) => r.session === cleo)).toEqual([true, false]);
 	});
@@ -333,7 +335,7 @@ test.describe('a caregiver leaves a kid', () => {
 		test('the whole flow works', async ({ page }) => {
 			await openLeave(page);
 			await confirm(page).click();
-			await expect(page).toHaveURL(/127\.0\.0\.1:\d+\/$/);
+			await expectLanding(page, { kid: MIA });
 			await expect(page.getByRole('heading', { name: LEO.name, exact: true })).toHaveCount(0);
 			for (const path of [
 				`/kids/${LEO.id}`,

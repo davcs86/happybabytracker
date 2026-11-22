@@ -42,3 +42,15 @@ export async function expectNotFoundPage(page: Page, path: string) {
 	await expectAccessible(page);
 	return page.locator('body').innerText();
 }
+
+export type Landing = { kid: { id: string; name: string } } | { welcome: string };
+
+// Where a parent lands after signing in: the kid home, or the welcome when there is no kid.
+export async function expectLanding(page: Page, landing: Landing) {
+	if ('welcome' in landing) {
+		await expect(page.getByRole('heading', { name: `Welcome, ${landing.welcome}` })).toBeVisible();
+		return;
+	}
+	await expect(page).toHaveURL(new RegExp(`/kids/${landing.kid.id}$`));
+	await expect(page.getByRole('heading', { name: landing.kid.name, level: 1 })).toBeVisible();
+}

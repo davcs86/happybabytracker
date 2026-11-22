@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -207,6 +208,60 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 	for _, w := range want {
 		if _, ok := got[w]; !ok {
 			t.Fatalf("keys = %v, want %v", keys(got), want)
+		}
+	}
+}
+
+var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
+
+// logLeaks names each field of a JSON log line outside allowedLogFields, and each string field carrying a banned
+// value; request_id, time and duration_ms are random or measured, so they are never matched.
+func logLeaks(line string, banned ...string) []string {
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(line), &fields); err != nil {
+		return []string{"not JSON: " + err.Error()}
+	}
+	var out []string
+	for key, v := range fields {
+		if !slices.Contains(allowedLogFields, key) {
+			out = append(out, "unexpected field "+key)
+		}
+		text, isText := v.(string)
+		if !isText || key == "request_id" || key == "time" || key == "duration_ms" {
+			continue
+		}
+		for _, b := range banned {
+			if strings.Contains(text, b) {
+				out = append(out, key+" carries "+b)
+			}
+		}
+	}
+	return out
+}
+
+// wantCleanLog checks that log holds want lines and that none of them leaks.
+func wantCleanLog(t *testing.T, log string, want int, banned ...string) {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(log), "\n")
+	if len(lines) != want {
+		t.Fatalf("%d log lines, want %d:\n%s", len(lines), want, log)
+	}
+	for _, line := range lines {
+		for _, leak := range logLeaks(line, banned...) {
+			t.Errorf("%s: %s", leak, line)
+		}
+	}
+}
+
+func TestLogLeaksCatchesAValueButNotARandomOrMeasuredOne(t *testing.T) {
+	for line, leaks := range map[string]int{
+		`{"msg":"request","route":"x 4321"}`:                   1,
+		`{"msg":"request","extra":"y"}`:                        1,
+		`{"msg":"request","request_id":"a4321","time":"4321"}`: 0,
+		`{"msg":"request","duration_ms":4321,"status":200}`:    0,
+	} {
+		if got := logLeaks(line, "4321"); len(got) != leaks {
+			t.Errorf("%s: %v, want %d leaks", line, got, leaks)
 		}
 	}
 }

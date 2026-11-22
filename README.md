@@ -2,8 +2,33 @@
 
 A self-hosted health record for babies and kids. The record belongs to the child: an admin creates
 parent accounts and sends each parent a one-time invite link; a parent creates a kid and shares it with
-other parents as a guardian or a caregiver. The admin manages accounts only and never sees a kid. This
-first release is the foundation: accounts, invites and resets, kids and per-kid access.
+other parents as a guardian or a caregiver. The admin manages accounts only and never sees a kid.
+
+What a parent can do so far:
+
+- Accounts, invites and resets; kids and per-kid access (guardian or caregiver).
+- Daily trackers: bottles (one or more of breast milk, formula, cow's milk, other, with one total volume),
+  nursing (a timer that switches sides, or a finished session in minutes per side), pumping, diapers, solids and sleep.
+  Times are read and shown in the kid's time zone; volumes in each parent's unit (ml or US fl oz).
+  Sleep and nursing run as timers from the home; a timer over 24 hours is settled from its edit page.
+  Every entry can be edited or deleted by any parent with access.
+- The kid's home: quick-log buttons ordered for the kid's age, the running timers and today's totals.
+- A timeline per kid: entries newest first, grouped by the kid's days with each day's totals, filtered
+  by date range and tracker. A day's sleep total counts the part of each sleep inside that day, so an
+  overnight sleep listed under the evening it started also adds to the next morning's total.
+- Modules: a guardian switches any module off or on per kid; its entries stay.
+- Installable from the browser (a web app manifest and icons); online only, no service worker.
+
+Modules and their defaults by age (whole months from the birth date, in the kid's zone):
+
+| Module | Tracker | 0–11 | 12–23 | 24+ |
+|---|---|---|---|---|
+| `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding` (solids) | built | on | on | off |
+| `milestones` | later plan | on | on | off |
+| `growth`, `vaccination`, `sickness`, `medication` | later plans | on | on | on |
+
+A guardian's switch is final. When a kid enters a band where a module is off by default, the module
+stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
 
 Two images, built from this repo:
 

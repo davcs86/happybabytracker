@@ -45,6 +45,31 @@ const (
 	GestationDaysMin  = 0
 	GestationDaysMax  = 6
 
+	FlOzMicroMLNumerator   = 295735
+	FlOzMicroMLDenominator = 10000
+	MaxVolumeAmount        = 1 << 24
+
+	TrackerPageDefault   = 50
+	TrackerPageMax       = 100
+	MaxFutureSkew        = 5 * time.Minute
+	MinSessionDuration   = time.Second
+	MaxSessionDuration   = 24 * time.Hour
+	MaxNoteLen           = 500
+	SummaryMaxDays       = 93
+	BandOverrideLookback = 60 * 24 * time.Hour
+	CursorIDPattern      = `^[A-Za-z0-9-]{1,64}$`
+
+	MinBottleVolumeML = 1
+	MaxBottleVolumeML = 1000
+
+	MinPumpingVolumeML = 1
+	MaxPumpingVolumeML = 2000
+
+	MaxMealTextLen = 200
+
+	BandSecondStartMonths = 12
+	BandThirdStartMonths  = 24
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 

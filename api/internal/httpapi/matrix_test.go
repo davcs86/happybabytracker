@@ -13,6 +13,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 type actor int
@@ -78,6 +79,44 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/access":                  Guardian,
 	"PUT /v1/kids/{kid}/access/{username}":       Guardian,
 	"DELETE /v1/kids/{kid}/access/{parent}":      Caregiver,
+	"GET /v1/kids/{kid}/bottles":                 Caregiver,
+	"POST /v1/kids/{kid}/bottles":                Caregiver,
+	"GET /v1/kids/{kid}/bottles/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/bottles/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/bottles/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/diapers":                 Caregiver,
+	"POST /v1/kids/{kid}/diapers":                Caregiver,
+	"GET /v1/kids/{kid}/diapers/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/diapers/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/diapers/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/meals":                   Caregiver,
+	"POST /v1/kids/{kid}/meals":                  Caregiver,
+	"GET /v1/kids/{kid}/meals/{entry}":           Caregiver,
+	"PATCH /v1/kids/{kid}/meals/{entry}":         Caregiver,
+	"DELETE /v1/kids/{kid}/meals/{entry}":        Caregiver,
+	"GET /v1/kids/{kid}/pumping":                 Caregiver,
+	"POST /v1/kids/{kid}/pumping":                Caregiver,
+	"GET /v1/kids/{kid}/pumping/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/pumping/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/pumping/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/sleep":                   Caregiver,
+	"POST /v1/kids/{kid}/sleep":                  Caregiver,
+	"GET /v1/kids/{kid}/sleep/{entry}":           Caregiver,
+	"PATCH /v1/kids/{kid}/sleep/{entry}":         Caregiver,
+	"DELETE /v1/kids/{kid}/sleep/{entry}":        Caregiver,
+	"POST /v1/kids/{kid}/sleep/{entry}/end":      Caregiver,
+	"GET /v1/kids/{kid}/nursing":                 Caregiver,
+	"POST /v1/kids/{kid}/nursing":                Caregiver,
+	"GET /v1/kids/{kid}/nursing/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/nursing/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/nursing/{entry}":      Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/end":    Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
+	"GET /v1/kids/{kid}/timeline":                Caregiver,
+	"GET /v1/kids/{kid}/summary":                 Caregiver,
+	"GET /v1/kids/{kid}/modules":                 Caregiver,
+	"PUT /v1/kids/{kid}/modules/{module}":        Guardian,
+	"GET /v1/kids/{kid}/home":                    Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -103,12 +142,13 @@ func (w want) String() string {
 const matrixBody = `{"matrix_probe":true}`
 
 type fixture struct {
-	kit    *kit
-	kid    string
-	invite string
-	parent [actorCount]model.Parent
-	token  [actorCount]string
-	sid    [actorCount]string
+	kit                                           *kit
+	kid                                           string
+	bottle, diaper, meal, pumping, sleep, nursing string
+	invite                                        string
+	parent                                        [actorCount]model.Parent
+	token                                         [actorCount]string
+	sid                                           [actorCount]string
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -117,11 +157,30 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 	"username": func(f *fixture, _ Route, _ actor) string { return f.parent[aX].Username },
 	"token":    func(f *fixture, _ Route, _ actor) string { return f.invite },
 	"session":  func(f *fixture, _ Route, a actor) string { return f.sid[a] },
+	"module":   func(*fixture, Route, actor) string { return "bottles" },
 	"parent": func(f *fixture, rt Route, a actor) string {
 		if rt.Access == Caregiver && (a == aC || a == aG) {
 			return f.parent[aC].ID
 		}
 		return f.parent[aX].ID
+	},
+	"entry": func(f *fixture, rt Route, _ actor) string {
+		switch {
+		case strings.Contains(rt.Pattern, "/bottles/"):
+			return f.bottle
+		case strings.Contains(rt.Pattern, "/diapers/"):
+			return f.diaper
+		case strings.Contains(rt.Pattern, "/meals/"):
+			return f.meal
+		case strings.Contains(rt.Pattern, "/pumping/"):
+			return f.pumping
+		case strings.Contains(rt.Pattern, "/sleep/"):
+			return f.sleep
+		case strings.Contains(rt.Pattern, "/nursing/"):
+			return f.nursing
+		}
+		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
+		return ""
 	},
 }
 
@@ -175,6 +234,38 @@ func newMatrixFixture(t *testing.T) *fixture {
 	if err := k.Store.SetAccess(ctx, kid.ID, f.parent[aG].ID, f.parent[aC].Username, model.RoleCaregiver, k.now); err != nil {
 		t.Fatal(err)
 	}
+	bottleVolume, err := units.NewVolume(units.UnitML, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bottle, err := k.Store.CreateBottle(ctx, kid.ID, f.parent[aG].ID,
+		model.BottleFeed{At: k.now, Contents: []string{model.ContentFormula}, Volume: bottleVolume}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diaper, err := k.Store.CreateDiaper(ctx, kid.ID, f.parent[aG].ID, model.Diaper{At: k.now, Kind: "wet"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meal, err := k.Store.CreateMeal(ctx, kid.ID, f.parent[aG].ID, model.Meal{At: k.now, What: "banana"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pumping, err := k.Store.CreatePumping(ctx, kid.ID, f.parent[aG].ID,
+		model.PumpingSession{StartedAt: k.now, DurationSeconds: 900, Volume: bottleVolume, Side: "both"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sleep, err := k.Store.CreateSleep(ctx, kid.ID, f.parent[aG].ID, model.SleepSession{StartedAt: k.now.Add(-time.Hour), EndedAt: &k.now}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nursing, err := k.Store.CreateNursing(ctx, kid.ID, f.parent[aG].ID,
+		model.NursingSession{StartedAt: k.now.Add(-time.Hour), EndedAt: &k.now, LeftSeconds: 600, RightSeconds: 600}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.bottle, f.diaper, f.meal, f.pumping, f.sleep, f.nursing = bottle.ID, diaper.ID, meal.ID, pumping.ID, sleep.ID, nursing.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

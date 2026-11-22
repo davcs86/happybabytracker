@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	_ "modernc.org/sqlite"
@@ -20,9 +21,32 @@ var (
 	ErrConflict     = errors.New("store: conflict")
 	ErrLastGuardian = errors.New("store: last guardian")
 	ErrForbidden    = errors.New("store: forbidden")
+	// ErrInvalidContents is a bottle whose contents are empty, repeat a name or name an unknown one.
+	ErrInvalidContents = errors.New("store: invalid bottle contents")
+	// ErrAlreadyRunning is a timer start while the kid already has one running in that table.
+	ErrAlreadyRunning = errors.New("store: already running")
+	// ErrNotRunning is an end or side switch on a finished session.
+	ErrNotRunning = errors.New("store: not running")
+	// ErrInvalidSession is a timer write that breaks a session invariant (model's InvalidField, or a re-opened session).
+	ErrInvalidSession = errors.New("store: invalid session")
+	// ErrSummaryRange is a Summaries range longer than constants.SummaryMaxDays days.
+	ErrSummaryRange = errors.New("store: summary range too long")
 	// ErrParentNotFound is an ErrNotFound naming the grant's target, not the kid or the actor.
 	ErrParentNotFound = fmt.Errorf("%w: parent", ErrNotFound)
 )
+
+// Cursor names the last row of a page, by unix seconds and id; the next page is strictly older.
+type Cursor struct {
+	At int64
+	ID string
+}
+
+// ListQuery selects a kid's rows with a time in [From, To), newest first; Limit is at least 1.
+type ListQuery struct {
+	From, To time.Time
+	Limit    int
+	After    *Cursor
+}
 
 type Store struct {
 	w, r    *sql.DB

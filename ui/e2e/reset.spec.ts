@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, login } from './helpers.js';
-import { ANA, TOKENS, resetStub } from './stub-api.js';
+import { expectAccessible, expectLanding, login } from './helpers.js';
+import { ANA, MIA, TOKENS, resetStub } from './stub-api.js';
 
 const NEW_PASSWORD = 'a brand new password';
 
@@ -17,12 +17,12 @@ test('a reset link sets a new password that then logs in', async ({ page, contex
 	await page.getByLabel('New password').fill(NEW_PASSWORD);
 	await page.getByLabel('Confirm password').fill(NEW_PASSWORD);
 	await page.getByRole('button', { name: 'Set password' }).click();
-	await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 
 	await context.clearCookies();
 	await page.goto('/login');
 	await login(page, ANA.username, NEW_PASSWORD);
-	await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 });
 
 test('the reset form refuses a short password and a mismatch', async ({ page }) => {

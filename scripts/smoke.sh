@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runs both images together and asserts the contract end to end, through the UI only.
+# Needs Linux, GNU coreutils, bash >= 4.
 set -euo pipefail
 
 API_IMAGE="${1:?usage: smoke.sh <api-image> <ui-image>}"
@@ -24,9 +25,12 @@ ADMIN_PASSWORD="$(rand 24)"
 ADMIN_PASSWORD_2="$(rand 24)"
 PASSWORD_A="$(rand 24)"
 PASSWORD_B="$(rand 24)"
+PASSWORD_C="$(rand 24)"
 USER_A="smoke-a"
 USER_B="smoke-b"
+USER_C="smoke-c"
 KID_NAME="Kid${SUFFIX}"
+KID_ZONE=Europe/Madrid
 
 UI_URL="http://127.0.0.1:${UI_PORT}"
 ORIGIN="https://localhost:${UI_PORT}"
@@ -35,8 +39,15 @@ FORWARDED_HOST="localhost:${UI_PORT}"
 # Every secret and identifier the logs must never carry; tokens are appended as they appear.
 SECRETS_FILE="$WORK/secrets"
 printf '%s\n' "$INTERNAL_API_TOKEN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD" "$ADMIN_PASSWORD_2" \
-  "$PASSWORD_A" "$PASSWORD_B" "$USER_A" "$USER_B" "$KID_NAME" >"$SECRETS_FILE"
+  "$PASSWORD_A" "$PASSWORD_B" "$PASSWORD_C" "$USER_A" "$USER_B" "$USER_C" "$KID_NAME" >"$SECRETS_FILE"
 remember() { printf '%s\n' "$1" >>"$SECRETS_FILE"; }
+# Tracker notes and texts (also in SECRETS_FILE), and volume figures, matched on digit boundaries.
+NOTES_FILE="$WORK/notes"
+VALUES_FILE="$WORK/values"
+: >"$NOTES_FILE"
+: >"$VALUES_FILE"
+note() { remember "$1"; printf '%s\n' "$1" >>"$NOTES_FILE"; echo "$1"; }
+remember_value() { printf '%s\n' "$1" >>"$VALUES_FILE"; }
 
 cleanup() {
   docker rm -f "$UI" "$API" >/dev/null 2>&1 || true
@@ -190,9 +201,63 @@ mem_mib() { # container -> resident MiB (integer, rounded up; 99999 when unreada
     printf "%d\n", (v == int(v)) ? v : int(v) + 1 }'
 }
 
+NOW="$(date +%s)"
+ago() { # minutes -> that instant as datetime-local text in the kid's zone (GNU date)
+  TZ="$KID_ZONE" date -d "@$((NOW - $1 * 60))" '+%Y-%m-%dT%H:%M'
+}
+
+today() { TZ="$KID_ZONE" date '+%Y-%m-%d'; }
+
+# The two 4a bottles are 163 ml (ago 50) and 4.25 fl oz = 126 ml (ago 45); either may fall on yesterday.
+bottles_on() { # kid-local date -> what that day's Bottles row shows for them
+  local n=0 ml=0
+  if [ "$(ago 50 | cut -c1-10)" = "$1" ]; then n=$((n + 1)) ml=$((ml + 163)); fi
+  if [ "$(ago 45 | cut -c1-10)" = "$1" ]; then n=$((n + 1)) ml=$((ml + 126)); fi
+  if [ "$n" = 0 ]; then echo 'None yet'; else echo "$n · $ml ml"; fi
+}
+
+today_value() { # body-name label -> the value the home's Today card shows beside label
+  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<[^>]*>| |g' |
+    sed -E "s|^[[:space:]]*$2[[:space:]]*||; s|[[:space:]]+\$||" || true
+}
+
+pieces() { # name marker -> the body on one line, split before every marker
+  tr -d '\n' <"$WORK/$1.body" | sed "s|$2|\n&|g"
+}
+
+row_path() { # body-name text -> the edit path of the timeline row that shows text
+  local tail
+  tail="$(pieces "$1" '<li' | grep -F -- "$2" | grep -oE 'log/[a-z]+/[0-9a-f-]+"' | head -n 1 | tr -d '"' || true)"
+  if [ -n "$tail" ]; then echo "$KID_PATH/$tail"; fi
+}
+
+timer_id() { # body-name action -> the entry id the home's form for that action posts
+  pieces "$1" '<form' | grep -F "action=\"?/$2\"" | grep -oE 'name="id" value="[^"]+"' |
+    head -n 1 | sed -E 's/.*value="([^"]+)"/\1/' || true
+}
+
+modules_on() { # body-name -> the module fields of every ticked box on the modules page
+  tr -d '\n' <"$WORK/$1.body" | grep -oE '<input[^>]*name="module"[^>]*>' | grep -E ' checked' |
+    sed -E 's/.* value="([^"]+)".*/module=\1/' || true
+}
+
+count() { { grep -oF -- "$2" "$WORK/$1.body" || true; } | wc -l | tr -d ' '; }
+
+# A figure may sit beside digits only in timestamps, durations, statuses and ids, so those go first.
+logged_value() { # log-file -> succeeds when a remembered volume figure is in it
+  local v plain="$1.plain"
+  sed -E 's/"(time|request_id)":"[^"]*"//g; s/"(status|duration_ms|timeout_ms)":[0-9]+//g
+    s/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}//g' "$1" >"$plain"
+  while IFS= read -r v; do
+    if grep -qE "(^|[^0-9.])${v//./\\.}([^0-9]|$)" "$plain"; then return 0; fi
+  done <"$VALUES_FILE"
+  return 1
+}
+
 ADDR_ADMIN=203.0.113.10
 ADDR_A=203.0.113.11
 ADDR_B=203.0.113.12
+ADDR_C=203.0.113.13
 
 if port_busy "$UI_PORT"; then
   echo "FAIL: port $UI_PORT is busy; set SMOKE_UI_PORT" >&2
@@ -239,7 +304,7 @@ code="$(form admin-create-a "$ADDR_ADMIN" "$ADMIN_SESSION" '/admin/parents?/crea
 [ "$code" = 200 ] || fail "3 create $USER_A" "status $code"
 SESSION_A="$(redeem redeem-a "$ADDR_A" "$(invite_url admin-create-a)" "$PASSWORD_A")"
 code="$(form kid-new "$ADDR_A" "$SESSION_A" /kids/new "name=$KID_NAME" 'birth_date=2026-01-15' \
-  'sex=female' 'time_zone=UTC')"
+  'sex=female' "time_zone=$KID_ZONE")"
 KID_PATH="$(location kid-new)"
 case "$code $KID_PATH" in
   "303 /kids/"*) ;;
@@ -258,11 +323,168 @@ code="$(form grant-b "$ADDR_A" "$SESSION_A" "$KID_PATH/access?/add" "username=$U
   'role=caregiver')"
 [ "$code" = 200 ] || fail "4 grant caregiver" "status $code"
 code="$(req home-b "$ADDR_B" "$SESSION_B" "$UI_URL/")"
-{ [ "$code" = 200 ] && body_has home-b "$KID_NAME"; } || fail "4 $USER_B sees the kid" "status $code"
+[ "$code $(location home-b)" = "303 $KID_PATH" ] ||
+  fail "4 $USER_B home" "status $code, Location $(location home-b)"
+code="$(req kid-home-b "$ADDR_B" "$SESSION_B" "$UI_URL$KID_PATH")"
+{ [ "$code" = 200 ] && body_has kid-home-b "$KID_NAME"; } || fail "4 $USER_B sees the kid" "status $code"
 code="$(req access-b "$ADDR_B" "$SESSION_B" "$UI_URL$KID_PATH/access")"
 { [ "$code" = 404 ] && body_has access-b 'Not found' && ! body_has access-b "$KID_NAME"; } ||
   fail "4 caregiver access screen" "status $code"
 pass "4 $USER_B, a caregiver, sees the kid and gets a 404 page on its access screen"
+
+# 4a. smoke-a logs one entry of each tracker through the forms; each lands on the entry's timeline day.
+N_BOTTLE_ML="$(note "bottle-ml-note-${SUFFIX}")"
+N_BOTTLE_OZ="$(note "bottle-oz-note-${SUFFIX}")"
+N_NURSING="$(note "nursing-note-${SUFFIX}")"
+N_PUMPING="$(note "pumping-note-${SUFFIX}")"
+N_DIAPER="$(note "diaper-note-${SUFFIX}")"
+N_MEAL="$(note "meal-note-${SUFFIX}")"
+N_SLEEP="$(note "sleep-note-${SUFFIX}")"
+N_TIMER="$(note "nursing-timer-note-${SUFFIX}")"
+N_DIAPER_EDIT="$(note "diaper-edited-note-${SUFFIX}")"
+MEAL_WHAT="$(note "pear-${SUFFIX}")"
+MEAL_REACTION="$(note "liked-${SUFFIX}")"
+# 126 is the 4.25 fl oz bottle in ml, 551 and 713 the ml bottle and pumping in hundredths of an ounce.
+for v in 163 4.25 425 211 126 551 713; do remember_value "$v"; done
+log_entry() { # name tracker field=value... -> as smoke-a, expects the 303 to the timeline
+  local name="$1" tracker="$2" code
+  shift 2
+  code="$(form "$name" "$ADDR_A" "$SESSION_A" "$KID_PATH/log/$tracker?/save" "$@")"
+  case "$code $(location "$name")" in
+    "303 $KID_PATH/timeline?from="*) ;;
+    *) fail "4a log $tracker" "status $code, Location $(location "$name")" ;;
+  esac
+}
+log_entry log-bottle-ml bottles "at=$(ago 50)" contents=breast_milk contents=cow_milk volume=163 \
+  volume_unit=ml "note=$N_BOTTLE_ML"
+log_entry log-bottle-oz bottles "at=$(ago 45)" contents=formula volume=4.25 volume_unit=floz \
+  "note=$N_BOTTLE_OZ"
+log_entry log-nursing nursing "started_at=$(ago 120)" "ended_at=$(ago 100)" left_minutes=8 \
+  right_minutes=7 "note=$N_NURSING"
+log_entry log-pumping pumping "started_at=$(ago 90)" duration_minutes=12 volume=211 volume_unit=ml \
+  side=both "note=$N_PUMPING"
+log_entry log-diaper diapers at= kind=wet "note=$N_DIAPER"
+log_entry log-meal meals "at=$(ago 25)" "what=$MEAL_WHAT" "reaction=$MEAL_REACTION" "note=$N_MEAL"
+log_entry log-sleep sleep "started_at=$(ago 240)" "ended_at=$(ago 180)" "note=$N_SLEEP"
+pass "4a $USER_A logs a bottle (two contents, ml), a bottle in fl oz, nursing, pumping, a diaper, a meal and a sleep"
+
+# 4b. Timers from the home: one sleep at a time; a nursing timer switches side and ends.
+code="$(form start-sleep "$ADDR_A" "$SESSION_A" "$KID_PATH?/startSleep")"
+{ [ "$code" = 200 ] && body_has start-sleep 'Asleep since'; } || fail "4b start sleep" "status $code"
+code="$(form sleep-again "$ADDR_A" "$SESSION_A" "$KID_PATH/log/sleep?/save" started_at= ended_at= note=)"
+{ [ "$code" = 409 ] && body_has sleep-again 'A sleep timer is already running'; } ||
+  fail "4b second sleep timer" "status $code"
+code="$(form start-sleep-2 "$ADDR_A" "$SESSION_A" "$KID_PATH?/startSleep")"
+{ [ "$code" = 200 ] && [ "$(count start-sleep-2 'Asleep since')" = 1 ]; } ||
+  fail "4b second sleep tap" "status $code, $(count start-sleep-2 'Asleep since') running sleeps"
+SLEEP_ID="$(timer_id start-sleep-2 endSleep)"
+[ -n "$SLEEP_ID" ] || fail "4b sleep timer" "no End form"
+code="$(form end-sleep "$ADDR_A" "$SESSION_A" "$KID_PATH?/endSleep" "id=$SLEEP_ID")"
+{ [ "$code" = 200 ] && body_has end-sleep ">$KID_NAME</h1>" && ! body_has end-sleep 'Asleep since'; } ||
+  fail "4b end sleep" "status $code"
+log_entry log-nursing-timer nursing started_at= side=left ended_at= left_minutes= right_minutes= \
+  "note=$N_TIMER"
+code="$(req home-nursing "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+NURSING_ID="$(timer_id home-nursing switchSide)"
+{ [ "$code" = 200 ] && body_has home-nursing 'Nursing, left since' && [ -n "$NURSING_ID" ]; } ||
+  fail "4b nursing timer" "status $code"
+code="$(form switch-side "$ADDR_A" "$SESSION_A" "$KID_PATH?/switchSide" "id=$NURSING_ID" side=right)"
+{ [ "$code" = 200 ] && body_has switch-side 'Nursing, right since'; } || fail "4b switch side" "status $code"
+code="$(form end-nursing "$ADDR_A" "$SESSION_A" "$KID_PATH?/endNursing" "id=$NURSING_ID")"
+{ [ "$code" = 200 ] && body_has end-nursing ">$KID_NAME</h1>" &&
+  ! body_has end-nursing 'Nursing, right since' &&
+  ! body_has end-nursing 'Running now'; } ||
+  fail "4b end nursing" "status $code"
+pass "4b a sleep timer starts and ends from the home, a second one is refused (409), a nursing timer switches side and ends"
+
+# 4c. The timeline of the kid's days shows every entry; the home shows today's card.
+# to= is the day after NOW, so entries stamped after a midnight the run crosses still fall in the range.
+TIMELINE="$KID_PATH/timeline?from=$(ago 240 | cut -c1-10)&to=$(ago -1440 | cut -c1-10)"
+code="$(req timeline-a "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE")"
+[ "$code" = 200 ] || fail "4c timeline" "status $code"
+for t in "$N_BOTTLE_ML" "$N_BOTTLE_OZ" "$N_NURSING" "$N_PUMPING" "$N_DIAPER" "$N_MEAL" "$N_SLEEP" \
+  "$N_TIMER" "Solids: $MEAL_WHAT · $MEAL_REACTION" 'Bottle 163 ml, breast milk + cow' \
+  'Bottle 126 ml, formula' 'Nursing L 8 min · R 7 min' 'Pumping 12 min, 211 ml (both)' \
+  'Diaper wet' 'aria-label="Totals"' ">Bottles $(bottles_on "$(ago 50 | cut -c1-10)")<" \
+  ">Bottles $(bottles_on "$(ago 45 | cut -c1-10)")<"; do
+  body_has timeline-a "$t" || fail "4c timeline" "missing '$(printf '%s' "$t" | scrub)'"
+done
+code="$(req home-today "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+shown="$(today_value home-today Bottles)"
+want="$(bottles_on "$(today)")"
+{ [ "$code" = 200 ] && body_has home-today 'id="today-heading"' && [ "$shown" = "$want" ] &&
+  body_has home-today 'Diapers'; } || fail "4c today card" "status $code, Bottles '$shown', want '$want'"
+pass "4c the timeline shows every note, both bottle contents, fl oz in ml and the day totals; Today shows Bottles $shown"
+
+# 4d. The caregiver edits smoke-a's diaper and deletes the meal.
+code="$(req timeline-b "$ADDR_B" "$SESSION_B" "$UI_URL$TIMELINE")"
+DIAPER_PATH="$(row_path timeline-b "$N_DIAPER")"
+MEAL_PATH="$(row_path timeline-b "$N_MEAL")"
+{ [ "$code" = 200 ] && [ -n "$DIAPER_PATH" ] && [ -n "$MEAL_PATH" ]; } ||
+  fail "4d caregiver timeline" "status $code, rows '$DIAPER_PATH' '$MEAL_PATH'"
+code="$(form edit-diaper "$ADDR_B" "$SESSION_B" "$DIAPER_PATH?/save" at= kind=dirty "note=$N_DIAPER_EDIT")"
+case "$code $(location edit-diaper)" in
+  "303 $KID_PATH/timeline?from="*) ;;
+  *) fail "4d caregiver edit" "status $code, Location $(location edit-diaper)" ;;
+esac
+code="$(form delete-meal "$ADDR_B" "$SESSION_B" "$MEAL_PATH?/delete")"
+case "$code $(location delete-meal)" in
+  "303 $KID_PATH/timeline?from="*) ;;
+  *) fail "4d caregiver delete" "status $code, Location $(location delete-meal)" ;;
+esac
+code="$(req timeline-b2 "$ADDR_B" "$SESSION_B" "$UI_URL$TIMELINE")"
+{ [ "$code" = 200 ] && body_has timeline-b2 "$N_DIAPER_EDIT" && body_has timeline-b2 'Diaper dirty' &&
+  ! body_has timeline-b2 "$N_DIAPER" && ! body_has timeline-b2 "$N_MEAL" &&
+  ! body_has timeline-b2 "$MEAL_WHAT" && body_has timeline-b2 "$N_BOTTLE_ML"; } ||
+  fail "4d after edit and delete" "status $code"
+pass "4d $USER_B, a caregiver, edits $USER_A's diaper and deletes the meal; the timeline shows both"
+
+# 4e. A parent with no grant gets the 404 page on every new route; a caregiver on the modules page.
+code="$(form admin-create-c "$ADDR_ADMIN" "$ADMIN_SESSION" '/admin/parents?/create' \
+  "username=$USER_C" 'display_name=Smoke C')"
+[ "$code" = 200 ] || fail "4e create $USER_C" "status $code"
+SESSION_C="$(redeem redeem-c "$ADDR_C" "$(invite_url admin-create-c)" "$PASSWORD_C")"
+for p in timeline:"$TIMELINE" log:"$KID_PATH/log/bottles" modules:"$KID_PATH/modules" \
+  entry:"$DIAPER_PATH"; do
+  code="$(req "nogrant-${p%%:*}" "$ADDR_C" "$SESSION_C" "$UI_URL${p#*:}")"
+  { [ "$code" = 404 ] && body_has "nogrant-${p%%:*}" 'Not found' &&
+    ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-${p%%:*}.body" &&
+    ! body_has "nogrant-${p%%:*}" "$KID_NAME"; } || fail "4e no grant ${p%%:*}" "status $code"
+done
+code="$(req modules-b "$ADDR_B" "$SESSION_B" "$UI_URL$KID_PATH/modules")"
+{ [ "$code" = 404 ] && body_has modules-b 'Not found' && ! body_has modules-b "$KID_NAME"; } ||
+  fail "4e caregiver modules" "status $code"
+pass "4e $USER_C, with no grant, gets the 404 page on the timeline, log, modules and entry pages; $USER_B on modules"
+
+# 4f. Pumping switched off leaves the home and the default timeline, not the data; then back on.
+code="$(req modules-a "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/modules")"
+mapfile -t MODULES_ON < <(modules_on modules-a)
+{ [ "$code" = 200 ] && printf '%s\n' "${MODULES_ON[@]}" | grep -qx 'module=pumping' &&
+  body_has home-today "$KID_PATH/log/pumping\""; } || fail "4f modules page" "status $code"
+mapfile -t WITHOUT_PUMPING < <(printf '%s\n' "${MODULES_ON[@]}" | grep -vx 'module=pumping')
+code="$(form modules-off "$ADDR_A" "$SESSION_A" "$KID_PATH/modules?/save" "${WITHOUT_PUMPING[@]}")"
+{ [ "$code" = 200 ] && body_has modules-off 'Saved'; } || fail "4f pumping off" "status $code"
+code="$(req home-off "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+code_t="$(req timeline-off "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE")"
+code_p="$(req timeline-pumping "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE&types=pumping")"
+{ [ "$code $code_t $code_p" = '200 200 200' ] && ! body_has home-off "/log/pumping\"" &&
+  ! body_has timeline-off "$N_PUMPING" && body_has timeline-off "$N_BOTTLE_ML" &&
+  body_has timeline-pumping "$N_PUMPING" && ! body_has timeline-pumping "$N_BOTTLE_ML"; } ||
+  fail "4f pumping hidden" "home $code, timeline $code_t, types=pumping $code_p"
+code="$(form modules-on "$ADDR_A" "$SESSION_A" "$KID_PATH/modules?/save" "${MODULES_ON[@]}")"
+code_h="$(req home-on "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+{ [ "$code $code_h" = '200 200' ] && body_has home-on "$KID_PATH/log/pumping\""; } ||
+  fail "4f pumping on" "save $code, home $code_h"
+pass "4f pumping off: gone from the home and the default timeline, shown with types=pumping; on again"
+
+# 4g. The install files are served without a session, before the app's hooks.
+code="$(req manifest "$ADDR_C" - "$UI_URL/manifest.webmanifest")"
+code_i="$(req icon "$ADDR_C" - "$UI_URL/icons/icon-192.png")"
+{ [ "$code $code_i" = '200 200' ] &&
+  grep -qi '^content-type: application/manifest+json' "$WORK/manifest.headers" &&
+  grep -qi '^content-type: image/png' "$WORK/icon.headers"; } ||
+  fail "4g install files" "manifest $code, icon $code_i"
+pass "4g /manifest.webmanifest and /icons/icon-192.png answer 200 with their types and no cookie"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
@@ -280,29 +502,39 @@ code="$(form admin-disable-2 "$ADDR_ADMIN" "$ADMIN_SESSION" '/admin/parents?/dis
 [ "$code" = 200 ] || fail "5 disable after a second guardian" "status $code"
 code="$(req admin-parents-after "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
 code_a="$(req home-a "$ADDR_A" "$SESSION_A" "$UI_URL/")"
-{ [ "$code" = 200 ] && body_has admin-parents-after 'Disabled' && [ "$code_a" = 303 ]; } ||
-  fail "5 $USER_A disabled" "admin page $code, $USER_A home $code_a"
+{ [ "$code" = 200 ] && body_has admin-parents-after 'Disabled' && [ "$code_a" = 303 ] &&
+  [[ "$(location home-a)" == /login* ]]; } ||
+  fail "5 $USER_A disabled" "admin page $code, $USER_A home $code_a, Location $(location home-a)"
 pass "5 disabling the sole guardian is refused; after a second guardian it succeeds"
 
 # 6. The admin never sees a kid: pages, action answers, page data, and the kid's own URLs.
 code="$(req admin-parents-data "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents/__data.json")"
 [ "$code" = 200 ] || fail "6 admin page data" "status $code"
-for p in home:/ kid:"$KID_PATH" kid-access:"$KID_PATH/access"; do
+for p in home:/ kid:"$KID_PATH" kid-access:"$KID_PATH/access" kid-timeline:"$TIMELINE" \
+  kid-log:"$KID_PATH/log/bottles" kid-modules:"$KID_PATH/modules" kid-entry:"$DIAPER_PATH"; do
   code="$(req "admin-${p%%:*}" "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL${p#*:}")"
   [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
     fail "6 admin GET ${p#*:}" "status $code, Location $(location "admin-${p%%:*}")"
 done
+code="$(form admin-log-bottle "$ADDR_ADMIN" "$ADMIN_SESSION" "$KID_PATH/log/bottles?/save" \
+  contents=formula volume=90 volume_unit=ml note=)"
+[ "$code $(location admin-log-bottle)" = '303 /admin/parents' ] ||
+  fail "6 admin POST log/bottles" "status $code, Location $(location admin-log-bottle)"
+code="$(req timeline-after-admin "$ADDR_B" "$SESSION_B" "$UI_URL$TIMELINE")"
+{ [ "$code" = 200 ] && body_has timeline-after-admin "$N_BOTTLE_ML" &&
+  ! body_has timeline-after-admin 'Bottle 90 ml'; } || fail "6 admin POST created an entry" "status $code"
 code="$(req admin-kid-data "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL$KID_PATH/__data.json")"
 { [ "$code" = 200 ] && body_has admin-kid-data '"type":"redirect"' &&
   body_has admin-kid-data '/admin/parents'; } || fail "6 admin kid page data" "status $code"
-leaks() { grep -qF -- "$KID_NAME" "$1"; }
+leaks() { grep -qF -- "$KID_NAME" "$1" || grep -qF -f "$NOTES_FILE" "$1"; }
 leaks "$WORK/kid-a.body" || fail "6 control" "the kid's name is not found in its own page"
+grep -qF -- "$N_BOTTLE_ML" "$WORK/timeline-a.body" || fail "6 control" "a note is not found in the timeline"
 n=0
 for f in "$WORK"/admin-*.body "$WORK"/admin-*.headers; do
   n=$((n + 1))
   if leaks "$f"; then fail "6 admin sees no kid" "$(basename "$f")"; fi
 done
-pass "6 none of the admin's $n captured bodies and headers contain the kid's name (control matches)"
+pass "6 the admin's GETs and its bottle POST are 303s; none of its $n captured bodies and headers contain the kid's name or a note (controls match)"
 
 API_MEM_1="$(mem "$API")"
 UI_MEM_1="$(mem "$UI")"
@@ -363,13 +595,18 @@ for i in $(seq 1 "$BURST"); do
 done
 
 # 9. No identifier, password or token in either container's logs.
+printf '%s\n' '{"x":126}' >"$WORK/control-hit.log"
+printf '%s\n' '{"duration_ms":126,"status":200}' >"$WORK/control-miss.log"
+{ logged_value "$WORK/control-hit.log" && ! logged_value "$WORK/control-miss.log"; } ||
+  fail "9 control" "logged_value misses a figure or matches a measured one"
 docker logs "$API" >"$WORK/api-2.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
 for f in api-1.log api-2.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
+  if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume figure"; fi
 done
-pass "9 the logs of both containers carry no username, kid name, password or token"
+pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text or volume"
 
 # 10. Memory of each API process and of the UI, with the login burst in the last API process.
 fail_if_oom "10 memory"
