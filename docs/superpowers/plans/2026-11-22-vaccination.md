@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A guardian picks a national vaccination schedule for a kid (United States, United Kingdom, Mexico, Switzerland), anyone with access records administered doses (date required, lot and product optional), and the kid's vaccine screen shows every schedule line as given, due, upcoming, overdue or dismissed, with a soft "Due" list on the home screen. Nothing judges a dose's validity.
+**Goal:** A guardian picks a national vaccination schedule for a kid (United States, United Kingdom, Mexico), anyone with access records administered doses (date required, lot and product optional), and the kid's vaccine screen shows every schedule line as given, due, upcoming, overdue or dismissed, with a soft "Due" list on the home screen. Nothing judges a dose's validity.
 
 **Architecture:** A new Go package `api/internal/vaccines` embeds one CSV per schedule (per-antigen numbered series with age windows, provenance header) plus a small antigen and product catalogue, and a pure `Evaluate` function matches recorded doses to lines by count per antigen. Migration `0004` adds `vaccine_doses`, `vaccine_dismissals` and `kids.vaccine_schema`. The API exposes the evaluation, administrations (one administration writes one row per antigen) and dismissals; the home read model gains `due`. The UI adds one Vaccines page with record, edit and dismiss forms, a schedule select in kid settings, a Due section on the home and a quick-log tile.
 
@@ -27,7 +27,7 @@
 
 ## Reference data (what the research found; verify by test, do not re-research)
 
-| | `us` | `uk` (England) | `mx` | `ch` |
+| | `us` | `uk` (England) | `mx` | `ch` (left out) |
 |---|---|---|---|---|
 | Edition to pin | CDC "Child and Adolescent Immunization Schedule by Age", 2025 edition, revised 07/02/2025 (what cdc.gov serves; the January 2026 revision is reported stayed by a court, see Open value 3) | UKHSA "Complete routine immunisation schedule from 1 September 2026", updated 2026-09-24 | "Lineamientos Generales del Programa de Vacunación Universal 2026" (CeNSIA, Secretaría de Salud), amended 2026-02-18; cross-check PRONAM 2nd ed. 2026-07-30 | "Schweizerischer Impfplan 2026", Stand Februar 2026, corrected 2026-04-16 (BAG with EKIF) |
 | Licence | Public domain; conditions: credit the agency, no implied endorsement, do not change the substance, say it is free on the CDC site | Open Government Licence v3.0 ("Contains public sector information licensed under the Open Government Licence v3.0"); cite UKHSA, not NHS; logos and brand names excluded | No open licence found; gob.mx terms say content is public unless stated, require citing the URL and consultation date, and also say "solo para uso personal y no comercial"; LFDA art. 14 VIII excludes administrative texts and facts | "© Bundesamt für Gesundheit (BAG)"; admin.ch: written consent needed in advance for reproduction of any element; no open licence; URG Art. 5 coverage unclear |
@@ -40,11 +40,11 @@ Source ages are given in days, weeks, months or years, so a schedule file stores
 
 Failure modes the spec implies that no task's happy path exercises; each has a test in the named task.
 
-1. A kid added at age four, or a kid whose schema is switched: no wall of overdue lines for a guardian who has not yet dismissed anything is acceptable (that is what dismiss-before is for), but a switch must keep every dose, keep dismissals made in the old schema out of the new view, and never show a dose twice (Tasks 2, 7, 8).
-2. Count matching edges: more doses than the series has lines (the extras list under "Other"), a combination vaccine recorded once that fills the 4th diphtheria line and the 3rd hepatitis B line at once, deleting the 2nd of three doses shifts the later doses up one line, and a dose dated before an earlier-numbered one (Tasks 2, 8).
-3. Window edges in the kid's zone: the day a window opens, the day before it ends, the day it ends, birth dates on the 29th–31st of a month, and a leap-day birth (Tasks 2, 9).
-4. Cohort lines: a UK kid born the day before and the day of 1 July 2024 sees different series; a kid born outside every cohort of an antigen sees no line for it rather than an error (Tasks 1, 2, 3, 5).
-5. Dismissals: undo; dismiss-before with no eligible line; a line dismissed and also given (given wins); a dismissal for a line that is not in the kid's current schema (404); caregiver refused (Tasks 8, 9).
+1. A kid added at age four, or a kid whose schema is switched: no wall of overdue lines for a guardian who has not yet dismissed anything is acceptable (that is what dismiss-before is for), but a switch must keep every dose, keep dismissals made in the old schema out of the new view, and never show a dose twice (Tasks 2, 6, 7).
+2. Count matching edges: more doses than the series has lines (the extras list under "Other"), a combination vaccine recorded once that fills the 4th diphtheria line and the 3rd hepatitis B line at once, deleting the 2nd of three doses shifts the later doses up one line, and a dose dated before an earlier-numbered one (Tasks 2, 7).
+3. Window edges in the kid's zone: the day a window opens, the day before it ends, the day it ends, birth dates on the 29th–31st of a month, and a leap-day birth (Tasks 2, 8).
+4. Cohort lines: a UK kid born the day before and the day of 1 July 2024 sees different series; a kid born outside every cohort of an antigen sees no line for it rather than an error (Tasks 1, 2, 4, 5).
+5. Dismissals: undo; dismiss-before with no eligible line; a line dismissed and also given (given wins); a dismissal for a line that is not in the kid's current schema (404); caregiver refused (Tasks 2, 7).
 
 ---
 
@@ -54,9 +54,9 @@ Rule 1: these are proposals; each is silent or marked (call) in the spec.
 
 | # | Value | Proposal | Basis |
 |---|---|---|---|
-| 1 | Schedules to ship | `us`, `uk` (England only), `mx`, `ch` — the four of spec 9. Each ships only if Open value 2 allows it; a schedule left out has its id not offered and nothing else changes | spec 9 (owner) |
-| 2 | Licences and permission | **us:** transcribe with CDC's four conditions in the file header and the README. **uk:** transcribe with the OGL line; cite UKHSA only; no brand names. **mx:** no open licence; the proposal is to ship a facts-only transcription (antigen, dose number, age) with the URL and consultation date that gob.mx's terms ask for, and to say in the README that it is not endorsed by or a copy of the Secretaría de Salud; you may instead ask CeNSIA (`transparencia.censia@salud.gob.mx`) first or leave `mx` out. **ch:** the BAG requires written consent in advance for reproduction; options: (a) ask the BAG (`info-mt@bag.admin.ch`) and ship `ch` only after a written reply (recommended; I cannot send it, you or I with your go-ahead would), (b) ship a facts-only transcription labelled "© BAG, used with attribution" at your risk, (c) leave `ch` out. Task 6 (the `ch` data) is last and is skipped under (a) until a reply exists | research notes; the owner reviews the files in the PR (spec 9) |
-| 3 | US edition | Pin the CDC **2025 edition (revised 2025-07-02)**, which is what cdc.gov serves now. The research found that a January 2026 revision was approved without ACIP and stayed by a court (HepA, HepB, MenACWY, rotavirus, influenza and COVID moved to shared decision-making or risk-based, HPV to one dose); CDC's own 2026 text could not be retrieved. The file records its edition so a later plan can add another | research note us-cdc (not independently verified by me) |
+| 1 | Schedules to ship | `us`, `uk` (England only) and `mx`. **Switzerland (`ch`) is left out** (owner, 2026-11-22: the BAG requires written consent in advance and none was asked for); its id is not offered, and the research note stays in the repository for a later plan that obtains consent | owner |
+| 2 | Licences and permission | **us:** transcribe with CDC's four conditions in the file header and the README. **uk:** transcribe with the OGL line; cite UKHSA only; no brand names. **mx:** no open licence; owner decision (2026-11-22): ship a facts-only transcription (antigen, dose number, age) **with a citation** — the gob.mx URL of the Lineamientos and the consultation date, as gob.mx's terms ask — and say in the README that it is not endorsed by or a copy of the Secretaría de Salud | research notes; the owner reviews the files in the PR (spec 9) |
+| 3 | US edition | Owner decision: the CDC **2025 edition (revised 2025-07-02)**, which is what cdc.gov serves now. The research found that a January 2026 revision was approved without ACIP and reported stayed by a court (HepA, HepB, MenACWY, rotavirus, influenza and COVID moved to shared decision-making or risk-based, HPV to one dose); CDC's own 2026 text could not be retrieved and this is not independently verified. The file records its edition so a later update can replace it | research note us-cdc |
 | 4 | Window rule | Each line has `from` and an optional `until` (exclusive end). An age `N` covers `[N, N+1 unit)` when the source states it that way (Switzerland does); a source range such as "12–15 months" is `from 12m until 16m` ("through"). A line with no `until` (UK, Mexico) gets a default window of **one calendar month** after `from`. `upcoming` before `from`; `due` from `from` up to `until`; `overdue` from `until` on | spec 9 says "its recommended age window"; sources differ |
 | 5 | Line kinds | `routine` (can be due or overdue), `may_not_be_needed` (product-dependent, spec 9: due but never overdue), `supplementary` (Swiss "ergänzend", US shared decision-making, risk groups: listed under "Also available", never due or overdue), `recurring` (influenza, COVID-19 seasonal: listed with the doses given, never due or overdue) | spec 9 |
 | 6 | Cohorts | A line may carry `born_from` and/or `born_to` (inclusive dates); it exists for a kid only if the birth date falls inside. The UK 6-in-1 booster at 18 months and the MMRV, and Mexico's SRP at 6 years, depend on it | research notes uk-ukhsa, mx-censia |
@@ -70,6 +70,7 @@ Rule 1: these are proposals; each is silent or marked (call) in the spec.
 | 14 | Home "Due" | The home read model gains `due`: one entry per `from` age group that has a `due` or `overdue` line (`from`, `status` = `overdue` if any line is, `count`), ordered by `from`; the UI shows "4-month vaccines · overdue". Empty when the module is off or the kid has no schema. Medication joins it in plan 6 | spec 7.3 wireframe |
 | 15 | Limits | At most 500 administrations per kid (`MaxVaccineAdministrationsPerKid`); lot ≤ 40 and product name ≤ 80 characters; a note ≤ 500 (existing). A dose date may not be after the kid-local today nor before the birth date | (call) |
 | 16 | Review aid | Each schedule file has a generated review document `docs/vaccine-schedules/<id>.md` (a table per visit) and a test that fails when it is out of date, so you review the PR's tables, not CSV rows | spec 9 "reviewed by the owner in the PR" |
+| 17 | Easy to update (owner) | A schedule is one CSV plus a provenance header; an update edits that file, changes `edition` and `retrieved`, regenerates the review document (`UPDATE_DOCS=1 go test ./internal/vaccines/`) and opens a PR whose diff shows exactly which lines changed. The loader names the file, line and column of every error. Line ids are stable (`<antigen>-<series>`, plus a cohort tag only where two cohorts share a series number): an update that renames or removes a line only orphans stored dismissals, which are ignored, never an error; recorded doses never depend on a schedule. A runbook (`docs/runbooks/updating-vaccine-schedules.md`) lists the steps, each source's URL, when it is reissued and the traps from the research notes. The Vaccines page shows the edition and retrieval date so staleness is visible. Rejected: loading schedules from a directory at run time (a new env var, a volume and an edge change for something CI already ships) | owner |
 
 ---
 
@@ -86,7 +87,7 @@ type Kind string                                // KindRoutine, KindMayNotBeNeed
 type Line struct{ ID, Group, Antigen string; Series int; From Age; Until *Age; Kind Kind; BornFrom, BornTo string; Note string }
 type Schema struct{ ID, Name, Authority, Edition, Retrieved, OriginURL, Licence, Attribution string; Lines []Line }
 func Load() error                               // idempotent; a failure is remembered and returned on every call; main calls it before listening
-func Schemas() []Schema                         // shipped order: us, uk, mx, ch (those present)
+func Schemas() []Schema                         // shipped order: us, uk, mx
 func GetSchema(id string) (Schema, bool)
 type Antigen struct{ ID, Name string }
 type Product struct{ ID, Name string; Antigens []string }
@@ -95,7 +96,7 @@ func ValidAntigens(ids []string) error          // non-empty, known, no duplicat
 ```
 File format: `data/<id>.csv`, `# key: value` provenance lines (`schema`, `name`, `authority`, `edition`, `retrieved`, `origin_url`, `licence`, `attribution`), then the header `line,group,antigen,series,from,until,kind,born_from,born_to,note`.
 
-- [ ] **Step 1: Failing tests** on small in-memory schemas through an unexported `parse(io.Reader) (Schema, error)`: `ParseAge` table (`8w`, `12m`, `3y`, `0d` ok; `""`, `0m`, `-1m`, `8`, `8x`, `1.5m`, `12 m` refused); a valid file parses; every refusal is its own case — missing provenance key, duplicate line id, unknown kind, unknown antigen, series not starting at 1 or with a gap **within one cohort**, `until` not after `from`, `born_from` after `born_to`, a malformed date, a non-ASCII digit in an age; two lines of one antigen with the same series number and overlapping cohorts refused, with disjoint cohorts accepted; `Load()` idempotent and a panicking/failing injected loader is remembered (the growth package's `Load` is the pattern); catalogue: every product's antigens exist, no brand names list (a test pins the product ids).
+- [ ] **Step 1: Failing tests** on small in-memory schemas through an unexported `parse(name string, io.Reader) (Schema, error)` (every error names the file, the CSV line and the column, and never a free-form value; a test pins one message per refusal): `ParseAge` table (`8w`, `12m`, `3y`, `0d` ok; `""`, `0m`, `-1m`, `8`, `8x`, `1.5m`, `12 m` refused); a valid file parses; every refusal is its own case — missing provenance key, duplicate line id, unknown kind, unknown antigen, series not starting at 1 or with a gap **within one cohort**, `until` not after `from`, `born_from` after `born_to`, a malformed date, a non-ASCII digit in an age; two lines of one antigen with the same series number and overlapping cohorts refused, with disjoint cohorts accepted; `Load()` idempotent and a panicking/failing injected loader is remembered (the growth package's `Load` is the pattern); catalogue: every product's antigens exist, no brand names list (a test pins the product ids).
 - [ ] **Step 2:** `cd api && go test ./internal/vaccines/ -race` → FAIL. **Step 3: Implement.** Constants: `MaxVaccineAdministrationsPerKid = 500`, `VaccineLotMaxLen = 40`, `VaccineProductMaxLen = 80`, `VaccineDefaultWindowMonths = 1`. **Step 4:** PASS (a stub schema file is only in test code). **Step 5: Commit** `feat(api): vaccination schedule format, loader and catalogue`.
 
 ## Task 2: Age arithmetic and the evaluation engine
@@ -116,7 +117,7 @@ func (e Evaluation) Due() []DueGroup                // DueGroup{From Age; FromDa
 ```
 `Evaluate` keeps only lines whose cohort admits the birth date; sorts each antigen's doses by `GivenOn` then id and fills series 1..n in order; excess doses and doses of antigens absent from the schema go to `Other`; statuses by Open values 4, 5, 10; `until` empty means `from` + `VaccineDefaultWindowMonths`; `Also` and `Recurring` never carry due/overdue.
 
-- [ ] **Step 1: Failing tests:** `AddAge` (8w, 12m, 4y, 0d; a 31 Jan birth + 1m; 29 Feb 2024 + 1y; unparseable date → `ErrBadDate` without the date in the message); `TestEvaluateStatuses` (a US-shaped schema: before `from` upcoming, on `from` due, the day before `until` due, on `until` overdue, given beats overdue, dismissed beats due, given beats dismissed, `may_not_be_needed` due but never overdue, supplementary in `Also` without a status of due/overdue, recurring never due); `TestCountMatching` (a combination dose fills two antigens' lines; 6 doses against a 5-line series → one in `Other`; deleting the middle dose shifts later doses up; an earlier-dated dose recorded later takes the earlier line; a dose of an antigen not in the schema → `Other`); `TestCohorts` (born 2024-06-30 vs 2024-07-01 see different series for the same antigen; a kid in no cohort of an antigen has no lines for it); `TestWindowsInTheKidsZone` (window edges in Pacific/Auckland vs UTC); `TestDueGroups` (one group per `from` age, `overdue` if any line overdue, none when all are given or dismissed, counts).
+- [ ] **Step 1: Failing tests:** `AddAge` (8w, 12m, 4y, 0d; a 31 Jan birth + 1m; 29 Feb 2024 + 1y; unparseable date → `ErrBadDate` without the date in the message); `TestEvaluateStatuses` (a US-shaped schema: before `from` upcoming, on `from` due, the day before `until` due, on `until` overdue, given beats overdue, dismissed beats due, given beats dismissed, `may_not_be_needed` due but never overdue, supplementary in `Also` without a status of due/overdue, recurring never due); `TestCountMatching` (a combination dose fills two antigens' lines; 6 doses against a 5-line series → one in `Other`; deleting the middle dose shifts later doses up; an earlier-dated dose recorded later takes the earlier line; a dose of an antigen not in the schema → `Other`); `TestOrphanDismissals` (a dismissal for a line the schedule no longer has is ignored, never an error); `TestCohorts` (born 2024-06-30 vs 2024-07-01 see different series for the same antigen; a kid in no cohort of an antigen has no lines for it); `TestWindowsInTheKidsZone` (window edges in Pacific/Auckland vs UTC); `TestDueGroups` (one group per `from` age, `overdue` if any line overdue, none when all are given or dismissed, counts).
 - [ ] **Step 2:** FAIL. **Step 3: Implement.** **Step 4:** `go test ./internal/vaccines/ ./internal/kidtime/ -race` PASS. **Step 5: Commit** `feat(api): vaccination status engine and age arithmetic`.
 
 ## Task 3: United States schedule data
@@ -138,16 +139,9 @@ func (e Evaluation) Due() []DueGroup                // DueGroup{From Age; FromDa
 **Files:** Create `api/internal/vaccines/data/mx.csv`, `docs/vaccine-schedules/mx.md`; modify `data_test.go`, `README.md`.
 
 - [ ] **Step 1: Failing tests:** `TestMXKnownLines` (BCG and hepatitis B at `0d`; hexavalent components at `2m`, `4m`, `6m`, `18m`; DPT booster at `4y` counting as diphtheria, tetanus and pertussis series 5; rotavirus at `2m`, `4m`; pneumococcus `2m`, `4m`, `12m`; SRP at `12m`, `18m`, and the 6-year dose with `born_to 2020-06-30`; hepatitis A at `18m`; influenza `recurring`); the attribution contains the gob.mx URL, "consulta" date and the not-endorsed sentence; no line has an `until` earlier than its `from`. Rows whose ages came from the low-confidence Anexo 1 scan carry `note: "(verify)"` and the review document lists them first.
-- [ ] **Step 2–5:** as Task 3, commit `feat(api): Mexico vaccination schedule (Lineamientos PVU 2026)`. Skipped if the owner leaves `mx` out (Open value 2).
+- [ ] **Step 2–5:** as Task 3, commit `feat(api): Mexico vaccination schedule (Lineamientos PVU 2026)`.
 
-## Task 6: Switzerland schedule data (last; gated on Open value 2)
-
-**Files:** Create `api/internal/vaccines/data/ch.csv`, `docs/vaccine-schedules/ch.md`; modify `data_test.go`, `README.md`.
-
-- [ ] **Step 1: Failing tests:** `TestCHKnownLines` (hexavalent components at `2m`, `4m`, `12m` — the 3rd allowed from 11 months is `note`; PCV `2m`, `4m`, `12m`; MMR and varicella at `9m` and `12m` (each `until` the day before the next month, per the Impfplan's own definition); the 4–7 y booster `until 8y`; HPV `11y until 15y`; rotavirus, MenB and MenACWY lines are `supplementary` and never overdue; RSV is `recurring`); the attribution reads "© Bundesamt für Gesundheit (BAG), used with attribution" and contains the owner's decision text.
-- [ ] **Step 2–5:** as Task 3, commit `feat(api): Switzerland vaccination schedule (BAG 2026)`. Under Open value 2(a) this task waits for the BAG's written reply and the commit message records it.
-
-## Task 7: Migration 0004 and the store
+## Task 6: Migration 0004 and the store
 
 **Files:** Create `api/internal/store/migrations/0004_vaccination.sql`, `api/internal/store/vaccines.go` (+ test); modify `api/internal/store/kids.go`, `api/internal/model/model.go`, `api/internal/store/store_test.go`.
 
@@ -171,7 +165,7 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests:** migration on a database at 0003 with kids and every child table (the 0003 upgrade test is the pattern): all rows survive, `vaccine_schema` reads NULL, version `"4"`; CRUD of an administration (3 antigens → 3 rows with one administration id; update replaces the antigen set; delete removes all rows; a lone-antigen delete is not possible through the API); `TestAdministrationBelongsToItsKid` (another kid's id → `ErrNotFound` on read, update, delete), `TestVaccineWriteByDisabledActor`, `TestAdministrationCap` (the 501st is refused with `ErrConflict`; deleting one frees a slot), dismissals upsert/clear/list per schema, `DismissLines` is atomic (a failing line rolls all back), cascade on kid delete empties both tables.
 - [ ] **Step 2:** FAIL. **Step 3: Implement** by the pattern of `growth.go` and `entries.go`. **Step 4:** `go test ./internal/store/ -race` PASS. **Step 5: Commit** `feat(api): vaccination migration and store`.
 
-## Task 8: Vaccination API
+## Task 7: Vaccination API
 
 **Files:** Create `api/internal/httpapi/vaccines.go` (+ test); modify `routes.go`, `matrix_test.go`, `kids.go` (+ `kids_test.go`), `cmd/happybabytracker-api/main.go` (call `vaccines.Load()` before listening).
 
@@ -182,7 +176,7 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests:** `TestVaccinesShape` (key sets via `sameKeys`; a fixed kid and a small shipped-shape schema, so tests do not depend on the real files); `TestRoutesRoles` (guardian and caregiver record/edit/delete; caregiver refused on dismissals and the kid's schema → 403; no-grant and unknown kid and unknown administration 404 bodies byte-identical; admin 403); `TestValidation` (future date, before birth, malformed date, empty antigens, unknown or duplicate antigen, `other` without product, lot/product/note over their limits, unknown field, `null` on required fields); `TestSwitchSchema` (doses kept, dismissals of the old schema not shown, a dismissal for a line of another schema → 404); `TestDismissBefore` (only unsettled routine/`may_not_be_needed` lines before the date; none eligible → 200 with `dismissed: 0`; undo of one line); `TestNoSchema` (empty arrays, doses still recorded and listed under `other`); `TestNoValuesInLogs` with `wantCleanLog` (a distinctive lot, product, note, date); matrix: every new route classed and `matrixParams` entries for `{administration}` and `{line}`.
 - [ ] **Step 2:** FAIL. **Step 3: Implement** by the pattern of `growth.go` (`optionalString`, `mergeOnto`, `entryOK`). **Step 4:** `go test ./... -race` PASS. **Step 5: Commit** `feat(api): vaccination schedule, doses and dismissals`.
 
-## Task 9: Home "Due"
+## Task 8: Home "Due"
 
 **Files:** Modify `api/internal/httpapi/home.go`, `home_test.go`.
 
@@ -191,7 +185,7 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests:** `sameKeys` gains `due`; `TestHomeDue` (a kid with a US-shaped schema at 4 months: one group, `overdue` when a line is past its `until`, `due` otherwise; module switched off → `[]`; no schema → `[]`; all lines given or dismissed → `[]`; the window edges in a non-UTC zone from Task 2 are exercised through the API once).
 - [ ] **Step 2–5:** `go test ./internal/httpapi/ -race`; commit `feat(api): the home read model lists what is due`.
 
-## Task 10: UI plumbing — client, types, forms, stub
+## Task 9: UI plumbing — client, types, forms, stub
 
 **Files:** Modify `ui/src/lib/server/api.ts` (+ test), `ui/src/lib/types.ts`, `ui/src/lib/constants.ts`, `ui/src/lib/server/constants.ts` if needed, `ui/src/lib/server/kid-form.ts`, `ui/e2e/stub-api.ts`; create `ui/src/lib/server/vaccine-form.ts` (+ test), `ui/src/lib/vaccines.ts` (+ test).
 
@@ -200,7 +194,7 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests (RED):** formatters and `readVaccineForm` (no antigen → field `antigens`; hostile date text; value-free messages; edit omits untouched fields and sends `null` for a cleared lot; missing originals fail closed), `api.test.ts` (list, create 422 with `field`, update, delete, dismissals, a bad id → not-found without fetch, malformed bodies → `error`), `e2e/stub-vaccines.spec.ts` self-tests.
 - [ ] **Step 2–5:** `cd ui && pnpm test` → FAIL; implement; `pnpm check && pnpm lint && pnpm test && pnpm test:e2e --trace off`; commit `feat(ui): vaccination client, forms, formatters and stub routes`.
 
-## Task 11: UI — the Vaccines page and the dose forms
+## Task 10: UI — the Vaccines page and the dose forms
 
 **Files:** Create `ui/src/routes/(app)/kids/[kid]/vaccines/{+page.server.ts,+page.svelte}`, `…/vaccines/new/{+page.server.ts,+page.svelte}`, `…/vaccines/[administration]/{+page.server.ts,+page.svelte}`, `ui/src/lib/components/vaccines/{VaccineGroup.svelte,DoseFields.svelte}`; modify `ui/src/lib/paths.ts`.
 
@@ -209,7 +203,7 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests (Playwright, both projects, axe):** `vaccines.spec.ts` — a kid with the stub schedule shows groups in age order with the right statuses; no schema shows the prompt (guardian link vs caregiver text); record a 6-in-1 through the product shortcut and see the lines given; record with a lot and product and read them back on the edit page; edit only the note sends `{note}`; clear the lot sends `null`; delete with the confirm; a future date, a date before birth and no antigen show field messages with values kept; dismiss a line and undo it; dismiss-before; caregiver can record and cannot see dismiss controls; no-grant parent and another kid's administration id → the same 404 page; "Other" lists an extra dose; no horizontal overflow at 390 px with a 200-character unbroken note; no-JS record.
 - [ ] **Step 2–5:** RED; implement; full UI pipeline; commit `feat(ui): the vaccines page and dose forms`.
 
-## Task 12: UI — schedule setting, home Due, quick log
+## Task 11: UI — schedule setting, home Due, quick log
 
 **Files:** Modify `ui/src/lib/components/KidForm.svelte`, `ui/src/lib/server/kid-form.ts`, `ui/src/routes/(app)/kids/[kid]/settings/+page.server.ts`, `…/kids/new/+page.server.ts`, `…/kids/[kid]/+page.server.ts` and `+page.svelte`, `ui/src/lib/components/{KidLinks.svelte,QuickLog.svelte}`, `ui/src/lib/quick-log.ts` (+ test), `ui/e2e/{home,kids}.spec.ts`.
 
@@ -218,12 +212,12 @@ func (s *Store) DismissLines(ctx, kidID, actorID, schema string, lines []string,
 - [ ] **Step 1: Failing tests (Playwright, both projects, axe):** select lists exactly the shipped ids plus "None yet", saving one changes the Vaccines page's caption, a new kid defaults to none; home shows Due with an overdue group and hides it with the module off; the Vaccination tile appears in the 24+ band after growth, hidden when the module is off; `quick-log.test.ts` updated (vaccination now has a tile); no-JS settings save.
 - [ ] **Step 2–5:** RED; implement; full UI pipeline; commit `feat(ui): vaccination schedule setting, due list and quick-log tile`.
 
-## Task 13: Smoke, docs and HANDOFF
+## Task 12: Smoke, docs and HANDOFF
 
 **Files:** Modify `scripts/smoke.sh`, `README.md`, `docs/superpowers/HANDOFF.md`, `api/Dockerfile` only if a new notice file is needed.
 
 - [ ] **Step 1: Extend `scripts/smoke.sh`** (failing first against the images from `main`): step `4i` — as the guardian choose the US schedule for the smoke kid in settings, read the Vaccines page and assert the caption and the attribution text, the lines in age order and a due/overdue line for the kid's age; record a 6-in-1 (or the US equivalent) through the real form and assert the matching lines turn given and the same dose is not listed twice; edit its lot and delete it through the real API (scrape the hidden originals as step 4h does); dismiss a line and undo it; switch to the UK schedule and assert the doses are still there and the US dismissal is gone; a caregiver records one; the no-grant parent and the admin get 404/redirect on `/kids/{id}/vaccines`, `/vaccines/new`, `/vaccines/{administration}`; assert the settings select lists exactly the shipped schedule ids; the home shows Due for the kid; extend step 9's log scan with the distinctive lot, product name and note; keep step 10's ceilings (the API must stay under 60 MiB with all schedules loaded: report the measured numbers).
-- [ ] **Step 2:** build both images and run `scripts/smoke.sh hbt-api:dev hbt-ui:dev` → every line `PASS:`; `shellcheck scripts/smoke.sh`. **Step 3: Docs:** README Vaccination section (what is shown, the four schedules and editions, "never judges validity", "overdue is a soft flag", the licence position per schedule); `docs/vaccine-schedules/` index; HANDOFF: plans 1–5 done, plan 6 (sickness, medication, reminders) starts from the `vaccination` Due group in the home read model, the owner decisions of plan 5, the unverified items (Mexico and Swiss reuse, the US 2026 revision, Anexo 1 ages). **Step 4:** the whole pipeline in CLAUDE.md (API, UI, images, smoke) green. **Step 5: Commit** `test: smoke covers vaccination; docs: plan 5 done`.
+- [ ] **Step 2:** build both images and run `scripts/smoke.sh hbt-api:dev hbt-ui:dev` → every line `PASS:`; `shellcheck scripts/smoke.sh`. **Step 3: Docs:** README Vaccination section (what is shown, the three schedules and editions, "never judges validity", "overdue is a soft flag", the licence position per schedule); `docs/vaccine-schedules/` index; the update runbook `docs/runbooks/updating-vaccine-schedules.md` (Open value 17); HANDOFF: plans 1–5 done, plan 6 (sickness, medication, reminders) starts from the `vaccination` Due group in the home read model, the owner decisions of plan 5, the unverified items (Mexico reuse, the US 2026 revision, Anexo 1 ages) and that Switzerland is left out pending the BAG's consent. **Step 4:** the whole pipeline in CLAUDE.md (API, UI, images, smoke) green. **Step 5: Commit** `test: smoke covers vaccination; docs: plan 5 done`.
 
 ---
 
