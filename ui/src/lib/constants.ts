@@ -15,6 +15,8 @@ import type {
 	VolumeUnit,
 	WeightUnit
 } from './types';
+// Loaded by Node too (src/params), so the import names the .ts file.
+import { growthNewPath } from './paths.ts';
 
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
 export const MIN_PASSWORD_LEN = 12;
@@ -64,6 +66,8 @@ export const GROWTH_SCORE_REASONS = [
 	'before_term'
 ] as const satisfies readonly GrowthScoreReason[];
 export const DEFAULT_TIME_ZONE = 'UTC';
+// The API's default source for a new kid.
+export const DEFAULT_GROWTH_SOURCE: GrowthSourceId = 'who';
 export const INVITE_VALIDITY = '72 hours';
 export const RESET_VALIDITY = '1 hour';
 
@@ -158,6 +162,10 @@ export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {
 	diapers: 'diapers',
 	sleep: 'sleep',
 	feeding: 'meals'
+};
+// Modules whose entry point is a page of their own rather than a tracker's log form.
+export const PAGE_ROUTE: Partial<Record<ModuleId, (kidId: string) => string>> = {
+	growth: growthNewPath
 };
 // Spec 7.3: the quick-log buttons lead with these per age band; the other modules follow in MODULES order.
 export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {

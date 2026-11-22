@@ -22,6 +22,7 @@
 		weeks: string;
 		days: string;
 		timeZone: string;
+		growthSource: string;
 	};
 
 	let {
@@ -29,6 +30,7 @@
 		field = null,
 		message = null,
 		zones,
+		sources,
 		detectZone = false,
 		submitLabel,
 		action
@@ -37,6 +39,7 @@
 		field?: string | null;
 		message?: string | null;
 		zones: string[];
+		sources: { id: string; name: string; hint: string }[];
 		detectZone?: boolean;
 		submitLabel: string;
 		action?: string;
@@ -192,6 +195,31 @@
 		</select>
 		{#if err('time_zone')}
 			<p id="kid-time_zone-error" class={ERROR_CLASS} role="alert">{err('time_zone')}</p>
+		{/if}
+	</div>
+	<div class="flex flex-col gap-2">
+		<Label for="kid-growth_source">Growth chart source</Label>
+		<select
+			id="kid-growth_source"
+			name="growth_source"
+			class={SELECT_CLASS}
+			value={values.growthSource}
+			aria-invalid={invalid('growth_source')}
+			aria-describedby={['kid-growth_source-hint', describedBy('growth_source')]
+				.filter(Boolean)
+				.join(' ')}
+		>
+			{#each sources as source (source.id)}
+				<option value={source.id}>{source.name}</option>
+			{/each}
+		</select>
+		<ul id="kid-growth_source-hint" class="flex flex-col gap-1 text-sm text-muted-foreground">
+			{#each sources as source (source.id)}
+				<li>{source.name}: {source.hint}</li>
+			{/each}
+		</ul>
+		{#if err('growth_source')}
+			<p id="kid-growth_source-error" class={ERROR_CLASS} role="alert">{err('growth_source')}</p>
 		{/if}
 	</div>
 	<Button type="submit" class="self-start">{submitLabel}</Button>

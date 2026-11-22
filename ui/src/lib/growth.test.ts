@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { correctedAgeLabel, formatLength, formatPercentile, formatWeight, formatZ } from './growth';
+import {
+	correctedAgeLabel,
+	coverageHint,
+	formatLength,
+	formatPercentile,
+	formatWeight,
+	formatZ
+} from './growth';
 
 describe('formatWeight', () => {
 	it.each([
@@ -83,5 +90,18 @@ describe('correctedAgeLabel', () => {
 
 	it('counts a corrected age of zero as a real age', () => {
 		expect(correctedAgeLabel(33, 0)).toBe('1 month 2 days (corrected 0 days)');
+	});
+});
+
+describe('coverageHint', () => {
+	it("lists each measure in the API's order, whole months inside the API's range", () => {
+		expect(
+			coverageHint([
+				{ measure: 'weight', fromMonths: 0, toMonths: 120 },
+				{ measure: 'length', fromMonths: 0, toMonths: 228 },
+				{ measure: 'head', fromMonths: 0, toMonths: 60.98 },
+				{ measure: 'bmi', fromMonths: 23.5, toMonths: 240.5 }
+			])
+		).toBe('Months covered: weight 0–120, length 0–228, head circumference 0–60, BMI 24–240');
 	});
 });

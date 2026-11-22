@@ -9,7 +9,7 @@ import {
 	Z_SCORE_DECIMALS
 } from './constants';
 import { formatAgeDays } from './format';
-import type { GrowthLength, GrowthWeight, LengthUnit, WeightUnit } from './types';
+import type { GrowthLength, GrowthSourceInfo, GrowthWeight, LengthUnit, WeightUnit } from './types';
 
 // Ounces are shown to one decimal: hundredths per shown tenth.
 const HUNDREDTHS_PER_TENTH = 10;
@@ -18,7 +18,7 @@ const TENTHS_PER_LB = OZ_PER_LB * (HUNDREDTHS_PER_OZ / HUNDREDTHS_PER_TENTH);
 const roundHalfUp = (n: number, d: number) => Math.floor((2 * n + d) / (2 * d));
 
 // n / scale for a whole n and a power-of-ten scale, without trailing zeros and without float maths.
-function decimal(n: number, scale: number): string {
+export function decimal(n: number, scale: number): string {
 	const whole = Math.floor(n / scale);
 	const frac = String(n % scale)
 		.padStart(String(scale).length - 1, '0')
@@ -61,3 +61,16 @@ export function correctedAgeLabel(chronologicalDays: number, correctedDays: numb
 	if (correctedDays < 0) return `${lived} (before expected term)`;
 	return `${lived} (corrected ${formatAgeDays(correctedDays)})`;
 }
+
+const COVERAGE_LABEL = {
+	weight: 'weight',
+	length: 'length',
+	head: 'head circumference',
+	bmi: 'BMI'
+};
+
+// Whole months inside the API's range, so the hint never claims an age the source lacks.
+export const coverageHint = (coverage: GrowthSourceInfo['coverage']) =>
+	`Months covered: ${coverage
+		.map((c) => `${COVERAGE_LABEL[c.measure]} ${Math.ceil(c.fromMonths)}–${Math.floor(c.toMonths)}`)
+		.join(', ')}`;

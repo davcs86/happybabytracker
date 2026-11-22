@@ -2,13 +2,15 @@ import { fail } from '@sveltejs/kit';
 import type { ApiResult } from './api';
 import { failAction } from './outcome';
 import {
+	DEFAULT_GROWTH_SOURCE,
 	DEFAULT_TIME_ZONE,
 	GESTATION_DAYS,
 	GESTATION_WEEKS,
 	KID_MIN_BIRTH_DATE,
 	KID_NAME_MAX_LEN
 } from '../constants';
-import type { Kid, KidInput } from '../types';
+import { coverageHint } from '../growth';
+import type { GrowthSourceInfo, Kid, KidInput } from '../types';
 
 export type KidField =
 	| 'name'
@@ -52,7 +54,7 @@ export function kidValues(kid?: Kid): KidFormValues {
 		weeks: kid?.gestationWeeks?.toString() ?? '',
 		days: kid?.gestationDays?.toString() ?? '',
 		timeZone: kid?.timeZone ?? DEFAULT_TIME_ZONE,
-		growthSource: kid?.growthSource ?? ''
+		growthSource: kid?.growthSource ?? DEFAULT_GROWTH_SOURCE
 	};
 }
 
@@ -108,3 +110,7 @@ export function kidApiFailure<T extends object>(
 	if (r.reason === 'invalid' && isKidField(r.field)) return kidFieldFailure(values, r.field, extra);
 	return failAction(r, { ...extra, values, field: null as KidField | null });
 }
+
+// The source select offers exactly the API's list, each with its coverage on one line.
+export const sourceOptions = (sources: GrowthSourceInfo[]) =>
+	sources.map((s) => ({ id: s.id, name: s.name, hint: coverageHint(s.coverage) }));

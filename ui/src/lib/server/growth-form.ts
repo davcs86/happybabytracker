@@ -1,3 +1,4 @@
+import { fail } from '@sveltejs/kit';
 import {
 	GRAMS_PER_KG,
 	GROWTH_RANGES,
@@ -8,7 +9,9 @@ import {
 	OZ_PER_LB,
 	WEIGHT_UNITS
 } from '../constants';
-import type { EntryBody, Units } from '../types';
+import { decimal } from '../growth';
+import type { EntryBody, GrowthLength, GrowthRow, Measure, Units } from '../types';
+import { failAction, type ApiFailure } from './outcome';
 
 export type GrowthFormValues = Record<string, string>;
 export type GrowthMode = { kind: 'create' } | { kind: 'edit' };
@@ -73,6 +76,75 @@ export function growthCreateValues(
 		length_unit: units.length,
 		head_unit: units.length
 	};
+}
+
+const lengthText = (l: GrowthLength | null) =>
+	l === null
+		? ''
+		: l.typedUnit === 'cm'
+			? decimal(l.mm, MM_PER_CM)
+			: decimal(l.inHundredths, HUNDREDTHS_PER_INCH);
+
+// Typed values in their typed unit; the other weight unit is pre-filled from its own column, so flipping
+// the unit resends the same weight. A measure the row lacks shows the preferred unit, head the length one.
+export function growthEditValues(
+	row: GrowthRow,
+	units: Pick<Units, 'weight' | 'length'>
+): GrowthFormValues {
+	const ozPerLb = OZ_PER_LB * HUNDREDTHS_PER_OZ;
+	const w = row.weight;
+	const shown: GrowthFormValues = {
+		measured_on: row.measuredOn,
+		weight_unit: w?.typedUnit ?? units.weight,
+		weight_kg: w ? decimal(w.grams, GRAMS_PER_KG) : '',
+		weight_lb: w ? String(Math.floor(w.ozHundredths / ozPerLb)) : '',
+		weight_oz: w ? decimal(w.ozHundredths % ozPerLb, HUNDREDTHS_PER_OZ) : '',
+		length_unit: row.length?.typedUnit ?? units.length,
+		length: lengthText(row.length),
+		head_unit: row.head?.typedUnit ?? units.length,
+		head: lengthText(row.head),
+		note: row.note ?? ''
+	};
+	const originals = Object.fromEntries(KEPT_FIELDS.map((k) => [`${k}_original`, shown[k]]));
+	return { ...shown, ...originals };
+}
+
+// The chart the growth page opens on after a save: the first measure the row has.
+export const firstMeasure = (row: Pick<GrowthRow, 'weight' | 'length' | 'head'>): Measure =>
+	row.weight ? 'weight' : row.length ? 'length' : row.head ? 'head' : 'weight';
+
+// The units a page without a signed-in parent's preference shows.
+export const METRIC_UNITS: Pick<Units, 'weight' | 'length'> = { weight: 'kg', length: 'cm' };
+
+export const GROWTH_LIMIT_MESSAGE = 'This child has the maximum number of measurements';
+
+export function growthFieldFailure<T extends object>(
+	values: GrowthFormValues,
+	field: string,
+	extra: T,
+	message: string | null = null
+) {
+	return fail(422, { ...extra, values, field, message: message ?? GROWTH_FIELD_MESSAGES[field] });
+}
+
+// A refused field lands on its input, the row cap on the form, anything else as failAction decides.
+export function growthApiFailure<T extends object>(
+	values: GrowthFormValues,
+	r: ApiFailure,
+	extra: T
+) {
+	if (r.reason === 'invalid' && r.field && Object.hasOwn(GROWTH_FIELD_MESSAGES, r.field)) {
+		return growthFieldFailure(values, r.field, extra);
+	}
+	if (r.reason === 'conflict' && r.code === 'limit') {
+		return fail(409, {
+			...extra,
+			values,
+			field: null as string | null,
+			message: GROWTH_LIMIT_MESSAGE
+		});
+	}
+	return failAction(r, { ...extra, values, field: null as string | null });
 }
 
 // A whole number, or one with up to as many decimals (point or comma) as scale has zeros, times scale.

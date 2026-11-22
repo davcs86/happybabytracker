@@ -22,7 +22,9 @@
 <div class="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 	<div>
 		<h1 class="text-xl font-semibold">Growth for {data.kid.name}</h1>
-		<p class="text-muted-foreground">{data.age}</p>
+		<p class="text-muted-foreground">
+			{data.correctedAge ? `${data.age} (corrected ${data.correctedAge})` : data.age}
+		</p>
 	</div>
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
 	<a href={growthNewPath(data.kid.id)} class="text-sm underline">Add measurement</a>

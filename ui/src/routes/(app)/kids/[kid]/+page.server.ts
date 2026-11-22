@@ -20,9 +20,12 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 	if (!home.ok) failPage(home);
 	setKidCookie(cookies, kid.data.id);
 	const enabled = new Set(home.data.modules.filter((m) => m.enabled).map((m) => m.module));
+	const today = todayInOrUtc(kid.data.timeZone);
+	const corrected = home.data.correctedBirthDate;
 	return {
 		kid: kid.data,
-		age: formatAge(kid.data.birthDate, todayInOrUtc(kid.data.timeZone)),
+		age: formatAge(kid.data.birthDate, today),
+		correctedAge: corrected === null ? null : formatAge(corrected, today),
 		running: home.data.running,
 		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
 		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')

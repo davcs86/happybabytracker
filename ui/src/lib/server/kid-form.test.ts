@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readKidForm } from './kid-form';
+import { kidValues, readKidForm } from './kid-form';
 
 const form = (fields: Record<string, string>) => {
 	const data = new FormData();
@@ -22,5 +22,23 @@ describe('readKidForm growth source', () => {
 		const r = readKidForm(form(kid));
 		expect(r.input).not.toHaveProperty('growthSource');
 		expect(r.values.growthSource).toBe('');
+	});
+});
+
+describe('kidValues growth source', () => {
+	it("defaults a new kid to who and shows a stored kid's own source", () => {
+		expect(kidValues().growthSource).toBe('who');
+		const stored = {
+			id: 'k-1',
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC',
+			growthSource: 'cdc',
+			role: 'guardian'
+		} as const;
+		expect(kidValues(stored).growthSource).toBe('cdc');
 	});
 });

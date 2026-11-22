@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { growthCreateValues, GROWTH_FIELD_MESSAGES, readGrowthForm } from './growth-form';
+import type { GrowthRow } from '../types';
+import {
+	growthApiFailure,
+	growthCreateValues,
+	growthEditValues,
+	GROWTH_FIELD_MESSAGES,
+	GROWTH_LIMIT_MESSAGE,
+	readGrowthForm
+} from './growth-form';
 
 const CREATE = { kind: 'create' } as const;
 const EDIT = { kind: 'edit' } as const;
@@ -303,5 +311,129 @@ describe('readGrowthForm edit', () => {
 			weight_kg_original: '3.2',
 			measured_on_original: '2026-11-01'
 		});
+	});
+});
+
+const row = (over: Partial<GrowthRow>): GrowthRow => ({
+	id: 'g-1',
+	measuredOn: '2026-11-01',
+	weight: null,
+	length: null,
+	head: null,
+	note: null,
+	ageDays: 100,
+	correctedDays: null,
+	scores: { weight: null, length: null, head: null, bmi: null },
+	...over
+});
+const METRIC = { weight: 'kg', length: 'cm' } as const;
+const IMPERIAL = { weight: 'lb', length: 'in' } as const;
+// What the edit page posts back untouched, with the given fields changed.
+const posted = (values: Record<string, string>, changed: Record<string, string> = {}) =>
+	readGrowthForm(form({ ...values, ...changed }), EDIT);
+
+describe('growthEditValues', () => {
+	it('shows each typed value in its typed unit, the other weight unit pre-filled from its column', () => {
+		const v = growthEditValues(
+			row({
+				weight: { grams: 3709, ozHundredths: 13084, typedUnit: 'lb' },
+				length: { mm: 495, inHundredths: 1949, typedUnit: 'cm' },
+				head: { mm: 343, inHundredths: 1350, typedUnit: 'in' },
+				note: 'clinic'
+			}),
+			METRIC
+		);
+		expect(v).toMatchObject({
+			measured_on: '2026-11-01',
+			weight_unit: 'lb',
+			weight_lb: '8',
+			weight_oz: '2.84',
+			weight_kg: '3.709',
+			length_unit: 'cm',
+			length: '49.5',
+			head_unit: 'in',
+			head: '13.5',
+			note: 'clinic'
+		});
+	});
+
+	it('gives all nine originals; a measure the row lacks keeps the preferred unit, head the length one', () => {
+		const v = growthEditValues(
+			row({ weight: { grams: 3200, ozHundredths: 11288, typedUnit: 'kg' } }),
+			IMPERIAL
+		);
+		expect(v).toMatchObject({
+			measured_on_original: '2026-11-01',
+			weight_unit_original: 'kg',
+			weight_kg_original: '3.2',
+			weight_lb_original: '7',
+			weight_oz_original: '0.88',
+			length_unit: 'in',
+			length_unit_original: 'in',
+			length_original: '',
+			head_unit: 'in',
+			head_unit_original: 'in',
+			head_original: ''
+		});
+		expect(Object.keys(v).filter((k) => k.endsWith('_original'))).toHaveLength(9);
+	});
+
+	it('an untouched form sends the note only; a note change too', () => {
+		const v = growthEditValues(
+			row({ weight: { grams: 13150, ozHundredths: 46385, typedUnit: 'kg' } }),
+			METRIC
+		);
+		expect(posted(v).input).toEqual({ note: null });
+		expect(posted(v, { note: 'only the note' }).input).toEqual({ note: 'only the note' });
+	});
+
+	it('flipping the weight unit resends the pre-filled value in the new unit', () => {
+		const v = growthEditValues(
+			row({ weight: { grams: 3709, ozHundredths: 13084, typedUnit: 'kg' } }),
+			METRIC
+		);
+		expect(posted(v, { weight_unit: 'lb' }).input).toEqual({
+			weight: { unit: 'lb', amount: 13084 },
+			note: null
+		});
+	});
+
+	it('flipping a length unit with the same digits reads them in the new unit; blanking clears', () => {
+		const v = growthEditValues(
+			row({
+				length: { mm: 495, inHundredths: 1949, typedUnit: 'cm' },
+				head: { mm: 343, inHundredths: 1350, typedUnit: 'cm' }
+			}),
+			METRIC
+		);
+		expect(posted(v, { length_unit: 'in' }).input).toEqual({
+			length: { unit: 'in', amount: 4950 },
+			note: null
+		});
+		expect(posted(v, { head: '' }).input).toEqual({ head: null, note: null });
+		expect(posted(v, { head_unit: 'in', head: '' }).input).toEqual({ head: null, note: null });
+	});
+});
+
+describe('growthApiFailure', () => {
+	const values = growthCreateValues('2026-11-20', METRIC);
+	it('lands a refused field on its input and the row cap on the form', () => {
+		expect(
+			growthApiFailure(
+				values,
+				{ ok: false, status: 422, reason: 'invalid', field: 'measured_on' },
+				{}
+			)
+		).toMatchObject({
+			status: 422,
+			data: { values, field: 'measured_on', message: GROWTH_FIELD_MESSAGES.measured_on }
+		});
+		expect(
+			growthApiFailure(values, { ok: false, status: 409, reason: 'conflict', code: 'limit' }, {})
+		).toMatchObject({
+			status: 409,
+			data: { values, field: null, message: GROWTH_LIMIT_MESSAGE }
+		});
+		expect(GROWTH_LIMIT_MESSAGE).toBe('This child has the maximum number of measurements');
 	});
 });

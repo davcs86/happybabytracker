@@ -14,22 +14,27 @@ const readMeasure = (v: string | null): Measure => MEASURES.find((m) => m === v)
 
 export const load: PageServerLoad = async ({ locals, params, url, cookies, parent }) => {
 	const measure = readMeasure(url.searchParams.get('measure'));
-	const [kid, rows, curves, sources, { session }] = await Promise.all([
+	const [kid, home, rows, curves, sources, { session }] = await Promise.all([
 		locals.api.getKid(params.kid),
+		locals.api.home(params.kid),
 		locals.api.listGrowth(params.kid),
 		locals.api.curves(params.kid, { measure }),
 		locals.api.growthSources(),
 		parent()
 	]);
 	if (!kid.ok) failPage(kid);
+	if (!home.ok) failPage(home);
 	if (!rows.ok) failPage(rows);
 	if (!curves.ok) failPage(curves);
 	if (!sources.ok) failPage(sources);
 	setKidCookie(cookies, kid.data.id);
 	const units = session?.parent?.units;
+	const today = todayInOrUtc(kid.data.timeZone);
+	const corrected = home.data.correctedBirthDate;
 	return {
 		kid: kid.data,
-		age: formatAge(kid.data.birthDate, todayInOrUtc(kid.data.timeZone)),
+		age: formatAge(kid.data.birthDate, today),
+		correctedAge: corrected === null ? null : formatAge(corrected, today),
 		measure,
 		units: units ? { weight: units.weight, length: units.length } : METRIC,
 		rows: rows.data,

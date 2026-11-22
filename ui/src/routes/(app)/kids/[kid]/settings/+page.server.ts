@@ -1,17 +1,32 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { KID_COOKIE, PARENT_HOME } from '#lib/server/constants.js';
 import { clearKidCookie, setKidCookie } from '#lib/server/cookie.js';
-import { kidApiFailure, kidFieldFailure, kidValues, readKidForm } from '#lib/server/kid-form.js';
+import {
+	kidApiFailure,
+	kidFieldFailure,
+	kidValues,
+	readKidForm,
+	sourceOptions
+} from '#lib/server/kid-form.js';
 import { failAction, failPage } from '#lib/server/outcome.js';
 import { timeZoneOptions } from '#lib/server/time-zones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies }) => {
-	const r = await locals.api.getKid(params.kid);
+	const [r, sources] = await Promise.all([
+		locals.api.getKid(params.kid),
+		locals.api.growthSources()
+	]);
 	if (!r.ok) failPage(r);
 	if (r.data.role !== 'guardian') failPage({ ok: false, status: 403, reason: 'forbidden' });
+	if (!sources.ok) failPage(sources);
 	setKidCookie(cookies, r.data.id);
-	return { kid: r.data, values: kidValues(r.data), zones: timeZoneOptions(r.data.timeZone) };
+	return {
+		kid: r.data,
+		values: kidValues(r.data),
+		zones: timeZoneOptions(r.data.timeZone),
+		sources: sourceOptions(sources.data)
+	};
 };
 
 export const actions: Actions = {

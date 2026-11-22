@@ -32,6 +32,7 @@
 	field={save && 'field' in save ? save.field : null}
 	message={save && 'message' in save ? save.message : null}
 	zones={data.zones}
+	sources={data.sources}
 	submitLabel="Save"
 	action="?/save"
 />

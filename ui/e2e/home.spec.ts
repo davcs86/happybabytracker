@@ -25,6 +25,7 @@ test.beforeEach(async () => {
 });
 
 const quickLog = (page: Page) => page.getByRole('region', { name: 'Quick log' });
+const mainNav = (page: Page) => page.getByRole('navigation', { name: 'Main' });
 const running = (page: Page) => page.getByRole('region', { name: 'Running now' });
 const today = (page: Page) => page.getByRole('region', { name: 'Today' });
 const MS_PER_MINUTE = 60_000;
@@ -57,7 +58,8 @@ test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; link
 		'Diaper',
 		'Sleep',
 		'Pumping',
-		'Feeding'
+		'Feeding',
+		'Growth'
 	]);
 	const log = (name: string) => quickLog(page).getByRole('link', { name, exact: true });
 	await expect(log('Bottle')).toHaveAttribute('href', `/kids/${MIA.id}/log/bottles`);
@@ -65,6 +67,7 @@ test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; link
 	await expect(log('Diaper')).toHaveAttribute('href', `/kids/${MIA.id}/log/diapers`);
 	await expect(log('Pumping')).toHaveAttribute('href', `/kids/${MIA.id}/log/pumping`);
 	await expect(log('Feeding')).toHaveAttribute('href', `/kids/${MIA.id}/log/meals`);
+	await expect(log('Growth')).toHaveAttribute('href', `/kids/${MIA.id}/growth/new`);
 	await expect(quickLog(page).getByRole('button', { name: 'Sleep' })).toBeVisible();
 	await expect(page.getByRole('heading', { name: 'Due' })).toHaveCount(0);
 	await expectAccessible(page);
@@ -80,7 +83,8 @@ test('a 13-month kid starts with Feeding', async ({ page }) => {
 		'Sleep',
 		'Diaper',
 		'Nursing',
-		'Pumping'
+		'Pumping',
+		'Growth'
 	]);
 	await expectAccessible(page);
 });
@@ -91,7 +95,8 @@ test('a kid over 24 months has no timer trackers and no empty headings', async (
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByRole('button', { name: /Sleep|Nursing/ })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: /Sleep|Nursing/ })).toHaveCount(0);
-	for (const heading of ['Due', 'Quick log', 'Running now', 'Today']) {
+	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth']);
+	for (const heading of ['Due', 'Running now', 'Today']) {
 		await expect(page.getByRole('heading', { name: heading })).toHaveCount(0);
 	}
 	await expectAccessible(page);
@@ -108,7 +113,8 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Nursing',
 		'Diaper',
 		'Pumping',
-		'Feeding'
+		'Feeding',
+		'Growth'
 	]);
 	await expectAccessible(page);
 	const posts = (await receivedRequests()).filter(
@@ -124,7 +130,8 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Diaper',
 		'Sleep',
 		'Pumping',
-		'Feeding'
+		'Feeding',
+		'Growth'
 	]);
 	await expect(today(page).getByRole('term')).toHaveText([
 		'Bottles',
@@ -293,7 +300,8 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		'Nursing',
 		'Sleep',
 		'Pumping',
-		'Feeding'
+		'Feeding',
+		'Growth'
 	]);
 	// The entry stays in the data: only the default timeline view follows the modules.
 	const kept = await ana('GET', `/v1/kids/${MIA.id}/timeline?types=bottle`);
@@ -399,7 +407,7 @@ test('/growth is a 303 to the current kid’s growth page, or home without kids'
 	context
 }) => {
 	await signIn(page, ANA);
-	await expect(page.getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
+	await expect(mainNav(page).getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
 		'href',
 		'/growth'
 	);
@@ -410,10 +418,10 @@ test('/growth is a 303 to the current kid’s growth page, or home without kids'
 	await page.goto(`/kids/${LEO.id}`);
 	const second = await page.request.get('/growth', { maxRedirects: 0 });
 	expect(second.headers()['location']).toBe(`/kids/${LEO.id}/growth`);
-	await page.getByRole('link', { name: 'Growth', exact: true }).click();
+	await mainNav(page).getByRole('link', { name: 'Growth', exact: true }).click();
 	await expect(page).toHaveURL(`/kids/${LEO.id}/growth`);
 	await expect(page.getByRole('heading', { name: 'Growth for Leo', level: 1 })).toBeVisible();
-	await expect(page.getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
+	await expect(mainNav(page).getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
 		'aria-current',
 		'page'
 	);
