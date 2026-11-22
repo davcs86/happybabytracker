@@ -78,6 +78,11 @@ const (
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
 
+	DaysPerMonth          = 30.4375
+	CurveFineStepMonths   = 0.5
+	CurveCoarseStepMonths = 1
+	CurveFineUntilMonths  = 24
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
