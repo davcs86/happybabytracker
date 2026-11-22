@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -43,4 +44,34 @@ func pageTail(timeCol, kidID string, q ListQuery) (string, []any) {
 		args = append(args, q.After.At, q.After.At, q.After.ID)
 	}
 	return tail + ` ORDER BY ` + timeCol + ` DESC, id DESC LIMIT ?`, append(args, q.Limit)
+}
+
+// listEntries runs selectFrom (a SELECT ... FROM <table> built from code constants) with pageTail and scans each row.
+func listEntries[T any](ctx context.Context, r *sql.DB, selectFrom, timeCol, kidID string, q ListQuery, scan func(rowScanner) (T, error)) ([]T, error) {
+	tail, args := pageTail(timeCol, kidID, q)
+	rows, err := r.QueryContext(ctx, selectFrom+tail, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []T{}
+	for rows.Next() {
+		v, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// deleteEntry removes the kid's row id from table, a code constant; actorID needs an active grant.
+func (s *Store) deleteEntry(ctx context.Context, table, kidID, actorID, id string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE kid_id = ? AND id = ?`, kidID, id)
+		return oneRow(res, err)
+	})
 }

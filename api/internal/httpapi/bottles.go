@@ -93,52 +93,14 @@ func (d Deps) createBottle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getBottle(w http.ResponseWriter, r *http.Request) {
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	b, err := d.Store.Bottle(r.Context(), r.PathValue("kid"), id)
-	if entryOK(w, err) {
-		respondJSON(w, http.StatusOK, newBottleView(b))
-	}
+	getEntry(w, r, d.Store.Bottle, newBottleView)
 }
 
 // updateBottle validates the stored bottle with the patch applied, never the patch alone.
 func (d Deps) updateBottle(w http.ResponseWriter, r *http.Request) {
-	var in bottleInput
-	if !decodeJSON(w, r, &in) {
-		return
-	}
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	birth, ok := d.birthStart(w, r)
-	if !ok {
-		return
-	}
-	kidID := r.PathValue("kid")
-	stored, err := d.Store.Bottle(r.Context(), kidID, id)
-	if !entryOK(w, err) {
-		return
-	}
-	now := d.Now()
-	b, field := in.mergeOnto(stored, birth, now)
-	if field != "" {
-		respondInvalid(w, field)
-		return
-	}
-	if err := d.Store.UpdateBottle(r.Context(), kidID, PrincipalFrom(r.Context()).ParentID, b, now); entryOK(w, err) {
-		respondJSON(w, http.StatusOK, newBottleView(b))
-	}
+	patchEntry(d, w, r, d.Store.Bottle, bottleInput.mergeOnto, d.Store.UpdateBottle, newBottleView)
 }
 
 func (d Deps) deleteBottle(w http.ResponseWriter, r *http.Request) {
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	if entryOK(w, d.Store.DeleteBottle(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, id)) {
-		w.WriteHeader(http.StatusNoContent)
-	}
+	deleteEntry(w, r, d.Store.DeleteBottle)
 }

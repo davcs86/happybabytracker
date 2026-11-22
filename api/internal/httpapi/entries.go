@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -128,4 +129,64 @@ func respondPage[T, V any](w http.ResponseWriter, key string, rows []T, limit in
 		views[i] = view(row)
 	}
 	respondJSON(w, http.StatusOK, map[string]any{key: views, "next_cursor": next})
+}
+
+// getEntry answers 200 with the view of the entry in the path; load is the tracker's store read.
+func getEntry[T, V any](w http.ResponseWriter, r *http.Request, load func(ctx context.Context, kidID, id string) (T, error), view func(T) V) {
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	v, err := load(r.Context(), r.PathValue("kid"), id)
+	if entryOK(w, err) {
+		respondJSON(w, http.StatusOK, view(v))
+	}
+}
+
+// deleteEntry answers 204; del is the tracker's store delete.
+func deleteEntry(w http.ResponseWriter, r *http.Request, del func(ctx context.Context, kidID, actorID, id string) error) {
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	if entryOK(w, del(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, id)) {
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// patchEntry decodes the body, loads the stored entry, validates it with the patch merged in (merge names the first
+// invalid field, "" when valid), saves it and answers 200 with the view.
+func patchEntry[T, In, V any](
+	d Deps, w http.ResponseWriter, r *http.Request,
+	load func(ctx context.Context, kidID, id string) (T, error),
+	merge func(in In, stored T, birth, now time.Time) (T, string),
+	save func(ctx context.Context, kidID, actorID string, v T, now time.Time) error,
+	view func(T) V,
+) {
+	var in In
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	birth, ok := d.birthStart(w, r)
+	if !ok {
+		return
+	}
+	kidID := r.PathValue("kid")
+	stored, err := load(r.Context(), kidID, id)
+	if !entryOK(w, err) {
+		return
+	}
+	now := d.Now()
+	v, field := merge(in, stored, birth, now)
+	if field != "" {
+		respondInvalid(w, field)
+		return
+	}
+	if err := save(r.Context(), kidID, PrincipalFrom(r.Context()).ParentID, v, now); entryOK(w, err) {
+		respondJSON(w, http.StatusOK, view(v))
+	}
 }

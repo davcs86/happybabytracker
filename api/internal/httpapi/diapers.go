@@ -84,52 +84,14 @@ func (d Deps) createDiaper(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d Deps) getDiaper(w http.ResponseWriter, r *http.Request) {
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	x, err := d.Store.Diaper(r.Context(), r.PathValue("kid"), id)
-	if entryOK(w, err) {
-		respondJSON(w, http.StatusOK, newDiaperView(x))
-	}
+	getEntry(w, r, d.Store.Diaper, newDiaperView)
 }
 
 // updateDiaper validates the stored diaper with the patch applied, never the patch alone.
 func (d Deps) updateDiaper(w http.ResponseWriter, r *http.Request) {
-	var in diaperInput
-	if !decodeJSON(w, r, &in) {
-		return
-	}
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	birth, ok := d.birthStart(w, r)
-	if !ok {
-		return
-	}
-	kidID := r.PathValue("kid")
-	stored, err := d.Store.Diaper(r.Context(), kidID, id)
-	if !entryOK(w, err) {
-		return
-	}
-	now := d.Now()
-	x, field := in.mergeOnto(stored, birth, now)
-	if field != "" {
-		respondInvalid(w, field)
-		return
-	}
-	if err := d.Store.UpdateDiaper(r.Context(), kidID, PrincipalFrom(r.Context()).ParentID, x, now); entryOK(w, err) {
-		respondJSON(w, http.StatusOK, newDiaperView(x))
-	}
+	patchEntry(d, w, r, d.Store.Diaper, diaperInput.mergeOnto, d.Store.UpdateDiaper, newDiaperView)
 }
 
 func (d Deps) deleteDiaper(w http.ResponseWriter, r *http.Request) {
-	id, ok := entryID(w, r)
-	if !ok {
-		return
-	}
-	if entryOK(w, d.Store.DeleteDiaper(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, id)) {
-		w.WriteHeader(http.StatusNoContent)
-	}
+	deleteEntry(w, r, d.Store.DeleteDiaper)
 }

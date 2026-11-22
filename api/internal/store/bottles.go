@@ -76,21 +76,7 @@ func (s *Store) Bottle(ctx context.Context, kidID, id string) (model.BottleFeed,
 
 // ListBottles returns the kid's bottles within q, newest first by (at, id); never nil.
 func (s *Store) ListBottles(ctx context.Context, kidID string, q ListQuery) ([]model.BottleFeed, error) {
-	tail, args := pageTail("at", kidID, q)
-	rows, err := s.r.QueryContext(ctx, `SELECT `+bottleColumns+` FROM bottle_feeds`+tail, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []model.BottleFeed{}
-	for rows.Next() {
-		b, err := scanBottle(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
+	return listEntries(ctx, s.r, `SELECT `+bottleColumns+` FROM bottle_feeds`, "at", kidID, q, scanBottle)
 }
 
 // UpdateBottle replaces every editable field of b.ID, which must belong to kidID; actorID needs an active grant.
@@ -114,12 +100,7 @@ func (s *Store) UpdateBottle(ctx context.Context, kidID, actorID string, b model
 	})
 }
 
+// DeleteBottle is ErrNotFound for an id that is absent or belongs to another kid.
 func (s *Store) DeleteBottle(ctx context.Context, kidID, actorID, id string) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
-		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
-			return err
-		}
-		res, err := tx.ExecContext(ctx, `DELETE FROM bottle_feeds WHERE kid_id = ? AND id = ?`, kidID, id)
-		return oneRow(res, err)
-	})
+	return s.deleteEntry(ctx, "bottle_feeds", kidID, actorID, id)
 }
