@@ -78,6 +78,10 @@ const (
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
 
+	TermGestationDays   = 280
+	PretermBelowDays    = 259
+	CorrectionEndsYears = 2
+
 	DaysPerMonth          = 30.4375
 	CurveFineStepMonths   = 0.5
 	CurveCoarseStepMonths = 1
