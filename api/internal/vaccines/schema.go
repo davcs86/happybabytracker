@@ -206,7 +206,7 @@ func parseLine(name string, row csvRow) (Line, error) {
 		if err != nil {
 			return Line{}, col(5, reasonAge)
 		}
-		if until.approxDays() <= from.approxDays() {
+		if !after(until, from) {
 			return Line{}, col(5, reasonUntil)
 		}
 		l.Until = &until
@@ -290,6 +290,13 @@ func inCohort(l Line, born time.Time) bool {
 	return (l.BornFrom == "" || l.BornFrom <= d) && (l.BornTo == "" || d <= l.BornTo)
 }
 
+func after(until, from Age) bool {
+	if until.Unit == from.Unit {
+		return until.N > from.N
+	}
+	return until.approxDays()-from.approxDays() >= constants.VaccineMinMixedUnitGapDays
+}
+
 func isDate(s string) bool {
 	_, err := time.Parse(dateLayout, s)
 	return len(s) == len(dateLayout) && err == nil
@@ -348,7 +355,11 @@ func readRows(name string, data []byte, offset, fields int) ([]csvRow, error) {
 		}
 		var pe *csv.ParseError
 		if errors.As(err, &pe) {
-			return nil, fail(name, pe.Line+offset, strconv.Itoa(pe.Column), pe.Err.Error())
+			column := "byte " + strconv.Itoa(pe.Column)
+			if errors.Is(pe.Err, csv.ErrFieldCount) {
+				column = "record"
+			}
+			return nil, fail(name, pe.Line+offset, column, pe.Err.Error())
 		}
 		if err != nil {
 			return nil, err

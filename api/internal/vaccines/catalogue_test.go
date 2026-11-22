@@ -96,6 +96,9 @@ func TestNoBrandNames(t *testing.T) {
 	brands := []string{
 		"pediarix", "pentacel", "vaxelis", "infanrix", "hexyon", "vaxneuvance", "prevnar", "gardasil", "priorix",
 		"proquad", "rotarix", "rotateq", "menitorix", "nimenrix", "bexsero", "beyfortus",
+		"repevax", "engerix", "hbvaxpro", "boostrix", "revaxis", "kinrix", "quadracel", "daptacel", "havrix",
+		"vaqta", "varivax", "recombivax", "hiberix", "acthib", "menquadfi", "trumenba", "pneumovax", "synflorix",
+		"cervarix", "fluenz", "comirnaty", "spikevax", "abrysvo", "arexvy",
 	}
 	var names []string
 	for _, p := range Products() {
@@ -105,8 +108,9 @@ func TestNoBrandNames(t *testing.T) {
 		names = append(names, a.ID, a.Name)
 	}
 	for _, n := range names {
+		words := strings.FieldsFunc(strings.ToLower(n), func(r rune) bool { return r < 'a' || r > 'z' })
 		for _, b := range brands {
-			if strings.Contains(strings.ToLower(n), b) {
+			if slices.Contains(words, b) {
 				t.Errorf("%q contains the brand name %q", n, b)
 			}
 		}

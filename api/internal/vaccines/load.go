@@ -105,7 +105,11 @@ func Schemas() []Schema {
 	if Load() != nil {
 		return nil
 	}
-	return slices.Clone(schemas)
+	out := make([]Schema, len(schemas))
+	for i, s := range schemas {
+		out[i] = cloneSchema(s)
+	}
+	return out
 }
 
 // GetSchema finds a shipped schedule by id.
@@ -115,8 +119,19 @@ func GetSchema(id string) (Schema, bool) {
 	}
 	for _, s := range schemas {
 		if s.ID == id {
-			return s, true
+			return cloneSchema(s), true
 		}
 	}
 	return Schema{}, false
+}
+
+func cloneSchema(s Schema) Schema {
+	s.Lines = slices.Clone(s.Lines)
+	for i, l := range s.Lines {
+		if l.Until != nil {
+			u := *l.Until
+			s.Lines[i].Until = &u
+		}
+	}
+	return s
 }

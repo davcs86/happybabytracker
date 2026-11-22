@@ -40,7 +40,11 @@ func Products() []Product {
 	if Load() != nil {
 		return nil
 	}
-	return slices.Clone(products)
+	out := slices.Clone(products)
+	for i := range out {
+		out[i].Antigens = slices.Clone(out[i].Antigens)
+	}
+	return out
 }
 
 // ValidAntigens accepts a non-empty list of known antigen ids without duplicates.

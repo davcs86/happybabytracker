@@ -1,8 +1,10 @@
 package vaccines
 
 import (
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testProvenance = `# schema: us
@@ -98,6 +100,34 @@ func TestParseCohortSeries(t *testing.T) {
 	if _, err := parseString(t, gapInCohort); err == nil || err.Error() != want {
 		t.Errorf("gap within a cohort: err = %v, want %q", err, want)
 	}
+	sameUnbounded := testFile(
+		"measles-1,MMR,measles,1,12m,,routine,,,",
+		"measles-1b,MMR,measles,1,13m,,routine,,,",
+	)
+	want = "vaccines: us.csv:11: column series: series repeats in an overlapping cohort"
+	if _, err := parseString(t, sameUnbounded); err == nil || err.Error() != want {
+		t.Errorf("two unbounded lines with one series: err = %v, want %q", err, want)
+	}
+	sameBornFrom := testFile(
+		"measles-1,MMR,measles,1,12m,,routine,2024-01-01,,",
+		"measles-1-b2025,MMR,measles,1,13m,,routine,2025-01-01,,",
+	)
+	if _, err := parseString(t, sameBornFrom); err == nil || err.Error() != want {
+		t.Errorf("two born_from-only lines with one series: err = %v, want %q", err, want)
+	}
+	ukShaped := testFile(
+		"diphtheria-1,6-in-1,diphtheria,1,8w,,routine,,,",
+		"diphtheria-2,6-in-1,diphtheria,2,12w,,routine,,,",
+		"diphtheria-3,6-in-1,diphtheria,3,16w,,routine,,,",
+		"diphtheria-4-b2024,6-in-1,diphtheria,4,18m,,routine,2024-07-01,,",
+		"diphtheria-4,4-in-1,diphtheria,4,40m,,routine,,2024-06-30,",
+		"diphtheria-5-b2024,4-in-1,diphtheria,5,40m,,routine,2024-07-01,,",
+		"diphtheria-5,3-in-1,diphtheria,5,168m,,routine,,2024-06-30,",
+		"diphtheria-6-b2024,3-in-1,diphtheria,6,168m,,routine,2024-07-01,,",
+	)
+	if _, err := parseString(t, ukShaped); err != nil {
+		t.Errorf("UK-shaped cohorts: %v", err)
+	}
 	cohortOnly := testFile("mmr-1,MMRV,measles,1,3y4m,,routine,2024-01-01,,")
 	if _, err := parseString(t, cohortOnly); err == nil {
 		t.Error("a compound age parsed")
@@ -133,7 +163,7 @@ func TestParseRefusals(t *testing.T) {
 		{"no lines", testProvenance + testHeader,
 			"vaccines: us.csv:9: column line: no lines"},
 		{"wrong field count", testFile("measles-1,MMR,measles,1,12m,16m,routine,,"),
-			"vaccines: us.csv:10: column 1: wrong number of fields"},
+			"vaccines: us.csv:10: column record: wrong number of fields"},
 		{"empty line id", testFile(",MMR,measles,1,12m,16m,routine,,,"),
 			"vaccines: us.csv:10: column line: is empty"},
 		{"duplicate line id", testFile(ok, "measles-1,MMR,measles,2,4y,,routine,,,"),
@@ -160,6 +190,14 @@ func TestParseRefusals(t *testing.T) {
 			"vaccines: us.csv:10: column until: not an age (<n><unit>, unit d, w, m or y)"},
 		{"until not after from", testFile("measles-1,MMR,measles,1,12m,1y,routine,,,"),
 			"vaccines: us.csv:10: column until: not after from"},
+		{"until same unit not after", testFile("measles-1,MMR,measles,1,12m,12m,routine,,,"),
+			"vaccines: us.csv:10: column until: not after from"},
+		{"until 4w to 1m", testFile("measles-1,MMR,measles,1,4w,1m,routine,,,"),
+			"vaccines: us.csv:10: column until: not after from"},
+		{"until 365d to 1y", testFile("measles-1,MMR,measles,1,365d,1y,routine,,,"),
+			"vaccines: us.csv:10: column until: not after from"},
+		{"until 30d to 1m", testFile("measles-1,MMR,measles,1,30d,1m,routine,,,"),
+			"vaccines: us.csv:10: column until: not after from"},
 		{"malformed born_from", testFile("measles-1,MMR,measles,1,12m,16m,routine,2024-02-30,,"),
 			"vaccines: us.csv:10: column born_from: not a YYYY-MM-DD date"},
 		{"malformed born_to", testFile("measles-1,MMR,measles,1,12m,16m,routine,,2024-7-1,"),
@@ -169,7 +207,7 @@ func TestParseRefusals(t *testing.T) {
 		{"recurring with two lines", testFile("influenza-1,Flu,influenza,1,6m,,recurring,,,", "influenza-2,Flu,influenza,2,7m,,recurring,,,"),
 			"vaccines: us.csv:11: column antigen: a recurring antigen has more than one line"},
 		{"bad quoting", testFile(`measles-1,MMR,measles,1,12m,16m,routine,,,"open`),
-			"vaccines: us.csv:10: column 49: extraneous or missing \" in quoted-field"},
+			"vaccines: us.csv:10: column byte 49: extraneous or missing \" in quoted-field"},
 	}
 	for _, c := range cases {
 		_, err := parseString(t, c.in)
@@ -200,6 +238,9 @@ func TestParseErrorsNeverEchoValues(t *testing.T) {
 		"measles-1,MMR,measles,1,12m,16m," + secret + ",,,",
 		"measles-1,MMR,measles,1,12m,16m,routine," + secret + ",,",
 		"measles-1,MMR,measles,1,12m,16m,routine,,," + secret + ",extra",
+		"measles-2," + secret + ",measles,1,12m,16m,routine,,,",
+		"measles-1,MMR,measles,1,12m,16m,routine,,," + secret + ",",
+		"measles-2,MMR,measles,1,12m,16m,routine,," + secret + ",",
 	} {
 		in := testFile("measles-1,MMR,measles,1,12m,16m,routine,,,", row)
 		_, err := parseString(t, in)
@@ -211,10 +252,47 @@ func TestParseErrorsNeverEchoValues(t *testing.T) {
 			t.Errorf("error echoes a value: %v", err)
 		}
 	}
-	for _, key := range []string{"name", "authority", "edition", "retrieved", "origin_url", "licence", "attribution", "schema", "secret"} {
-		in := testProvenance + "# " + key + ": " + secret + "\n" + testHeader
+	for _, key := range []string{"name", "authority", "edition", "retrieved", "origin_url", "licence", "attribution", "schema"} {
+		in := regexp.MustCompile(`(?m)^# `+key+`: .*$`).ReplaceAllString(testProvenance, "# "+key+": "+secret) + testHeader
 		if _, err := parseString(t, in); err == nil || strings.Contains(err.Error(), "SECRET") {
 			t.Errorf("provenance %s: err = %v", key, err)
 		}
 	}
+	for _, in := range []string{
+		testProvenance + "# " + secret + ": x\n" + testHeader,
+		testProvenance + "line,group," + secret + ",series,from,until,kind,born_from,born_to,note\n",
+	} {
+		if _, err := parseString(t, in); err == nil || strings.Contains(err.Error(), "SECRET") {
+			t.Errorf("err = %v", err)
+		}
+	}
+}
+
+func TestMixedUnitWindowsAreNonEmptyForEveryBirthDate(t *testing.T) {
+	pairs := [][2]string{{"8w", "3m"}, {"6w", "2m"}, {"2m", "10w"}, {"11m", "1y"}, {"26d", "1m"}, {"1m", "35d"}, {"360d", "1y"}, {"1y", "53w"}, {"4y", "1470d"}}
+	for _, p := range pairs {
+		if _, err := parseString(t, testFile("measles-1,MMR,measles,1,"+p[0]+","+p[1]+",routine,,,")); err != nil {
+			t.Fatalf("%s/%s refused: %v", p[0], p[1], err)
+		}
+		from, _ := ParseAge(p[0])
+		until, _ := ParseAge(p[1])
+		for born := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC); born.Year() <= 2028; born = born.AddDate(0, 0, 1) {
+			if !addAge(born, until).After(addAge(born, from)) {
+				t.Errorf("%s/%s born %s: until is not after from", p[0], p[1], born.Format(dateLayout))
+			}
+		}
+	}
+}
+
+// addAge mirrors the calendar arithmetic of kidtime.AddAge (Go's AddDate).
+func addAge(born time.Time, a Age) time.Time {
+	switch a.Unit {
+	case UnitWeek:
+		return born.AddDate(0, 0, 7*a.N)
+	case UnitMonth:
+		return born.AddDate(0, a.N, 0)
+	case UnitYear:
+		return born.AddDate(a.N, 0, 0)
+	}
+	return born.AddDate(0, 0, a.N)
 }

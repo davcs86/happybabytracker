@@ -114,6 +114,8 @@ const (
 	VaccineMaxAgeWeeks  = 6783
 	VaccineMaxAgeMonths = 1560
 	VaccineMaxAgeYears  = 130
+	// A mixed-unit until must lead from by this many mean days, so the window is non-empty for every birth date.
+	VaccineMinMixedUnitGapDays = 4
 
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"

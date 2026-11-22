@@ -95,6 +95,37 @@ func TestLoadRefusesAnUnshippedScheduleFile(t *testing.T) {
 	}
 }
 
+func TestAccessorsReturnCopies(t *testing.T) {
+	fsys := fstest.MapFS{}
+	for _, name := range []string{"data/antigens.csv", "data/products.csv"} {
+		b, err := dataFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fsys[name] = &fstest.MapFile{Data: b}
+	}
+	fsys["data/us.csv"] = &fstest.MapFile{Data: []byte(testFile("measles-1,MMR,measles,1,12m,16m,routine,,,"))}
+	t.Cleanup(func() { resetLoad(load) })
+	resetLoad(func() error { return loadFrom(fsys) })
+	mustLoad(t)
+
+	s := Schemas()[0]
+	s.Lines[0].ID = "changed"
+	s.Lines[0].Until.N = 99
+	g, _ := GetSchema("us")
+	g.Lines[0].Group = "changed"
+	g.Lines[0].Until.N = 98
+	again, _ := GetSchema("us")
+	if l := again.Lines[0]; l.ID != "measles-1" || l.Group != "MMR" || l.Until.N != 16 || Schemas()[0].Lines[0].Until.N != 16 {
+		t.Errorf("a caller's change reached package state: %+v until %v", l, *l.Until)
+	}
+	p := Products()
+	p[0].Antigens[0] = "changed"
+	if Products()[0].Antigens[0] != "diphtheria" {
+		t.Error("a caller's change reached a product's antigens")
+	}
+}
+
 func resetLoad(l func() error) {
 	loader, once, loadErr = l, sync.Once{}, nil
 	antigens, antigenIdx, products, schemas = nil, nil, nil, nil

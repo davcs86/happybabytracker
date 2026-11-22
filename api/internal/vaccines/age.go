@@ -57,7 +57,7 @@ func ParseAge(s string) (Age, error) {
 	return Age{N: n, Unit: u}, nil
 }
 
-// approxDays orders ages of different units; never use it to place a date.
+// approxDays compares ages of different units; never use it to place a date.
 func (a Age) approxDays() float64 {
 	switch a.Unit {
 	case UnitWeek:
