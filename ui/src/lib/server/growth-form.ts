@@ -17,6 +17,7 @@ export type GrowthFormValues = Record<string, string>;
 export type GrowthMode = { kind: 'create' } | { kind: 'edit' };
 type Field = 'measured_on' | 'weight' | 'length' | 'head';
 type Ranged = keyof typeof GROWTH_RANGES;
+const MEASURES: readonly Ranged[] = ['weight', 'length', 'head'];
 
 // Keyed by the API's field names; never a typed value in a message.
 export const GROWTH_FIELD_MESSAGES: Record<string, string> = {
@@ -128,13 +129,15 @@ export function growthFieldFailure<T extends object>(
 }
 
 // A refused field lands on its input, the row cap on the form, anything else as failAction decides.
+// The reader already checked the format, so a refused measure is out of range.
 export function growthApiFailure<T extends object>(
 	values: GrowthFormValues,
 	r: ApiFailure,
 	extra: T
 ) {
 	if (r.reason === 'invalid' && r.field && Object.hasOwn(GROWTH_FIELD_MESSAGES, r.field)) {
-		return growthFieldFailure(values, r.field, extra);
+		const range = includes(MEASURES, r.field) ? growthRangeMessage(r.field) : null;
+		return growthFieldFailure(values, r.field, extra, range);
 	}
 	if (r.reason === 'conflict' && r.code === 'limit') {
 		return fail(409, {

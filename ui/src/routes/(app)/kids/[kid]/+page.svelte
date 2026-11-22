@@ -29,9 +29,7 @@
 
 <KidSwitcher kids={data.kids} currentId={data.kid.id} />
 <h1 class="text-xl font-semibold">{data.kid.name}</h1>
-<p class="text-muted-foreground">
-	{data.age}
-</p>
+<p class="text-muted-foreground">{data.age}</p>
 <KidLinks kid={data.kid} />
 
 <div class="mt-4 flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start">

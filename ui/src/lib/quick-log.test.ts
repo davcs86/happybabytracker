@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MODULES, PAGE_ROUTE, TRACKER_ROUTE } from './constants';
-import { quickLog } from './quick-log';
+import { MODULES, TRACKER_ROUTE } from './constants';
+import { PAGE_ROUTE, quickLog } from './quick-log';
 import type { AgeBand, Home, ModuleId, ModuleState } from './types';
 
 const states = (on: readonly ModuleId[] = MODULES): ModuleState[] =>

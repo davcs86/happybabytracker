@@ -15,8 +15,6 @@ import type {
 	VolumeUnit,
 	WeightUnit
 } from './types';
-// Loaded by Node too (src/params), so the import names the .ts file.
-import { growthNewPath } from './paths.ts';
 
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
 export const MIN_PASSWORD_LEN = 12;
@@ -45,7 +43,6 @@ export const GROWTH_RANGES = {
 	length: { min: 150, max: 2500 },
 	head: { min: 150, max: 800 }
 } as const;
-export const MAX_GROWTH_PER_KID = 3000;
 export const OZ_PER_LB = 16;
 export const GRAMS_PER_KG = 1000;
 export const MM_PER_CM = 10;
@@ -162,10 +159,6 @@ export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {
 	diapers: 'diapers',
 	sleep: 'sleep',
 	feeding: 'meals'
-};
-// Modules whose entry point is a page of their own rather than a tracker's log form.
-export const PAGE_ROUTE: Partial<Record<ModuleId, (kidId: string) => string>> = {
-	growth: growthNewPath
 };
 // Spec 7.3: the quick-log buttons lead with these per age band; the other modules follow in MODULES order.
 export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {

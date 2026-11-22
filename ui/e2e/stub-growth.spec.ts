@@ -194,7 +194,7 @@ test('a kid born preterm this week has a corrected birth date and a corrected cu
 	expect((await ana('GET', `/v1/kids/${MIA.id}/home`)).body.corrected_birth_date).toBeNull();
 });
 
-test('curves: five WHO lines, nine CDC lines, CDC BMI adds 85; gaps and bad parameters', async () => {
+test('curves: five WHO lines, nine CDC lines, CDC BMI adds 85; coverage clamps and bad parameters', async () => {
 	const ana = await stubAs(ANA);
 	const curves = (q: string) => ana('GET', `/v1/kids/${MIA.id}/growth/curves?${q}`);
 	const percentiles = async (q: string) =>
@@ -234,7 +234,7 @@ test('curves: five WHO lines, nine CDC lines, CDC BMI adds 85; gaps and bad para
 	);
 });
 
-test('the growth sources are who then cdc, each with its coverage; a parent only', async () => {
+test('the growth sources are who then cdc, each with its provenance and four measures', async () => {
 	const ana = await stubAs(ANA);
 	const sources = (await ana('GET', '/v1/growth-sources')).body.sources;
 	expect(sources.map((s: { id: string }) => s.id)).toEqual(['who', 'cdc']);

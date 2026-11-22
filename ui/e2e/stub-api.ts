@@ -1705,7 +1705,7 @@ const FAKE_REFERENCE: Record<GrowthMeasure, { at0: number; perMonth: number; sd:
 // The months each source covers per measure (both sexes), close to the real tables' coverage.
 const COVERAGE: Record<string, Record<GrowthMeasure, [number, number]>> = {
 	who: { weight: [0, 120], length: [0, 228], head: [0, 60.98], bmi: [0, 228] },
-	cdc: { weight: [0, 240], length: [0, 240], head: [0, 36], bmi: [24, 240.5] }
+	cdc: { weight: [0, 240], length: [0, 240], head: [0, 36], bmi: [24, 240] }
 };
 const LINE_Z: Record<number, number> = {
 	3: -1.881,

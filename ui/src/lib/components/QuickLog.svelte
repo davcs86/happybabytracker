@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS } from '#lib/components/field.js';
-	import { PAGE_ROUTE } from '#lib/constants.js';
 	import { logPath } from '#lib/paths.js';
-	import type { QuickLogEntry } from '#lib/quick-log.js';
+	import { PAGE_ROUTE, type QuickLogEntry } from '#lib/quick-log.js';
 
 	let {
 		entries,

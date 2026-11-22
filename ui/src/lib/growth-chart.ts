@@ -177,10 +177,11 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 			id: r.id,
 			measuredOn: r.measuredOn,
 			x: scoringMonths(r),
-			y: rowValue(r, measure, units)
+			y: rowValue(r, measure, units),
+			corrected: r.correctedDays !== null
 		}))
 		.filter(
-			(p): p is { id: string; measuredOn: string; x: number; y: number } =>
+			(p): p is { id: string; measuredOn: string; x: number; y: number; corrected: boolean } =>
 				p.x !== null && p.y !== null
 		)
 		.sort((a, b) => a.x - b.x);
@@ -201,6 +202,14 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 	const sy = linearScale(yDomain, [plot.bottom, plot.top]);
 	const xTicks = ticks(xDomain.min, xDomain.max, X_TICKS);
 	const yTicks = ticks(yDomain.min, yDomain.max, Y_TICKS);
+
+	// Past the second birthday the axis is chronological, but earlier rows still plot at corrected age.
+	const mixedAxis = !curves.correctedAgeAxis && points.some((p) => p.corrected);
+	const xLabel = curves.correctedAgeAxis
+		? 'Corrected age (months)'
+		: mixedAxis
+			? 'Age (months; corrected before the second birthday)'
+			: 'Age (months)';
 
 	const median = curveLines.findIndex((l) => l.percentile === 50);
 	const centre = median >= 0 ? median : Math.floor(curveLines.length / 2);
@@ -230,7 +239,8 @@ export function buildChart({ curves, rows, measure, units }: ChartInput) {
 		lines,
 		path: linePath(points, sx, sy),
 		points: points.map((p) => ({ ...p, cx: coord(sx(p.x)), cy: coord(sy(p.y)) })),
-		xLabel: curves.correctedAgeAxis ? 'Corrected age (months)' : 'Age (months)',
+		xLabel,
+		pointAgeLabel: mixedAxis ? 'Plotted age (months)' : xLabel,
 		yLabel: `${MEASURE_LABEL[measure]} (${unitLabel(measure, units)})`,
 		table: {
 			ticks: xTicks,

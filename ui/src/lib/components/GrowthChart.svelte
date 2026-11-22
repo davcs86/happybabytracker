@@ -21,7 +21,8 @@
 <figure class="max-w-xl">
 	<svg
 		role="img"
-		aria-labelledby="growth-chart-title growth-chart-desc"
+		aria-labelledby="growth-chart-title"
+		aria-describedby="growth-chart-desc"
 		viewBox="0 0 {chart.width} {chart.height}"
 		class="h-auto w-full text-[10px]"
 	>
@@ -95,7 +96,7 @@
 			<thead>
 				<tr>
 					<th scope="col" class="pr-3">Date</th>
-					<th scope="col" class="pr-3">{chart.xLabel}</th>
+					<th scope="col" class="pr-3">{chart.pointAgeLabel}</th>
 					<th scope="col">{chart.yLabel}</th>
 				</tr>
 			</thead>

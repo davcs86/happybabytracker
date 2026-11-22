@@ -284,6 +284,39 @@ describe('buildChart', () => {
 		expect(c.points[0].x).toBe(150 / 30.4375);
 	});
 
+	it('labels a chronological axis plainly when no plotted row is corrected', () => {
+		const c = buildChart({
+			curves: curves(),
+			rows: [row({ id: 'a', ageDays: 200 }), row({ id: 'b', ageDays: 20, correctedDays: -30 })],
+			measure: 'weight',
+			units: METRIC
+		});
+		expect(c.xLabel).toBe('Age (months)');
+		expect(c.pointAgeLabel).toBe('Age (months)');
+	});
+
+	it('says which points are corrected on a chronological axis with corrected rows', () => {
+		const c = buildChart({
+			curves: curves(),
+			rows: [row({ id: 'a', ageDays: 800 }), row({ id: 'b', ageDays: 200, correctedDays: 150 })],
+			measure: 'weight',
+			units: METRIC
+		});
+		expect(c.xLabel).toBe('Age (months; corrected before the second birthday)');
+		expect(c.pointAgeLabel).toBe('Plotted age (months)');
+	});
+
+	it('keeps the corrected axis label when the whole axis is corrected', () => {
+		const c = buildChart({
+			curves: curves({ correctedAgeAxis: true }),
+			rows: [row({ id: 'a', ageDays: 200, correctedDays: 150 })],
+			measure: 'weight',
+			units: METRIC
+		});
+		expect(c.xLabel).toBe('Corrected age (months)');
+		expect(c.pointAgeLabel).toBe('Corrected age (months)');
+	});
+
 	it('joins the points in age order', () => {
 		const c = buildChart({
 			curves: curves(),

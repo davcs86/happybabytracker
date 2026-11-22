@@ -135,7 +135,9 @@ test('a preterm kid shows both ages and is plotted at corrected age', async ({ p
 	await expect(rows(page).nth(2)).toContainText('(before expected term)');
 	await expect(rows(page).nth(2)).toContainText('Weight 2.5 kg: before expected term');
 	await expect(kidPoints(page)).toHaveCount(2);
-	await expect(chart(page).getByText('Age (months)', { exact: true })).toHaveCount(1);
+	await expect(
+		chart(page).getByText('Age (months; corrected before the second birthday)', { exact: true })
+	).toHaveCount(1);
 
 	const born = addDays(todayIn('UTC'), -60);
 	const noa = await api('POST', '/v1/kids', {
@@ -284,6 +286,7 @@ test('a long unbroken note wraps on a phone', async ({ page }, testInfo) => {
 	await page.goto(growthUrl(IVY.id));
 	await expect(rows(page)).toHaveCount(3);
 	await page.getByText('Chart data', { exact: true }).click();
+	await expect(page.getByRole('table', { name: 'Percentile values' })).toBeVisible();
 	expect(await overflows(page)).toBe(false);
 });
 

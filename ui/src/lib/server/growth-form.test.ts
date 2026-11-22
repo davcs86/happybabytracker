@@ -6,6 +6,7 @@ import {
 	growthEditValues,
 	GROWTH_FIELD_MESSAGES,
 	GROWTH_LIMIT_MESSAGE,
+	growthRangeMessage,
 	readGrowthForm
 } from './growth-form';
 
@@ -159,6 +160,22 @@ describe('readGrowthForm create', () => {
 			expect(create({ head: typed, head_unit: 'in' }).field).toBe('head');
 		}
 	);
+
+	const longDigits = '9'.repeat(60);
+	it.each([
+		['weight', { weight_kg: '.5' }],
+		['weight', { weight_kg: '5.' }],
+		['weight', { weight_kg: longDigits }],
+		['length', { length: '.5' }],
+		['length', { length: '5.' }],
+		['length', { length: longDigits }],
+		['head', { head: '.5' }],
+		['head', { head: '5.' }],
+		['head', { head: longDigits }]
+	] as const)('refuses %s %j with the field message', (field, fields) => {
+		const r = create(fields);
+		expect(r).toMatchObject({ input: null, field, message: null });
+	});
 
 	it('refuses a second decimal in centimetres and a third in inches', () => {
 		expect(create({ length: '49.55' }).field).toBe('length');
@@ -435,5 +452,22 @@ describe('growthApiFailure', () => {
 			data: { values, field: null, message: GROWTH_LIMIT_MESSAGE }
 		});
 		expect(GROWTH_LIMIT_MESSAGE).toBe('This child has the maximum number of measurements');
+	});
+	it.each([
+		['weight', { weight_unit: 'lb', weight_lb: '0', weight_oz: '5' }],
+		['weight', { weight_unit: 'lb', weight_lb: '600', weight_oz: '' }],
+		['length', { length_unit: 'in', length: '1' }],
+		['head', { head_unit: 'in', head: '40' }]
+	] as const)('shows the range message when the API refuses an imperial %s %j', (field, fields) => {
+		const r = create(fields);
+		expect(r).toMatchObject({ field: null, message: null });
+		expect(
+			growthApiFailure(r.values, { ok: false, status: 422, reason: 'invalid', field }, {})
+		).toMatchObject({ status: 422, data: { field, message: growthRangeMessage(field) } });
+	});
+
+	it('keeps the format message for text the reader refuses', () => {
+		const r = create({ weight_kg: 'abc' });
+		expect(r).toMatchObject({ input: null, field: 'weight', message: null });
 	});
 });
