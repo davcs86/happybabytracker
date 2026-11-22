@@ -241,6 +241,11 @@ func interpolate(t *table, months float64) (hit, bool) {
 	return hit{lerp(lo.l, hi.l), lerp(lo.m, hi.m), lerp(lo.s, hi.s), t.name, t.name}, true
 }
 
+// Coverage is the age range in months a source covers for m and sex; false when it has no table.
+func Coverage(src Source, m Measure, sex Sex) (from, to float64, ok bool) {
+	return coverage(src, m, sex)
+}
+
 // coverage is the age range in months a source covers for m and sex.
 func coverage(src Source, m Measure, sex Sex) (from, to float64, ok bool) {
 	first, second := pairFor(src, m, sex)

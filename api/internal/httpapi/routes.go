@@ -59,6 +59,8 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
 
+		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
+
 		{http.MethodGet, "/v1/kids", Parent, d.listKids},
 		{http.MethodPost, "/v1/kids", Parent, d.createKid},
 		{http.MethodGet, "/v1/kids/{kid}", Caregiver, d.getKid},
@@ -109,6 +111,7 @@ func Routes(d Deps) []Route {
 
 		{http.MethodGet, "/v1/kids/{kid}/growth", Caregiver, d.listGrowth},
 		{http.MethodPost, "/v1/kids/{kid}/growth", Caregiver, d.createGrowth},
+		{http.MethodGet, "/v1/kids/{kid}/growth/curves", Caregiver, d.growthCurves},
 		{http.MethodGet, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.getGrowth},
 		{http.MethodPatch, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.updateGrowth},
 		{http.MethodDelete, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.deleteGrowth},

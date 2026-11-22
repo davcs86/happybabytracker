@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 )
@@ -14,11 +15,12 @@ type runningView struct {
 }
 
 type homeView struct {
-	AgeMonths int            `json:"age_months"`
-	Band      string         `json:"band"`
-	Modules   []moduleView   `json:"modules"`
-	Running   runningView    `json:"running"`
-	Today     daySummaryView `json:"today"`
+	AgeMonths          int            `json:"age_months"`
+	CorrectedBirthDate *string        `json:"corrected_birth_date"`
+	Band               string         `json:"band"`
+	Modules            []moduleView   `json:"modules"`
+	Running            runningView    `json:"running"`
+	Today              daySummaryView `json:"today"`
 }
 
 func (d Deps) home(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +30,15 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := homeView{AgeMonths: km.AgeMonths, Band: bandNames[km.Band], Modules: newModuleViews(km.States)}
+	start, _ := kidtime.DayBounds(loc, now)
+	due, corrected, err := kidtime.CorrectedBirthDate(kid.BirthDate, kid.GestationWeeks, kid.GestationDays, start.Format(time.DateOnly), loc)
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	if corrected {
+		v.CorrectedBirthDate = &due
+	}
 	sleep, err := d.Store.RunningSleep(r.Context(), kid.ID)
 	if !entryOK(w, err) {
 		return
@@ -44,7 +55,6 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 		view := newNursingView(*nursing)
 		v.Running.Nursing = &view
 	}
-	start, _ := kidtime.DayBounds(loc, now)
 	days, err := d.Store.Summaries(r.Context(), kid.ID, loc, start, start, now)
 	if !entryOK(w, err) {
 		return

@@ -98,6 +98,13 @@ const (
 	CurveCoarseStepMonths = 1
 	CurveFineUntilMonths  = 24
 
+	CurveMaxMonths          = 240
+	CurveDefaultMinToMonths = 24
+	CurveDefaultAheadMonths = 6
+	// Display-only factors for the curves' imperial column; stored measurements use the exact ratios above.
+	PoundsPerKG = 2.2046226218
+	CMPerInch   = 2.54
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
