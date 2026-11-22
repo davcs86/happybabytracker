@@ -1,4 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { MEAL_TEXT_MAX_LEN } from '../constants';
+import {
+	ENTRY_FIELD_MESSAGES,
+	FINISHED_SIDE_MESSAGE,
+	REOPEN_MESSAGE,
+	volumeRangeMessage,
+	WHAT_MISSING_MESSAGE,
+	WHAT_TOO_LONG_MESSAGE
+} from './entry-failure';
 import { floorMinutes, readEntryForm, type EntryMode } from './entry-form';
 
 const MADRID = 'Europe/Madrid';
@@ -72,7 +81,6 @@ describe('readEntryForm bottles', () => {
 		['12.5', 'ml'],
 		['-3', 'ml'],
 		['4.567', 'floz'],
-		['4,5', 'floz'],
 		['120', 'liter'],
 		['120', '']
 	])('names volume for %j in %j', (volume, unit) => {
@@ -415,5 +423,138 @@ describe('readEntryForm nursing seconds by mode', () => {
 				EDIT_FINISHED
 			)
 		).toMatchObject({ input: null, field: 'left_seconds' });
+	});
+});
+
+describe('readEntryForm final-wave refusals', () => {
+	const EDIT_FINISHED: EntryMode = { kind: 'edit', running: false };
+	const EDIT_RUNNING: EntryMode = { kind: 'edit', running: true };
+
+	it.each(['sleep', 'nursing'] as const)(
+		'%s: clearing the end of a finished session is refused, not silently kept',
+		(kind) => {
+			const fields = {
+				started_at: '2026-11-20T10:00',
+				ended_at: '',
+				ended_at_original: '2026-11-20T10:30',
+				left_minutes: '0',
+				right_minutes: '0',
+				left_seconds_original: '0',
+				right_seconds_original: '0'
+			};
+			expect(readEntryForm(kind, form(fields), MADRID, EDIT_FINISHED)).toMatchObject({
+				input: null,
+				field: 'ended_at',
+				message: REOPEN_MESSAGE
+			});
+			const running = { ...fields, ended_at_original: '' };
+			expect(readEntryForm(kind, form(running), MADRID, EDIT_RUNNING).field).toBeNull();
+		}
+	);
+
+	it('nursing create: a side next to an end time is refused with its own message', () => {
+		const r = readEntryForm(
+			'nursing',
+			form({
+				started_at: '2026-11-20T10:00',
+				ended_at: '2026-11-20T10:30',
+				left_minutes: '10',
+				right_minutes: '',
+				side: 'left'
+			}),
+			MADRID,
+			CREATE
+		);
+		expect(r).toMatchObject({ input: null, field: 'side', message: FINISHED_SIDE_MESSAGE });
+		expect(FINISHED_SIDE_MESSAGE).not.toBe(ENTRY_FIELD_MESSAGES.side);
+		const unknown = readEntryForm(
+			'nursing',
+			form({ started_at: '', side: 'both' }),
+			MADRID,
+			CREATE
+		);
+		expect(unknown).toMatchObject({ field: 'side', message: null });
+	});
+
+	it('meals: a blank what and a too long one get different messages', () => {
+		expect(readEntryForm('meals', form({ what: ' ' }), MADRID, CREATE)).toMatchObject({
+			field: 'what',
+			message: WHAT_MISSING_MESSAGE
+		});
+		const long = 'a'.repeat(MEAL_TEXT_MAX_LEN + 1);
+		expect(readEntryForm('meals', form({ what: long }), MADRID, CREATE)).toMatchObject({
+			field: 'what',
+			message: WHAT_TOO_LONG_MESSAGE
+		});
+		const fits = 'ñ'.repeat(MEAL_TEXT_MAX_LEN);
+		expect(readEntryForm('meals', form({ what: fits }), MADRID, CREATE).field).toBeNull();
+	});
+
+	it.each([
+		['bottles', '0', true],
+		['bottles', '1001', true],
+		['bottles', '1000', false],
+		['pumping', '2001', true],
+		['pumping', '2000', false],
+		['pumping', '0', true]
+	] as const)('%s: %s ml out of range says so', (kind, amount, refused) => {
+		const fields = {
+			at: '',
+			started_at: '',
+			contents: ['formula'],
+			duration_minutes: '10',
+			side: 'both',
+			volume: amount,
+			volume_unit: 'ml'
+		};
+		const r = readEntryForm(kind, form(fields), MADRID, CREATE);
+		if (refused) {
+			expect(r).toMatchObject({ field: 'volume', message: volumeRangeMessage(kind) });
+		} else {
+			expect(r.field).toBeNull();
+		}
+	});
+
+	it('a malformed volume keeps the format message', () => {
+		const r = readEntryForm(
+			'bottles',
+			form({ contents: ['formula'], volume: '1.5', volume_unit: 'ml' }),
+			MADRID,
+			CREATE
+		);
+		expect(r).toMatchObject({ field: 'volume', message: null });
+	});
+
+	it('ounces take a decimal comma as well as a point', () => {
+		for (const [typed, hundredths] of [
+			['4,25', 425],
+			['4.25', 425],
+			['4,5', 450]
+		] as const) {
+			const r = readEntryForm(
+				'bottles',
+				form({ contents: ['formula'], volume: typed, volume_unit: 'floz' }),
+				MADRID,
+				CREATE
+			);
+			expect(r.input).toMatchObject({ volume: { unit: 'floz', amount: hundredths } });
+		}
+		for (const typed of ['4,,25', '4.2.5', '4,', '4,567']) {
+			const r = readEntryForm(
+				'bottles',
+				form({ contents: ['formula'], volume: typed, volume_unit: 'floz' }),
+				MADRID,
+				CREATE
+			);
+			expect(r).toMatchObject({ input: null, field: 'volume' });
+		}
+		expect(
+			readEntryForm(
+				'bottles',
+				form({ contents: ['formula'], volume: '12,5', volume_unit: 'ml' }),
+				MADRID,
+				CREATE
+			).field
+		).toBe('volume');
 	});
 });

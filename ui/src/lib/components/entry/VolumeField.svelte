@@ -29,6 +29,7 @@
 					id="entry-volume_unit"
 					name="volume_unit"
 					class={SELECT_CLASS}
+					aria-invalid={error('volume') ? 'true' : undefined}
 					value={values.volume_unit as string}
 				>
 					{#each VOLUME_UNITS as unit (unit)}

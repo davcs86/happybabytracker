@@ -4,7 +4,6 @@ import { timelineDayPath } from '#lib/paths.js';
 import { setKidCookie } from '#lib/server/cookie.js';
 import { entryApiFailure, entryFieldFailure } from '#lib/server/entry-failure.js';
 import { readEntryForm } from '#lib/server/entry-form.js';
-import { withoutTimerSide } from '#lib/server/entry-submit.js';
 import { failPage } from '#lib/server/outcome.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -26,14 +25,14 @@ export const actions: Actions = {
 		const kid = await locals.api.getKid(params.kid);
 		if (!kid.ok) failPage(kid);
 		const kind = trackerOf(params.tracker);
-		const { values, input, field } = readEntryForm(
+		const { values, input, field, message } = readEntryForm(
 			kind,
-			withoutTimerSide(kind, await request.formData()),
+			await request.formData(),
 			kid.data.timeZone,
 			{ kind: 'create' }
 		);
 		const extra = { form: 'save' as const };
-		if (!input) return entryFieldFailure(values, field!, extra);
+		if (!input) return entryFieldFailure(values, field!, extra, message);
 		const r = await locals.api.tracker(kind).create(params.kid, input);
 		if (!r.ok) return entryApiFailure(kind, values, r, extra);
 		const date = localDate(entryInstant(kind, r.data), kid.data.timeZone);

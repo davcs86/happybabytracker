@@ -3,9 +3,12 @@ import {
 	entryApiFailure,
 	entryFieldFailure,
 	ENTRY_FIELD_MESSAGES,
+	FINISHED_SIDE_MESSAGE,
 	staleTimerFailure,
-	TIMER_ENDED_MESSAGE
+	TIMER_ENDED_MESSAGE,
+	volumeRefusedMessage
 } from './entry-failure';
+import { MEAL_TEXT_MAX_LEN } from '../constants';
 import type { ApiFailure } from './outcome';
 
 const values = { at: '2026-11-20T10:30', note: 'kept' };
@@ -110,5 +113,32 @@ describe('staleTimerFailure', () => {
 			message: TIMER_ENDED_MESSAGE,
 			stale: true
 		});
+	});
+});
+
+describe('final-wave messages', () => {
+	it('a field failure may carry a message of its own', () => {
+		expect(entryFieldFailure(values, 'side', extra, FINISHED_SIDE_MESSAGE).data).toMatchObject({
+			field: 'side',
+			message: FINISHED_SIDE_MESSAGE
+		});
+		expect(entryFieldFailure(values, 'side', extra, null).data).toMatchObject({
+			message: ENTRY_FIELD_MESSAGES.side
+		});
+	});
+
+	it('an API volume refusal states the range and the format, per tracker', () => {
+		const bottle = entryApiFailure('bottles', values, refused({ field: 'volume' }), extra);
+		expect(bottle.data).toMatchObject({
+			field: 'volume',
+			message: volumeRefusedMessage('bottles')
+		});
+		expect(volumeRefusedMessage('bottles')).toContain('1000 ml');
+		expect(volumeRefusedMessage('pumping')).toContain('2000 ml');
+		expect(volumeRefusedMessage('bottles')).toContain('two decimals');
+	});
+
+	it('an API what refusal states both rules', () => {
+		expect(ENTRY_FIELD_MESSAGES.what).toContain(`${MEAL_TEXT_MAX_LEN} characters`);
 	});
 });

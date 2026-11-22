@@ -14,12 +14,10 @@ import {
 	IVY,
 	LEO,
 	MIA,
-	STUB_TOKEN,
-	STUB_URL,
 	UI_ORIGIN,
-	openSession,
 	receivedRequests,
-	resetStub
+	resetStub,
+	stubAs
 } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -45,23 +43,6 @@ const clock = (iso: string, timeZone: string) =>
 function skipNearMidnight(minutes: number) {
 	const since = Date.now() - Date.parse(`${todayIn('UTC')}T00:00:00Z`);
 	test.skip(since < minutes * MS_PER_MINUTE, 'entries would fall on yesterday');
-}
-
-async function stubAs(who: { username: string; password: string }) {
-	const token = await openSession(who.username, who.password);
-	return async (method: string, path: string, body?: unknown) => {
-		const res = await fetch(`${STUB_URL}${path}`, {
-			method,
-			headers: {
-				authorization: `Bearer ${STUB_TOKEN}`,
-				'x-session-token': token,
-				'content-type': 'application/json'
-			},
-			body: body === undefined ? undefined : JSON.stringify(body)
-		});
-		const text = await res.text();
-		return { status: res.status, body: text ? JSON.parse(text) : null };
-	};
 }
 
 test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; links go to the log pages', async ({
@@ -344,7 +325,7 @@ test('a caregiver cannot change a module by posting to the page', async ({ page 
 		form: { module: 'growth' },
 		headers: { origin: UI_ORIGIN }
 	});
-	expect([403, 404]).toContain(response.status());
+	expect(response.status()).toBe(404);
 	const ana = await stubAs(ANA);
 	const modules = (await ana('GET', `/v1/kids/${LEO.id}/modules`)).body.modules as {
 		module: string;
@@ -376,6 +357,17 @@ test('/ is a 303 to the remembered kid, else the first; no kids keeps the welcom
 	await expectLanding(page, { welcome: DAN.displayName });
 	expect((await page.request.get('/', { maxRedirects: 0 })).status()).toBe(200);
 	await expectAccessible(page);
+});
+
+test('/ with a remembered kid the parent cannot see is a 303 to the first kid', async ({
+	page,
+	context
+}) => {
+	await signIn(page, CLEO);
+	await context.addCookies([{ name: KID_COOKIE, value: MIA.id, url: UI_ORIGIN }]);
+	const response = await page.request.get('/', { maxRedirects: 0 });
+	expect(response.status()).toBe(303);
+	expect(response.headers()['location']).toBe(`/kids/${LEO.id}`);
 });
 
 test('/timeline is a 303 to the current kid’s timeline, or home without kids', async ({

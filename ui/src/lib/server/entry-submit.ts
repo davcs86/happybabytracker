@@ -41,14 +41,6 @@ export function sendOnlyChanged(kind: TrackerKind, form: FormData, input: EntryB
 	return out;
 }
 
-// A finished nursing session has no side: the one ticked beside an end time was meant for a timer.
-export function withoutTimerSide(kind: TrackerKind, form: FormData): FormData {
-	if (kind !== 'nursing' || text(form, 'ended_at') === '') return form;
-	const copy = new FormData();
-	for (const [name, value] of form) if (name !== 'side') copy.append(name, value);
-	return copy;
-}
-
 // Only a finished session's form carries the stored seconds, so a nursing form without them came from a running page.
 export const fromRunningPage = (kind: TrackerKind, form: FormData) =>
 	kind === 'nursing' &&

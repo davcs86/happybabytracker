@@ -342,7 +342,7 @@ test('delete needs the exact name', async ({ page, context }) => {
 	await page.getByRole('button', { name: `Delete ${MIA.name}` }).click();
 	await expectLanding(page, { kid: LEO });
 	await expect(switcherOf(page).getByRole('link')).toHaveText([LEO.name, IVY.name]);
-	// The cookie of the deleted kid is cleared; the landing then remembers the kid it showed.
+	// The landing remembers the kid it showed, so this cannot tell whether the deleted kid's cookie was cleared.
 	expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(LEO.id);
 	await expectNotFoundPage(page, `/kids/${MIA.id}`);
 });

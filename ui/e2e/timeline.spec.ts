@@ -351,3 +351,22 @@ test.describe('without JavaScript', () => {
 		await expect(box(page, 'Sleep')).not.toBeChecked();
 	});
 });
+
+test('a sleep that ends the next day marks its end', async ({ page }) => {
+	const api = await stubAs(ANA);
+	await seed(api, 'sleep', { started_at: `${DAY1}T22:00:00Z`, ended_at: `${DAY2}T06:00:00Z` });
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(RANGE));
+	await expect(entries(page, DAY1)).toHaveText(['Sleep 22:00–06:00 +1 day (8 h)']);
+});
+
+test('a long unbroken meal and note wrap on a phone', async ({ page }, testInfo) => {
+	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+	const api = await stubAs(ANA);
+	const token = 'w'.repeat(200);
+	await seed(api, 'meals', { at: `${DAY1}T12:00:00Z`, what: token, note: token });
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(RANGE));
+	await expect(entries(page, DAY1)).toHaveCount(1);
+	expect(await overflows(page)).toBe(false);
+});

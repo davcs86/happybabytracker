@@ -78,6 +78,18 @@ describe('timelineLine', () => {
 		).toBe('Sleep 00:30–01:30 (1 h)');
 	});
 
+	it('marks the end of a sleep that ends on a later kid-local day', () => {
+		expect(
+			timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-21T05:00:00Z'), 'Europe/Madrid', 'ml')
+		).toBe('Sleep 22:00–06:00 +1 day (8 h)');
+		expect(
+			timelineLine(sleep('2026-11-20T10:00:00Z', '2026-11-21T10:00:00Z'), 'Europe/Madrid', 'ml')
+		).toBe('Sleep 11:00–11:00 +1 day (24 h)');
+		expect(timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-20T22:30:00Z'), 'UTC', 'ml')).toBe(
+			'Sleep 21:00–22:30 (1 h 30 min)'
+		);
+	});
+
 	it('shows nursing minutes per side and the running side while it runs', () => {
 		expect(timelineLine(nursing({}), 'UTC', 'ml')).toBe('13:05 Nursing L 8 min · R 5 min');
 		expect(timelineLine(nursing({ rightSeconds: 0 }), 'UTC', 'ml')).toBe('13:05 Nursing L 8 min');

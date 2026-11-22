@@ -2,14 +2,24 @@ import {
 	BOTTLE_CONTENTS,
 	DIAPER_KINDS,
 	HUNDREDTHS_PER_FLOZ,
+	MEAL_TEXT_MAX_LEN,
 	NURSING_SIDES,
 	PUMPING_SIDES,
 	SECONDS_PER_MINUTE,
+	VOLUME_ML_RANGE,
 	VOLUME_UNITS
 } from '../constants';
 import { floorMinutes } from '../entry-edit';
 import { zonedLocalToInstant } from '../time-zone';
 import type { EntryBody, TrackerKind, VolumeUnit } from '../types';
+import {
+	FINISHED_SIDE_MESSAGE,
+	REOPEN_MESSAGE,
+	volumeRangeMessage,
+	WHAT_MISSING_MESSAGE,
+	WHAT_TOO_LONG_MESSAGE,
+	type VolumeKind
+} from './entry-failure';
 
 export type EntryFormValues = Record<string, string | string[]>;
 
@@ -36,7 +46,8 @@ export type EntryMode = { kind: 'create' } | { kind: 'edit'; running: boolean };
 
 export { floorMinutes };
 
-type Outcome = { input: EntryBody } | { field: string };
+// message is null when the field's own message (ENTRY_FIELD_MESSAGES) applies.
+type Outcome = { input: EntryBody } | { field: string; message: string | null };
 
 const includes = <T extends string>(list: readonly T[], v: string): v is T =>
 	(list as readonly string[]).includes(v);
@@ -51,9 +62,9 @@ function putTime(input: EntryBody, key: string, text: string, zone: string): boo
 	return true;
 }
 
-// Whole millilitres, or fluid ounces with up to two decimals as hundredths of an ounce.
+// Whole millilitres, or fluid ounces with up to two decimals (point or comma) as hundredths of an ounce.
 function amount(unit: VolumeUnit, text: string): number | null {
-	const m = (unit === 'ml' ? /^(\d+)$/ : /^(\d+)(?:\.(\d{1,2}))?$/).exec(text.trim());
+	const m = (unit === 'ml' ? /^(\d+)$/ : /^(\d+)(?:[.,](\d{1,2}))?$/).exec(text.trim());
 	if (!m) return null;
 	const n =
 		unit === 'ml'
@@ -86,11 +97,27 @@ function storedSeconds(text: string): number | null {
 
 const orNull = (text: string) => text.trim() || null;
 
-// Fields are checked in the API's order, so the one named is the one the API would name.
-function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryMode): Outcome {
+// A millilitre amount outside the tracker's range is refused here; ounces are left to the API's conversion.
+function volumeRange(kind: VolumeKind, vol: { unit: VolumeUnit; amount: number }): string | null {
+	const { min, max } = VOLUME_ML_RANGE[kind];
+	return vol.unit === 'ml' && (vol.amount < min || vol.amount > max)
+		? volumeRangeMessage(kind)
+		: null;
+}
+
+// Fields are checked in the API's order, so the one named is the one the API would name. endShown is true when
+// the form was loaded with an end time, which a blank one would silently keep.
+function build(
+	kind: TrackerKind,
+	v: EntryFormValues,
+	zone: string,
+	mode: EntryMode,
+	endShown: boolean
+): Outcome {
 	const s = (k: string) => v[k] as string;
 	const input: EntryBody = {};
-	const bad = (field: string): Outcome => ({ field });
+	const bad = (field: string, message: string | null = null): Outcome => ({ field, message });
+	const reopened = () => mode.kind === 'edit' && endShown && s('ended_at').trim() === '';
 	const timeKey =
 		kind === 'bottles' || kind === 'diapers' || kind === 'meals' ? 'at' : 'started_at';
 	if (!putTime(input, timeKey, s(timeKey), zone)) return bad(timeKey);
@@ -103,6 +130,8 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryM
 			}
 			const vol = volume(s('volume_unit'), s('volume'));
 			if (!vol) return bad('volume');
+			const range = volumeRange(kind, vol);
+			if (range) return bad('volume', range);
 			Object.assign(input, { contents, volume: vol });
 			break;
 		}
@@ -112,7 +141,8 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryM
 			break;
 		case 'meals': {
 			const what = s('what').trim();
-			if (what === '') return bad('what');
+			if (what === '') return bad('what', WHAT_MISSING_MESSAGE);
+			if ([...what].length > MEAL_TEXT_MAX_LEN) return bad('what', WHAT_TOO_LONG_MESSAGE);
 			Object.assign(input, { what, reaction: orNull(s('reaction')) });
 			break;
 		}
@@ -121,14 +151,18 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryM
 			if (duration === null) return bad('duration_seconds');
 			const vol = volume(s('volume_unit'), s('volume'));
 			if (!vol) return bad('volume');
+			const range = volumeRange(kind, vol);
+			if (range) return bad('volume', range);
 			if (!includes(PUMPING_SIDES, s('side'))) return bad('side');
 			Object.assign(input, { duration_seconds: duration, volume: vol, side: s('side') });
 			break;
 		}
 		case 'sleep':
+			if (reopened()) return bad('ended_at', REOPEN_MESSAGE);
 			if (!putTime(input, 'ended_at', s('ended_at'), zone)) return bad('ended_at');
 			break;
 		case 'nursing': {
+			if (reopened()) return bad('ended_at', REOPEN_MESSAGE);
 			if (!putTime(input, 'ended_at', s('ended_at'), zone)) return bad('ended_at');
 			// A running edit never sends seconds; a finished edit sends a side's only once its minutes changed.
 			const finishedCreate = mode.kind === 'create' && input.ended_at !== undefined;
@@ -146,6 +180,7 @@ function build(kind: TrackerKind, v: EntryFormValues, zone: string, mode: EntryM
 			}
 			if (s('side') !== '') {
 				if (!includes(NURSING_SIDES, s('side'))) return bad('side');
+				if (input.ended_at !== undefined) return bad('side', FINISHED_SIDE_MESSAGE);
 				input.side = s('side');
 			}
 			break;
@@ -162,13 +197,19 @@ export function readEntryForm(
 	form: FormData,
 	zone: string,
 	mode: EntryMode
-): { values: EntryFormValues; input: EntryBody | null; field: string | null } {
+): {
+	values: EntryFormValues;
+	input: EntryBody | null;
+	field: string | null;
+	message: string | null;
+} {
 	const values: EntryFormValues = Object.fromEntries(
 		TEXT_FIELDS[kind].map((k) => [k, String(form.get(k) ?? '')])
 	);
 	if (kind === 'bottles') values.contents = form.getAll('contents').map(String);
-	const r = build(kind, values, zone, mode);
+	const endShown = String(form.get('ended_at_original') ?? '').trim() !== '';
+	const r = build(kind, values, zone, mode, endShown);
 	return 'field' in r
-		? { values, input: null, field: r.field }
-		: { values, input: r.input, field: null };
+		? { values, input: null, field: r.field, message: r.message }
+		: { values, input: r.input, field: null, message: null };
 }

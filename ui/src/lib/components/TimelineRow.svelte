@@ -21,9 +21,11 @@
 
 <li class="rounded-lg border">
 	<a {href} class="block min-h-11 rounded-lg px-3 py-2 hover:bg-muted">
-		<span class="block">{timelineLine(item, zone, unit)}</span>
+		<span class="block [overflow-wrap:anywhere]">{timelineLine(item, zone, unit)}</span>
 		{#if item.entry.note}
-			<span class="block text-sm text-muted-foreground">{item.entry.note}</span>
+			<span class="block text-sm [overflow-wrap:anywhere] text-muted-foreground"
+				>{item.entry.note}</span
+			>
 		{/if}
 	</a>
 </li>

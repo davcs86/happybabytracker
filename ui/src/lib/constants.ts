@@ -24,6 +24,12 @@ export const GESTATION_WEEKS = { min: 22, max: 44 } as const;
 export const GESTATION_DAYS = { min: 0, max: 6 } as const;
 // Longest sleep, nursing or pumping session the API accepts (MaxSessionDuration).
 export const MAX_SESSION_HOURS = 24;
+// The API's volume range per tracker (Min/MaxBottleVolumeML, Min/MaxPumpingVolumeML) and MaxMealTextLen.
+export const VOLUME_ML_RANGE = {
+	bottles: { min: 1, max: 1000 },
+	pumping: { min: 1, max: 2000 }
+} as const;
+export const MEAL_TEXT_MAX_LEN = 200;
 export const DEFAULT_TIME_ZONE = 'UTC';
 export const INVITE_VALIDITY = '72 hours';
 export const RESET_VALIDITY = '1 hour';

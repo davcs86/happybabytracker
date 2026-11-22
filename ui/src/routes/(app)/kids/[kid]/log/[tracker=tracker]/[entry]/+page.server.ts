@@ -55,11 +55,11 @@ export const actions: Actions = {
 			const unit = locals.session?.parent?.units.volume ?? 'ml';
 			return staleTimerFailure(editValues(kind, entry, kid.timeZone, unit), extra);
 		}
-		const { values, input, field } = readEntryForm(kind, form, kid.timeZone, {
+		const { values, input, field, message } = readEntryForm(kind, form, kid.timeZone, {
 			kind: 'edit',
 			running
 		});
-		if (!input) return entryFieldFailure(values, field!, extra);
+		if (!input) return entryFieldFailure(values, field!, extra, message);
 		const r = await locals.api
 			.tracker(kind)
 			.update(params.kid, params.entry, sendOnlyChanged(kind, form, input));

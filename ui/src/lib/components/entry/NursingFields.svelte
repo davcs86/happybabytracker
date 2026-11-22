@@ -16,8 +16,6 @@
 		values: EntryValues;
 		error: (name: string) => string | null;
 	} = $props();
-
-	const SIDES = ['left', 'right'] as const;
 </script>
 
 <EntryTimeField name="started_at" label="Started at" {values} {error} required />
@@ -55,7 +53,7 @@
 
 {#snippet minutes()}
 	<div class="grid grid-cols-2 gap-4">
-		{#each SIDES as side (side)}
+		{#each NURSING_SIDES as side (side)}
 			<Field
 				id="entry-{side}_minutes"
 				label="{side === 'left' ? 'Left' : 'Right'} minutes"

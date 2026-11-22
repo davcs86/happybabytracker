@@ -636,6 +636,60 @@ test('a parent without a grant gets the same 404 page for the log and the entry'
 	expect(await expectNotFoundPage(page, entryUrl('diapers', diaper.id))).toBe(unknown);
 });
 
+for (const kind of ['sleep', 'nursing'] as const) {
+	test(`${kind}: clearing the end of a finished session is refused on the field`, async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const body =
+			kind === 'sleep'
+				? { started_at: NURSING_START, ended_at: NURSING_END }
+				: { started_at: NURSING_START, ended_at: NURSING_END, left_seconds: 600, right_seconds: 0 };
+		const entry = await seed(api, kind, body);
+		await signIn(page, ANA);
+		await page.goto(entryUrl(kind, entry.id));
+		await field(page, 'Ended at').fill('');
+		await save(page);
+		await expectFieldError(field(page, 'Ended at'), 'A finished session cannot be re-opened');
+		await expectAccessible(page);
+		expect((await rows(api, kind))[0].ended_at).toBe(NURSING_END);
+	});
+}
+
+async function finishedWithASide(page: Page) {
+	const api = await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(logUrl('nursing'));
+	await page.getByRole('radio', { name: 'Left' }).check();
+	await field(page, 'Started at').fill(inUtc(NURSING_START));
+	await field(page, 'Ended at').fill(inUtc(NURSING_END));
+	await field(page, 'Left minutes').fill('10');
+	await save(page);
+	await expectFieldError(
+		page.getByRole('radiogroup', { name: 'Side' }),
+		'A finished session has no side; clear the side or the end'
+	);
+	await expect(field(page, 'Ended at')).toHaveValue(inUtc(NURSING_END));
+	await expect(field(page, 'Left minutes')).toHaveValue('10');
+	expect(await rows(api, 'nursing')).toEqual([]);
+}
+
+test('a side ticked next to an end time is refused on the side', async ({ page }) => {
+	await finishedWithASide(page);
+	await expectAccessible(page);
+});
+
+test('a volume out of range says the range, on the amount and its unit', async ({ page }) => {
+	await signIn(page, ANA);
+	await page.goto(logUrl('bottles'));
+	await page.getByRole('checkbox', { name: 'Formula' }).check();
+	await field(page, 'Volume').fill('1001');
+	await save(page);
+	await expectFieldError(field(page, 'Volume'), 'Enter from 1 to 1000 ml');
+	await expect(field(page, 'Volume unit')).toHaveAttribute('aria-invalid', 'true');
+	await expectAccessible(page);
+});
+
 test.describe('without JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
 
@@ -666,6 +720,10 @@ test.describe('without JavaScript', () => {
 		);
 		await expect(page.getByText(/Bottle 90 ml, breast milk \+ formula/)).toBeVisible();
 		await expect(page.getByText('no script')).toBeVisible();
+	});
+
+	test('a side ticked next to an end time is refused on the side', async ({ page }) => {
+		await finishedWithASide(page);
 	});
 
 	test('a field error keeps the typed values', async ({ page }) => {

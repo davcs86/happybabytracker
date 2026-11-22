@@ -57,7 +57,11 @@ export function timelineLine(item: TimelineItem, zone: string, unit: VolumeUnit)
 			const { startedAt, endedAt } = item.entry;
 			if (endedAt === null) return `${label} since ${clock}`;
 			const seconds = (Date.parse(endedAt) - Date.parse(startedAt)) / MS_PER_SECOND;
-			return `${label} ${clock}–${formatClock(endedAt, zone)} (${formatDuration(seconds)})`;
+			const days =
+				(Date.parse(localDate(endedAt, zone)) - Date.parse(localDate(startedAt, zone))) /
+				MS_PER_DAY;
+			const later = days > 0 ? ` +${days} day${days === 1 ? '' : 's'}` : '';
+			return `${label} ${clock}–${formatClock(endedAt, zone)}${later} (${formatDuration(seconds)})`;
 		}
 		case 'diapers':
 			return `${clock} ${label} ${item.entry.kind}`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fromRunningPage, sendOnlyChanged, withoutTimerSide } from './entry-submit';
+import { fromRunningPage, sendOnlyChanged } from './entry-submit';
 import type { EntryBody } from '../types';
 
 const form = (fields: Record<string, string | string[]>) => {
@@ -100,26 +100,6 @@ describe('sendOnlyChanged', () => {
 		expect(sendOnlyChanged('meals', form({ what: 'rice' }), { what: 'rice' })).toEqual({
 			what: 'rice'
 		});
-	});
-});
-
-describe('withoutTimerSide', () => {
-	const fields = { started_at: '2026-11-20T10:00', side: 'left', left_minutes: '3' };
-
-	it('drops the timer side when a nursing session is finished', () => {
-		const r = withoutTimerSide('nursing', form({ ...fields, ended_at: '2026-11-20T10:10' }));
-		expect(r.has('side')).toBe(false);
-		expect(r.get('left_minutes')).toBe('3');
-		expect(r.get('ended_at')).toBe('2026-11-20T10:10');
-	});
-
-	it('keeps the side of a timer, and every other tracker', () => {
-		expect(withoutTimerSide('nursing', form({ ...fields, ended_at: '  ' })).get('side')).toBe(
-			'left'
-		);
-		expect(withoutTimerSide('pumping', form({ ...fields, ended_at: 'x' })).get('side')).toBe(
-			'left'
-		);
 	});
 });
 
