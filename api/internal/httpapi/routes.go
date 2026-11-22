@@ -91,6 +91,21 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.getPumping},
 		{http.MethodPatch, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.updatePumping},
 		{http.MethodDelete, "/v1/kids/{kid}/pumping/{entry}", Caregiver, d.deletePumping},
+
+		{http.MethodGet, "/v1/kids/{kid}/sleep", Caregiver, d.listSleep},
+		{http.MethodPost, "/v1/kids/{kid}/sleep", Caregiver, d.createSleep},
+		{http.MethodGet, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.getSleep},
+		{http.MethodPatch, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.updateSleep},
+		{http.MethodDelete, "/v1/kids/{kid}/sleep/{entry}", Caregiver, d.deleteSleep},
+		{http.MethodPost, "/v1/kids/{kid}/sleep/{entry}/end", Caregiver, d.endSleep},
+
+		{http.MethodGet, "/v1/kids/{kid}/nursing", Caregiver, d.listNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing", Caregiver, d.createNursing},
+		{http.MethodGet, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.getNursing},
+		{http.MethodPatch, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.updateNursing},
+		{http.MethodDelete, "/v1/kids/{kid}/nursing/{entry}", Caregiver, d.deleteNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/end", Caregiver, d.endNursing},
+		{http.MethodPost, "/v1/kids/{kid}/nursing/{entry}/side", Caregiver, d.switchNursingSide},
 	}
 }
 

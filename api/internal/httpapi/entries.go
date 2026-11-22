@@ -27,6 +27,17 @@ func (o *optionalString) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(b, &o.V)
 }
 
+// optionalTime tells an absent key (Set false) from an explicit null (Set true, V nil).
+type optionalTime struct {
+	Set bool
+	V   *time.Time
+}
+
+func (o *optionalTime) UnmarshalJSON(b []byte) error {
+	o.Set = true
+	return json.Unmarshal(b, &o.V)
+}
+
 // entryID reads {entry}; a value that cannot be an id answers the 404 an unknown entry gets.
 func entryID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("entry")
@@ -39,7 +50,15 @@ func entryID(w http.ResponseWriter, r *http.Request) (string, bool) {
 
 // entryOK is true when err is nil; otherwise it answers the refused tracker read or write and is false.
 func entryOK(w http.ResponseWriter, err error) bool {
-	return kidWriteOK(w, err)
+	switch {
+	case errors.Is(err, store.ErrAlreadyRunning):
+		respondError(w, http.StatusConflict, "already_running")
+	case errors.Is(err, store.ErrNotRunning):
+		respondError(w, http.StatusConflict, "not_running")
+	default:
+		return kidWriteOK(w, err)
+	}
+	return false
 }
 
 // birthStart is the earliest instant an entry of the kid in the path may carry; it answers for a failed lookup.
@@ -65,6 +84,14 @@ func (d Deps) birthStart(w http.ResponseWriter, r *http.Request) (time.Time, boo
 func wholeSecond(t time.Time) time.Time { return time.Unix(t.Unix(), 0).UTC() }
 
 func instantString(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+func optionalInstant(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := instantString(*t)
+	return &s
+}
 
 // instantOK is false for a time later than now by more than MaxFutureSkew or before the kid's birth.
 func instantOK(t, birth, now time.Time) bool {
@@ -189,4 +216,94 @@ func patchEntry[T, In, V any](
 	if err := save(r.Context(), kidID, PrincipalFrom(r.Context()).ParentID, v, now); entryOK(w, err) {
 		respondJSON(w, http.StatusOK, view(v))
 	}
+}
+
+// errEditRefused aborts a store transaction whose in-transaction merge named an invalid field.
+var errEditRefused = errors.New("edit refused")
+
+// patchInTx is patchEntry for timers: merge runs on the row read inside the store's write transaction, so a
+// concurrent write is never lost and the running state it checks cannot change under it.
+func patchInTx[T, In, V any](
+	d Deps, w http.ResponseWriter, r *http.Request,
+	merge func(in In, stored T, birth, now time.Time) (T, string),
+	update func(ctx context.Context, kidID, actorID, id string, now time.Time, edit func(T) (T, error)) (T, error),
+	view func(T) V,
+) {
+	var in In
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	birth, ok := d.birthStart(w, r)
+	if !ok {
+		return
+	}
+	now := d.Now()
+	var field string
+	v, err := update(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, id, now, func(stored T) (T, error) {
+		v, f := merge(in, stored, birth, now)
+		if f != "" {
+			field = f
+			return v, errEditRefused
+		}
+		return v, nil
+	})
+	if errors.Is(err, errEditRefused) {
+		respondInvalid(w, field)
+		return
+	}
+	if entryOK(w, err) {
+		respondJSON(w, http.StatusOK, view(v))
+	}
+}
+
+// timerAction answers an end or side route: 404 for an unknown entry, then 422 for invalid (a body field the caller
+// found invalid) or a bad at, then act at at (the body's, else now) and 200 with the view.
+func timerAction[T, V any](
+	d Deps, w http.ResponseWriter, r *http.Request, given *time.Time, invalid string,
+	load func(ctx context.Context, kidID, id string) (T, error),
+	act func(ctx context.Context, kidID, actorID, id string, at, now time.Time) (T, error),
+	view func(T) V,
+) {
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	birth, ok := d.birthStart(w, r)
+	if !ok {
+		return
+	}
+	kidID := r.PathValue("kid")
+	if _, err := load(r.Context(), kidID, id); !entryOK(w, err) {
+		return
+	}
+	if invalid != "" {
+		respondInvalid(w, invalid)
+		return
+	}
+	now := d.Now()
+	at := wholeSecond(now)
+	if given != nil {
+		at = wholeSecond(*given)
+	}
+	if !instantOK(at, birth, now) {
+		respondInvalid(w, "at")
+		return
+	}
+	v, err := act(r.Context(), kidID, PrincipalFrom(r.Context()).ParentID, id, at, now)
+	if errors.Is(err, store.ErrInvalidSession) {
+		respondInvalid(w, "at")
+		return
+	}
+	if entryOK(w, err) {
+		respondJSON(w, http.StatusOK, view(v))
+	}
+}
+
+// endInput is the body of a timer's end route.
+type endInput struct {
+	At *time.Time `json:"at"`
 }

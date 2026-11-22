@@ -23,6 +23,12 @@ var (
 	ErrForbidden    = errors.New("store: forbidden")
 	// ErrInvalidContents is a bottle whose contents are empty, repeat a name or name an unknown one.
 	ErrInvalidContents = errors.New("store: invalid bottle contents")
+	// ErrAlreadyRunning is a timer start while the kid already has one running in that table.
+	ErrAlreadyRunning = errors.New("store: already running")
+	// ErrNotRunning is an end or side switch on a finished session.
+	ErrNotRunning = errors.New("store: not running")
+	// ErrInvalidSession is a timer write that breaks a session invariant (model's InvalidField, or a re-opened session).
+	ErrInvalidSession = errors.New("store: invalid session")
 	// ErrParentNotFound is an ErrNotFound naming the grant's target, not the kid or the actor.
 	ErrParentNotFound = fmt.Errorf("%w: parent", ErrNotFound)
 )

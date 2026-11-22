@@ -99,6 +99,19 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/pumping/{entry}":         Caregiver,
 	"PATCH /v1/kids/{kid}/pumping/{entry}":       Caregiver,
 	"DELETE /v1/kids/{kid}/pumping/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/sleep":                   Caregiver,
+	"POST /v1/kids/{kid}/sleep":                  Caregiver,
+	"GET /v1/kids/{kid}/sleep/{entry}":           Caregiver,
+	"PATCH /v1/kids/{kid}/sleep/{entry}":         Caregiver,
+	"DELETE /v1/kids/{kid}/sleep/{entry}":        Caregiver,
+	"POST /v1/kids/{kid}/sleep/{entry}/end":      Caregiver,
+	"GET /v1/kids/{kid}/nursing":                 Caregiver,
+	"POST /v1/kids/{kid}/nursing":                Caregiver,
+	"GET /v1/kids/{kid}/nursing/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/nursing/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/nursing/{entry}":      Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/end":    Caregiver,
+	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -124,13 +137,13 @@ func (w want) String() string {
 const matrixBody = `{"matrix_probe":true}`
 
 type fixture struct {
-	kit                           *kit
-	kid                           string
-	bottle, diaper, meal, pumping string
-	invite                        string
-	parent                        [actorCount]model.Parent
-	token                         [actorCount]string
-	sid                           [actorCount]string
+	kit                                           *kit
+	kid                                           string
+	bottle, diaper, meal, pumping, sleep, nursing string
+	invite                                        string
+	parent                                        [actorCount]model.Parent
+	token                                         [actorCount]string
+	sid                                           [actorCount]string
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -155,6 +168,10 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.meal
 		case strings.Contains(rt.Pattern, "/pumping/"):
 			return f.pumping
+		case strings.Contains(rt.Pattern, "/sleep/"):
+			return f.sleep
+		case strings.Contains(rt.Pattern, "/nursing/"):
+			return f.nursing
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -233,7 +250,32 @@ func newMatrixFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.bottle, f.diaper, f.meal, f.pumping = bottle.ID, diaper.ID, meal.ID, pumping.ID
+	sleep, err := k.Store.CreateSleep(ctx, kid.ID, f.parent[aG].ID, model.SleepSession{StartedAt: k.now.Add(-time.Hour), EndedAt: &k.now}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nursing, err := k.Store.CreateNursing(ctx, kid.ID, f.parent[aG].ID,
+		model.NursingSession{StartedAt: k.now.Add(-time.Hour), EndedAt: &k.now, LeftSeconds: 600, RightSeconds: 600}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.bottle, f.diaper, f.meal, f.pumping, f.sleep, f.nursing = bottle.ID, diaper.ID, meal.ID, pumping.ID, sleep.ID, nursing.ID
+
+	// The running timers live on a second kid so the probes of "Kid K"'s start routes never meet one.
+	running, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid R", BirthDate: "2026-03-04", Sex: "male", TimeZone: "UTC"}, f.parent[aG].ID, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := k.Store.SetAccess(ctx, running.ID, f.parent[aG].ID, f.parent[aC].Username, model.RoleCaregiver, k.now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.Store.CreateSleep(ctx, running.ID, f.parent[aG].ID, model.SleepSession{StartedAt: k.now}, k.now); err != nil {
+		t.Fatal(err)
+	}
+	left := "left"
+	if _, err := k.Store.CreateNursing(ctx, running.ID, f.parent[aG].ID, model.NursingSession{StartedAt: k.now, Side: &left}, k.now); err != nil {
+		t.Fatal(err)
+	}
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {
