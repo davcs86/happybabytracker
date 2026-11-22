@@ -109,7 +109,7 @@ func (d Deps) growthCurves(w http.ResponseWriter, r *http.Request) {
 	}
 	src, sex := growth.Source(kid.GrowthSource), growth.Sex(kid.Sex)
 	v := curvesView{Source: kid.GrowthSource, Measure: string(m), Sex: kid.Sex, FromMonths: from, ToMonths: to,
-		Lines: []lineView{}, CorrectedAgeAxis: kidtime.CorrectionDays(kid.GestationWeeks, kid.GestationDays) > 0}
+		Lines: []lineView{}, CorrectedAgeAxis: basis.Corrected}
 	curves, err := growth.Curves(src, m, sex, from, to)
 	if errors.Is(err, growth.ErrNotCovered) {
 		reason := "not_covered"

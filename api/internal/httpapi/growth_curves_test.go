@@ -233,6 +233,32 @@ func TestCurvesDefaultRange(t *testing.T) {
 
 func ptr(n int) *int { return &n }
 
+func TestCurvesCorrectedAxisEndsAtSecondBirthday(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	pre := k.createKid(ana, map[string]any{"name": "Pre", "birth_date": "2025-01-10", "time_zone": "UTC",
+		"gestation_weeks": 35, "gestation_days": 2})
+	term := k.createKid(ana, map[string]any{"name": "Term", "birth_date": "2025-01-10", "time_zone": "UTC"})
+	for _, c := range []struct {
+		name      string
+		now       time.Time
+		pre, term bool
+	}{
+		{"at 22 months", t0, true, false},
+		{"the day before the second birthday", time.Date(2027, 1, 9, 12, 0, 0, 0, time.UTC), true, false},
+		{"the second birthday", time.Date(2027, 1, 10, 0, 0, 0, 0, time.UTC), false, false},
+		{"after the second birthday", time.Date(2028, 3, 1, 12, 0, 0, 0, time.UTC), false, false},
+	} {
+		k.now = c.now
+		token := k.asParent("ana")
+		for kid, want := range map[string]bool{pre: c.pre, term: c.term} {
+			if got := k.curves(token, kid, "measure=weight")["corrected_age_axis"]; got != want {
+				t.Errorf("%s: kid %s corrected_age_axis = %v, want %v", c.name, kid, got, want)
+			}
+		}
+	}
+}
+
 func TestCurvesBadParams(t *testing.T) {
 	k := newKit(t)
 	ana := k.asParent("ana")
