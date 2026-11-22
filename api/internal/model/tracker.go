@@ -85,7 +85,6 @@ func (n NursingSession) InvalidField() string {
 	if n.RightSeconds < 0 {
 		return "right_seconds"
 	}
-	credited := int64(n.LeftSeconds) + int64(n.RightSeconds)
 	if n.EndedAt != nil {
 		if n.Side != nil || n.SideSince != nil {
 			return "side"
@@ -93,7 +92,7 @@ func (n NursingSession) InvalidField() string {
 		if f := durationField(n.StartedAt, *n.EndedAt); f != "" {
 			return f
 		}
-		if credited > int64(n.EndedAt.Sub(n.StartedAt)/time.Second) {
+		if !secondsFit(n.LeftSeconds, n.RightSeconds, n.EndedAt.Sub(n.StartedAt)) {
 			return "left_seconds"
 		}
 		return ""
@@ -101,10 +100,17 @@ func (n NursingSession) InvalidField() string {
 	if n.Side == nil || n.SideSince == nil || !slices.Contains(NursingSides, *n.Side) {
 		return "side"
 	}
-	if n.SideSince.Before(n.StartedAt) || credited > int64(n.SideSince.Sub(n.StartedAt)/time.Second) {
+	if n.SideSince.Before(n.StartedAt) || !secondsFit(n.LeftSeconds, n.RightSeconds, n.SideSince.Sub(n.StartedAt)) {
 		return "started_at"
 	}
 	return ""
+}
+
+// secondsFit is left + right <= span in whole seconds, for non-negative left and right; it never adds them,
+// so huge client values cannot wrap past the check.
+func secondsFit(left, right int, span time.Duration) bool {
+	d := int64(span / time.Second)
+	return int64(left) <= d && int64(right) <= d-int64(left)
 }
 
 // Ended closes the running n at at, crediting the side in use; false when n is not running or at precedes SideSince.

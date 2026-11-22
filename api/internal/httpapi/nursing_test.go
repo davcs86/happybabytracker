@@ -112,6 +112,7 @@ func TestNursingCreateValidation(t *testing.T) {
 		"finished left negative":  {finishedNursingBody(map[string]any{"left_seconds": -1}), "left_seconds"},
 		"finished right negative": {finishedNursingBody(map[string]any{"right_seconds": -1}), "right_seconds"},
 		"seconds over duration":   {finishedNursingBody(map[string]any{"left_seconds": 361}), "left_seconds"},
+		"seconds sum wraps int64": {finishedNursingBody(map[string]any{"left_seconds": 1 << 62, "right_seconds": 1 << 62}), "left_seconds"},
 		"end ahead":               {finishedNursingBody(map[string]any{"ended_at": ts(t0.Add(constants.MaxFutureSkew + time.Second))}), "ended_at"},
 		"end before start":        {finishedNursingBody(map[string]any{"ended_at": ts(t0.Add(-time.Hour - time.Second))}), "ended_at"},
 		"longer than the limit": {finishedNursingBody(map[string]any{
@@ -120,6 +121,9 @@ func TestNursingCreateValidation(t *testing.T) {
 	} {
 		wantInvalid2(t, name, k.do(http.MethodPost, base, ana, c.body), c.field)
 	}
+	// A number past int64 fails to decode: 400, never a 500.
+	tooBig := `{"started_at":"2026-11-20T11:00:00Z","ended_at":"2026-11-20T11:10:00Z","left_seconds":9223372036854775808,"right_seconds":0}`
+	wantErr(t, k.do(http.MethodPost, base, ana, tooBig), http.StatusBadRequest, "bad_request")
 	for _, body := range []string{`{"side":"left","left_seconds":1.5}`, `{"side":"left","side_since":"2026-11-20T12:00:00Z"}`} {
 		if rec := k.do(http.MethodPost, base, ana, body); rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: %d %q", body, rec.Code, rec.Body.String())
@@ -155,6 +159,7 @@ func TestNursingPatch(t *testing.T) {
 		field string
 	}{
 		"over the duration": {map[string]any{"left_seconds": 1}, "left_seconds"},
+		"sum wraps int64":   {map[string]any{"left_seconds": 1 << 62, "right_seconds": 1 << 62}, "left_seconds"},
 		"shorter session":   {map[string]any{"started_at": ts(t0.Add(-time.Hour + time.Second))}, "left_seconds"},
 		"negative right":    {map[string]any{"right_seconds": -1}, "right_seconds"},
 		"re-open":           {map[string]any{"ended_at": nil}, "ended_at"},
@@ -164,6 +169,7 @@ func TestNursingPatch(t *testing.T) {
 	} {
 		wantInvalid2(t, name, k.do(http.MethodPatch, finished, ana, c.body), c.field)
 	}
+	wantErr(t, k.do(http.MethodPatch, finished, ana, `{"right_seconds":9223372036854775808}`), http.StatusBadRequest, "bad_request")
 	if got := k.do(http.MethodGet, finished, ana, nil).Body.String(); got != stored {
 		t.Errorf("a refused patch changed the session:\n got %s\nwant %s", got, stored)
 	}

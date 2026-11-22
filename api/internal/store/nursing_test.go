@@ -209,9 +209,10 @@ func TestFinishedNursingSecondsCannotExceedDuration(t *testing.T) {
 	k := mustKid(t, s, ana.ID, "Lía")
 	start, end := t0.Add(-time.Hour), t0.Add(-50*time.Minute) // 600 s
 	for name, n := range map[string]model.NursingSession{
-		"one over":       finishedNursing(start, end, 301, 300),
-		"left negative":  finishedNursing(start, end, -1, 0),
-		"right negative": finishedNursing(start, end, 0, -1),
+		"one over":        finishedNursing(start, end, 301, 300),
+		"left negative":   finishedNursing(start, end, -1, 0),
+		"right negative":  finishedNursing(start, end, 0, -1),
+		"sum wraps int64": finishedNursing(start, end, 1<<62, 1<<62),
 	} {
 		if _, err := s.CreateNursing(ctx, k.ID, ana.ID, n, t0); !errors.Is(err, ErrInvalidSession) {
 			t.Errorf("create %s: %v, want ErrInvalidSession", name, err)
@@ -230,8 +231,23 @@ func TestFinishedNursingSecondsCannotExceedDuration(t *testing.T) {
 	}); !errors.Is(err, ErrInvalidSession) {
 		t.Errorf("update that shortens the session: %v, want ErrInvalidSession", err)
 	}
+	if _, err := s.UpdateNursing(ctx, k.ID, ana.ID, n.ID, t0, func(n model.NursingSession) (model.NursingSession, error) {
+		n.LeftSeconds, n.RightSeconds = 1<<62, 1<<62
+		return n, nil
+	}); !errors.Is(err, ErrInvalidSession) {
+		t.Errorf("update to a wrapping sum: %v, want ErrInvalidSession", err)
+	}
 	if got, err := s.Nursing(ctx, k.ID, n.ID); err != nil || !reflect.DeepEqual(got, n) {
 		t.Errorf("the refused updates changed the row: %+v, %v", got, err)
+	}
+
+	running := mustNursing(t, s, k.ID, ana.ID, runningNursing(start, "left"))
+	if _, err := s.UpdateNursing(ctx, k.ID, ana.ID, running.ID, t0, func(n model.NursingSession) (model.NursingSession, error) {
+		n.SideSince = timep(end)
+		n.LeftSeconds, n.RightSeconds = 1<<62, 1<<62
+		return n, nil
+	}); !errors.Is(err, ErrInvalidSession) {
+		t.Errorf("running row with a wrapping sum: %v, want ErrInvalidSession", err)
 	}
 }
 
