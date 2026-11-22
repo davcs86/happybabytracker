@@ -363,7 +363,8 @@ code="$(form start-sleep-2 "$ADDR_A" "$SESSION_A" "$KID_PATH?/startSleep")"
 SLEEP_ID="$(timer_id start-sleep-2 endSleep)"
 [ -n "$SLEEP_ID" ] || fail "4b sleep timer" "no End form"
 code="$(form end-sleep "$ADDR_A" "$SESSION_A" "$KID_PATH?/endSleep" "id=$SLEEP_ID")"
-{ [ "$code" = 200 ] && ! body_has end-sleep 'Asleep since'; } || fail "4b end sleep" "status $code"
+{ [ "$code" = 200 ] && body_has end-sleep ">$KID_NAME</h1>" && ! body_has end-sleep 'Asleep since'; } ||
+  fail "4b end sleep" "status $code"
 log_entry log-nursing-timer nursing started_at= side=left ended_at= left_minutes= right_minutes= \
   "note=$N_TIMER"
 code="$(req home-nursing "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
@@ -373,7 +374,8 @@ NURSING_ID="$(timer_id home-nursing switchSide)"
 code="$(form switch-side "$ADDR_A" "$SESSION_A" "$KID_PATH?/switchSide" "id=$NURSING_ID" side=right)"
 { [ "$code" = 200 ] && body_has switch-side 'Nursing, right since'; } || fail "4b switch side" "status $code"
 code="$(form end-nursing "$ADDR_A" "$SESSION_A" "$KID_PATH?/endNursing" "id=$NURSING_ID")"
-{ [ "$code" = 200 ] && ! body_has end-nursing 'Nursing, right since' &&
+{ [ "$code" = 200 ] && body_has end-nursing ">$KID_NAME</h1>" &&
+  ! body_has end-nursing 'Nursing, right since' &&
   ! body_has end-nursing 'Running now'; } ||
   fail "4b end nursing" "status $code"
 pass "4b a sleep timer starts and ends from the home, a second one is refused (409), a nursing timer switches side and ends"

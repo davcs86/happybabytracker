@@ -9,8 +9,8 @@ design and the plan of the next item.
 |---|---|---|
 | Design | `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` | approved by the owner |
 | Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | done, merged to `main` (PR #3) |
-| Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | done on that repo's branch `ccr-174d8c4e-jjczdt`; its `main` did not carry it when this was written: check its PR |
-| Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #4; merging needs the owner |
+| Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | merged by the owner in `davcs86/homelab-edge` PR #100 on 2026-11-22 and deployed |
+| Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #4, not merged yet; after it merges the edge needs its `bump-happybabytracker` PR and a deploy |
 | Plans 4–7 | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
