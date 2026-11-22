@@ -135,6 +135,8 @@ func optionalText(s string) *string {
 	return &s
 }
 
+func newAgeJSON(a vaccines.Age) ageJSON { return ageJSON{N: a.N, Unit: string(rune(a.Unit))} }
+
 func newLineStateView(ls vaccines.LineState) lineStateView {
 	v := lineStateView{ID: ls.Line.ID, Group: ls.Line.Group, Antigen: ls.Line.Antigen, Series: ls.Line.Series,
 		Kind: string(ls.Line.Kind), Status: string(ls.Status), FromDate: ls.FromDate, UntilDate: ls.UntilDate,
@@ -183,8 +185,8 @@ func newVaccinesView(s *vaccines.Schema, e vaccines.Evaluation, today string, pr
 	return v
 }
 
-// evaluateKid evaluates the kid's doses against s (nil: no schedule, every dose is Other) on the kid-local today.
-func (d Deps) evaluateKid(ctx context.Context, kid model.Kid, s *vaccines.Schema, loc *time.Location) (vaccines.Evaluation, []model.VaccineDose, string, error) {
+// evaluateKid evaluates the kid's doses against s (nil: no schedule, every dose is Other) on the kid-local today of now.
+func (d Deps) evaluateKid(ctx context.Context, kid model.Kid, s *vaccines.Schema, loc *time.Location, now time.Time) (vaccines.Evaluation, []model.VaccineDose, string, error) {
 	rows, err := d.Store.Doses(ctx, kid.ID)
 	if err != nil {
 		return vaccines.Evaluation{}, nil, "", err
@@ -203,7 +205,7 @@ func (d Deps) evaluateKid(ctx context.Context, kid model.Kid, s *vaccines.Schema
 			return vaccines.Evaluation{}, nil, "", err
 		}
 	}
-	start, _ := kidtime.DayBounds(loc, d.Now())
+	start, _ := kidtime.DayBounds(loc, now)
 	today := start.Format(time.DateOnly)
 	e, err := vaccines.Evaluate(schema, doses, dismissals, kid.BirthDate, today, loc)
 	return e, rows, today, err
@@ -257,7 +259,7 @@ func (d Deps) kidVaccines(w http.ResponseWriter, r *http.Request) {
 	if s, ok := kidSchema(kid); ok {
 		schema = &s
 	}
-	e, rows, today, err := d.evaluateKid(r.Context(), kid, schema, loc)
+	e, rows, today, err := d.evaluateKid(r.Context(), kid, schema, loc, d.Now())
 	if err != nil {
 		respondInternal(w, err)
 		return
@@ -477,7 +479,7 @@ func (d Deps) dismissalLine(w http.ResponseWriter, r *http.Request) (model.Kid, 
 		respondNoKid(w)
 		return model.Kid{}, vaccines.Schema{}, "", false
 	}
-	e, _, _, err := d.evaluateKid(r.Context(), kid, &s, loc)
+	e, _, _, err := d.evaluateKid(r.Context(), kid, &s, loc, d.Now())
 	if err != nil {
 		respondInternal(w, err)
 		return model.Kid{}, vaccines.Schema{}, "", false
@@ -557,7 +559,7 @@ func (d Deps) dismissBefore(w http.ResponseWriter, r *http.Request) {
 		respondInvalid(w, "reason")
 		return
 	}
-	e, _, _, err := d.evaluateKid(r.Context(), kid, &s, loc)
+	e, _, _, err := d.evaluateKid(r.Context(), kid, &s, loc, d.Now())
 	if err != nil {
 		respondInternal(w, err)
 		return
