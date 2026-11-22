@@ -39,6 +39,18 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 - Td in place of DTaP for a pertussis-specific contraindication, and tetanus doses for wound management
 - Catch-up schedules (Table 2) and the recommendations by medical condition (Table 3)
 
+## Lines to verify
+
+These lines carry `(verify)`: check them against the source first.
+
+| Vaccine | Antigen | Dose | Window | Kind | Note |
+|---|---|---|---|---|---|
+| RSV | Respiratory syncytial virus (RSV) | 1 | from Birth until 8 months | `may_not_be_needed` | (verify) end of window derived: CDC prints no end age for this dose; 8 months is where the second-season bar “1 dose (8 through 19 months)” starts. Table 1 shows it in yellow (all children): “1 dose depending on maternal RSV vaccination status”; “Mother received RSV vaccine at least 14 days prior to delivery: nirsevimab not needed”. Born October–March: “administer 1 dose nirsevimab within 1 week of birth”; born April–September: “1 dose nirsevimab shortly before start of RSV season”. Nirsevimab is a monoclonal antibody. |
+| Hib | Haemophilus influenzae type b (Hib) | 3 | from 6 months until 16 months | `routine` | (verify) window is the 6-month primary dose and the PedvaxHIB booster “at age 12–15 months” together, because doses are matched by count: ActHIB, Hiberix, Pentacel or Vaxelis give this dose at 6 months; with PedvaxHIB (“3-dose series (2-dose primary series at age 2 and 4 months, followed by a booster dose at age 12–15 months)”) the booster fills it. Not flagged overdue at 7 months; overdue from 16 months for a child with fewer than 3 doses. |
+| Hib | Haemophilus influenzae type b (Hib) | 4 | from 12 months until 16 months | `may_not_be_needed` | (verify) “3rd or 4th dose (See Notes)” at “12–15 months”: a 4th dose only after ActHIB, Hiberix, Pentacel or Vaxelis primary doses. A child on a 3-dose product fills lines 1–3 and is never flagged overdue here. “Vaxelis is not recommended for use as a booster dose.” |
+| Hepatitis A | Hepatitis A | 2 | from 18 months until 24 months | `routine` | (verify) start of window derived: 12 months plus the 6-month minimum interval. CDC gives one window for the series: “2-dose series (minimum interval: 6 months) at age 12–23 months”. |
+| HPV | Human papillomavirus (HPV) | 2 | from 138 months until 13 years | `routine` | (verify) start of window derived: dose 1 at 11 years plus 6 months. CDC states dose 2 as an interval, not an age: “Age 9–14 years at initial vaccination: 2-dose series at 0, 6–12 months (minimum interval: 5 months; repeat dose if administered too soon)”. |
+
 ## Birth
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |

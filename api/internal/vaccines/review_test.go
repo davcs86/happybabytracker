@@ -82,24 +82,41 @@ func renderMarkdown(s Schema) string {
 		return cmp.Or(cmp.Compare(x.From.approxDays(), y.From.approxDays()), cmp.Compare(x.Group, y.Group),
 			cmp.Compare(x.Antigen, y.Antigen), cmp.Compare(x.Series, y.Series))
 	})
+	const tableHead = "| Vaccine | Antigen | Dose | Window | Kind | Note |\n|---|---|---|---|---|---|\n"
+	var verify []Line
+	for _, l := range lines {
+		if strings.HasPrefix(l.Note, "(verify)") {
+			verify = append(verify, l)
+		}
+	}
+	if len(verify) > 0 {
+		b.WriteString("\n## Lines to verify\n\nThese lines carry `(verify)`: check them against the source first.\n\n" + tableHead)
+		for _, l := range verify {
+			b.WriteString(reviewRow(l, names))
+		}
+	}
 	for i, l := range lines {
 		if i == 0 || lines[i-1].From != l.From {
 			fmt.Fprintf(&b, "\n## %s\n\n", ageLabel(l.From))
-			b.WriteString("| Vaccine | Antigen | Dose | Window | Kind | Note |\n|---|---|---|---|---|---|\n")
+			b.WriteString(tableHead)
 		}
-		window := "from " + ageLabel(l.From) + " until " + defaultEnd(l.From) + " (default window)"
-		switch {
-		case l.Kind == KindRecurring:
-			window = "from " + ageLabel(l.From) + ", every season"
-		case l.Until != nil:
-			window = "from " + ageLabel(l.From) + " until " + ageLabel(*l.Until)
-		}
-		if l.BornFrom != "" || l.BornTo != "" {
-			window += fmt.Sprintf("; born %s to %s", cmp.Or(l.BornFrom, "any date"), cmp.Or(l.BornTo, "any date"))
-		}
-		fmt.Fprintf(&b, "| %s | %s | %d | %s | `%s` | %s |\n", cell(l.Group), cell(names[l.Antigen]), l.Series, window, l.Kind, cell(l.Note))
+		b.WriteString(reviewRow(l, names))
 	}
 	return b.String()
+}
+
+func reviewRow(l Line, names map[string]string) string {
+	window := "from " + ageLabel(l.From) + " until " + defaultEnd(l.From) + " (default window)"
+	switch {
+	case l.Kind == KindRecurring:
+		window = "from " + ageLabel(l.From) + ", every season"
+	case l.Until != nil:
+		window = "from " + ageLabel(l.From) + " until " + ageLabel(*l.Until)
+	}
+	if l.BornFrom != "" || l.BornTo != "" {
+		window += fmt.Sprintf("; born %s to %s", cmp.Or(l.BornFrom, "any date"), cmp.Or(l.BornTo, "any date"))
+	}
+	return fmt.Sprintf("| %s | %s | %d | %s | `%s` | %s |\n", cell(l.Group), cell(names[l.Antigen]), l.Series, window, l.Kind, cell(l.Note))
 }
 
 func TestReviewDocsAreCurrent(t *testing.T) {
@@ -142,6 +159,7 @@ func TestRenderMarkdown(t *testing.T) {
 		line("influenza-1", "Flu", "influenza", 1, age(2, UnitYear), nil, KindRecurring),
 	}}
 	s.Lines[0].BornFrom = "2024-07-01"
+	s.Lines[2].Note = "(verify) season"
 	got := renderMarkdown(s)
 	for _, want := range []string{
 		"## Birth\n", "| A | Hepatitis B | 1 | from Birth until 1 month | `supplementary` |  |\n",
@@ -153,6 +171,12 @@ func TestRenderMarkdown(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("renderMarkdown lacks %q:\n%s", want, got)
 		}
+	}
+	verify := "## Lines to verify\n\nThese lines carry `(verify)`: check them against the source first.\n\n" +
+		"| Vaccine | Antigen | Dose | Window | Kind | Note |\n|---|---|---|---|---|---|\n" +
+		"| Flu | Influenza | 1 | from 2 years, every season | `recurring` | (verify) season |\n"
+	if i := strings.Index(got, verify); i < 0 || i > strings.Index(got, "## Birth") {
+		t.Errorf("renderMarkdown lacks a verify section before the age tables:\n%s", got)
 	}
 	if strings.Index(got, "## Birth") > strings.Index(got, "## 2 months") {
 		t.Error("tables are not in age order")

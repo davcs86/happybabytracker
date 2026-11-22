@@ -19,7 +19,13 @@ var mandatoryAttribution = map[string][]string{
 		"https://www.gov.uk/government/publications/the-complete-routine-immunisation-schedule",
 		"https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
 		"partial, simplified transcription", "not endorsed by UKHSA"},
+	"mx": {mxPDF, "https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026",
+		"Secretaría de Salud, CeNSIA", "consultado el 22 de noviembre de 2026", "2026-11-22",
+		"partial, simplified transcription", "antigen, dose number and age", "not endorsed by the Secretaría de Salud",
+		"not a copy of its publication", "the official text prevails"},
 }
+
+const mxPDF = "https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf"
 
 func TestShippedSchedulesLoad(t *testing.T) {
 	mustLoad(t)
@@ -67,10 +73,17 @@ func TestShippedSchedulesLoad(t *testing.T) {
 			t.Errorf("GetSchema(%s) does not serve the file", s.ID)
 		}
 	}
-	for _, id := range []string{"us", "uk"} {
+	for _, id := range []string{"us", "uk", "mx"} {
 		if !seen[id] {
 			t.Errorf("data/%s.csv is not shipped", id)
 		}
+	}
+	var order []string
+	for _, s := range Schemas() {
+		order = append(order, s.ID)
+	}
+	if !slices.Equal(order, []string{"us", "uk", "mx"}) {
+		t.Errorf("Schemas() order = %v, want [us uk mx]", order)
 	}
 }
 
@@ -568,6 +581,282 @@ func TestUKAtFifteenYears(t *testing.T) {
 		}
 		if n != len(e.Lines) {
 			t.Errorf("born %s: Due() counts %d lines, want %d", born, n, len(e.Lines))
+		}
+	}
+}
+
+// Lineamientos PVU 2026, Cuadro 1 footnote **: the SRP second dose is at 6 years for children born
+// before July 2020 and at 18 months for children born from July 2020.
+const (
+	mxSRP18m = "2020-07-01"
+	mxSRP6y  = "2020-06-30"
+)
+
+// mxLines is every line of mx.csv, from Cuadros 1 and 6; a change to the file must change this table.
+var mxLines = func() []cohortPinned {
+	ls := []cohortPinned{
+		ukLine("tuberculosis-1", "BCG", "0d", "", KindRoutine, "", ""),
+		ukLine("hepatitis_b-1", "Hepatitis B", "0d", "7d", KindMayNotBeNeeded, "", ""),
+	}
+	for i, from := range []string{"2m", "4m", "6m", "18m"} {
+		for _, a := range []string{"diphtheria", "tetanus", "pertussis", "polio", "hib"} {
+			ls = append(ls, ukLine(fmt.Sprintf("%s-%d", a, i+1), "Hexavalent", from, "", KindRoutine, "", ""))
+		}
+		kind := KindRoutine
+		if from == "18m" {
+			kind = KindMayNotBeNeeded
+		}
+		ls = append(ls, ukLine(fmt.Sprintf("hepatitis_b-%d", i+2), "Hexavalent", from, "", kind, "", ""))
+	}
+	for _, a := range []string{"diphtheria", "tetanus", "pertussis"} {
+		ls = append(ls, ukLine(a+"-5", "DPT booster", "4y", "", KindRoutine, "", ""))
+	}
+	ls = append(ls,
+		ukLine("rotavirus-1", "Rotavirus", "2m", "", KindRoutine, "", ""),
+		ukLine("rotavirus-2", "Rotavirus", "4m", "", KindRoutine, "", ""),
+		ukLine("pneumococcus-1", "Pneumococcal", "2m", "", KindRoutine, "", ""),
+		ukLine("pneumococcus-2", "Pneumococcal", "4m", "", KindRoutine, "", ""),
+		ukLine("pneumococcus-3", "Pneumococcal", "12m", "", KindRoutine, "", ""),
+	)
+	for _, a := range []string{"measles", "mumps", "rubella"} {
+		ls = append(ls,
+			ukLine(a+"-1", "SRP (MMR)", "12m", "", KindRoutine, "", ""),
+			ukLine(a+"-2-b202007", "SRP (MMR)", "18m", "", KindRoutine, mxSRP18m, ""),
+			ukLine(a+"-2-to202006", "SRP (MMR)", "6y", "", KindRoutine, "", mxSRP6y),
+		)
+	}
+	return append(ls,
+		ukLine("varicella-1", "Varicella", "12m", "", KindSupplementary, "", ""),
+		ukLine("hepatitis_a-1", "Hepatitis A", "18m", "", KindRoutine, "", ""),
+		ukLine("influenza-1", "Influenza", "6m", "", KindRecurring, "", ""),
+		ukLine("covid19-1", "COVID-19", "6m", "", KindRecurring, "", ""),
+		ukLine("hpv-1", "HPV", "11y", "", KindSupplementary, "", ""),
+	)
+}()
+
+// mxVerify are the lines the owner must re-check against the source (ruling R4).
+var mxVerify = []string{"influenza-1", "covid19-1", "hpv-1"}
+
+func mustMX(t *testing.T) Schema {
+	t.Helper()
+	mustLoad(t)
+	s, ok := GetSchema("mx")
+	if !ok {
+		t.Fatal("GetSchema(mx) not found")
+	}
+	return s
+}
+
+func TestMXKnownLines(t *testing.T) {
+	s := mustMX(t)
+	byID := map[string]Line{}
+	shared := map[string]int{}
+	for _, l := range s.Lines {
+		byID[l.ID] = l
+		shared[fmt.Sprintf("%s-%d", l.Antigen, l.Series)]++
+	}
+	for _, p := range mxLines {
+		l, ok := byID[p.id]
+		if !ok {
+			t.Errorf("%s: missing", p.id)
+			continue
+		}
+		u := ""
+		if l.Until != nil {
+			u = ageString(*l.Until)
+		}
+		if l.Group != p.group || ageString(l.From) != p.from || u != p.until || l.Kind != p.kind ||
+			l.BornFrom != p.bornFrom || l.BornTo != p.bornTo {
+			t.Errorf("%s = {%s %s %s %s %s %s}, want {%s %s %s %s %s %s}", p.id, l.Group, ageString(l.From), u, l.Kind,
+				l.BornFrom, l.BornTo, p.group, p.from, p.until, p.kind, p.bornFrom, p.bornTo)
+		}
+	}
+	for _, l := range s.Lines {
+		base := fmt.Sprintf("%s-%d", l.Antigen, l.Series)
+		want := base
+		if shared[base] > 1 {
+			want += cohortTag(l)
+		}
+		if l.ID != want {
+			t.Errorf("%s: id is not %s", l.ID, want)
+		}
+		if l.Until != nil && !after(*l.Until, l.From) {
+			t.Errorf("%s: until is not after from", l.ID)
+		}
+		if strings.HasPrefix(l.Note, "(verify)") != slices.Contains(mxVerify, l.ID) {
+			t.Errorf("%s: (verify) mark = %v, want %v", l.ID, strings.HasPrefix(l.Note, "(verify)"), slices.Contains(mxVerify, l.ID))
+		}
+	}
+	if len(s.Lines) != len(mxLines) {
+		t.Errorf("mx.csv has %d lines, the table pins %d", len(s.Lines), len(mxLines))
+	}
+	for _, id := range []string{"diphtheria-5", "tetanus-5", "pertussis-5"} {
+		if !strings.Contains(byID[id].Note, "DPT") {
+			t.Errorf("%s: note does not say it is the DPT booster", id)
+		}
+	}
+	if !strings.Contains(byID["varicella-1"].Note, "not part of the basic schedule") {
+		t.Error("varicella-1: note does not say it is outside the basic schedule")
+	}
+	omitted := strings.Join(s.Omitted, "\n")
+	for _, want := range []string{"pregnan", "adult", "comorbidit", "Td", "risk", "RV5", "dosis cero", "catch-up",
+		"preterm", "Anexo 1", "second dose in the first season", "HIV"} {
+		if !strings.Contains(omitted, want) {
+			t.Errorf("omitted does not mention %s", want)
+		}
+	}
+	for _, want := range []string{"no open licence", "https://www.gob.mx/terminos", "public unless", "date it was consulted",
+		"Ley Federal del Derecho de Autor", "art. 14", "not legal advice"} {
+		if !strings.Contains(s.Licence, want) {
+			t.Errorf("licence lacks %q", want)
+		}
+	}
+}
+
+// mxBrands are trade names of vaccines used in Mexico; neither the file nor the README may print one.
+var mxBrands = []string{
+	"hexaxim", "hexyon", "vaxelis", "infanrix", "rotarix", "rotateq", "prevenar", "prevnar", "synflorix", "vaxneuvance",
+	"pneumovax", "priorix", "varivax", "varilrix", "havrix", "avaxim", "vaqta", "gardasil", "cervarix", "fluzone",
+	"vaxigrip", "influvac", "fluarix", "comirnaty", "spikevax", "abdala", "sputnik", "boostrix", "adacel", "abrysvo",
+	"arexvy", "beyfortus", "engerix", "tetraxim", "pentaxim", "euvax",
+}
+
+func TestMXHasNoBrandNames(t *testing.T) {
+	s := mustMX(t)
+	texts := append([]string{s.Name, s.Authority, s.Edition, s.Licence, s.Attribution, readmeRow(t, "mx")}, s.Omitted...)
+	for _, l := range s.Lines {
+		texts = append(texts, l.ID, l.Group, l.Note)
+	}
+	for _, x := range texts {
+		lower := strings.ToLower(x)
+		for _, b := range mxBrands {
+			if strings.Contains(lower, b) {
+				t.Errorf("%q contains the brand name %q", x, b)
+			}
+		}
+	}
+	row := readmeRow(t, "mx")
+	for _, want := range []string{mxPDF, "2026-11-22", "not endorsed by", "not a copy", "partial, simplified transcription"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("README mx row lacks %q", want)
+		}
+	}
+}
+
+func TestMXCohortBoundaries(t *testing.T) {
+	s := mustMX(t)
+	dtp := []string{"2m", "4m", "6m", "18m", "4y"}
+	hexa := []string{"2m", "4m", "6m", "18m"}
+	want := func(srp []string) map[string][]string {
+		return map[string][]string{
+			"tuberculosis": {"0d"}, "hepatitis_b": {"0d", "2m", "4m", "6m", "18m"},
+			"diphtheria": dtp, "tetanus": dtp, "pertussis": dtp, "polio": hexa, "hib": hexa,
+			"rotavirus": {"2m", "4m"}, "pneumococcus": {"2m", "4m", "12m"},
+			"measles": srp, "mumps": srp, "rubella": srp,
+			"varicella": {"12m"}, "hepatitis_a": {"18m"}, "hpv": {"11y"},
+		}
+	}
+	for born, srp := range map[string][]string{
+		"2015-03-01": {"12m", "6y"}, mxSRP6y: {"12m", "6y"}, mxSRP18m: {"12m", "18m"}, "2026-09-01": {"12m", "18m"},
+	} {
+		e := mustEval(t, s, nil, nil, born, born)
+		got := map[string][]Line{}
+		for _, l := range append(slices.Clone(e.Lines), e.Also...) {
+			got[l.Line.Antigen] = append(got[l.Line.Antigen], l.Line)
+		}
+		w := want(srp)
+		for antigen, ages := range w {
+			lines := got[antigen]
+			slices.SortFunc(lines, func(a, b Line) int { return a.Series - b.Series })
+			var from []string
+			for i, l := range lines {
+				from = append(from, ageString(l.From))
+				if l.Series != i+1 {
+					t.Errorf("born %s: %s series %v is not 1..%d", born, antigen, lines, len(lines))
+				}
+			}
+			if !slices.Equal(from, ages) {
+				t.Errorf("born %s: %s from ages = %v, want %v", born, antigen, from, ages)
+			}
+		}
+		for antigen := range got {
+			if _, ok := w[antigen]; !ok {
+				t.Errorf("born %s: unexpected antigen %s", born, antigen)
+			}
+		}
+		var rec []string
+		for _, l := range e.Recurring {
+			rec = append(rec, l.Line.ID)
+		}
+		if !sameSet(rec, []string{"influenza-1", "covid19-1"}) {
+			t.Errorf("born %s: Recurring = %v, want influenza-1 and covid19-1", born, rec)
+		}
+	}
+}
+
+func TestMXEvaluatesTwoMonthVisit(t *testing.T) {
+	s := mustMX(t)
+	e := mustEval(t, s, nil, nil, "2026-09-01", "2026-11-01")
+	byStatus := map[Status][]string{}
+	for _, l := range e.Lines {
+		byStatus[l.Status] = append(byStatus[l.Status], l.Line.ID)
+	}
+	wantDue := []string{"diphtheria-1", "tetanus-1", "pertussis-1", "polio-1", "hib-1", "hepatitis_b-2",
+		"rotavirus-1", "pneumococcus-1"}
+	if !sameSet(byStatus[StatusDue], wantDue) {
+		t.Errorf("due = %v, want %v", byStatus[StatusDue], wantDue)
+	}
+	if !sameSet(byStatus[StatusOverdue], []string{"tuberculosis-1"}) {
+		t.Errorf("overdue = %v, want tuberculosis-1", byStatus[StatusOverdue])
+	}
+	if !sameSet(byStatus[StatusAvailable], []string{"hepatitis_b-1"}) {
+		t.Errorf("available = %v, want hepatitis_b-1 (birth dose after 7 days)", byStatus[StatusAvailable])
+	}
+	groups := e.Due()
+	if len(groups) != 2 || groups[0].From != age(0, UnitDay) || groups[0].Status != StatusOverdue ||
+		groups[1].From != age(2, UnitMonth) || groups[1].FromDate != "2026-11-01" || groups[1].Status != StatusDue ||
+		groups[1].Count != len(wantDue) {
+		t.Errorf("Due() = %+v, want an overdue birth group and a 2-month group of %d", groups, len(wantDue))
+	}
+}
+
+func TestMXAtFifteenYears(t *testing.T) {
+	s := mustMX(t)
+	for _, born := range []string{"2005-03-01", mxSRP6y, mxSRP18m} {
+		b, _ := time.Parse(dateLayout, born)
+		e := mustEval(t, s, nil, nil, born, b.AddDate(15, 0, 0).Format(dateLayout))
+		byStatus := map[Status][]string{}
+		for _, l := range e.Lines {
+			byStatus[l.Status] = append(byStatus[l.Status], l.Line.ID)
+			if l.Line.Kind == KindRoutine && l.Status != StatusOverdue {
+				t.Errorf("born %s: %s = %s, want overdue", born, l.Line.ID, l.Status)
+			}
+		}
+		if !sameSet(byStatus[StatusAvailable], []string{"hepatitis_b-1", "hepatitis_b-5"}) || len(byStatus) != 2 {
+			t.Errorf("born %s: statuses = %v, want overdue and available {hepatitis_b-1 hepatitis_b-5}", born, byStatus)
+		}
+		var also []string
+		for _, l := range e.Also {
+			also = append(also, l.Line.ID)
+			if l.Status != StatusAvailable {
+				t.Errorf("born %s: %s = %s, want available", born, l.Line.ID, l.Status)
+			}
+		}
+		if !sameSet(also, []string{"varicella-1", "hpv-1"}) {
+			t.Errorf("born %s: Also = %v", born, also)
+		}
+		if len(e.Recurring) != 2 {
+			t.Errorf("born %s: Recurring = %+v, want influenza-1 and covid19-1", born, e.Recurring)
+		}
+		n := 0
+		for _, g := range e.Due() {
+			n += g.Count
+			if g.Status != StatusOverdue {
+				t.Errorf("born %s: Due group %+v is not overdue", born, g)
+			}
+		}
+		if n != len(byStatus[StatusOverdue]) {
+			t.Errorf("born %s: Due() counts %d lines, want the %d overdue ones", born, n, len(byStatus[StatusOverdue]))
 		}
 	}
 }

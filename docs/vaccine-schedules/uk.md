@@ -35,6 +35,14 @@ A window runs from the age in `from` up to, not including, the age in `until`; w
 - Adult programmes: pneumococcal, influenza and shingles from 65 years and RSV at 75 years
 - The schedules of Scotland, Wales and Northern Ireland (this file is England only)
 
+## Lines to verify
+
+These lines carry `(verify)`: check them against the source first.
+
+| Vaccine | Antigen | Dose | Window | Kind | Note |
+|---|---|---|---|---|---|
+| Flu | Influenza | 1 | from 2 years, every season | `recurring` | (verify) Eligibility is set each season by the annual flu letter: “Eligible paediatric age group, See annual flu letter”, “each year from September”, nasal (LAIV), or inactivated if LAIV is unsuitable. The 2026 to 2027 letter covers “all children aged 2 or 3 years on 31 August 2026” and school children “from reception to year 11”; a child who turns 2 during the season is not eligible unless in a clinical risk group. |
+
 ## 8 weeks
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |

@@ -1,0 +1,58 @@
+# schema: mx
+# name: Mexico
+# authority: Secretaría de Salud, Centro Nacional para la Salud de la Infancia y la Adolescencia (CeNSIA)
+# edition: Lineamientos Generales del Programa de Vacunación Universal 2026 (published 31 December 2025, PDF of 30 April 2026; measles amendment of 18 February 2026), Cuadros 1 and 6; cross-checked with the PRONAM “Vacunación a lo largo de la vida”, 2a ed. (Consejo de Salubridad General, 30 July 2026)
+# retrieved: 2026-11-22
+# origin_url: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026
+# licence: gob.mx publishes no open licence on these documents (no Creative Commons or Libre Uso MX notice was found on them). The gob.mx Términos y Condiciones (https://www.gob.mx/terminos) say that the portal's information is public unless indicated otherwise, and require anyone who reproduces or processes it to cite its electronic location and the date it was consulted; the same page also limits downloaded materials to personal, non-commercial use. Only facts are transcribed (antigen, dose number, age): the Ley Federal del Derecho de Autor, art. 14, excludes facts and calendars (fr. X) and administrative texts (fr. VIII) from copyright protection. No logo, emblem, page image or prose of the publication is reproduced beyond short quoted age wording. This is not legal advice.
+# attribution: Fuente: Secretaría de Salud, CeNSIA, “Lineamientos Generales del Programa de Vacunación Universal 2026” (31 de diciembre de 2025; enmienda del 18 de febrero de 2026), https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf (page: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026), consultado el 22 de noviembre de 2026 (2026-11-22). This is a partial, simplified transcription of facts only (antigen, dose number and age), with dose numbers derived by counting and without brand names: selective, risk-group, pregnancy, catch-up, adolescent and adult lines and the items listed in the review document are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails.
+# omitted: Tdpa in pregnancy from week 20 and for close contacts of infants under 1 year; RSV (VSR) vaccination in pregnancy at 32 to 36 weeks; Influenza and COVID-19 from 5 years for children with comorbidities, from 10 to 59 years with risk factors, from 60 years and in pregnancy, and the second dose in the first season for children of 6 to 59 months (one recurring line per antigen stands for every season); Adolescent and adult lines, which the Lineamientos class as risk-based and not universal: Td from 15 years with a booster every 10 years (3 doses at 0, 1 and 12 months when incomplete or undocumented), SR or SRP from 10 to 49 years without a complete schedule, hepatitis B from 11 years without prior vaccination, pneumococcal conjugate from 60 years; HPV for people of 11 to 49 years living with HIV (3 doses) and for 9 to 19 years in the sexual-violence protocol, and the PRONAM catch-up of girls of 12 to 16 years; The RV5 rotavirus scheme of 3 doses at 2, 4 and 6 months (Cuadro 7; a third dose lists under Other); The measles dosis cero at 6 to 11 months in outbreaks (it does not count towards the series) and the measles catch-up of children of 1 to 12 years (amendment of 18 February 2026); SRP catch-up of 2 doses 4 weeks apart for children under 10 with no dose; BCG catch-up up to 5 years (exceptionally 14); hepatitis B timing for preterm babies under 29 weeks or under 1,500 g (6 to 8 weeks of life); DPT from 3 years 6 months in daycare or emergencies; The minimum and maximum permitted ages and the intervals of Anexo 1 (a low-resolution scan); Legacy schemes recorded in older cartillas (pentavalent DTP-HB-Hib, oral polio): doses are matched by count, so they fill the same lines; Special situations in the Manual de Vacunación
+line,group,antigen,series,from,until,kind,born_from,born_to,note
+tuberculosis-1,BCG,tuberculosis,1,0d,,routine,,,"“Recién nacido”, one dose, for newborns of 2,000 g or more before leaving hospital or at the first contact with health services, preferably before 1 year."
+hepatitis_b-1,Hepatitis B,hepatitis_b,1,0d,7d,may_not_be_needed,,,"“Recién nacido”: in the first 24 hours of life, late up to 7 days of life. A baby without this dose starts hepatitis B with the hexavalent at 2 months, so doses then fill one line earlier by count."
+diphtheria-1,Hexavalent,diphtheria,1,2m,,routine,,,"“2 meses”: hexavalente acelular (DPaT+VIP+HB+Hib), 1st dose."
+tetanus-1,Hexavalent,tetanus,1,2m,,routine,,,"“2 meses”: hexavalente acelular, 1st dose."
+pertussis-1,Hexavalent,pertussis,1,2m,,routine,,,"“2 meses”: hexavalente acelular (acellular pertussis), 1st dose."
+polio-1,Hexavalent,polio,1,2m,,routine,,,"“2 meses”: hexavalente acelular (inactivated polio), 1st dose."
+hib-1,Hexavalent,hib,1,2m,,routine,,,"“2 meses”: hexavalente acelular, 1st dose."
+hepatitis_b-2,Hexavalent,hepatitis_b,2,2m,,routine,,,"“2 meses”: hexavalente acelular, 1st dose; it is given whether or not the birth dose was given."
+diphtheria-2,Hexavalent,diphtheria,2,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+tetanus-2,Hexavalent,tetanus,2,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+pertussis-2,Hexavalent,pertussis,2,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+polio-2,Hexavalent,polio,2,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+hib-2,Hexavalent,hib,2,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+hepatitis_b-3,Hexavalent,hepatitis_b,3,4m,,routine,,,"“4 meses”: hexavalente acelular, 2nd dose."
+diphtheria-3,Hexavalent,diphtheria,3,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+tetanus-3,Hexavalent,tetanus,3,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+pertussis-3,Hexavalent,pertussis,3,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+polio-3,Hexavalent,polio,3,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+hib-3,Hexavalent,hib,3,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+hepatitis_b-4,Hexavalent,hepatitis_b,4,6m,,routine,,,"“6 meses”: hexavalente acelular, 3rd dose."
+diphtheria-4,Hexavalent,diphtheria,4,18m,,routine,,,"“18 meses”: hexavalente acelular, booster (dosis de refuerzo)."
+tetanus-4,Hexavalent,tetanus,4,18m,,routine,,,"“18 meses”: hexavalente acelular, booster."
+pertussis-4,Hexavalent,pertussis,4,18m,,routine,,,"“18 meses”: hexavalente acelular, booster."
+polio-4,Hexavalent,polio,4,18m,,routine,,,"“18 meses”: hexavalente acelular, booster. The DPT at 4 years carries no polio."
+hib-4,Hexavalent,hib,4,18m,,routine,,,"“18 meses”: hexavalente acelular, booster."
+hepatitis_b-5,Hexavalent,hepatitis_b,5,18m,,may_not_be_needed,,,"“18 meses”: hexavalente acelular, booster. The 5th hepatitis B dose only for a child who had the birth dose; without it the booster is the 4th, and no extra hepatitis B dose is needed."
+diphtheria-5,DPT booster,diphtheria,5,4y,,routine,,,"“4 años”: DPT booster (triple bacteriana), the 5th dose of the primary scheme; not later than 6 years 11 months 29 days."
+tetanus-5,DPT booster,tetanus,5,4y,,routine,,,"“4 años”: DPT booster, the 5th dose of the primary scheme."
+pertussis-5,DPT booster,pertussis,5,4y,,routine,,,"“4 años”: DPT booster, the 5th dose of the primary scheme (whole-cell pertussis)."
+rotavirus-1,Rotavirus,rotavirus,1,2m,,routine,,,"“2 meses”: anti-rotavirus (RV1), 1st dose, by mouth; no dose after 7 months 29 days of age."
+rotavirus-2,Rotavirus,rotavirus,2,4m,,routine,,,"“4 meses”: anti-rotavirus (RV1), 2nd dose; no dose after 7 months 29 days of age. In the 2026 text “pentavalente” means the RV5 rotavirus vaccine (3 doses), not a DTP combination."
+pneumococcus-1,Pneumococcal,pneumococcus,1,2m,,routine,,,"“2 meses”: anti neumocócica conjugada, 1st dose."
+pneumococcus-2,Pneumococcal,pneumococcus,2,4m,,routine,,,"“4 meses”: anti neumocócica conjugada, 2nd dose."
+pneumococcus-3,Pneumococcal,pneumococcus,3,12m,,routine,,,"“Un año” / “12 meses”: anti neumocócica conjugada, 3rd dose."
+measles-1,SRP (MMR),measles,1,12m,,routine,,,"“12 meses”: triple viral (SRP), 1st dose. A dosis cero given at 6 to 11 months in an outbreak does not count."
+mumps-1,SRP (MMR),mumps,1,12m,,routine,,,"“12 meses”: triple viral (SRP), 1st dose."
+rubella-1,SRP (MMR),rubella,1,12m,,routine,,,"“12 meses”: triple viral (SRP), 1st dose."
+measles-2-b202007,SRP (MMR),measles,2,18m,,routine,2020-07-01,,"“18 meses”: triple viral (SRP), 2nd dose, for children born from July 2020."
+mumps-2-b202007,SRP (MMR),mumps,2,18m,,routine,2020-07-01,,"“18 meses”: triple viral (SRP), 2nd dose, for children born from July 2020."
+rubella-2-b202007,SRP (MMR),rubella,2,18m,,routine,2020-07-01,,"“18 meses”: triple viral (SRP), 2nd dose, for children born from July 2020."
+measles-2-to202006,SRP (MMR),measles,2,6y,,routine,,2020-06-30,"“6 años”: triple viral (SRP), 2nd dose, for children born before July 2020; the source applies this age until 2026."
+mumps-2-to202006,SRP (MMR),mumps,2,6y,,routine,,2020-06-30,"“6 años”: triple viral (SRP), 2nd dose, for children born before July 2020."
+rubella-2-to202006,SRP (MMR),rubella,2,6y,,routine,,2020-06-30,"“6 años”: triple viral (SRP), 2nd dose, for children born before July 2020."
+varicella-1,Varicella,varicella,1,12m,,supplementary,,,"“Un año”: one dose, listed in Cuadros 1 and 6 but not part of the basic schedule; given to children of 12 months who attend daycare."
+hepatitis_a-1,Hepatitis A,hepatitis_a,1,18m,,routine,,,"“18 meses”: one dose; new in the programme (CONAVA agreement 01-2025), whose footnote targets children of 1 year or without prior vaccination."
+influenza-1,Influenza,influenza,1,6m,,recurring,,,"(verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; from 5 years only with a comorbidity."
+covid19-1,COVID-19,covid19,1,6m,,recurring,,,"(verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; the source says the COVID-19 policy may change during 2026."
+hpv-1,HPV,hpv,1,11y,,supplementary,,,"(verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school campaign, and the Lineamientos class adolescent vaccines as not universal, so it is never flagged."
