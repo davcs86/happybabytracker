@@ -690,7 +690,7 @@ code="$(form vaccine-edit "$ADDR_A" "$SESSION_A" "$DOSE_A?/save" "${edit_fields[
 code_e="$(req vaccine-edited "$ADDR_A" "$SESSION_A" "$UI_URL$DOSE_A")"
 { [ "$code $(location vaccine-edit)" = "303 $VACCINES" ] && [ "$code_e" = 200 ] &&
   body_has vaccine-edited "value=\"$V_LOT_EDIT\"" && body_has vaccine-edited "value=\"$V_PRODUCT\"" &&
-  body_has vaccine-edited "value=\"$N_VACCINE\"" && [ "$(count vaccine-edited 'checked')" = 6 ]; } ||
+  body_has vaccine-edited "value=\"$N_VACCINE\"" && [ "$(pieces vaccine-edited '<input' | grep -cE '^<input [^>]*name="antigens"[^>]*checked' || true)" = 6 ]; } ||
   fail "4i edit lot" "status $code, Location $(location vaccine-edit), page $code_e"
 code="$(form vaccine-delete "$ADDR_A" "$SESSION_A" "$DOSE_A?/delete")"
 code_d="$(req vaccine-deleted "$ADDR_A" "$SESSION_A" "$UI_URL$DOSE_A")"

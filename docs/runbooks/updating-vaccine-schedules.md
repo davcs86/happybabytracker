@@ -9,12 +9,12 @@ deployed.
 
 ## When to check each source
 
-| Id | Source | Reissued | Where to look |
+| Id | Source | Reissued (observed unless the source says so) | Where to look |
 |---|---|---|---|
-| `us` | CDC, Child and Adolescent Immunization Schedule by Age | A new edition each year, plus addenda during the year (the shipped 2025 edition has an addendum updated July 2, 2025) | https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-age.html; notes: https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-notes.html; PDF: https://www.cdc.gov/vaccines/hcp/imz-schedules/downloads/child/0-18yrs-child-combined-schedule.pdf; reuse terms: https://www.cdc.gov/other/agencymaterials.html |
-| `uk` | UKHSA, Complete routine immunisation schedule | Whenever a programme changes; it changed several times in 2025–2026. Check the page's "Updated" date | https://www.gov.uk/government/publications/the-complete-routine-immunisation-schedule; the cohort rules are in UKHSA's MMRV guidance and the childhood schedule changes guidance, both linked from the research note |
-| `mx` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal | A new edition for each year (the 2026 edition is dated 31 December 2025), sometimes amended during the year | https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026 (the year is in the URL); cross-check the PRONAM “Vacunación a lo largo de la vida” |
-| `ch` (not shipped) | BAG with EKIF, Schweizerischer Impfplan | Every year in the first quarter | https://www.bag.admin.ch/impfplan. A future option only: shipping it needs the BAG's written consent in advance |
+| `us` | CDC, Child and Adolescent Immunization Schedule by Age | Observed: a new edition each year, plus addenda during the year (the shipped 2025 edition has an addendum updated July 2, 2025) | https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-age.html; notes: https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-notes.html; PDF: https://www.cdc.gov/vaccines/hcp/imz-schedules/downloads/child/0-18yrs-child-combined-schedule.pdf; reuse terms: https://www.cdc.gov/other/agencymaterials.html |
+| `uk` | UKHSA, Complete routine immunisation schedule | Observed: whenever a programme changes; it changed several times in 2025–2026. Check the page's "Updated" date | https://www.gov.uk/government/publications/the-complete-routine-immunisation-schedule; the cohort rules are in UKHSA's MMRV guidance and the childhood schedule changes guidance, both linked from the research note |
+| `mx` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal | Observed: a new edition for each year (the 2026 edition is dated 31 December 2025), sometimes amended during the year | https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026 (the year is in the URL); cross-check the PRONAM “Vacunación a lo largo de la vida” |
+| `ch` (not shipped) | BAG with EKIF, Schweizerischer Impfplan | Every year in the first quarter (the plan itself says so) | https://www.bag.admin.ch/impfplan. A future option only: shipping it needs the BAG's written consent in advance |
 
 The research notes in `docs/superpowers/research/vaccination/` record what was read, the traps and the
 licence findings for each source; read the country's note before an update.
@@ -63,7 +63,9 @@ licence findings for each source; read the country's note before an update.
        pregnancy";
      - the 6-in-1 lines `diphtheria-1 … hepatitis_b-1`;
      - the birth group overdue ("Birth · Overdue (1)"), the window text of `hepatitis_b-1` and the one
-       line that dismiss-before dismisses;
+       line that dismiss-before dismisses. That count of 1 relies on `rsv-1` being Available (past its
+       8-month window) and `hepatitis_b-1` being given by the 6-in-1; a data edit that changes either
+       changes the count;
      - the settings options ` us uk mx `.
    - The UI tests run against made-up stub schedules (`ui/e2e/stub-api.ts`) and need no change.
 5. Run the whole pipeline in `CLAUDE.md` (API, UI, images and smoke) and open the pull request (see
@@ -130,8 +132,9 @@ licence findings for each source; read the country's note before an update.
 5. Add rows to the README: the "Vaccination" table, the licence list, and the "Third-party data" table.
    If the licence needs a notice file in the image, copy it in `api/Dockerfile` as the growth notices are.
 6. Update `scripts/smoke.sh` step 4i's expected settings options.
-7. Settle the licence first: a source without an open licence or written permission is not shipped.
-   Switzerland waits for the BAG's consent.
+7. Settle the licence with the owner first. A schedule ships under an open licence, with written
+   permission, or (as for Mexico) on the owner's decision to ship a facts-only transcription with the
+   required citation. Switzerland waits for the BAG's written consent.
 
 ## Pull request checklist
 
