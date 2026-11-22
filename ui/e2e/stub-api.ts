@@ -2663,6 +2663,14 @@ async function control(state: State, req: IncomingMessage, res: ServerResponse, 
 		return send(res, 204);
 	}
 	if (req.method === 'GET' && url.pathname === '/__requests') return send(res, 200, state.requests);
+	// A stored schedule id the API no longer ships, which PATCH /v1/kids refuses to write.
+	if (req.method === 'POST' && url.pathname === '/__vaccine-schema') {
+		const body = JSON.parse((await readBody(req)) || '{}') as { kid?: string; schema?: string };
+		const kid = state.kids.get(body.kid ?? '');
+		if (!kid || typeof body.schema !== 'string') return send(res, 400);
+		kid.vaccineSchema = body.schema;
+		return send(res, 204);
+	}
 	return send(res, 404);
 }
 
@@ -2677,6 +2685,14 @@ export async function setScenario(name: Scenario): Promise<void> {
 export async function resetStub(): Promise<void> {
 	const res = await fetch(`${STUB_URL}/__reset`, { method: 'POST' });
 	if (res.status !== 204) throw new Error(`resetStub: ${res.status}`);
+}
+
+export async function storeVaccineSchema(kid: string, schema: string): Promise<void> {
+	const res = await fetch(`${STUB_URL}/__vaccine-schema`, {
+		method: 'POST',
+		body: JSON.stringify({ kid, schema })
+	});
+	if (res.status !== 204) throw new Error(`storeVaccineSchema: ${res.status}`);
 }
 
 export async function receivedRequests(): Promise<LoggedRequest[]> {

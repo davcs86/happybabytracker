@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { Administration } from '../types';
 import {
 	DISMISS_FIELD_MESSAGES,
+	DISMISS_REFUSED_MESSAGE,
+	dismissApiFailure,
+	prefillAntigens,
+	vaccineApiFailure,
+	VACCINE_LIMIT_MESSAGE,
 	readDismissBeforeForm,
 	readDismissForm,
 	readVaccineForm,
@@ -227,5 +232,53 @@ describe('readDismissForm and readDismissBeforeForm', () => {
 			expect(readDismissBeforeForm(form({ before, reason: 'x' })).field).toBe('before');
 		}
 		expect(readDismissBeforeForm(form({ before: '2026-01-31', reason: 'x' })).field).toBe('reason');
+	});
+});
+
+describe('vaccineApiFailure and dismissApiFailure', () => {
+	const values = vaccineCreateValues('2026-11-20');
+	it('lands a refused field on its input and the dose cap on the form', () => {
+		expect(
+			vaccineApiFailure(values, { ok: false, status: 422, reason: 'invalid', field: 'product' }, {})
+		).toMatchObject({
+			status: 422,
+			data: { values, field: 'product', message: VACCINE_FIELD_MESSAGES.product }
+		});
+		expect(
+			vaccineApiFailure(values, { ok: false, status: 409, reason: 'conflict', code: 'limit' }, {})
+		).toMatchObject({ status: 409, data: { values, field: null, message: VACCINE_LIMIT_MESSAGE } });
+		expect(VACCINE_LIMIT_MESSAGE).toBe(
+			'This child has the maximum number of recorded vaccinations'
+		);
+		expect(
+			vaccineApiFailure(values, { ok: false, status: 503, reason: 'unavailable' }, {})
+		).toMatchObject({ status: 503, data: { values, field: null } });
+	});
+
+	it('answers a caregiver with a message and a bad reason on its field', () => {
+		expect(
+			dismissApiFailure({ ok: false, status: 403, reason: 'forbidden' }, { form: 'dismiss' })
+		).toMatchObject({
+			status: 403,
+			data: { form: 'dismiss', field: null, message: DISMISS_REFUSED_MESSAGE }
+		});
+		expect(
+			dismissApiFailure({ ok: false, status: 422, reason: 'invalid', field: 'before' }, {})
+		).toMatchObject({ status: 422, data: { field: 'before', message: 'Enter a date' } });
+	});
+});
+
+describe('prefillAntigens', () => {
+	const catalogue = {
+		antigens: [
+			{ id: 'measles', name: 'Measles' },
+			{ id: 'hib', name: 'Hib' }
+		],
+		products: []
+	};
+	it('keeps catalogue ids once, in order', () => {
+		expect(prefillAntigens('hib,measles,hib', catalogue)).toEqual(['hib', 'measles']);
+		expect(prefillAntigens('measles,BAD,nope,../x,', catalogue)).toEqual(['measles']);
+		expect(prefillAntigens(null, catalogue)).toEqual([]);
 	});
 });

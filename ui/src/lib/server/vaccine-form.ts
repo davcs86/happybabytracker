@@ -4,8 +4,15 @@ import {
 	VACCINE_LOT_MAX_LEN,
 	VACCINE_PRODUCT_MAX_LEN
 } from '../constants';
-import type { Administration, AdministrationInput, VaccineDismissReason } from '../types';
+import { fail } from '@sveltejs/kit';
+import type {
+	Administration,
+	AdministrationInput,
+	VaccineCatalogue,
+	VaccineDismissReason
+} from '../types';
 import { ANTIGEN_PATTERN } from './constants';
+import { failAction, type ApiFailure } from './outcome';
 
 const TEXTS = ['lot', 'product', 'note'] as const;
 type Text = (typeof TEXTS)[number];
@@ -163,4 +170,54 @@ export function readDismissBeforeForm(form: FormData): {
 	if (!validDate(values.before)) return { values, input: null, field: 'before' };
 	if (!isReason(values.reason)) return { values, input: null, field: 'reason' };
 	return { values, input: { before: values.before, reason: values.reason }, field: null };
+}
+
+export const VACCINE_LIMIT_MESSAGE = 'This child has the maximum number of recorded vaccinations';
+export const DISMISS_REFUSED_MESSAGE = 'Only a guardian can dismiss vaccines';
+
+export function vaccineFieldFailure<T extends object>(
+	values: VaccineFormValues,
+	field: string,
+	extra: T,
+	message: string | null = null
+) {
+	return fail(422, { ...extra, values, field, message: message ?? VACCINE_FIELD_MESSAGES[field] });
+}
+
+// A refused field lands on its input, the dose cap on the form, anything else as failAction decides.
+export function vaccineApiFailure<T extends object>(
+	values: VaccineFormValues,
+	r: ApiFailure,
+	extra: T
+) {
+	if (r.reason === 'invalid' && r.field && Object.hasOwn(VACCINE_FIELD_MESSAGES, r.field)) {
+		return vaccineFieldFailure(values, r.field, extra);
+	}
+	if (r.reason === 'conflict' && r.code === 'limit') {
+		return fail(409, {
+			...extra,
+			values,
+			field: null as string | null,
+			message: VACCINE_LIMIT_MESSAGE
+		});
+	}
+	return failAction(r, { ...extra, values, field: null as string | null });
+}
+
+// A caregiver posting a guardian form gets a message, not the 404 page the kid does not deserve.
+export function dismissApiFailure<T extends object>(r: ApiFailure, extra: T) {
+	if (r.reason === 'forbidden') {
+		return fail(403, { ...extra, field: null as string | null, message: DISMISS_REFUSED_MESSAGE });
+	}
+	if (r.reason === 'invalid' && r.field && Object.hasOwn(DISMISS_FIELD_MESSAGES, r.field)) {
+		return fail(422, { ...extra, field: r.field, message: DISMISS_FIELD_MESSAGES[r.field] });
+	}
+	return failAction(r, { ...extra, field: null as string | null });
+}
+
+// The Record shortcut's ?antigens=a,b: catalogue ids only, each once.
+export function prefillAntigens(query: string | null, catalogue: VaccineCatalogue): string[] {
+	const known = new Set(catalogue.antigens.map((a) => a.id));
+	const ids = (query ?? '').split(',').filter((a) => ANTIGEN_PATTERN.test(a) && known.has(a));
+	return [...new Set(ids)];
 }
