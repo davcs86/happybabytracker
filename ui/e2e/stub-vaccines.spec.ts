@@ -359,3 +359,13 @@ test('the 501st administration of a kid is refused with limit', async () => {
 	expect(await ana('POST', path, body)).toMatchObject({ status: 409, body: { error: 'limit' } });
 	expect(await ana('POST', `/v1/kids/${IVY.id}/vaccinations`, body)).toMatchObject({ status: 201 });
 });
+
+test('clearing a line that was never dismissed is still 204', async () => {
+	const { ana, lines } = await ivyOnUs();
+	const line = (await lines())[0];
+	expect(line.dismissal).toBeNull();
+	const path = `/v1/kids/${IVY.id}/vaccine-dismissals/${line.id}`;
+	expect(await ana('DELETE', path)).toMatchObject({ status: 204 });
+	expect(await ana('DELETE', path)).toMatchObject({ status: 204 });
+	expect((await lines())[0].status).toBe(line.status);
+});

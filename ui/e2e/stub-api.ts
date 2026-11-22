@@ -2070,7 +2070,8 @@ const stubLine = (
 	};
 };
 
-// A STUB, not reference data: two made-up schedules for UI tests only.
+// A STUB, not reference data: two made-up schedules for UI tests only; birth-date cohorts are not
+// modelled.
 type StubSchedule = { info: Record<string, string>; omitted: string[]; lines: readonly StubLine[] };
 const STUB_SCHEDULES = new Map<string, StubSchedule>(
 	(
@@ -2232,10 +2233,15 @@ function evaluate(state: State, kid: KidRow, schemaId: string | null) {
 	e.other.sort((x, y) =>
 		x.givenOn === y.givenOn ? (x.id < y.id ? -1 : 1) : x.givenOn < y.givenOn ? -1 : 1
 	);
-	const key = (l: LineState) =>
-		[l.fromDate, l.line.group, l.line.antigen, String(l.line.series).padStart(3, '0')].join('|');
-	e.lines.sort((a, b) => (key(a) < key(b) ? -1 : 1));
-	e.also.sort((a, b) => (key(a) < key(b) ? -1 : 1));
+	const cmp = <T extends string | number>(x: T, y: T) => (x < y ? -1 : x > y ? 1 : 0);
+	// cmp.Or in Evaluate: from date, then group, antigen and series.
+	const order = (a: LineState, b: LineState) =>
+		cmp(a.fromDate, b.fromDate) ||
+		cmp(a.line.group, b.line.group) ||
+		cmp(a.line.antigen, b.line.antigen) ||
+		cmp(a.line.series, b.line.series);
+	e.lines.sort(order);
+	e.also.sort(order);
 	return { ...e, today };
 }
 

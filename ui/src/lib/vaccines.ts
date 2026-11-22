@@ -23,8 +23,19 @@ export const statusLabel = (status: VaccineStatus) => VACCINE_STATUS_LABEL[statu
 
 export const dueLabel = (entry: HomeDue) => `${groupTitle(entry)} · ${entry.status}`;
 
-export const windowLabel = (line: Pick<VaccineLine, 'fromDate' | 'untilDate'>) =>
-	`Due ${line.fromDate} – ${line.untilDate}`;
+// untilDate is the first day the window is over; recurring lines have no window to show.
+export function windowLabel(line: Pick<VaccineLine, 'kind' | 'fromDate' | 'untilDate'>): string {
+	switch (line.kind) {
+		case 'routine':
+			return `Due from ${line.fromDate} · overdue from ${line.untilDate}`;
+		case 'may_not_be_needed':
+			return `Due from ${line.fromDate} · no longer due from ${line.untilDate}`;
+		case 'supplementary':
+			return `Available from ${line.fromDate}`;
+		case 'recurring':
+			return '';
+	}
+}
 
 export const antigenName = (id: string, catalogue: VaccineCatalogue) =>
 	catalogue.antigens.find((a) => a.id === id)?.name ?? id;

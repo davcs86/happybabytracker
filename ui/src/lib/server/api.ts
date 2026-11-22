@@ -1016,7 +1016,6 @@ export function createApi(
 			call('vaccine_catalogue', 'GET', '/v1/vaccine-catalogue', toVaccineCatalogue),
 		vaccines: (kidId: string) =>
 			withId(kidId, (k) => call('vaccines', 'GET', `/v1/kids/${k}/vaccines`, toVaccines)),
-		// input is the API's own JSON body, as readVaccineForm builds it.
 		listVaccinations: (kidId: string) =>
 			withId(kidId, (k) =>
 				call('list_vaccination', 'GET', `/v1/kids/${k}/vaccinations`, (b) =>
@@ -1027,6 +1026,7 @@ export function createApi(
 			withKidEntry(kidId, id, (k, i) =>
 				call('get_vaccination', 'GET', `/v1/kids/${k}/vaccinations/${i}`, toAdministration)
 			),
+		// input is the API's own JSON body, as readVaccineForm builds it.
 		createVaccination: (kidId: string, input: AdministrationInput) =>
 			withId(kidId, (k) =>
 				call('create_vaccination', 'POST', `/v1/kids/${k}/vaccinations`, toAdministration, input)

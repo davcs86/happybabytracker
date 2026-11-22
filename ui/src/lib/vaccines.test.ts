@@ -51,10 +51,16 @@ describe('status and due labels', () => {
 });
 
 describe('windowLabel', () => {
-	it("shows the API's window dates as they are", () => {
-		expect(windowLabel({ fromDate: '2025-03-10', untilDate: '2025-04-10' })).toBe(
-			'Due 2025-03-10 – 2025-04-10'
+	const dates = { fromDate: '2025-03-10', untilDate: '2025-04-10' };
+	it('names when a line falls due and when it stops being due, by kind', () => {
+		expect(windowLabel({ ...dates, kind: 'routine' })).toBe(
+			'Due from 2025-03-10 · overdue from 2025-04-10'
 		);
+		expect(windowLabel({ ...dates, kind: 'may_not_be_needed' })).toBe(
+			'Due from 2025-03-10 · no longer due from 2025-04-10'
+		);
+		expect(windowLabel({ ...dates, kind: 'supplementary' })).toBe('Available from 2025-03-10');
+		expect(windowLabel({ ...dates, kind: 'recurring' })).toBe('');
 	});
 });
 

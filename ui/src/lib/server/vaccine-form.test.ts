@@ -94,7 +94,8 @@ describe('readVaccineForm create', () => {
 		['a number', '1e3'],
 		['an inner space', '2026-11- 20'],
 		['a time', '2026-11-20T00:00'],
-		['a short year', '26-11-20']
+		['a short year', '26-11-20'],
+		['non-ASCII digits', '٢٠٢٦-١١-٢٠']
 	])('refuses %s as given_on', (_name, given_on) => {
 		expect(create({ given_on })).toMatchObject({ input: null, field: 'given_on', message: null });
 	});
@@ -111,6 +112,9 @@ describe('readVaccineForm create', () => {
 		expect(create({ product: 'x'.repeat(81) }).field).toBe('product');
 		expect(create({ note: 'x'.repeat(501) }).field).toBe('note');
 		expect(create({ note: 'x'.repeat(500) }).field).toBeNull();
+		const huge = create({ lot: 'LOTSECRET'.repeat(1111) + 'L' });
+		expect(huge).toMatchObject({ input: null, field: 'lot', message: null });
+		expect(VACCINE_FIELD_MESSAGES.lot).not.toContain('LOTSECRET');
 	});
 
 	it('names the first invalid field in the API order', () => {
@@ -158,6 +162,10 @@ describe('readVaccineForm edit', () => {
 	});
 
 	it('an untouched stored text is not checked again; a changed one is', () => {
+		const long = 'y'.repeat(41);
+		const kept = edit({ lot: long, lot_original: long });
+		expect(kept).toMatchObject({ field: null, input: {} });
+		expect(kept.input).not.toHaveProperty('lot');
 		expect(edit({ given_on: 'x' }).field).toBe('given_on');
 		expect(edit({ lot: 'y'.repeat(41) }).field).toBe('lot');
 		expect(edit({ antigens: [] }).field).toBe('antigens');
