@@ -194,6 +194,15 @@ licence in `LICENSE`; the tables are not covered by it.
 | `api/internal/growth/data/who/` | WHO Child Growth Standards (2006; head circumference 2007) and WHO Growth Reference 2007 for 5–19 years, from who.int | **CC BY-NC-SA 3.0 IGO, not MIT**: non-commercial use only, share-alike, attribution. See its `LICENSE` and `NOTICE` |
 | `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain, on CDC's conditions, which its `NOTICE` meets: attribution "Source: CDC"; no implication that CDC, ATSDR, HHS or the United States Government endorses this project or its use of the data; no change to the substance of the content (only the percentile columns were dropped and each file split by sex); and a note that the data are available free of charge on the CDC website |
 
+The API also embeds national vaccination schedules, transcribed by hand from each authority's
+published schedule: one CSV per schedule under `api/internal/vaccines/data/`, each with its own
+provenance header, and a generated review table per schedule in `docs/vaccine-schedules/`. They are
+not covered by the MIT licence.
+
+| File | Authority and edition | Licence | Attribution |
+|---|---|---|---|
+| `api/internal/vaccines/data/us.csv` | Centers for Disease Control and Prevention (CDC), Child and Adolescent Immunization Schedule by Age, 2025 (addendum updated July 2, 2025), retrieved 2026-11-22 | Public domain, on CDC's conditions (https://www.cdc.gov/other/agencymaterials.html): attribution; no implied endorsement; no change to the substantive content (every age and series is kept; risk-group and catch-up rules are left out); a note that the material is free on the CDC website | "Source: CDC. CDC does not endorse this application or its use of the material. The material is available free of charge at https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-age.html." |
+
 The published API image, `ghcr.io/davcs86/happybabytracker-api`, contains the WHO tables, which are
 licensed CC BY-NC-SA 3.0 IGO: non-commercial use only, share-alike, attribution. Bundling them is the
 owner's decision. The image carries the notices under `/usr/share/doc/happybabytracker-api/` and the
