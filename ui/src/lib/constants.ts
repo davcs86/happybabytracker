@@ -72,6 +72,34 @@ export const MODULES = [
 	'sickness',
 	'medication'
 ] as const satisfies readonly ModuleId[];
+export const MODULE_LABEL: Record<ModuleId, string> = {
+	bottles: 'Bottle',
+	nursing: 'Nursing',
+	pumping: 'Pumping',
+	diapers: 'Diaper',
+	sleep: 'Sleep',
+	feeding: 'Feeding',
+	milestones: 'Milestones',
+	growth: 'Growth',
+	vaccination: 'Vaccination',
+	sickness: 'Sickness',
+	medication: 'Medication'
+};
+// Only modules whose tracker exists in this build have an entry point.
+export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {
+	bottles: 'bottles',
+	nursing: 'nursing',
+	pumping: 'pumping',
+	diapers: 'diapers',
+	sleep: 'sleep',
+	feeding: 'meals'
+};
+// Spec 7.3: the quick-log buttons lead with these per age band; the other modules follow in MODULES order.
+export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {
+	'0-11': ['bottles', 'nursing', 'diapers', 'sleep'],
+	'12-23': ['feeding', 'bottles', 'sleep', 'diapers'],
+	'24+': ['sickness', 'medication', 'growth', 'vaccination']
+};
 export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly AgeBand[];
 export const SECONDS_PER_MINUTE = 60;
 export const HUNDREDTHS_PER_FLOZ = 100;

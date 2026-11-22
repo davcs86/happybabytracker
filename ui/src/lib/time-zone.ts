@@ -93,3 +93,8 @@ export function instantToLocalInput(instant: string, zone: string): string {
 	const part = (type: string) => parts.find((p) => p.type === type)?.value;
 	return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
+
+// HH:mm on the 24-hour clock of the zone.
+export function formatClock(instant: string, zone: string): string {
+	return instantToLocalInput(instant, zone).slice(-5);
+}

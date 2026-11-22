@@ -1,13 +1,13 @@
 import { request as httpRequest } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
-import { expectAccessible, login } from './helpers.js';
-import { ANA, UI_PORT, resetStub } from './stub-api.js';
+import { expectAccessible, expectLanding, login } from './helpers.js';
+import { ANA, MIA, UI_PORT, resetStub } from './stub-api.js';
 
 test.beforeEach(async ({ page }) => {
 	await resetStub();
 	await page.goto('/login');
 	await login(page, ANA.username, ANA.password);
-	await expect(page.getByRole('heading', { name: `Welcome, ${ANA.displayName}` })).toBeVisible();
+	await expectLanding(page, { kid: MIA });
 });
 
 async function navLinks(page: Page) {
@@ -40,6 +40,7 @@ test('a bottom bar at phone width and side navigation at desktop width, same lin
 
 	expect(phone.links).toEqual([
 		{ text: 'Home', href: '/' },
+		{ text: 'Timeline', href: '/timeline' },
 		{ text: 'Account', href: '/account' }
 	]);
 	expect(desktop.links).toEqual(phone.links);

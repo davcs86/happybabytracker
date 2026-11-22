@@ -1,7 +1,8 @@
 <script lang="ts" module>
 	import type { Component, Snippet } from 'svelte';
 
-	export type NavLink = { href: string; label: string; icon: Component };
+	// match marks the link active on pages whose path is not under href.
+	export type NavLink = { href: string; label: string; icon: Component; match?: RegExp };
 </script>
 
 <script lang="ts">
@@ -11,8 +12,10 @@
 
 	let { links, children }: { links: NavLink[]; children: Snippet } = $props();
 
-	const current = (href: string) =>
-		page.url.pathname === href || (href !== '/' && page.url.pathname.startsWith(`${href}/`));
+	const current = ({ href, match }: NavLink) =>
+		match
+			? match.test(page.url.pathname)
+			: page.url.pathname === href || (href !== '/' && page.url.pathname.startsWith(`${href}/`));
 </script>
 
 <div class="flex min-h-screen flex-col md:flex-row">
@@ -25,7 +28,7 @@
 		<p class="hidden px-4 py-4 font-semibold md:block">happybabytracker</p>
 		<ul class="flex md:flex-col md:gap-1 md:px-2">
 			{#each links as link (link.href)}
-				{@const active = current(link.href)}
+				{@const active = current(link)}
 				<li class="flex-1 md:flex-none">
 					<!-- eslint-disable svelte/no-navigation-without-resolve -- hrefs come from the layouts' fixed link lists -->
 					<a

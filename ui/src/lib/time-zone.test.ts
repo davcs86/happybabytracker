@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	acceptsZone,
+	formatClock,
 	instantToLocalInput,
 	todayInOrUtc,
 	withZone,
@@ -122,5 +123,19 @@ describe('instantToLocalInput', () => {
 				expect(instantToLocalInput(back ?? '', zone)).toBe(local);
 			}
 		}
+	});
+});
+
+describe('formatClock', () => {
+	it('is the wall clock time in the kid zone', () => {
+		expect(formatClock('2026-11-22T13:05:42Z', 'UTC')).toBe('13:05');
+		expect(formatClock('2026-11-22T13:05:42Z', 'Europe/Madrid')).toBe('14:05');
+		expect(formatClock('2026-07-22T13:05:00Z', 'Asia/Kolkata')).toBe('18:35');
+	});
+
+	it('uses 24-hour time around midnight and reads an unknown zone as UTC', () => {
+		expect(formatClock('2026-11-22T23:59:00Z', 'UTC')).toBe('23:59');
+		expect(formatClock('2026-11-23T00:00:00Z', 'UTC')).toBe('00:00');
+		expect(formatClock('2026-11-22T13:05:00Z', 'Mars/Olympus')).toBe('13:05');
 	});
 });
