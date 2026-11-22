@@ -43,8 +43,8 @@ var moduleTables = map[model.Module]moduleTable{
 	"feeding": {"meals", "at", false},
 }
 
-// Modules lists model.Modules after storing "on" for each row-less module off by default in the kid's band with an
-// entry in [band start - BandOverrideLookback, now] or a running timer, in the same transaction; ErrNotFound for no kid.
+// Modules re-evaluates on every read: an entry since bandStart-lookback (or a running timer) re-enables an
+// off-by-default module once, as a stored row in this transaction; a stored row is final. ErrNotFound for no kid.
 func (s *Store) Modules(ctx context.Context, kidID string, loc *time.Location, now time.Time) ([]ModuleState, error) {
 	var out []ModuleState
 	err := s.inTx(ctx, func(tx *sql.Tx) error {

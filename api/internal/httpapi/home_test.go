@@ -101,3 +101,32 @@ func TestHomeShowsRunningTimers(t *testing.T) {
 		t.Errorf("today sleep = %v, want the running hour", today["sleep"])
 	}
 }
+
+func TestHomeReEnablesAnOffByDefaultModuleOnceAndKeepsTheGuardiansOff(t *testing.T) {
+	k := newKit(t)
+	ana, bob := k.asParent("ana"), k.asParent("bob")
+	kid := k.createKid(ana, map[string]any{"birth_date": "2024-05-20"}) // 30 months at t0
+	k.grant(ana, kid, "bob", "caregiver")
+	diapers := func() map[string]any {
+		h := k.home(bob, kid)
+		if h["age_months"] != float64(30) || h["band"] != "24+" {
+			t.Fatalf("age %v band %v, want 30 and 24+", h["age_months"], h["band"])
+		}
+		var items []map[string]any
+		for _, it := range h["modules"].([]any) {
+			items = append(items, it.(map[string]any))
+		}
+		return moduleItem(t, items, "diapers")
+	}
+	if it := diapers(); it["enabled"] != false || it["default"] != false || it["overridden"] != false {
+		t.Fatalf("diapers with no entries = %v, want off by default", it)
+	}
+	k.createDiaper(bob, kid, nil)
+	if it := diapers(); it["enabled"] != true || it["default"] != false || it["overridden"] != true {
+		t.Errorf("diapers after a logged diaper = %v, want re-enabled", it)
+	}
+	k.setModule(ana, kid, "diapers", false)
+	if it := diapers(); it["enabled"] != false || it["overridden"] != true {
+		t.Errorf("diapers after the guardian's off = %v, want off", it)
+	}
+}

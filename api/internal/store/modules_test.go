@@ -243,3 +243,36 @@ func TestGuardiansOffBeforeTheCrossingBlocksTheOverride(t *testing.T) {
 		t.Errorf("bottles at 24 months = %+v, want the guardian's off", st)
 	}
 }
+
+func TestOffByDefaultModuleIsReEnabledByALaterEntryOnceAndAnOffIsFinal(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k, err := s.CreateKid(ctx, model.Kid{Name: "Older", BirthDate: "2024-05-20", Sex: "male", TimeZone: "Europe/Madrid"}, ana.ID, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc := mustLoc(t, "Europe/Madrid") // 30 months at t0; the 24+ band started 2026-05-20
+	off := ModuleState{Module: "diapers", Enabled: false, Default: false, Overridden: false}
+	if st := mustModules(t, s, k.ID, loc, t0)["diapers"]; st != off {
+		t.Fatalf("diapers with no entries = %+v, want %+v", st, off)
+	}
+	if rows := storedModules(t, s, k.ID); len(rows) != 0 {
+		t.Fatalf("a read with no entries stored %v", rows)
+	}
+
+	mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: t0.Add(-time.Hour), Kind: "wet"})
+	if st := mustModules(t, s, k.ID, loc, t0)["diapers"]; st != (ModuleState{Module: "diapers", Enabled: true, Default: false, Overridden: true}) {
+		t.Errorf("diapers after a logged diaper = %+v, want re-enabled", st)
+	}
+	if rows := storedModules(t, s, k.ID); len(rows) != 1 || rows["diapers"] != (moduleRow{true, t0.Unix()}) {
+		t.Errorf("stored rows = %v, want diapers on at t0", rows)
+	}
+
+	mustSetModule(t, s, k.ID, ana.ID, "diapers", false)
+	if st := mustModules(t, s, k.ID, loc, t0.Add(time.Hour))["diapers"]; st != (ModuleState{Module: "diapers", Enabled: false, Default: false, Overridden: true}) {
+		t.Errorf("diapers after the guardian's off = %+v, want off", st)
+	}
+	if got := storedModules(t, s, k.ID)["diapers"]; got.enabled {
+		t.Errorf("stored diapers = %+v, want the guardian's off", got)
+	}
+}
