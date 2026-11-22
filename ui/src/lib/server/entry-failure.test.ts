@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { entryApiFailure, entryFieldFailure, ENTRY_FIELD_MESSAGES } from './entry-failure';
+import {
+	entryApiFailure,
+	entryFieldFailure,
+	ENTRY_FIELD_MESSAGES,
+	staleTimerFailure,
+	TIMER_ENDED_MESSAGE
+} from './entry-failure';
 import type { ApiFailure } from './outcome';
 
 const values = { at: '2026-11-20T10:30', note: 'kept' };
@@ -90,5 +96,19 @@ describe('entryApiFailure', () => {
 		);
 		expect(r.status).toBe(503);
 		expect(r.data).toMatchObject({ values, field: null });
+	});
+});
+
+describe('staleTimerFailure', () => {
+	it('answers 409 with the fresh values and a message that belongs to no field', () => {
+		const r = staleTimerFailure(values, extra);
+		expect(r.status).toBe(409);
+		expect(r.data).toEqual({
+			form: 'save',
+			values,
+			field: null,
+			message: TIMER_ENDED_MESSAGE,
+			stale: true
+		});
 	});
 });

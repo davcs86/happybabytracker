@@ -451,6 +451,46 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 	});
 });
 
+// The timer is ended elsewhere between the page loading and the save.
+async function staleNursingEdit(page: Page) {
+	const api = await stubAs(ANA);
+	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
+	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
+	await signIn(page, ANA);
+	await page.goto(entryUrl('nursing', nursing.id));
+	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
+	expect((await api('POST', `${path}/end`, {})).status).toBe(200);
+	const [ended] = await rows(api, 'nursing');
+	const right = ended.right_seconds as number;
+
+	await field(page, 'Note').fill('typed while running');
+	await save(page);
+	const message = page.getByRole('alert').filter({ hasText: 'This timer has ended' });
+	await expect(message).toHaveText('This timer has ended; check the times and save again');
+	await expect(field(page, 'Left minutes')).toHaveValue('0');
+	await expect(field(page, 'Right minutes')).toHaveValue(String(Math.floor(right / 60)));
+	await expect(page.locator('input[name="left_seconds_original"]')).toHaveValue('0');
+	await expect(page.locator('input[name="right_seconds_original"]')).toHaveValue(String(right));
+	await expect(field(page, 'Ended at')).toHaveValue(inUtc(String(ended.ended_at)));
+	await expect(field(page, 'Note')).toHaveValue('');
+	expect((await receivedRequests()).filter((r) => r.method === 'PATCH')).toEqual([]);
+
+	await field(page, 'Note').fill('after the end');
+	await save(page);
+	await onTimeline(page);
+	expect(await written('PATCH', path)).toEqual({ note: 'after the end' });
+	expect((await rows(api, 'nursing'))[0]).toMatchObject({
+		right_seconds: right,
+		note: 'after the end'
+	});
+}
+
+test('a nursing edit opened while the timer ran shows a message and the fresh form', async ({
+	page
+}) => {
+	await staleNursingEdit(page);
+});
+
 test('a timer over 24 hours says how to fix it; an end within 24 hours of the start ends it', async ({
 	page
 }) => {
@@ -523,6 +563,12 @@ test('a parent without a grant gets the same 404 page for the log and the entry'
 
 test.describe('without JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
+
+	test('a nursing edit opened while the timer ran shows a message and the fresh form', async ({
+		page
+	}) => {
+		await staleNursingEdit(page);
+	});
 
 	test('a bottle with two contents posts plainly and redirects 303 to its day', async ({
 		page

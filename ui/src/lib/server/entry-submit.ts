@@ -48,3 +48,9 @@ export function withoutTimerSide(kind: TrackerKind, form: FormData): FormData {
 	for (const [name, value] of form) if (name !== 'side') copy.append(name, value);
 	return copy;
 }
+
+// Only a finished session's form carries the stored seconds, so a nursing form without them came from a running page.
+export const fromRunningPage = (kind: TrackerKind, form: FormData) =>
+	kind === 'nursing' &&
+	form.get('left_seconds_original') === null &&
+	form.get('right_seconds_original') === null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sendOnlyChanged, withoutTimerSide } from './entry-submit';
+import { fromRunningPage, sendOnlyChanged, withoutTimerSide } from './entry-submit';
 import type { EntryBody } from '../types';
 
 const form = (fields: Record<string, string | string[]>) => {
@@ -120,5 +120,27 @@ describe('withoutTimerSide', () => {
 		expect(withoutTimerSide('pumping', form({ ...fields, ended_at: 'x' })).get('side')).toBe(
 			'left'
 		);
+	});
+});
+
+describe('fromRunningPage', () => {
+	const running = { started_at: '2026-11-20T10:00', ended_at: '', note: '' };
+
+	it('is a nursing form without either stored-seconds original', () => {
+		expect(fromRunningPage('nursing', form(running))).toBe(true);
+	});
+
+	it('is not a finished nursing form, whatever the original holds', () => {
+		const done = { ...running, left_seconds_original: '723', right_seconds_original: '61' };
+		expect(fromRunningPage('nursing', form(done))).toBe(false);
+		expect(fromRunningPage('nursing', form({ ...running, left_seconds_original: '' }))).toBe(false);
+		expect(fromRunningPage('nursing', form({ ...running, right_seconds_original: 'x' }))).toBe(
+			false
+		);
+	});
+
+	it('is never true for another tracker', () => {
+		expect(fromRunningPage('sleep', form(running))).toBe(false);
+		expect(fromRunningPage('pumping', form(running))).toBe(false);
 	});
 });

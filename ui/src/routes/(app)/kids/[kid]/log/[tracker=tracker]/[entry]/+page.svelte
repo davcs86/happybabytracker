@@ -12,8 +12,18 @@
 
 	const save = $derived(form?.form === 'save' ? form : null);
 	const del = $derived(form?.form === 'delete' ? form : null);
-	// Originals come from the page's own data: the posted values never carry them.
-	const values = $derived({ ...data.values, ...save?.values });
+	const stale = $derived(!!save && 'stale' in save);
+	// The originals are the loaded ones, never the posted; after a stale post the fresh values are the loaded ones.
+	const values = $derived(
+		save && 'stale' in save
+			? save.values
+			: {
+					...data.values,
+					...Object.fromEntries(
+						Object.entries(save?.values ?? {}).filter(([name]) => !name.endsWith('_original'))
+					)
+				}
+	);
 	const error = (name: string) => (save?.field === name ? save.message : null);
 	const title = $derived(TRACKER_TITLE[data.kind].edit);
 </script>
@@ -38,7 +48,12 @@
 	{error}
 	message={save && !save.field ? save.message : null}
 >
-	<TrackerFields kind={data.kind} stage={data.running ? 'running' : 'done'} {values} {error} />
+	<TrackerFields
+		kind={data.kind}
+		stage={data.running && !stale ? 'running' : 'done'}
+		{values}
+		{error}
+	/>
 </TrackerForm>
 
 <!-- Two steps without JavaScript: the button exists only inside the opened details.

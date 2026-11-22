@@ -23,6 +23,8 @@ export const ENTRY_FIELD_MESSAGES: Record<string, string> = {
 	right_seconds: 'Enter whole minutes that fit within the session'
 };
 
+export const TIMER_ENDED_MESSAGE = 'This timer has ended; check the times and save again';
+
 const ALREADY_RUNNING: Record<TimerKind, string> = {
 	sleep: 'A sleep timer is already running',
 	nursing: 'A nursing timer is already running'
@@ -58,4 +60,15 @@ export function entryApiFailure<T extends object>(
 		});
 	}
 	return failAction(r, { ...extra, values, field: null as string | null });
+}
+
+// The page was opened while the timer ran; the fresh values replace what it shows.
+export function staleTimerFailure<T extends object>(values: EntryValues, extra: T) {
+	return fail(409, {
+		...extra,
+		values,
+		field: null as string | null,
+		message: TIMER_ENDED_MESSAGE,
+		stale: true
+	});
 }

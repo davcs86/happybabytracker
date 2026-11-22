@@ -9,9 +9,13 @@ import {
 } from '#lib/entry-edit.js';
 import { timelineDayPath } from '#lib/paths.js';
 import { setKidCookie } from '#lib/server/cookie.js';
-import { entryApiFailure, entryFieldFailure } from '#lib/server/entry-failure.js';
+import {
+	entryApiFailure,
+	entryFieldFailure,
+	staleTimerFailure
+} from '#lib/server/entry-failure.js';
 import { readEntryForm } from '#lib/server/entry-form.js';
-import { sendOnlyChanged } from '#lib/server/entry-submit.js';
+import { fromRunningPage, sendOnlyChanged } from '#lib/server/entry-submit.js';
 import { failAction, failPage } from '#lib/server/outcome.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -44,11 +48,17 @@ export const actions: Actions = {
 	save: async ({ request, locals, params }) => {
 		const { kind, kid, entry } = await stored(locals, params);
 		const form = await request.formData();
+		const running = isRunning(kind, entry);
+		const extra = { form: 'save' as const };
+		// Ended elsewhere since the page loaded: a finished read would find no stored seconds to compare.
+		if (!running && fromRunningPage(kind, form)) {
+			const unit = locals.session?.parent?.units.volume ?? 'ml';
+			return staleTimerFailure(editValues(kind, entry, kid.timeZone, unit), extra);
+		}
 		const { values, input, field } = readEntryForm(kind, form, kid.timeZone, {
 			kind: 'edit',
-			running: isRunning(kind, entry)
+			running
 		});
-		const extra = { form: 'save' as const };
 		if (!input) return entryFieldFailure(values, field!, extra);
 		const r = await locals.api
 			.tracker(kind)
