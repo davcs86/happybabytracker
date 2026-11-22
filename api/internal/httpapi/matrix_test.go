@@ -89,6 +89,16 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/diapers/{entry}":         Caregiver,
 	"PATCH /v1/kids/{kid}/diapers/{entry}":       Caregiver,
 	"DELETE /v1/kids/{kid}/diapers/{entry}":      Caregiver,
+	"GET /v1/kids/{kid}/meals":                   Caregiver,
+	"POST /v1/kids/{kid}/meals":                  Caregiver,
+	"GET /v1/kids/{kid}/meals/{entry}":           Caregiver,
+	"PATCH /v1/kids/{kid}/meals/{entry}":         Caregiver,
+	"DELETE /v1/kids/{kid}/meals/{entry}":        Caregiver,
+	"GET /v1/kids/{kid}/pumping":                 Caregiver,
+	"POST /v1/kids/{kid}/pumping":                Caregiver,
+	"GET /v1/kids/{kid}/pumping/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/pumping/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/pumping/{entry}":      Caregiver,
 }
 
 var accessNames = map[Access]string{
@@ -114,13 +124,13 @@ func (w want) String() string {
 const matrixBody = `{"matrix_probe":true}`
 
 type fixture struct {
-	kit            *kit
-	kid            string
-	bottle, diaper string
-	invite         string
-	parent         [actorCount]model.Parent
-	token          [actorCount]string
-	sid            [actorCount]string
+	kit                           *kit
+	kid                           string
+	bottle, diaper, meal, pumping string
+	invite                        string
+	parent                        [actorCount]model.Parent
+	token                         [actorCount]string
+	sid                           [actorCount]string
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -141,6 +151,10 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.bottle
 		case strings.Contains(rt.Pattern, "/diapers/"):
 			return f.diaper
+		case strings.Contains(rt.Pattern, "/meals/"):
+			return f.meal
+		case strings.Contains(rt.Pattern, "/pumping/"):
+			return f.pumping
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -210,7 +224,16 @@ func newMatrixFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.bottle, f.diaper = bottle.ID, diaper.ID
+	meal, err := k.Store.CreateMeal(ctx, kid.ID, f.parent[aG].ID, model.Meal{At: k.now, What: "banana"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pumping, err := k.Store.CreatePumping(ctx, kid.ID, f.parent[aG].ID,
+		model.PumpingSession{StartedAt: k.now, DurationSeconds: 900, Volume: bottleVolume, Side: "both"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.bottle, f.diaper, f.meal, f.pumping = bottle.ID, diaper.ID, meal.ID, pumping.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

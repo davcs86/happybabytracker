@@ -52,6 +52,7 @@ const (
 	TrackerPageDefault   = 50
 	TrackerPageMax       = 100
 	MaxFutureSkew        = 5 * time.Minute
+	MinSessionDuration   = time.Second
 	MaxSessionDuration   = 24 * time.Hour
 	MaxNoteLen           = 500
 	SummaryMaxDays       = 93
@@ -60,6 +61,11 @@ const (
 
 	MinBottleVolumeML = 1
 	MaxBottleVolumeML = 1000
+
+	MinPumpingVolumeML = 1
+	MaxPumpingVolumeML = 2000
+
+	MaxMealTextLen = 200
 
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24

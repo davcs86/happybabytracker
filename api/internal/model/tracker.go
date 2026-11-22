@@ -85,6 +85,9 @@ func CanonicalContents(in []string) ([]string, bool) {
 // DiaperKinds lists every diaper kind.
 var DiaperKinds = []string{"wet", "dirty", "both", "dry"}
 
+// PumpingSides lists every pumping side.
+var PumpingSides = []string{"left", "right", "both"}
+
 // Module is a switchable tracker.
 type Module string
 
