@@ -49,6 +49,14 @@ const (
 	FlOzMicroMLDenominator = 10000
 	MaxVolumeAmount        = 1 << 24
 
+	GramsPerOzNumerator   = 28349523125
+	GramsPerOzDenominator = 1000000000
+	MaxWeightAmount       = 1 << 24
+
+	MMPerInchNumerator   = 254
+	MMPerInchDenominator = 10
+	MaxLengthAmount      = 1 << 24
+
 	TrackerPageDefault   = 50
 	TrackerPageMax       = 100
 	MaxFutureSkew        = 5 * time.Minute
