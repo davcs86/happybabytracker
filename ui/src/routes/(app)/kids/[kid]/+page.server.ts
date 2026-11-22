@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { NURSING_SIDES } from '#lib/constants.js';
 import { formatAge } from '#lib/format.js';
+import { ageHeader } from '#lib/growth.js';
 import { quickLog } from '#lib/quick-log.js';
 import { todayRows } from '#lib/today.js';
 import { todayInOrUtc } from '#lib/time-zone.js';
@@ -20,9 +21,10 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 	if (!home.ok) failPage(home);
 	setKidCookie(cookies, kid.data.id);
 	const enabled = new Set(home.data.modules.filter((m) => m.enabled).map((m) => m.module));
+	const today = todayInOrUtc(kid.data.timeZone);
 	return {
 		kid: kid.data,
-		age: formatAge(kid.data.birthDate, todayInOrUtc(kid.data.timeZone)),
+		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		running: home.data.running,
 		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
 		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')

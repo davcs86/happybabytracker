@@ -12,8 +12,11 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/happybabytracker-api ./cmd/happy
 # gcr.io/distroless/static-debian12:nonroot
 FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 LABEL org.opencontainers.image.source="https://github.com/davcs86/happybabytracker" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT AND CC-BY-NC-SA-3.0-IGO"
 COPY --from=build /out/happybabytracker-api /happybabytracker-api
+COPY --from=build /src/internal/growth/data/who/LICENSE /src/internal/growth/data/who/NOTICE \
+     /usr/share/doc/happybabytracker-api/who/
+COPY --from=build /src/internal/growth/data/cdc/NOTICE /usr/share/doc/happybabytracker-api/cdc/
 COPY --from=build --chown=10001:10001 /out/data /data
 USER 10001:10001
 ENV DATA_DIR=/data

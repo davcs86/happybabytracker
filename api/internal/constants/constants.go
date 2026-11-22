@@ -49,6 +49,14 @@ const (
 	FlOzMicroMLDenominator = 10000
 	MaxVolumeAmount        = 1 << 24
 
+	GramsPerOzNumerator   = 28349523125
+	GramsPerOzDenominator = 1000000000
+	MaxWeightAmount       = 1 << 24
+
+	MMPerInchNumerator   = 254
+	MMPerInchDenominator = 10
+	MaxLengthAmount      = 1 << 24
+
 	TrackerPageDefault   = 50
 	TrackerPageMax       = 100
 	MaxFutureSkew        = 5 * time.Minute
@@ -67,8 +75,35 @@ const (
 
 	MaxMealTextLen = 200
 
+	MinWeightGrams     = 200
+	MaxWeightGrams     = 250000
+	MinLengthMM        = 150
+	MaxLengthMM        = 2500
+	MinHeadMM          = 150
+	MaxHeadMM          = 800
+	MaxGrowthPerKid    = 3000
+	ZScoreDecimals     = 2
+	PercentileDecimals = 1
+	BMIDecimals        = 2
+
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
+
+	TermGestationDays   = 280
+	PretermBelowDays    = 259
+	CorrectionEndsYears = 2
+
+	DaysPerMonth          = 30.4375
+	CurveFineStepMonths   = 0.5
+	CurveCoarseStepMonths = 1
+	CurveFineUntilMonths  = 24
+
+	CurveMaxMonths          = 240
+	CurveDefaultMinToMonths = 24
+	CurveDefaultAheadMonths = 6
+	// Display-only factors for the curves' imperial column; stored measurements use the exact ratios above.
+	PoundsPerKG = 2.2046226218
+	CMPerInch   = 2.54
 
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"

@@ -71,6 +71,7 @@ var routeClasses = map[string]Access{
 	"POST /v1/me/password":                       Parent,
 	"GET /v1/me/sessions":                        Parent,
 	"DELETE /v1/me/sessions/{session}":           Parent,
+	"GET /v1/growth-sources":                     Parent,
 	"GET /v1/kids":                               Parent,
 	"POST /v1/kids":                              Parent,
 	"GET /v1/kids/{kid}":                         Caregiver,
@@ -112,6 +113,12 @@ var routeClasses = map[string]Access{
 	"DELETE /v1/kids/{kid}/nursing/{entry}":      Caregiver,
 	"POST /v1/kids/{kid}/nursing/{entry}/end":    Caregiver,
 	"POST /v1/kids/{kid}/nursing/{entry}/side":   Caregiver,
+	"GET /v1/kids/{kid}/growth":                  Caregiver,
+	"POST /v1/kids/{kid}/growth":                 Caregiver,
+	"GET /v1/kids/{kid}/growth/curves":           Caregiver,
+	"GET /v1/kids/{kid}/growth/{entry}":          Caregiver,
+	"PATCH /v1/kids/{kid}/growth/{entry}":        Caregiver,
+	"DELETE /v1/kids/{kid}/growth/{entry}":       Caregiver,
 	"GET /v1/kids/{kid}/timeline":                Caregiver,
 	"GET /v1/kids/{kid}/summary":                 Caregiver,
 	"GET /v1/kids/{kid}/modules":                 Caregiver,
@@ -145,6 +152,7 @@ type fixture struct {
 	kit                                           *kit
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
+	growth                                        string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -178,6 +186,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.sleep
 		case strings.Contains(rt.Pattern, "/nursing/"):
 			return f.nursing
+		case strings.Contains(rt.Pattern, "/growth/{entry}"):
+			return f.growth
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -226,7 +236,7 @@ func newMatrixFixture(t *testing.T) *fixture {
 	f.token[aNoToken], f.sid[aNoToken] = f.token[aG], f.sid[aG]
 	f.sid[aNoSession] = f.sid[aG]
 
-	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC"}, f.parent[aG].ID, k.now)
+	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who"}, f.parent[aG].ID, k.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +275,16 @@ func newMatrixFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	weight, err := units.NewWeight(units.UnitKG, 5000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	measurement, err := k.Store.CreateGrowth(ctx, kid.ID, f.parent[aG].ID, model.Growth{MeasuredOn: "2026-06-01", Weight: &weight}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f.bottle, f.diaper, f.meal, f.pumping, f.sleep, f.nursing = bottle.ID, diaper.ID, meal.ID, pumping.ID, sleep.ID, nursing.ID
+	f.growth = measurement.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

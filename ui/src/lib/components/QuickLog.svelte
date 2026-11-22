@@ -2,13 +2,16 @@
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { logPath } from '#lib/paths.js';
-	import type { QuickLogEntry } from '#lib/quick-log.js';
+	import { PAGE_ROUTE, type QuickLogEntry } from '#lib/quick-log.js';
 
 	let {
 		entries,
 		kidId,
 		message = null
 	}: { entries: QuickLogEntry[]; kidId: string; message?: string | null } = $props();
+
+	const href = (entry: QuickLogEntry) =>
+		entry.kind ? logPath(kidId, entry.kind) : PAGE_ROUTE[entry.module]?.(kidId);
 
 	const TILE =
 		'flex min-h-14 w-full items-center justify-center rounded-lg border px-4 py-3 text-center font-medium hover:bg-muted';
@@ -28,7 +31,7 @@
 						</form>
 					{:else}
 						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
-						<a href={logPath(kidId, entry.kind)} class={TILE}>{entry.label}</a>
+						<a href={href(entry)} class={TILE}>{entry.label}</a>
 					{/if}
 				</li>
 			{/each}

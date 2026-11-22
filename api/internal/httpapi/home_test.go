@@ -24,7 +24,10 @@ func TestHomeShape(t *testing.T) {
 	kid, _, bob := k.trackerKid() // born 2026-03-04: 8 months at t0
 	k.createBottle(bob, kid, nil)
 	h := k.home(bob, kid)
-	sameKeys(t, h, "age_months", "band", "modules", "running", "today")
+	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today")
+	if h["corrected_birth_date"] != nil {
+		t.Errorf("term kid corrected_birth_date = %v, want null", h["corrected_birth_date"])
+	}
 	if h["age_months"] != float64(8) || h["band"] != "0-11" {
 		t.Errorf("age %v band %v, want 8 and 0-11", h["age_months"], h["band"])
 	}
@@ -128,5 +131,27 @@ func TestHomeReEnablesAnOffByDefaultModuleOnceAndKeepsTheGuardiansOff(t *testing
 	k.setModule(ana, kid, "diapers", false)
 	if it := diapers(); it["enabled"] != false || it["overridden"] != true {
 		t.Errorf("diapers after the guardian's off = %v, want off", it)
+	}
+}
+
+func TestHomeCorrectedBirthDate(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	// Born at 35 weeks 2 days: 33 days early, so due on 2025-07-13.
+	kid := k.createKid(ana, map[string]any{"birth_date": "2025-06-10", "gestation_weeks": 35, "gestation_days": 2, "time_zone": "Pacific/Auckland"})
+	for _, c := range []struct {
+		name string
+		now  time.Time
+		want any
+	}{
+		{"at t0", t0, "2025-07-13"},
+		{"the day before the second birthday", time.Date(2027, 6, 9, 11, 0, 0, 0, time.UTC), "2025-07-13"}, // Auckland 06-09 23:00
+		{"the second birthday in the kid's zone", time.Date(2027, 6, 9, 12, 30, 0, 0, time.UTC), nil},      // Auckland 06-10 00:30
+		{"after the second birthday", time.Date(2027, 9, 1, 0, 0, 0, 0, time.UTC), nil},
+	} {
+		k.now = c.now
+		if got := k.home(k.asParent("ana"), kid)["corrected_birth_date"]; got != c.want {
+			t.Errorf("%s: corrected_birth_date = %v, want %v", c.name, got, c.want)
+		}
 	}
 }

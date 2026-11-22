@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MODULES } from './constants';
-import { quickLog } from './quick-log';
+import { MODULES, TRACKER_ROUTE } from './constants';
+import { PAGE_ROUTE, quickLog } from './quick-log';
 import type { AgeBand, Home, ModuleId, ModuleState } from './types';
 
 const states = (on: readonly ModuleId[] = MODULES): ModuleState[] =>
@@ -16,16 +16,33 @@ const labels = (band: AgeBand, on?: readonly ModuleId[], running = none) =>
 
 describe('quickLog', () => {
 	it('0-11 months: bottle, nursing, diaper, sleep, then the rest in module order', () => {
-		expect(labels('0-11')).toEqual(['Bottle', 'Nursing', 'Diaper', 'Sleep', 'Pumping', 'Feeding']);
+		expect(labels('0-11')).toEqual([
+			'Bottle',
+			'Nursing',
+			'Diaper',
+			'Sleep',
+			'Pumping',
+			'Feeding',
+			'Growth'
+		]);
 	});
 
 	it('12-23 months: feeding, bottle, sleep, diaper, then the rest', () => {
-		expect(labels('12-23')).toEqual(['Feeding', 'Bottle', 'Sleep', 'Diaper', 'Nursing', 'Pumping']);
+		expect(labels('12-23')).toEqual([
+			'Feeding',
+			'Bottle',
+			'Sleep',
+			'Diaper',
+			'Nursing',
+			'Pumping',
+			'Growth'
+		]);
 	});
 
-	it('24+ months: the four later modules have no tracker yet, so only re-enabled ones show', () => {
-		expect(labels('24+', ['sickness', 'medication', 'growth', 'vaccination'])).toEqual([]);
-		expect(labels('24+', ['growth', 'sleep', 'bottles'])).toEqual(['Bottle', 'Sleep']);
+	it('24+ months: of sickness, medication, growth and vaccination only growth is built', () => {
+		expect(labels('24+', ['sickness', 'medication', 'growth', 'vaccination'])).toEqual(['Growth']);
+		expect(labels('24+', ['growth', 'sleep', 'bottles'])).toEqual(['Growth', 'Bottle', 'Sleep']);
+		expect(labels('24+', ['sickness', 'medication', 'vaccination'])).toEqual([]);
 	});
 
 	it('leaves out a disabled module and keeps the order of the rest', () => {
@@ -40,13 +57,19 @@ describe('quickLog', () => {
 			['sleep', 'sleep'],
 			['diapers', 'diapers'],
 			['nursing', 'nursing'],
-			['pumping', 'pumping']
+			['pumping', 'pumping'],
+			['growth', null]
 		]);
 	});
 
-	it('never lists a module without a tracker in this build', () => {
+	it('growth opens its page, never a tracker route', () => {
+		expect(TRACKER_ROUTE.growth).toBeUndefined();
+		expect(PAGE_ROUTE.growth?.('k-1')).toBe('/kids/k-1/growth/new');
+	});
+
+	it('never lists a module without a tracker or a page in this build', () => {
 		const kinds = new Set<string>(quickLog('0-11', states(), none).map((e) => e.module));
-		for (const m of ['milestones', 'growth', 'vaccination', 'sickness', 'medication']) {
+		for (const m of ['milestones', 'vaccination', 'sickness', 'medication']) {
 			expect(kinds.has(m)).toBe(false);
 		}
 	});
@@ -58,7 +81,8 @@ describe('quickLog', () => {
 			'Nursing',
 			'Diaper',
 			'Pumping',
-			'Feeding'
+			'Feeding',
+			'Growth'
 		]);
 	});
 });

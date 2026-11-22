@@ -156,6 +156,14 @@ func (n NursingSession) credit(at time.Time) (NursingSession, bool) {
 	return n, true
 }
 
+// Growth is one dated measurement; at least one of Weight, Length and Head is set.
+type Growth struct {
+	Entry
+	MeasuredOn   string // YYYY-MM-DD in the kid's zone
+	Weight       *units.Weight
+	Length, Head *units.Length
+}
+
 // Bottle content names, in storage order.
 const (
 	ContentBreastMilk = "breast_milk"

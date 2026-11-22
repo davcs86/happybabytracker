@@ -17,6 +17,8 @@ What a parent can do so far:
   by date range and tracker. A day's sleep total counts the part of each sleep inside that day, so an
   overnight sleep listed under the evening it started also adds to the next morning's total.
 - Modules: a guardian switches any module off or on per kid; its entries stay.
+- Growth: measurements of weight, length/height and head circumference, each scored as a z-score and a
+  percentile against the kid's growth source and drawn on charts (see "Growth" below).
 - Installable from the browser (a web app manifest and icons); online only, no service worker.
 
 Modules and their defaults by age (whole months from the birth date, in the kid's zone):
@@ -25,7 +27,8 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 |---|---|---|---|---|
 | `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding` (solids) | built | on | on | off |
 | `milestones` | later plan | on | on | off |
-| `growth`, `vaccination`, `sickness`, `medication` | later plans | on | on | on |
+| `growth` | built | on | on | on |
+| `vaccination`, `sickness`, `medication` | later plans | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -40,6 +43,40 @@ Two images, built from this repo:
 The browser talks only to the UI; the UI calls the API with a shared token. Both run as uid 10001 on a
 read-only root filesystem; the API writes only to `/data`. Design:
 `docs/superpowers/specs/2026-11-20-happybabytracker-design.md`; plans: `docs/superpowers/plans/`.
+
+## Growth
+
+A measurement is a date (in the kid's zone, not in the future and not before the birth date) with any
+one or more of weight, length/height and head circumference, typed in kg or lb and oz, cm or in, and a
+note; a kid holds at most 3000. Each value is stored in metric and imperial with the unit typed.
+Measurements live on the Growth page (Home, Timeline, Growth, Account in the navigation), not in the
+timeline; any parent with access adds, edits and deletes them.
+
+What is scored, at read time and never stored: weight-for-age, length/height-for-age, head
+circumference-for-age and, for a row with both a weight and a length, BMI-for-age, each as a z-score (2
+decimals) and a percentile (1 decimal, shown as "<0.1" or ">99.9" beyond those). The charts are inline
+SVG with the source's percentile lines and a text table of the same points; they work without
+JavaScript.
+
+Sources, chosen per kid by a guardian in the kid's settings; the default is `who`:
+
+| Id | Tables | Not covered |
+|---|---|---|
+| `who` | WHO Child Growth Standards 2006 by day, 0 to 1856 days; WHO Growth Reference 2007 by month, 61 to 228 months (weight to 120) | head circumference after 1856 days, weight after 120 months, anything after 228 months |
+| `cdc` | CDC 2000 growth charts: infant tables below 24 months, child tables 24 to 240 months; head circumference from the infant table to 36 months | BMI under 24 months, head circumference after 36 months, anything after 240 months |
+
+WHO weight and BMI beyond ±3 SD use WHO's restricted z-score; CDC applies no restriction. An age outside
+a source's tables is shown as "this source has no table for this age", never extrapolated. Changing the
+source changes every score and curve and no stored row.
+
+Corrected age is the app's own rule; WHO and CDC publish none for growth. A kid born before 37 weeks 0
+days of gestation is early by 280 minus the gestation in days, and that many days are subtracted from
+the age of every measurement dated before the second birthday (not on the birthday itself). Wherever a
+corrected age is used both ages are shown; a measurement before the expected term is listed as "before
+expected term", unscored and not plotted.
+
+The app records and displays; it never interprets a percentile and says nothing like "normal" or "low".
+The tables and their licences are under "Third-party data" below.
 
 ## Configuration
 
@@ -145,3 +182,24 @@ Merging to `main` deploys nothing. CI builds both images, smoke-tests them toget
 moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints both `@sha256:…`
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
+
+## Third-party data
+
+The API embeds growth reference tables from two sources, retrieved 2026-11-22 and converted by
+`scripts/growth/convert.py` with their values unchanged. The repository's code stays under the MIT
+licence in `LICENSE`; the tables are not covered by it.
+
+| Directory | Source | Licence |
+|---|---|---|
+| `api/internal/growth/data/who/` | WHO Child Growth Standards (2006; head circumference 2007) and WHO Growth Reference 2007 for 5–19 years, from who.int | **CC BY-NC-SA 3.0 IGO, not MIT**: non-commercial use only, share-alike, attribution. See its `LICENSE` and `NOTICE` |
+| `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain, on CDC's conditions, which its `NOTICE` meets: attribution "Source: CDC"; no implication that CDC, ATSDR, HHS or the United States Government endorses this project or its use of the data; no change to the substance of the content (only the percentile columns were dropped and each file split by sex); and a note that the data are available free of charge on the CDC website |
+
+The published API image, `ghcr.io/davcs86/happybabytracker-api`, contains the WHO tables, which are
+licensed CC BY-NC-SA 3.0 IGO: non-commercial use only, share-alike, attribution. Bundling them is the
+owner's decision. The image carries the notices under `/usr/share/doc/happybabytracker-api/` and the
+licence label `MIT AND CC-BY-NC-SA-3.0-IGO`; the UI image holds no tables and stays `MIT`. The CC BY-NC-SA
+3.0 IGO terms apply to those tables wherever the image is redistributed, and a commercial use needs
+WHO's permission. WHO's pages for these files carry no licence statement of their own and link to WHO's
+website terms of use, which say that reproducing substantial portions needs WHO's prior written
+authorization. Applying CC BY-NC-SA 3.0 IGO to the tables is the owner's reading of WHO's publishing
+policy, not confirmed by WHO. None of this is legal advice.

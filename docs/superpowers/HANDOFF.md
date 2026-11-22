@@ -1,6 +1,6 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-22 at the end of plan 3 (daily trackers). Read this first in a new session, then the
+Updated 2026-11-22 at the end of plan 4 (growth). Read this first in a new session, then the
 design and the plan of the next item.
 
 ## State
@@ -10,8 +10,9 @@ design and the plan of the next item.
 | Design | `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` | approved by the owner |
 | Plan 1, foundation | `docs/superpowers/plans/2026-11-20-foundation.md` | done, merged to `main` (PR #3) |
 | Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | merged by the owner in `davcs86/homelab-edge` PR #100 on 2026-11-22 and deployed |
-| Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #4, not merged yet; after it merges the edge needs its `bump-happybabytracker` PR and a deploy |
-| Plans 4–7 | not written | see "Order of work" below |
+| Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done, merged to `main` (PR #4) |
+| Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #6, not merged yet; after it merges the edge needs its `bump-happybabytracker` PR and a deploy |
+| Plans 5–7 | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -19,13 +20,17 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. After PR #4 is merged, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
-   two pins and a deploy makes plan 3 live. Nothing in plan 3 changes the edge otherwise.
-2. Write plan 4 (growth) with the `superpowers:writing-plans` skill, starting from the code on `main`
-   after PR #4: the per-kid module table already knows `growth` (on in every band), the access matrix,
-   the tracker store/handler helpers (`api/internal/store/entries.go`, `api/internal/httpapi/entries.go`),
-   the kid-zone helpers (`api/internal/kidtime`), the UI tracker client and entry forms, and the
-   smoke script are what a new tracker extends. The home has no "Due" section until plans 5 and 6.
+1. After PR #6 is merged, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
+   two pins and a deploy makes plan 4 live. Nothing in plan 4 changes the edge otherwise; the API
+   image's licence label is now `MIT AND CC-BY-NC-SA-3.0-IGO` and it carries the WHO and CDC notices
+   under `/usr/share/doc/happybabytracker-api/`.
+2. Write plan 5 (vaccination) with the `superpowers:writing-plans` skill, starting from the code on
+   `main` after PR #6. Its age arithmetic starts from `api/internal/kidtime` and uses chronological age
+   only (`AgeMonths`, `AgeDays`, `BandStart`); the corrected-age functions there (`CorrectionDays`,
+   `CorrectedBirthDate`, `AgeBasisOn`) are for growth and must not be used for vaccination. The module
+   table already knows `vaccination` (on in every band); the access matrix, the store/handler helpers
+   (`api/internal/store/entries.go`, `api/internal/httpapi/entries.go`), the UI forms and the smoke
+   script are what it extends. The home has no "Due" section until plans 5 and 6.
 3. Start implementation only when the owner asks for it.
 
 ## Owner decisions in plan 3 (do not reopen)
@@ -44,12 +49,29 @@ what a new session needs to start correctly.
   the home says so and links to the edit page, where an end within 24 hours of the start, or a delete,
   settles it.
 
+## Owner decisions in plan 4 (do not reopen)
+
+- Licence: the code stays MIT; the WHO tables are bundled under their own licence, CC BY-NC-SA 3.0
+  IGO, with a `LICENSE` and `NOTICE` in `api/internal/growth/data/who/`; the README says the published
+  API image contains them.
+- Sources: `who` and `cdc` only (UK-WHO and Euro-Growth are left out); the default is `who`, for new
+  kids and, through migration 0003, for every existing kid.
+- Corrected age is the app's own rule (WHO and CDC publish none for growth): a kid born before 37 weeks
+  0 days is early by 280 minus the gestation in days, and that is subtracted from the age of a
+  measurement dated before the second birthday, not on the birthday itself. Measurements before the
+  expected term are listed unscored ("before expected term") and are not plotted.
+- Measurements are not in the timeline; they live on the Growth page.
+- Limits: at most 3000 measurements per kid (`MaxGrowthPerKid`); a row may hold any one or more of
+  weight, length and head circumference.
+- Charts are hand-written inline SVG; no chart dependency.
+- Navigation: Home, Timeline, Growth, Account.
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
 2. **Edge** (`davcs86/homelab-edge`) — compose, the private name, secrets, backup, Gatus, bump workflow, runbook — done.
 3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
-4. Growth.
+4. Growth — done.
 5. Vaccination.
 6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
 7. Milestones and PDF export.
@@ -124,17 +146,19 @@ log.
   own origin instead; the owner was told and did not object.
 - **commsgun's UI tests run against a stub API**, so they stay green on a broken contract. The smoke
   script, which runs both real images together, is the real check. This repo keeps that pattern; since
-  plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms.
+  plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms, and
+  since plan 4 it scores a measurement under both growth sources.
 
 ## Not yet verified (verify in the plan that needs it)
 
-- Licence and availability of the UK-WHO and Euro-Growth tables, and that the WHO and CDC tables may
-  be redistributed in a public repository (plan 4). If a required source cannot be bundled, stop and
-  ask the owner.
+- The WHO licence reading: WHO's pages for the tables carry no licence and link to WHO's website
+  terms (which ask for prior written authorization to reproduce substantial portions); applying CC
+  BY-NC-SA 3.0 IGO to them is the owner's reading of WHO's publishing policy, not confirmed by WHO and
+  not legal advice.
+- The AAP guidance on corrected age: its page was blocked during plan 4's research, so the rule has not
+  been checked against AAP's own text.
 - Installing the app on a real phone (plan 3 checks the manifest, icons and head links only; there is
   no service worker until plan 6).
-- The corrected-age rule (until the second birthday) against the guidance published with each growth
-  source (plan 4).
 - The current published vaccination schedule of each of the four countries (plan 5).
 
 ## How to verify a plan is done
@@ -152,9 +176,9 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker` after PR #4 (plan 3) is merged. Read
-> `docs/superpowers/HANDOFF.md`, then the design. Write plan 4 (growth) with the
-> `superpowers:writing-plans` skill, settle its owner values first (growth sources and their licences,
-> the corrected-age rule), and execute it with subagent-driven development on a new branch from `main`.
+> Start from `main` of `davcs86/happybabytracker` after PR #6 (plan 4) is merged. Read
+> `docs/superpowers/HANDOFF.md`, then the design. Write plan 5 (vaccination) with the
+> `superpowers:writing-plans` skill, settle its owner values first (the four countries' current
+> schedules, their sources), and execute it with subagent-driven development on a new branch from `main`.
 > `davcs86/commsgun` is the reference to mirror; attach it read-only. Do not change
 > `davcs86/homelab-edge` in this plan beyond its bot's image bump.

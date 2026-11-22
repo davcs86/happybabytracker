@@ -1,4 +1,4 @@
-import { HUNDREDTHS_PER_FLOZ, SECONDS_PER_MINUTE } from './constants';
+import { DAYS_PER_MONTH, HUNDREDTHS_PER_FLOZ, SECONDS_PER_MINUTE } from './constants';
 import type { Volume, VolumeUnit } from './types';
 
 const MONTHS_PER_YEAR = 12;
@@ -39,6 +39,22 @@ export function formatAge(birthDate: string, today: string): string {
 		return days === 0
 			? plural(months, 'month')
 			: `${plural(months, 'month')} ${plural(days, 'day')}`;
+	}
+	const years = Math.floor(months / MONTHS_PER_YEAR);
+	const rest = months % MONTHS_PER_YEAR;
+	return rest === 0 ? plural(years, 'year') : `${plural(years, 'year')} ${plural(rest, 'month')}`;
+}
+
+// An age in days, in months of DAYS_PER_MONTH days (the curves' axis), so it may differ from formatAge by a day.
+export function formatAgeDays(days: number): string {
+	const total = Math.max(0, days);
+	const months = Math.floor(total / DAYS_PER_MONTH);
+	if (months === 0) return plural(total, 'day');
+	if (months < MONTHS_PER_YEAR) {
+		const rest = Math.floor(total - months * DAYS_PER_MONTH);
+		return rest === 0
+			? plural(months, 'month')
+			: `${plural(months, 'month')} ${plural(rest, 'day')}`;
 	}
 	const years = Math.floor(months / MONTHS_PER_YEAR);
 	const rest = months % MONTHS_PER_YEAR;

@@ -4,21 +4,33 @@ import {
 	AGE_BANDS,
 	BOTTLE_CONTENTS,
 	DIAPER_KINDS,
+	GROWTH_SCORE_REASONS,
+	GROWTH_SOURCES,
+	LENGTH_UNITS,
+	MEASURES,
 	MODULES,
 	NURSING_SIDES,
 	PUMPING_SIDES,
 	TIMELINE_TYPE,
 	TIMER_KINDS,
 	TRACKER_KINDS,
-	VOLUME_UNITS
+	VOLUME_UNITS,
+	WEIGHT_UNITS
 } from '../constants';
 import type {
 	AdminParent,
 	Bottle,
+	Curves,
+	CurvesQuery,
 	DaySummary,
 	Diaper,
 	EntryBody,
 	Grant,
+	GrowthLength,
+	GrowthRow,
+	GrowthScore,
+	GrowthSourceInfo,
+	GrowthWeight,
 	Home,
 	Kid,
 	KidInput,
@@ -87,7 +99,9 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth'}`
+	| 'growth_curves'
+	| 'growth_sources'
 	| 'end_timer'
 	| 'switch_side'
 	| 'timeline'
@@ -158,6 +172,11 @@ function int(v: unknown): number {
 	return v as number;
 }
 
+function number(v: unknown): number {
+	if (typeof v !== 'number' || !Number.isFinite(v)) throw new ShapeError();
+	return v;
+}
+
 function stringOrNull(v: unknown): string | null {
 	return v === null ? null : string(v);
 }
@@ -226,6 +245,7 @@ function toKid(v: unknown): Kid {
 		gestationWeeks: intOrNull(k.gestation_weeks),
 		gestationDays: intOrNull(k.gestation_days),
 		timeZone: string(k.time_zone),
+		growthSource: oneOf(k.growth_source, GROWTH_SOURCES),
 		role: oneOf(k.role, ROLES)
 	};
 }
@@ -411,6 +431,7 @@ function toHome(v: unknown): Home {
 	const running = object(o.running);
 	return {
 		ageMonths: int(o.age_months),
+		correctedBirthDate: stringOrNull(o.corrected_birth_date),
 		band: oneOf(o.band, AGE_BANDS),
 		modules: list(o, 'modules', toModuleState),
 		running: {
@@ -419,6 +440,116 @@ function toHome(v: unknown): Home {
 		},
 		today: toDaySummary(o.today)
 	};
+}
+
+const nullOr = <T>(v: unknown, parse: (v: unknown) => T): T | null =>
+	v === null ? null : parse(v);
+
+function toGrowthWeight(v: unknown): GrowthWeight {
+	const o = object(v);
+	return {
+		grams: int(o.grams),
+		ozHundredths: int(o.oz_hundredths),
+		typedUnit: oneOf(o.typed_unit, WEIGHT_UNITS)
+	};
+}
+
+function toGrowthLength(v: unknown): GrowthLength {
+	const o = object(v);
+	return {
+		mm: int(o.mm),
+		inHundredths: int(o.in_hundredths),
+		typedUnit: oneOf(o.typed_unit, LENGTH_UNITS)
+	};
+}
+
+function toGrowthScore(v: unknown): GrowthScore {
+	const o = object(v);
+	return boolean(o.scored)
+		? { scored: true, z: number(o.z), percentile: number(o.percentile) }
+		: { scored: false, reason: oneOf(o.reason, GROWTH_SCORE_REASONS) };
+}
+
+function toGrowthRow(v: unknown): GrowthRow {
+	const o = object(v);
+	const age = object(o.age);
+	const scores = object(o.scores);
+	return {
+		id: string(o.id),
+		measuredOn: string(o.measured_on),
+		weight: nullOr(o.weight, toGrowthWeight),
+		length: nullOr(o.length, toGrowthLength),
+		head: nullOr(o.head, toGrowthLength),
+		note: stringOrNull(o.note),
+		ageDays: int(age.days),
+		correctedDays: intOrNull(age.corrected_days),
+		scores: {
+			weight: nullOr(scores.weight, toGrowthScore),
+			length: nullOr(scores.length, toGrowthScore),
+			head: nullOr(scores.head, toGrowthScore),
+			bmi: nullOr(scores.bmi, (b) => ({
+				...toGrowthScore(b),
+				value: number(object(b).value)
+			}))
+		}
+	};
+}
+
+function toCurves(v: unknown): Curves {
+	const o = object(v);
+	return {
+		source: oneOf(o.source, GROWTH_SOURCES),
+		measure: oneOf(o.measure, MEASURES),
+		sex: oneOf(o.sex, ['female', 'male']),
+		covered: boolean(o.covered),
+		reason: stringOrNull(o.reason),
+		fromMonths: number(o.from_months),
+		toMonths: number(o.to_months),
+		lines: array(o.lines, (l) => {
+			const line = object(l);
+			return {
+				percentile: number(line.percentile),
+				points: array(line.points, (p) => {
+					const point = object(p);
+					return {
+						ageMonths: number(point.age_months),
+						metric: number(point.metric),
+						imperial: nullOr(point.imperial, number),
+						gap: point.gap === undefined ? false : boolean(point.gap)
+					};
+				})
+			};
+		}),
+		correctedAgeAxis: boolean(o.corrected_age_axis)
+	};
+}
+
+function toGrowthSourceInfo(v: unknown): GrowthSourceInfo {
+	const o = object(v);
+	return {
+		id: oneOf(o.id, GROWTH_SOURCES),
+		name: string(o.name),
+		attribution: string(o.attribution),
+		licence: string(o.licence),
+		version: string(o.version),
+		originUrl: string(o.origin_url),
+		retrieved: string(o.retrieved),
+		coverage: array(o.coverage, (c) => {
+			const cov = object(c);
+			return {
+				measure: oneOf(cov.measure, MEASURES),
+				fromMonths: number(cov.from_months),
+				toMonths: number(cov.to_months)
+			};
+		})
+	};
+}
+
+function curvesQuery(q: CurvesQuery): string {
+	const p = new URLSearchParams({ measure: q.measure });
+	if (q.fromMonths !== undefined) p.set('from_months', String(q.fromMonths));
+	if (q.toMonths !== undefined) p.set('to_months', String(q.toMonths));
+	return `?${p}`;
 }
 
 function queryString(q: TimelineQuery): string {
@@ -438,7 +569,8 @@ const kidBody = (k: KidInput) => ({
 	sex: k.sex,
 	gestation_weeks: k.gestationWeeks,
 	gestation_days: k.gestationDays,
-	time_zone: k.timeZone
+	time_zone: k.timeZone,
+	...(k.growthSource === undefined ? {} : { growth_source: k.growthSource })
 });
 
 const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' } as const;
@@ -691,6 +823,39 @@ export function createApi(
 					call<null>('set_module', 'PUT', `/v1/kids/${k}/modules/${module}`, null, { enabled })
 				)
 			),
-		home: (kidId: string) => withId(kidId, (k) => call('home', 'GET', `/v1/kids/${k}/home`, toHome))
+		home: (kidId: string) =>
+			withId(kidId, (k) => call('home', 'GET', `/v1/kids/${k}/home`, toHome)),
+
+		// input is the API's own JSON body, as readGrowthForm builds it.
+		listGrowth: (kidId: string) =>
+			withId(kidId, (k) =>
+				call('list_growth', 'GET', `/v1/kids/${k}/growth`, (b) => list(b, 'growth', toGrowthRow))
+			),
+		getGrowth: (kidId: string, id: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call('get_growth', 'GET', `/v1/kids/${k}/growth/${i}`, toGrowthRow)
+			),
+		createGrowth: (kidId: string, input: EntryBody) =>
+			withId(kidId, (k) =>
+				call('create_growth', 'POST', `/v1/kids/${k}/growth`, toGrowthRow, input)
+			),
+		updateGrowth: (kidId: string, id: string, input: EntryBody) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call('update_growth', 'PATCH', `/v1/kids/${k}/growth/${i}`, toGrowthRow, input)
+			),
+		deleteGrowth: (kidId: string, id: string) =>
+			withKidEntry(kidId, id, (k, i) =>
+				call<null>('delete_growth', 'DELETE', `/v1/kids/${k}/growth/${i}`, null)
+			),
+		curves: (kidId: string, query: CurvesQuery) =>
+			known((MEASURES as readonly string[]).includes(query.measure), () =>
+				withId(kidId, (k) =>
+					call('growth_curves', 'GET', `/v1/kids/${k}/growth/curves${curvesQuery(query)}`, toCurves)
+				)
+			),
+		growthSources: () =>
+			call('growth_sources', 'GET', '/v1/growth-sources', (b) =>
+				list(b, 'sources', toGrowthSourceInfo)
+			)
 	};
 }

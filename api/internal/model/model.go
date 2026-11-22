@@ -54,6 +54,7 @@ type SessionInfo struct {
 type Kid struct {
 	ID, Name, BirthDate, Sex, TimeZone string
 	GestationWeeks, GestationDays      *int
+	GrowthSource                       string // a growth.Source: "who" or "cdc"
 }
 
 type KidWithRole struct {
