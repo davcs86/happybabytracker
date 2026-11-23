@@ -42,28 +42,30 @@ func TestAntigenCatalogue(t *testing.T) {
 func TestProductCatalogue(t *testing.T) {
 	mustLoad(t)
 	want := map[string][]string{
-		"hexavalent":   {"diphtheria", "tetanus", "pertussis", "polio", "hib", "hepatitis_b"},
-		"dtap":         {"diphtheria", "tetanus", "pertussis"},
-		"dtap_ipv":     {"diphtheria", "tetanus", "pertussis", "polio"},
-		"tdap":         {"diphtheria", "tetanus", "pertussis"},
-		"td":           {"diphtheria", "tetanus"},
-		"td_ipv":       {"diphtheria", "tetanus", "polio"},
-		"mmr":          {"measles", "mumps", "rubella"},
-		"mmrv":         {"measles", "mumps", "rubella", "varicella"},
-		"hib":          {"hib"},
-		"hepatitis_b":  {"hepatitis_b"},
-		"hepatitis_a":  {"hepatitis_a"},
-		"pcv":          {"pneumococcus"},
-		"rotavirus":    {"rotavirus"},
-		"menacwy":      {"meningococcal_acwy"},
-		"menb":         {"meningococcal_b"},
-		"hpv":          {"hpv"},
-		"influenza":    {"influenza"},
-		"covid19":      {"covid19"},
-		"rsv_antibody": {"rsv"},
-		"bcg":          {"tuberculosis"},
-		"ipv":          {"polio"},
-		"varicella":    {"varicella"},
+		"hexavalent":    {"diphtheria", "tetanus", "pertussis", "polio", "hib", "hepatitis_b"},
+		"dtap":          {"diphtheria", "tetanus", "pertussis"},
+		"dtap_ipv":      {"diphtheria", "tetanus", "pertussis", "polio"},
+		"dtap_ipv_hib":  {"diphtheria", "tetanus", "pertussis", "polio", "hib"},
+		"dtap_hepb_ipv": {"diphtheria", "tetanus", "pertussis", "hepatitis_b", "polio"},
+		"tdap":          {"diphtheria", "tetanus", "pertussis"},
+		"td":            {"diphtheria", "tetanus"},
+		"td_ipv":        {"diphtheria", "tetanus", "polio"},
+		"mmr":           {"measles", "mumps", "rubella"},
+		"mmrv":          {"measles", "mumps", "rubella", "varicella"},
+		"hib":           {"hib"},
+		"hepatitis_b":   {"hepatitis_b"},
+		"hepatitis_a":   {"hepatitis_a"},
+		"pcv":           {"pneumococcus"},
+		"rotavirus":     {"rotavirus"},
+		"menacwy":       {"meningococcal_acwy"},
+		"menb":          {"meningococcal_b"},
+		"hpv":           {"hpv"},
+		"influenza":     {"influenza"},
+		"covid19":       {"covid19"},
+		"rsv_antibody":  {"rsv"},
+		"bcg":           {"tuberculosis"},
+		"ipv":           {"polio"},
+		"varicella":     {"varicella"},
 	}
 	got := Products()
 	if len(got) != len(want) {
@@ -86,7 +88,8 @@ func TestProductCatalogue(t *testing.T) {
 	for _, p := range got {
 		names[p.ID] = p.Name
 	}
-	if names["hexavalent"] != "6-in-1 (DTaP-IPV-Hib-HepB)" || names["rsv_antibody"] != "RSV (monoclonal antibody)" {
+	if names["hexavalent"] != "6-in-1 (DTaP-IPV-Hib-HepB)" || names["rsv_antibody"] != "RSV (monoclonal antibody)" ||
+		names["dtap_ipv_hib"] != "DTaP-IPV-Hib (5-in-1)" || names["dtap_hepb_ipv"] != "DTaP-HepB-IPV (5-in-1)" {
 		t.Errorf("product names = %v", names)
 	}
 }

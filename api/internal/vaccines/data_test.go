@@ -605,7 +605,7 @@ var mxLines = func() []cohortPinned {
 		ls = append(ls, ukLine(fmt.Sprintf("hepatitis_b-%d", i+2), "Hexavalent", from, "", KindMayNotBeNeeded, "", ""))
 	}
 	for _, a := range []string{"diphtheria", "tetanus", "pertussis"} {
-		ls = append(ls, ukLine(a+"-5", "DPT booster", "4y", "", KindRoutine, "", ""))
+		ls = append(ls, ukLine(a+"-5", "DPT booster", "4y", "7y", KindRoutine, "", ""))
 	}
 	ls = append(ls,
 		ukLine("rotavirus-1", "Rotavirus", "2m", "", KindRoutine, "", ""),

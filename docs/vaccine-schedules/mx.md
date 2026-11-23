@@ -121,9 +121,9 @@ These lines carry `(verify)`: check them against the source first.
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
-| DPT booster | Diphtheria | 5 | from 4 years until 4 years and 1 month (default window) | `routine` | “4 años”: DPT booster (triple bacteriana), the 5th dose of the primary scheme; not later than 6 years 11 months 29 days. |
-| DPT booster | Pertussis (whooping cough) | 5 | from 4 years until 4 years and 1 month (default window) | `routine` | “4 años”: DPT booster, the 5th dose of the primary scheme (whole-cell pertussis). |
-| DPT booster | Tetanus | 5 | from 4 years until 4 years and 1 month (default window) | `routine` | “4 años”: DPT booster, the 5th dose of the primary scheme. |
+| DPT booster | Diphtheria | 5 | from 4 years until 7 years | `routine` | “4 años”: DPT booster (triple bacteriana), the 5th dose of the primary scheme; when not given at 4 years, “la edad de aplicación no debe sobrepasar los 6 años, 11 meses y 29 días”, so the window runs to 7 years. |
+| DPT booster | Pertussis (whooping cough) | 5 | from 4 years until 7 years | `routine` | “4 años”: DPT booster, the 5th dose of the primary scheme (whole-cell pertussis); “la edad de aplicación no debe sobrepasar los 6 años, 11 meses y 29 días”. |
+| DPT booster | Tetanus | 5 | from 4 years until 7 years | `routine` | “4 años”: DPT booster, the 5th dose of the primary scheme; “la edad de aplicación no debe sobrepasar los 6 años, 11 meses y 29 días”. |
 
 ## 6 years
 

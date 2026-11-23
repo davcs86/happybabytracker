@@ -322,6 +322,12 @@ func TestVaccinationValidation(t *testing.T) {
 		"long product":        {with(map[string]any{"product": long(81)}), "product"},
 		"long note":           {with(map[string]any{"note": long(501)}), "note"},
 		"lot before product":  {with(map[string]any{"lot": long(41), "product": long(81)}), "lot"},
+		"empty lot":           {with(map[string]any{"lot": ""}), "lot"},
+		"blank lot":           {with(map[string]any{"lot": " \t"}), "lot"},
+		"empty product":       {with(map[string]any{"product": ""}), "product"},
+		"blank product":       {with(map[string]any{"product": "  "}), "product"},
+		"empty note":          {with(map[string]any{"note": ""}), "note"},
+		"blank note":          {with(map[string]any{"note": " \n"}), "note"},
 	} {
 		wantInvalid2(t, name, k.do(http.MethodPost, path, ana, c.body), c.field)
 	}
@@ -342,6 +348,10 @@ func TestVaccinationValidation(t *testing.T) {
 		"future date":   {map[string]any{"given_on": "2025-03-16"}, "given_on"},
 		"other":         {map[string]any{"antigens": []string{"other"}, "product": nil}, "product"},
 		"long note":     {map[string]any{"note": long(501)}, "note"},
+		"empty lot":     {map[string]any{"lot": ""}, "lot"},
+		"empty product": {map[string]any{"product": ""}, "product"},
+		"empty note":    {map[string]any{"note": ""}, "note"},
+		"blank note":    {map[string]any{"note": "   "}, "note"},
 	} {
 		wantInvalid2(t, "patch "+name, k.do(http.MethodPatch, one, ana, c.body), c.field)
 	}

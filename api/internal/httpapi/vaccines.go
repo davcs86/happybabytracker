@@ -159,7 +159,7 @@ func newVaccinesView(s *vaccines.Schema, e vaccines.Evaluation, today string, pr
 	}
 	for _, ls := range e.Lines {
 		if n := len(v.Groups); n == 0 || v.Groups[n-1].FromDate != ls.FromDate {
-			v.Groups = append(v.Groups, lineGroupView{From: ageJSON{N: ls.Line.From.N, Unit: string(rune(ls.Line.From.Unit))},
+			v.Groups = append(v.Groups, lineGroupView{From: newAgeJSON(ls.Line.From),
 				FromDate: ls.FromDate, Status: string(ls.Status)})
 		}
 		g := &v.Groups[len(v.Groups)-1]
@@ -307,6 +307,9 @@ type administrationInput struct {
 
 func tooLong(s *string, limit int) bool { return s != nil && utf8.RuneCountInString(*s) > limit }
 
+// blank is set text that is empty or whitespace-only; the table CHECKs refuse the empty string.
+func blank(s *string) bool { return s != nil && strings.TrimSpace(*s) == "" }
+
 // mergeOnto applies in to a and names the first invalid field in the order given_on, antigens, lot, product, note;
 // "" when valid. An unchanged stored date stays valid.
 func (in administrationInput) mergeOnto(a model.Administration, birthDate string, loc *time.Location, now time.Time) (model.Administration, string) {
@@ -336,20 +339,20 @@ func (in administrationInput) mergeOnto(a model.Administration, birthDate string
 	if in.Lot.Set {
 		a.Lot = in.Lot.V
 	}
-	if tooLong(a.Lot, constants.VaccineLotMaxLen) {
+	if blank(a.Lot) || tooLong(a.Lot, constants.VaccineLotMaxLen) {
 		return a, "lot"
 	}
 	if in.Product.Set {
 		a.Product = in.Product.V
 	}
-	if tooLong(a.Product, constants.VaccineProductMaxLen) ||
-		(slices.Contains(a.Antigens, antigenOther) && (a.Product == nil || strings.TrimSpace(*a.Product) == "")) {
+	if blank(a.Product) || tooLong(a.Product, constants.VaccineProductMaxLen) ||
+		(slices.Contains(a.Antigens, antigenOther) && a.Product == nil) {
 		return a, "product"
 	}
 	if in.Note.Set {
 		a.Note = in.Note.V
 	}
-	if !noteOK(a.Note) {
+	if blank(a.Note) || !noteOK(a.Note) {
 		return a, "note"
 	}
 	return a, ""

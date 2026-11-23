@@ -429,7 +429,7 @@ func TestVaccineTableChecks(t *testing.T) {
 	ana := mustParent(t, s, "ana")
 	k := mustKid(t, s, ana.ID, "Lía")
 	const full = `INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, lot, product, note, created_by, updated_by, created_at, updated_at)
-		VALUES (?, ?, 'a1', ?, 'dtap', ?, ?, ?, ?, ?, 100, 100)`
+		VALUES (?, ?, ?, ?, 'dtap', ?, ?, ?, ?, ?, 100, 100)`
 	n := any(nil)
 	for name, v := range map[string][]any{
 		"given_on with a time":   {"2026-03-01T10:00", n, n, n},
@@ -442,11 +442,11 @@ func TestVaccineTableChecks(t *testing.T) {
 		"empty note":             {"2026-03-01", n, n, ""},
 		"given_on as an integer": {20260301, n, n, n},
 	} {
-		if _, err := s.w.Exec(full, append(append([]any{"bad-" + name, k.ID}, v...), ana.ID, ana.ID)...); err == nil {
+		if _, err := s.w.Exec(full, append(append([]any{"bad-" + name, k.ID, "adm-" + name}, v...), ana.ID, ana.ID)...); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if _, err := s.w.Exec(full, "ok", k.ID, "2028-02-29", "L1", "P", "N", ana.ID, ana.ID); err != nil {
+	if _, err := s.w.Exec(full, "ok", k.ID, "a1", "2028-02-29", "L1", "P", "N", ana.ID, ana.ID); err != nil {
 		t.Errorf("a full row was refused: %v", err)
 	}
 	if _, err := s.w.Exec(insertDose, "twin", k.ID, "a1", "2028-02-29", "dtap", ana.ID, ana.ID); err == nil {

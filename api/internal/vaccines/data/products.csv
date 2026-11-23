@@ -2,6 +2,8 @@ id,name,antigens
 hexavalent,6-in-1 (DTaP-IPV-Hib-HepB),diphtheria|tetanus|pertussis|polio|hib|hepatitis_b
 dtap,DTaP,diphtheria|tetanus|pertussis
 dtap_ipv,DTaP-IPV (4-in-1),diphtheria|tetanus|pertussis|polio
+dtap_ipv_hib,DTaP-IPV-Hib (5-in-1),diphtheria|tetanus|pertussis|polio|hib
+dtap_hepb_ipv,DTaP-HepB-IPV (5-in-1),diphtheria|tetanus|pertussis|hepatitis_b|polio
 tdap,Tdap,diphtheria|tetanus|pertussis
 td,Td,diphtheria|tetanus
 td_ipv,Td-IPV (3-in-1),diphtheria|tetanus|polio

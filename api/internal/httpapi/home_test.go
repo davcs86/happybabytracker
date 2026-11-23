@@ -207,9 +207,8 @@ var dueNow = time.Date(2025, 5, 12, 12, 0, 0, 0, time.UTC)
 func TestHomeDue(t *testing.T) {
 	k := newKit(t)
 	kid, ana := k.dueKid("us")
-	// us.csv at 4 months 2 days: from 0d hepatitis_b-1 (until 1m: overdue) and rsv-1 (until 8m: due); from 1m
-	// hepatitis_b-2 (until 3m: overdue); from 2m seven lines with the default one-month window (overdue); from 4m
-	// seven lines in their default window (due). rsv-2 and covid19-1 are supplementary and never listed.
+	// us.csv at 4 months 2 days: 0d hepatitis_b-1 overdue, rsv-1 due (until 8m); 1m hepatitis_b-2 overdue; 2m seven
+	// overdue, 4m seven due (default windows). Supplementary rsv-2 and covid19-1 are never listed.
 	k.wantDue(ana, kid, "nothing given", "0d overdue 2", "1m overdue 1", "2m overdue 7", "4m due 7")
 
 	k.recordDose(ana, kid, map[string]any{"given_on": "2025-01-10", "antigens": []string{"hepatitis_b", "rsv"}})
