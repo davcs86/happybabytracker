@@ -125,6 +125,7 @@ const (
 	MaxScheduleTimes         = 12
 	MinEveryHours            = 1
 	MaxEveryHours            = 168
+	MaxScheduleOccurrences   = 1000
 	MedicationTextMaxLen     = 80
 	SymptomOtherMaxLen       = 80
 	MinTempCHundredths       = 3000
