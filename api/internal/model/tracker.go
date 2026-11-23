@@ -207,6 +207,16 @@ func CanonicalContents(in []string) ([]string, bool) {
 // DiaperKinds lists every diaper kind.
 var DiaperKinds = []string{"wet", "dirty", "both", "dry"}
 
+// Symptoms lists every symptom name.
+var Symptoms = []string{"congestion", "cough", "fever", "vomiting", "diarrhea", "constipation", "rash", "ear_pain",
+	"sore_throat", "poor_appetite", "unusually_sleepy", "other"}
+
+// Severities lists every symptom severity.
+var Severities = []string{"mild", "moderate", "severe"}
+
+// TempMethods lists every temperature-taking method.
+var TempMethods = []string{"oral", "rectal", "axillary", "ear", "forehead", "other"}
+
 // NursingSides lists every nursing side.
 var NursingSides = []string{"left", "right"}
 

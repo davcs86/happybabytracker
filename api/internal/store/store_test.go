@@ -8,12 +8,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time_tokens", "kids", "kid_access",
 	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
-	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides"}
+	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides",
+	"symptoms", "medications", "medication_doses", "reminders", "reminder_deliveries", "push_subscriptions", "push_kid_optins",
+	"ntfy_topics", "ntfy_kid_optins"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -30,8 +33,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "5" {
-		t.Fatalf("schema_version = %q, want 5", v)
+	if v := version(t, s); v != "6" {
+		t.Fatalf("schema_version = %q, want 6", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -48,8 +51,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "5" {
-			t.Fatalf("open %d: schema_version = %q, want 5", i, v)
+		if v := version(t, s); v != "6" {
+			t.Fatalf("open %d: schema_version = %q, want 6", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -394,8 +397,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "5" {
-		t.Fatalf("schema_version = %q, want 5", v)
+	if v := version(t, s); v != "6" {
+		t.Fatalf("schema_version = %q, want 6", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -543,8 +546,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "5" {
-		t.Fatalf("schema_version = %q, want 5", v)
+	if v := version(t, s); v != "6" {
+		t.Fatalf("schema_version = %q, want 6", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -743,8 +746,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "5" {
-		t.Fatalf("schema_version = %q, want 5", v)
+	if v := version(t, s); v != "6" {
+		t.Fatalf("schema_version = %q, want 6", v)
 	}
 	var contents, sources int
 	var volume int64
@@ -790,4 +793,285 @@ func TestMigration0005KeepsRows(t *testing.T) {
 	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
 		t.Errorf("foreign_key_check after 0005: %d violations, err %v", bad, err)
 	}
+}
+
+func TestMigration0006KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:5] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO kids(id, name, birth_date, sex, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'cdc', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES ('k1', 'p1', 'guardian', 100)`,
+		`INSERT INTO kid_modules(kid_id, module, enabled, updated_at) VALUES ('k1', 'sickness', 0, 100)`,
+		`INSERT INTO bottle_feeds(id, kid_id, note, at, has_breast_milk, has_formula, has_cow_milk, has_other, volume_ml, volume_floz_h, volume_typed, created_by, updated_by, created_at, updated_at)
+			VALUES ('b1', 'k1', 'mixed', 100, 1, 1, 0, 0, 120, 406, 'ml', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO bottle_feed_sources(bottle_id, source, volume_ml, volume_floz_h, volume_typed) VALUES ('b1', 'formula', 60, 203, 'ml')`,
+		`INSERT INTO nursing_sessions(id, kid_id, started_at, left_seconds, right_seconds, side, side_since, created_by, updated_by, created_at, updated_at)
+			VALUES ('n1', 'k1', 500, 0, 0, 'right', 500, 'p1', 'p1', 500, 500)`,
+		`INSERT INTO pumping_sessions(id, kid_id, started_at, duration_seconds, volume_ml, volume_floz_h, volume_typed, side, created_by, updated_by, created_at, updated_at)
+			VALUES ('u1', 'k1', 700, 900, 110, 372, 'ml', 'both', 'p1', 'p1', 700, 701)`,
+		`INSERT INTO pumping_session_sides(session_id, side, volume_ml, volume_floz_h, volume_typed) VALUES ('u1', 'left', 55, 186, 'ml')`,
+		`INSERT INTO growth_measurements(id, kid_id, measured_on, weight_g, weight_oz_h, weight_typed, created_by, updated_by, created_at, updated_at)
+			VALUES ('g1', 'k1', '2026-03-01', 3400, 11993, 'kg', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, created_by, updated_by, created_at, updated_at)
+			VALUES ('v1', 'k1', 'a1', '2026-03-01', 'dtap', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO vaccine_dismissals(kid_id, schema, line, reason, created_by, created_at) VALUES ('k1', 'us', 'hepb', 'not_needed', 'p1', 100)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := &Store{w: old, r: old}
+	for table := range trackerInserts {
+		if table == "bottle_feeds" || table == "nursing_sessions" || table == "pumping_sessions" || table == "kid_modules" {
+			continue
+		}
+		if err := insertTracker(before, table, "k1", "p1"); err != nil {
+			t.Fatalf("insert into %s: %v", table, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "6" {
+		t.Fatalf("schema_version = %q, want 6", v)
+	}
+	counts := map[string]int{"parents": 1, "kids": 1, "kid_access": 1, "kid_modules": 1, "bottle_feeds": 1, "bottle_feed_sources": 1,
+		"nursing_sessions": 1, "pumping_sessions": 1, "pumping_session_sides": 1, "growth_measurements": 1, "vaccine_doses": 1, "vaccine_dismissals": 1}
+	for table := range trackerInserts {
+		if _, ok := counts[table]; !ok {
+			counts[table] = 1
+		}
+	}
+	for table, want := range counts {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
+			t.Errorf("%s: %d rows after 0006 (err %v), want %d", table, n, err, want)
+		}
+	}
+	var minutes int
+	var source string
+	if err := s.r.QueryRow(`SELECT reminder_overdue_minutes, growth_source FROM kids WHERE id = 'k1'`).Scan(&minutes, &source); err != nil ||
+		minutes != constants.DefaultReminderOverdueMinutes || source != "cdc" {
+		t.Errorf("the kid after 0006: overdue %d, source %q, err %v", minutes, source, err)
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check after 0006: %d violations, err %v", bad, err)
+	}
+}
+
+const (
+	insertSymptom = `INSERT INTO symptoms(id, kid_id, at, symptom, severity, other_text, temp_c_h, temp_f_h, temp_typed, method, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, 100, ?, ?, ?, ?, ?, ?, ?, ?, ?, 100, 100)`
+	insertMedication = `INSERT INTO medications(id, kid_id, name, dose, schedule_kind, schedule_times, every_hours, start_at, end_on, active, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, 'Paracetamol', '2.5 ml', ?, ?, ?, 100, NULL, 1, ?, ?, 100, 100)`
+	insertMedDose = `INSERT INTO medication_doses(id, kid_id, medication_id, given_at, amount, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, 100, NULL, ?, ?, 100, 100)`
+	insertReminder   = `INSERT INTO reminders(id, kid_id, medication_id, due_at, state, created_at) VALUES (?, ?, ?, ?, ?, 100)`
+	insertDelivery   = `INSERT INTO reminder_deliveries(id, reminder_id, channel, target_id, parent_id, state, attempts, next_attempt_at) VALUES (?, ?, ?, ?, ?, ?, 0, 100)`
+	insertSubscribed = `INSERT INTO push_subscriptions(id, parent_id, endpoint, p256dh, auth, label, created_at, updated_at) VALUES (?, ?, ?, 'k', 'a', 'Phone', 100, 100)`
+)
+
+func TestReminderChecks(t *testing.T) {
+	s := openMem(t)
+	ana, bob := mustParent(t, s, "ana"), mustParent(t, s, "bob")
+	k := mustKid(t, s, ana.ID, "Lía")
+	n := any(nil)
+	exec := func(q string, args ...any) error {
+		_, err := s.w.Exec(q, args...)
+		return err
+	}
+	check := func(name string, ok bool, err error) {
+		t.Helper()
+		if ok && err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+		if !ok && err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+
+	sym := func(id string, symptom, severity, other, c, f, typed, method any) error {
+		return exec(insertSymptom, id, k.ID, symptom, severity, other, c, f, typed, method, ana.ID, ana.ID)
+	}
+	for _, name := range model.Symptoms {
+		switch name {
+		case "fever":
+			check("symptom "+name, true, sym("sy-"+name, name, n, n, 3850, 10130, "c", "oral"))
+		case "other":
+			check("symptom "+name, true, sym("sy-"+name, name, n, "teething", n, n, n, n))
+		default:
+			check("symptom "+name, true, sym("sy-"+name, name, n, n, n, n, n, n))
+		}
+	}
+	for _, sev := range model.Severities {
+		check("severity "+sev, true, sym("sv-"+sev, "cough", sev, n, n, n, n, n))
+	}
+	for _, m := range model.TempMethods {
+		check("method "+m, true, sym("me-"+m, "fever", n, n, 3850, 10130, "f", m))
+	}
+	check("bad symptom", false, sym("sy-bad", "sneeze", n, n, n, n, n, n))
+	check("bad severity", false, sym("sv-bad", "cough", "dire", n, n, n, n, n))
+	check("bad method", false, sym("me-bad", "fever", n, n, 3850, 10130, "c", "toe"))
+	check("bad temperature unit", false, sym("tu-bad", "fever", n, n, 3850, 10130, "k", "oral"))
+	check("temperature without its Fahrenheit and unit", false, sym("tp-half", "fever", n, n, 3850, n, n, "oral"))
+	check("Fahrenheit alone", false, sym("tp-f", "cough", n, n, n, 10130, n, n))
+	check("unit alone", false, sym("tp-u", "cough", n, n, n, n, "c", n))
+	check("fever without temperature", false, sym("fe-none", "fever", n, n, n, n, n, n))
+	check("fever without method", false, sym("fe-nomethod", "fever", n, n, 3850, 10130, "c", n))
+	check("temperature on another symptom", false, sym("fe-cough", "cough", n, n, 3850, 10130, "c", "oral"))
+	check("method alone", false, sym("me-alone", "cough", n, n, n, n, n, "oral"))
+	check("other without text", false, sym("ot-none", "other", n, n, n, n, n, n))
+	check("text without other", false, sym("ot-cough", "cough", n, n, "teething", n, n, n))
+
+	med := func(id, kind string, times, every any) error {
+		return exec(insertMedication, id, k.ID, kind, times, every, ana.ID, ana.ID)
+	}
+	check("kind none", true, med("m-none", "none", n, n))
+	check("kind times", true, med("m-times", "times", "08:00,20:00", n))
+	check("kind every", true, med("m-every", "every", n, 8))
+	check("every at the minimum", true, med("m-every-min", "every", n, constants.MinEveryHours))
+	check("every at the maximum", true, med("m-every-max", "every", n, constants.MaxEveryHours))
+	check("bad schedule kind", false, med("m-bad", "weekly", n, n))
+	check("times kind with every_hours", false, med("m-t-e", "times", "08:00", 8))
+	check("times kind without times", false, med("m-t-n", "times", n, n))
+	check("every kind with times", false, med("m-e-t", "every", "08:00", 8))
+	check("every kind without hours", false, med("m-e-n", "every", n, n))
+	check("none kind with times", false, med("m-n-t", "none", "08:00", n))
+	check("none kind with hours", false, med("m-n-e", "none", n, 8))
+	check("every_hours below the minimum", false, med("m-low", "every", n, constants.MinEveryHours-1))
+	check("every_hours above the maximum", false, med("m-high", "every", n, constants.MaxEveryHours+1))
+	if _, err := s.w.Exec(`INSERT INTO medications(id, kid_id, name, dose, schedule_kind, start_at, active, created_by, updated_by, created_at, updated_at)
+		VALUES ('m-act', ?, 'x', 'y', 'none', 100, 2, ?, ?, 100, 100)`, k.ID, ana.ID, ana.ID); err == nil {
+		t.Error("active of 2: accepted")
+	}
+
+	check("dose", true, exec(insertMedDose, "d1", k.ID, "m-none", ana.ID, ana.ID))
+	check("dose of a missing medication", false, exec(insertMedDose, "d2", k.ID, "nope", ana.ID, ana.ID))
+
+	check("reminder", true, exec(insertReminder, "r1", k.ID, "m-every", 1000, "pending"))
+	for i, state := range []string{"done", "expired", "cancelled"} {
+		check("reminder "+state, true, exec(insertReminder, "r-"+state, k.ID, "m-every", 2000+i, state))
+	}
+	check("bad reminder state", false, exec(insertReminder, "r-bad", k.ID, "m-every", 3000, "snoozed"))
+	check("duplicate (medication, due_at)", false, exec(insertReminder, "r-dup", k.ID, "m-every", 1000, "pending"))
+	check("the same due_at on another course", true, exec(insertReminder, "r-other", k.ID, "m-times", 1000, "pending"))
+
+	for _, state := range []string{"pending", "sending", "sent", "gone", "failed", "expired", "unconfirmed", "cancelled"} {
+		check("delivery "+state, true, exec(insertDelivery, "dl-"+state, "r1", "push", "t"+state, bob.ID, state))
+	}
+	check("ntfy delivery", true, exec(insertDelivery, "dl-ntfy", "r1", "ntfy", "tn", bob.ID, "pending"))
+	check("bad delivery channel", false, exec(insertDelivery, "dl-ch", "r1", "sms", "tx", bob.ID, "pending"))
+	check("bad delivery state", false, exec(insertDelivery, "dl-st", "r1", "push", "ty", bob.ID, "queued"))
+	check("duplicate delivery target", false, exec(insertDelivery, "dl-dup", "r1", "push", "tpending", bob.ID, "pending"))
+	check("the same target on another channel", true, exec(insertDelivery, "dl-ch2", "r1", "ntfy", "tpending", bob.ID, "pending"))
+
+	check("subscription", true, exec(insertSubscribed, "s1", bob.ID, "https://push.example/a"))
+	check("duplicate endpoint", false, exec(insertSubscribed, "s2", ana.ID, "https://push.example/a"))
+	check("opt-in", true, exec(`INSERT INTO push_kid_optins(subscription_id, kid_id) VALUES ('s1', ?)`, k.ID))
+	check("duplicate opt-in", false, exec(`INSERT INTO push_kid_optins(subscription_id, kid_id) VALUES ('s1', ?)`, k.ID))
+	check("ntfy topic", true, exec(`INSERT INTO ntfy_topics(parent_id, topic, created_at) VALUES (?, 'hbt-abc', 100)`, bob.ID))
+	check("duplicate topic", false, exec(`INSERT INTO ntfy_topics(parent_id, topic, created_at) VALUES (?, 'hbt-abc', 100)`, ana.ID))
+	check("second topic for a parent", false, exec(`INSERT INTO ntfy_topics(parent_id, topic, created_at) VALUES (?, 'hbt-def', 100)`, bob.ID))
+	check("ntfy opt-in", true, exec(`INSERT INTO ntfy_kid_optins(parent_id, kid_id) VALUES (?, ?)`, bob.ID, k.ID))
+	check("ntfy opt-in without a topic", false, exec(`INSERT INTO ntfy_kid_optins(parent_id, kid_id) VALUES (?, ?)`, ana.ID, k.ID))
+
+	setMinutes := func(v int) error {
+		return exec(`UPDATE kids SET reminder_overdue_minutes = ? WHERE id = ?`, v, k.ID)
+	}
+	check("overdue below the minimum", false, setMinutes(constants.MinReminderOverdueMinutes-1))
+	check("overdue above the maximum", false, setMinutes(constants.MaxReminderOverdueMinutes+1))
+	check("overdue at the minimum", true, setMinutes(constants.MinReminderOverdueMinutes))
+	check("overdue at the maximum", true, setMinutes(constants.MaxReminderOverdueMinutes))
+	check("overdue null", false, exec(`UPDATE kids SET reminder_overdue_minutes = NULL WHERE id = ?`, k.ID))
+}
+
+func TestCascades(t *testing.T) {
+	seed := func(t *testing.T) (*Store, model.Parent, model.Parent, model.Kid) {
+		s := openMem(t)
+		ana, bob := mustParent(t, s, "ana"), mustParent(t, s, "bob")
+		k := mustKid(t, s, ana.ID, "Lía")
+		n := any(nil)
+		for _, e := range []struct {
+			q    string
+			args []any
+		}{
+			{insertSymptom, []any{"sy1", k.ID, "cough", n, n, n, n, n, n, ana.ID, ana.ID}},
+			{insertMedication, []any{"m1", k.ID, "every", n, 8, ana.ID, ana.ID}},
+			{insertMedDose, []any{"d1", k.ID, "m1", ana.ID, ana.ID}},
+			{insertReminder, []any{"r1", k.ID, "m1", 1000, "pending"}},
+			{insertDelivery, []any{"dl1", "r1", "push", "s1", bob.ID, "sent"}},
+			{insertDelivery, []any{"dl2", "r1", "ntfy", "bob", bob.ID, "pending"}},
+			{insertSubscribed, []any{"s1", bob.ID, "https://push.example/a"}},
+			{`INSERT INTO push_kid_optins(subscription_id, kid_id) VALUES ('s1', ?)`, []any{k.ID}},
+			{`INSERT INTO ntfy_topics(parent_id, topic, created_at) VALUES (?, 'hbt-abc', 100)`, []any{bob.ID}},
+			{`INSERT INTO ntfy_kid_optins(parent_id, kid_id) VALUES (?, ?)`, []any{bob.ID, k.ID}},
+		} {
+			if _, err := s.w.Exec(e.q, e.args...); err != nil {
+				t.Fatalf("seed %.40s: %v", e.q, err)
+			}
+		}
+		return s, ana, bob, k
+	}
+	count := func(t *testing.T, s *Store, table string) int {
+		t.Helper()
+		var n int
+		if err := s.w.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	expect := func(t *testing.T, s *Store, want map[string]int) {
+		t.Helper()
+		for table, n := range want {
+			if got := count(t, s, table); got != n {
+				t.Errorf("%s: %d rows, want %d", table, got, n)
+			}
+		}
+	}
+
+	t.Run("kid", func(t *testing.T) {
+		s, ana, _, k := seed(t)
+		if err := s.DeleteKid(ctx, k.ID, ana.ID); err != nil {
+			t.Fatal(err)
+		}
+		expect(t, s, map[string]int{"symptoms": 0, "medications": 0, "medication_doses": 0, "reminders": 0, "reminder_deliveries": 0,
+			"push_kid_optins": 0, "ntfy_kid_optins": 0, "push_subscriptions": 1, "ntfy_topics": 1})
+	})
+	t.Run("medication", func(t *testing.T) {
+		s, _, _, _ := seed(t)
+		if _, err := s.w.Exec(`DELETE FROM medications WHERE id = 'm1'`); err != nil {
+			t.Fatal(err)
+		}
+		expect(t, s, map[string]int{"medication_doses": 0, "reminders": 0, "reminder_deliveries": 0, "symptoms": 1, "push_kid_optins": 1})
+	})
+	t.Run("parent", func(t *testing.T) {
+		s, _, bob, _ := seed(t)
+		if _, err := s.w.Exec(`DELETE FROM parents WHERE id = ?`, bob.ID); err != nil {
+			t.Fatal(err)
+		}
+		expect(t, s, map[string]int{"push_subscriptions": 0, "push_kid_optins": 0, "ntfy_topics": 0, "ntfy_kid_optins": 0,
+			"reminder_deliveries": 0, "reminders": 1, "medications": 1, "kids": 1})
+	})
 }
