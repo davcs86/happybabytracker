@@ -21,3 +21,5 @@ export const vaccineNewPath = (kidId: string, antigens: string[] = []) =>
 export const medicationNewPath = (kidId: string) => `${medicationPath(kidId)}/new`;
 export const medicationEntryPath = (kidId: string, id: string) => `${medicationPath(kidId)}/${id}`;
 export const doseEntryPath = (kidId: string, id: string) => `${medicationPath(kidId)}/doses/${id}`;
+export const notificationsPath = '/account/notifications';
+export const notificationsSubscribePath = `${notificationsPath}/subscribe`;

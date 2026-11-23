@@ -53,6 +53,8 @@ export const MIN_TEMP_C_HUNDREDTHS = 3000;
 export const MAX_TEMP_C_HUNDREDTHS = 4500;
 // PushLabelMaxLen.
 export const PUSH_LABEL_MAX_LEN = 40;
+// The page's sentence and the subscribe route's answer while the server has no VAPID key.
+export const PUSH_OFF_MESSAGE = 'Web Push is not configured on this server.';
 // MaxScheduleTimes.
 export const MAX_SCHEDULE_TIMES = 12;
 // MinEveryHours and MaxEveryHours.

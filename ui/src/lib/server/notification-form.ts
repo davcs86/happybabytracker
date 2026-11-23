@@ -10,6 +10,13 @@ export const DEVICE_FIELD_MESSAGES: Record<DeviceField, string> = {
 	kid: 'Choose from your children'
 };
 
+// Value-free answers to the API's push and ntfy refusals.
+export const NTFY_OFF_MESSAGE = 'ntfy is not configured on this server.';
+export const DEVICE_LIMIT_MESSAGE =
+	'You have the most devices allowed. Remove one, then try again.';
+export const SUBSCRIPTION_REFUSED_MESSAGE =
+	"The server refused this browser's notification address. Try again later.";
+
 // The label and the kids switched on (one `kid` field each); the API checks which of them the parent holds.
 export function readDeviceForm(form: FormData): {
 	values: DeviceFormValues;
