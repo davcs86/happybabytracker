@@ -73,17 +73,32 @@ export type PumpingSide = NursingSide | 'both';
 
 type Noted = { id: string; note: string | null };
 
-export type Bottle = Noted & { at: string; contents: BottleContent[]; volume: Volume };
+// One source of an advanced bottle; sources is empty for a simple bottle, else one per content.
+export type BottleSource = { source: BottleContent; volume: Volume };
+export type Bottle = Noted & {
+	at: string;
+	contents: BottleContent[];
+	volume: Volume;
+	sources: BottleSource[];
+};
 export type Diaper = Noted & { at: string; kind: DiaperKind };
 export type Meal = Noted & { at: string; what: string; reaction: string | null };
+// One side of an advanced session; sides is empty for a simple one, else one per side pumped.
+export type PumpingSideVolume = { side: NursingSide; volume: Volume };
 export type Pumping = Noted & {
 	startedAt: string;
 	durationSeconds: number;
 	volume: Volume;
 	side: PumpingSide;
+	sides: PumpingSideVolume[];
 };
 // A timer runs while endedAt is null.
 export type Sleep = Noted & { startedAt: string; endedAt: string | null };
+// The API's columns: the weight gain, and its volume at the assumed density; null when not defined.
+export type Milk = {
+	gain: { grams: number; ozHundredths: number };
+	volume: { ml: number; flozHundredths: number };
+};
 export type Nursing = Noted & {
 	startedAt: string;
 	endedAt: string | null;
@@ -91,6 +106,10 @@ export type Nursing = Noted & {
 	rightSeconds: number;
 	side: NursingSide | null;
 	sideSince: string | null;
+	// A weigh-in has a growth weight's columns but is not a growth row.
+	weightBefore: GrowthWeight | null;
+	weightAfter: GrowthWeight | null;
+	milk: Milk | null;
 };
 
 export type TrackerEntries = {

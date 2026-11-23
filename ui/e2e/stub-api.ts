@@ -254,7 +254,17 @@ async function readBody(req: IncomingMessage): Promise<string> {
 	return data;
 }
 
-type FieldKind = 'string' | 'int' | 'units' | 'bool' | 'time' | 'strings' | 'volume' | 'measure';
+type FieldKind =
+	| 'string'
+	| 'int'
+	| 'units'
+	| 'bool'
+	| 'time'
+	| 'strings'
+	| 'volume'
+	| 'measure'
+	| 'sources'
+	| 'weighin';
 type Body = Record<string, unknown>;
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -283,6 +293,19 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 			);
 		case 'units':
 			return isObject(v) && Object.values(v as Body).every(nullOr('string'));
+		case 'sources': {
+			const amounts = isObject(v) ? (v as Body).amounts : null;
+			return (
+				isObject(v) &&
+				((v as Body).unit == null || typeof (v as Body).unit === 'string') &&
+				(amounts == null ||
+					(isObject(amounts) &&
+						Object.values(amounts as Body).every((a) => a === null || Number.isInteger(a))))
+			);
+		}
+		// Go flags a wrong type inside a weigh-in and the handler answers 422 naming it, never 400.
+		case 'weighin':
+			return true;
 	}
 }
 
@@ -290,7 +313,9 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 const NESTED_KEYS: Partial<Record<FieldKind, readonly string[]>> = {
 	units: Object.keys(UNIT_SETS),
 	volume: ['unit', 'amount'],
-	measure: ['unit', 'amount']
+	measure: ['unit', 'amount'],
+	sources: ['unit', 'amounts'],
+	weighin: ['unit', 'amount']
 };
 
 // decodeJSON in respond.go: unknown key (also nested) -> 422 unknown_field, a wrong type or bad JSON -> 400.
@@ -920,6 +945,7 @@ const MAX_SESSION_S = 24 * 3600;
 const BOTTLE_ML = { min: 1, max: 1000 };
 const PUMPING_ML = { min: 1, max: 2000 };
 const MAX_VOLUME_AMOUNT = 1 << 24;
+const MILK_DENSITY_HUNDREDTHS = 103;
 const FLOZ_NUMERATOR = 295735;
 const FLOZ_DENOMINATOR = 10000 * 100;
 const PAGE_DEFAULT = 50;
@@ -1017,20 +1043,69 @@ function newVolume(unit: unknown, amount: unknown): Vol | null {
 	return ml < 1 || floz < 1 ? null : { ml, floz_hundredths: floz, typed_unit: unit };
 }
 
+// The unchanged typed value keeps the stored columns, else the typed one is converted; null when it is refused.
+function keepOrConvert(stored: Vol, unit: unknown, amount: unknown): Vol | null {
+	const typed = stored.typed_unit === 'floz' ? stored.floz_hundredths : stored.ml;
+	return unit === stored.typed_unit && amount === typed ? stored : newVolume(unit, amount);
+}
+
 // mergeVolume: absent or the unchanged typed value keeps the stored columns; the range is the tracker's.
 function mergeVolume(view: Body, body: Body, range: { min: number; max: number }): boolean {
-	const stored = view.volume as Vol;
 	const input = body.volume as { unit?: string | null; amount?: number | null } | null | undefined;
 	if (input) {
-		const typed = stored.typed_unit === 'floz' ? stored.floz_hundredths : stored.ml;
-		if (input.unit !== stored.typed_unit || input.amount !== typed) {
-			const v = newVolume(input.unit, input.amount);
-			if (!v) return false;
-			view.volume = v;
-		}
+		const v = keepOrConvert(view.volume as Vol, input.unit, input.amount);
+		if (!v) return false;
+		view.volume = v;
 	}
 	const ml = (view.volume as Vol).ml;
 	return ml >= range.min && ml <= range.max;
+}
+
+type SourceView = { source: string; volume: Vol };
+type SourcesBody = { unit?: string | null; amounts?: Record<string, number | null> | null };
+
+// CanonicalContents: the fixed order, none unknown, none twice, at least one.
+function canonicalContents(names: string[]): string[] | null {
+	const canonical = BOTTLE_CONTENTS.filter((n) => names.includes(n));
+	return canonical.length > 0 && canonical.length === names.length ? canonical : null;
+}
+
+type SideView = { side: string; volume: Vol };
+
+// CanonicalPumpingSides: left then right, none unknown, none twice, at least one.
+function canonicalSides(names: string[]): string[] | null {
+	const canonical = NURSING_SIDES.filter((n) => names.includes(n));
+	return canonical.length > 0 && canonical.length === names.length ? canonical : null;
+}
+
+// DerivedPumpingSide: both for two sides, else the one named.
+const derivedSide = (sides: SideView[]) => (sides.length === 2 ? 'both' : sides[0].side);
+
+const sameList = (a: string[], b: string[]) =>
+	a.length === b.length && a.every((n, i) => n === b[i]);
+
+// mergeSources: each source keeps its stored columns while its typed amount is unchanged; the total is the sum
+// typed in the one unit. A refused source is "sources", a refused total "volume".
+function mergeSources(
+	stored: SourceView[],
+	storedTotal: Vol,
+	input: SourcesBody,
+	names: string[]
+): { sources: SourceView[]; total: Vol } | 'sources' | 'volume' {
+	const sources: SourceView[] = [];
+	let sum = 0;
+	for (const source of names) {
+		const amount = input.amounts?.[source] ?? 0;
+		const prior = stored.find((s) => s.source === source);
+		const volume = prior
+			? keepOrConvert(prior.volume, input.unit, amount)
+			: newVolume(input.unit, amount);
+		if (!volume) return 'sources';
+		sources.push({ source, volume });
+		sum += amount;
+	}
+	const total = keepOrConvert(storedTotal, input.unit, sum);
+	return total ? { sources, total } : 'volume';
 }
 
 const BLANK_VOLUME: Vol = { ml: 0, floz_hundredths: 0, typed_unit: '' };
@@ -1063,6 +1138,59 @@ function credit(v: Body, at: number): boolean {
 	return true;
 }
 
+type WeighInBody = { unit?: string | null; amount?: number | null };
+const WEIGH_INS = ['weight_before', 'weight_after'] as const;
+
+// optionalWeight: absent keeps, null clears, an object of the right types is typed; anything else is refused.
+function weighInShape(v: unknown): v is WeighInBody {
+	return (
+		isObject(v) &&
+		nullOr('string')((v as Body).unit) &&
+		((v as Body).amount == null || Number.isInteger((v as Body).amount))
+	);
+}
+
+// mergeWeighIn: an unchanged typed value keeps the stored columns; the range is the growth weight's.
+function mergeWeighIn(view: Body, body: Body, key: (typeof WEIGH_INS)[number]): boolean {
+	if (!(key in body)) return true;
+	const given = body[key];
+	if (given === null) {
+		view[key] = null;
+		return true;
+	}
+	if (!weighInShape(given)) return false;
+	const stored = view[key] as Weight | null;
+	const typed = stored?.typed_unit === 'lb' ? stored.oz_hundredths : stored?.grams;
+	if (stored && given.unit === stored.typed_unit && given.amount === typed) return true;
+	const w = newWeight(given.unit, given.amount);
+	if (!w || w.grams < GROWTH_RANGE.weight.min || w.grams > GROWTH_RANGE.weight.max) return false;
+	view[key] = w;
+	return true;
+}
+
+// The weigh-ins in the API's order, then the estimate: the first one refused, "" when both are accepted.
+function mergeWeighIns(view: Body, body: Body): string {
+	for (const key of WEIGH_INS) if (!mergeWeighIn(view, body, key)) return key;
+	view.milk = milkOf(view.weight_before as Weight | null, view.weight_after as Weight | null);
+	return '';
+}
+
+// units.MilkTransfer: null unless both weights exist and the gain is not negative; one rounding from grams.
+function milkOf(before: Weight | null, after: Weight | null) {
+	if (!before || !after || after.grams < before.grams) return null;
+	const gain = after.grams - before.grams;
+	return {
+		gain: { grams: gain, oz_hundredths: Math.max(after.oz_hundredths - before.oz_hundredths, 0) },
+		volume: {
+			ml: roundHalfUp(gain * 100, MILK_DENSITY_HUNDREDTHS),
+			floz_hundredths: roundHalfUp(
+				gain * 100 * FLOZ_DENOMINATOR,
+				MILK_DENSITY_HUNDREDTHS * FLOZ_NUMERATOR
+			)
+		}
+	};
+}
+
 type Spec = {
 	timeKey: 'at' | 'started_at';
 	fields: Record<string, FieldKind>;
@@ -1087,18 +1215,57 @@ const SPECS: Record<TrackerKey, Spec> = {
 	bottles: {
 		timeKey: 'at',
 		timer: false,
-		fields: { at: 'time', contents: 'strings', volume: 'volume', ...NOTE_FIELD },
+		fields: {
+			at: 'time',
+			contents: 'strings',
+			volume: 'volume',
+			sources: 'sources',
+			...NOTE_FIELD
+		},
+		// bottleInput.mergeOnto: at, contents, volume or sources, note.
 		merge: (view, body, c) => {
 			if (!mergeTime(view, body, 'at', c)) return 'at';
-			if (Array.isArray(body.contents)) view.contents = body.contents;
-			const given = view.contents as string[];
-			const canonical = BOTTLE_CONTENTS.filter((n) => given.includes(n));
-			if (canonical.length === 0 || canonical.length !== given.length) return 'contents';
-			view.contents = canonical;
-			if (!mergeVolume(view, body, BOTTLE_ML)) return 'volume';
+			const sources = body.sources as SourcesBody | null | undefined;
+			const names = sources ? canonicalContents(Object.keys(sources.amounts ?? {})) : null;
+			if (Array.isArray(body.contents)) {
+				const contents = canonicalContents(body.contents as string[]);
+				if (!contents || (names && !sameList(contents, names))) return 'contents';
+				const keeps = !sources && body.volume == null && (view.sources as unknown[]).length > 0;
+				if (keeps && !sameList(contents, view.contents as string[])) return 'contents';
+				view.contents = contents;
+			} else if (sources) {
+				if (names) view.contents = names;
+			} else {
+				const canonical = canonicalContents(view.contents as string[]);
+				if (!canonical) return 'contents';
+				view.contents = canonical;
+			}
+			if (body.volume != null && sources) return 'sources';
+			if (sources) {
+				if (!names) return 'sources';
+				const merged = mergeSources(
+					view.sources as SourceView[],
+					view.volume as Vol,
+					sources,
+					names
+				);
+				if (typeof merged === 'string') return merged;
+				view.sources = merged.sources;
+				view.volume = merged.total;
+				if (merged.total.ml < BOTTLE_ML.min || merged.total.ml > BOTTLE_ML.max) return 'volume';
+			} else {
+				if (!mergeVolume(view, body, BOTTLE_ML)) return 'volume';
+				if (body.volume != null) view.sources = [];
+			}
 			return mergeNote(view, body) ? '' : 'note';
 		},
-		blank: (c) => ({ at: iso(c.now), contents: [], volume: { ...BLANK_VOLUME }, note: null })
+		blank: (c) => ({
+			at: iso(c.now),
+			contents: [],
+			volume: { ...BLANK_VOLUME },
+			sources: [],
+			note: null
+		})
 	},
 	diapers: {
 		timeKey: 'at',
@@ -1132,21 +1299,47 @@ const SPECS: Record<TrackerKey, Spec> = {
 	pumping: {
 		timeKey: 'started_at',
 		timer: false,
+		// sides has the shape of sources: a unit and an amount per name.
 		fields: {
 			started_at: 'time',
 			duration_seconds: 'int',
 			volume: 'volume',
+			sides: 'sources',
 			side: 'string',
 			...NOTE_FIELD
 		},
+		// pumpingInput.mergeOnto: started_at, duration_seconds, volume or sides, side, note.
 		merge: (view, body, c) => {
 			if (!mergeTime(view, body, 'started_at', c)) return 'started_at';
 			if (typeof body.duration_seconds === 'number') view.duration_seconds = body.duration_seconds;
 			const d = view.duration_seconds as number;
 			if (d < 1 || d > MAX_SESSION_S) return 'duration_seconds';
-			if (!mergeVolume(view, body, PUMPING_ML)) return 'volume';
-			if (typeof body.side === 'string') view.side = body.side;
+			const sides = body.sides as SourcesBody | null | undefined;
+			if (body.volume != null && sides) return 'sides';
+			if (sides) {
+				const names = canonicalSides(Object.keys(sides.amounts ?? {}));
+				if (!names) return 'sides';
+				const stored = (view.sides as SideView[]).map((s) => ({
+					source: s.side,
+					volume: s.volume
+				}));
+				const merged = mergeSources(stored, view.volume as Vol, sides, names);
+				if (typeof merged === 'string') return merged === 'sources' ? 'sides' : merged;
+				view.sides = merged.sources.map((s) => ({ side: s.source, volume: s.volume }));
+				view.volume = merged.total;
+				if (merged.total.ml < PUMPING_ML.min || merged.total.ml > PUMPING_ML.max) return 'volume';
+			} else {
+				if (!mergeVolume(view, body, PUMPING_ML)) return 'volume';
+				if (body.volume != null) view.sides = [];
+			}
+			const advanced = (view.sides as SideView[]).length > 0;
+			const derived = advanced ? derivedSide(view.sides as SideView[]) : '';
+			if (sides) {
+				if (typeof body.side === 'string' && body.side !== derived) return 'side';
+				view.side = derived;
+			} else if (typeof body.side === 'string') view.side = body.side;
 			if (!PUMPING_SIDES.includes(view.side as string)) return 'side';
+			if (advanced && view.side !== derived) return 'side';
 			return mergeNote(view, body) ? '' : 'note';
 		},
 		blank: (c) => ({
@@ -1154,6 +1347,7 @@ const SPECS: Record<TrackerKey, Spec> = {
 			duration_seconds: 0,
 			volume: { ...BLANK_VOLUME },
 			side: '',
+			sides: [],
 			note: null
 		})
 	},
@@ -1182,6 +1376,8 @@ const SPECS: Record<TrackerKey, Spec> = {
 			left_seconds: 'int',
 			right_seconds: 'int',
 			side: 'string',
+			weight_before: 'weighin',
+			weight_after: 'weighin',
 			...NOTE_FIELD
 		},
 		// The seconds are editable once finished, the side only through the side route.
@@ -1203,6 +1399,8 @@ const SPECS: Record<TrackerKey, Spec> = {
 				view[key] = body[key];
 			}
 			if (typeof body.side === 'string') return 'side';
+			const refused = mergeWeighIns(view, body);
+			if (refused) return refused;
 			if (!mergeNote(view, body)) return 'note';
 			return invalidSession('nursing', view);
 		},
@@ -1213,6 +1411,9 @@ const SPECS: Record<TrackerKey, Spec> = {
 			right_seconds: 0,
 			side: null,
 			side_since: null,
+			weight_before: null,
+			weight_after: null,
+			milk: null,
 			note: null
 		}),
 		create: (body, c) => {
@@ -1232,8 +1433,13 @@ const SPECS: Record<TrackerKey, Spec> = {
 				right_seconds: running ? 0 : body.right_seconds,
 				side: running ? body.side : null,
 				side_since: running ? iso(started) : null,
+				weight_before: null,
+				weight_after: null,
+				milk: null,
 				note: null
 			};
+			const refused = mergeWeighIns(view, body);
+			if (refused) return refused;
 			if (!mergeNote(view, body)) return 'note';
 			return invalidSession('nursing', view) || view;
 		}

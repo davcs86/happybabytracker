@@ -13,7 +13,7 @@ import (
 
 var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time_tokens", "kids", "kid_access",
 	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
-	"vaccine_doses", "vaccine_dismissals"}
+	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -30,8 +30,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "4" {
-		t.Fatalf("schema_version = %q, want 4", v)
+	if v := version(t, s); v != "5" {
+		t.Fatalf("schema_version = %q, want 5", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -48,8 +48,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "4" {
-			t.Fatalf("open %d: schema_version = %q, want 4", i, v)
+		if v := version(t, s); v != "5" {
+			t.Fatalf("open %d: schema_version = %q, want 5", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -394,8 +394,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "4" {
-		t.Fatalf("schema_version = %q, want 4", v)
+	if v := version(t, s); v != "5" {
+		t.Fatalf("schema_version = %q, want 5", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -543,8 +543,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "4" {
-		t.Fatalf("schema_version = %q, want 4", v)
+	if v := version(t, s); v != "5" {
+		t.Fatalf("schema_version = %q, want 5", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -564,5 +564,230 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 	}
 	if _, err := s.CreateAdministration(ctx, "k1", "p1", model.Administration{GivenOn: "2026-03-01", Antigens: []string{"dtap"}}, t0); err != nil {
 		t.Errorf("a dose for an upgraded kid: %v", err)
+	}
+}
+
+const (
+	insertSource  = `INSERT INTO bottle_feed_sources(bottle_id, source, volume_ml, volume_floz_h, volume_typed) VALUES (?, ?, ?, ?, ?)`
+	insertSide    = `INSERT INTO pumping_session_sides(session_id, side, volume_ml, volume_floz_h, volume_typed) VALUES (?, ?, ?, ?, ?)`
+	insertWeighed = `INSERT INTO nursing_sessions(id, kid_id, started_at, ended_at, left_seconds, right_seconds,
+		weight_before_g, weight_before_oz_h, weight_before_typed, weight_after_g, weight_after_oz_h, weight_after_typed,
+		created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, 100, 400, 120, 180, ?, ?, ?, ?, ?, ?, ?, ?, 100, 100)`
+)
+
+func TestAdvancedColumnsCascadeWithKid(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k1, k2 := mustKid(t, s, ana.ID, "Lía"), mustKid(t, s, ana.ID, "Noa")
+	for i, kid := range []string{k1.ID, k2.ID} {
+		id := "b" + string(rune('0'+i))
+		if _, err := s.w.Exec(`INSERT INTO bottle_feeds(id, kid_id, at, has_breast_milk, has_formula, has_cow_milk, has_other, volume_ml, volume_floz_h, volume_typed, created_by, updated_by, created_at, updated_at)
+			VALUES (?, ?, 100, 1, 1, 0, 0, 150, 507, 'ml', ?, ?, 100, 100)`, id, kid, ana.ID, ana.ID); err != nil {
+			t.Fatal(err)
+		}
+		for _, src := range []string{"breast_milk", "formula"} {
+			if _, err := s.w.Exec(insertSource, id, src, 75, 254, "ml"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := s.w.Exec(insertWeighed, "n"+id, kid, 3400, 11993, "kg", 3462, 12212, "kg", ana.ID, ana.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.w.Exec(`INSERT INTO pumping_sessions(id, kid_id, started_at, duration_seconds, volume_ml, volume_floz_h, volume_typed, side, created_by, updated_by, created_at, updated_at)
+			VALUES (?, ?, 100, 600, 110, 372, 'ml', 'both', ?, ?, 100, 100)`, "p"+id, kid, ana.ID, ana.ID); err != nil {
+			t.Fatal(err)
+		}
+		for _, side := range []string{"left", "right"} {
+			if _, err := s.w.Exec(insertSide, "p"+id, side, 55, 186, "ml"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := s.DeleteKid(ctx, k1.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{"bottle_feed_sources": 2, "bottle_feeds": 1, "nursing_sessions": 1, "pumping_session_sides": 2, "pumping_sessions": 1} {
+		var n int
+		if err := s.w.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
+			t.Errorf("%s: %d rows after DeleteKid (err %v), want %d", table, n, err, want)
+		}
+	}
+}
+
+func TestSourceChecks(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	if _, err := s.w.Exec(`INSERT INTO bottle_feeds(id, kid_id, at, has_breast_milk, has_formula, has_cow_milk, has_other, volume_ml, volume_floz_h, volume_typed, created_by, updated_by, created_at, updated_at)
+		VALUES ('b1', ?, 100, 1, 1, 0, 0, 150, 507, 'ml', ?, ?, 100, 100)`, k.ID, ana.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.w.Exec(insertSource, "b1", "formula", 90, 304, "ml"); err != nil {
+		t.Fatalf("a valid source row: %v", err)
+	}
+	for name, args := range map[string][]any{
+		"unknown source name": {"b1", "juice", 60, 203, "ml"},
+		"unknown typed unit":  {"b1", "breast_milk", 60, 203, "cup"},
+		"duplicate source":    {"b1", "formula", 60, 203, "ml"},
+		"missing bottle":      {"nope", "breast_milk", 60, 203, "ml"},
+		"null volume":         {"b1", "breast_milk", nil, 203, "ml"},
+	} {
+		if _, err := s.w.Exec(insertSource, args...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+
+	n := any(nil)
+	row := func(id string, v ...any) error {
+		args := append([]any{id, k.ID}, v...)
+		_, err := s.w.Exec(insertWeighed, append(args, ana.ID, ana.ID)...)
+		return err
+	}
+	for name, v := range map[string][]any{
+		"before grams alone":     {3400, n, n, n, n, n},
+		"before without typed":   {3400, 11993, n, n, n, n},
+		"before typed alone":     {n, n, "kg", n, n, n},
+		"before ounces alone":    {n, 11993, n, n, n, n},
+		"after grams alone":      {n, n, n, 3462, n, n},
+		"after without typed":    {n, n, n, 3462, 12212, n},
+		"after typed alone":      {n, n, n, n, n, "kg"},
+		"after half set":         {3400, 11993, "kg", 3462, n, "kg"},
+		"before unit":            {3400, 11993, "stone", n, n, n},
+		"after in a length unit": {n, n, n, 3462, 12212, "cm"},
+	} {
+		if err := row("bad", v...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	for name, v := range map[string][]any{
+		"neither":     {n, n, n, n, n, n},
+		"before only": {3400, 11993, "kg", n, n, n},
+		"after only":  {n, n, n, 12212, 346, "lb"},
+		"both":        {3400, 11993, "lb", 3462, 12212, "kg"},
+	} {
+		if err := row("ok-"+name, v...); err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+	}
+}
+
+func TestPumpingSideChecks(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	if _, err := s.w.Exec(trackerInserts["pumping_sessions"], k.ID, ana.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.w.Exec(insertSide, "e1", "left", 60, 203, "ml"); err != nil {
+		t.Fatalf("a valid side row: %v", err)
+	}
+	for name, args := range map[string][]any{
+		"the combined side":  {"e1", "both", 60, 203, "ml"},
+		"unknown side name":  {"e1", "middle", 60, 203, "ml"},
+		"wrong case":         {"e1", "Right", 60, 203, "ml"},
+		"unknown typed unit": {"e1", "right", 60, 203, "cup"},
+		"duplicate side":     {"e1", "left", 50, 169, "ml"},
+		"missing session":    {"nope", "right", 60, 203, "ml"},
+		"null volume":        {"e1", "right", nil, 203, "ml"},
+	} {
+		if _, err := s.w.Exec(insertSide, args...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := s.w.Exec(insertSide, "e1", "right", 50, 169, "floz"); err != nil {
+		t.Errorf("the other side: %v", err)
+	}
+}
+
+func TestMigration0005KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:4] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO kids(id, name, birth_date, sex, time_zone, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES ('k1', 'p1', 'guardian', 100)`,
+		`INSERT INTO bottle_feeds(id, kid_id, note, at, has_breast_milk, has_formula, has_cow_milk, has_other, volume_ml, volume_floz_h, volume_typed, created_by, updated_by, created_at, updated_at)
+			VALUES ('b1', 'k1', 'mixed', 100, 1, 1, 0, 0, 120, 406, 'ml', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO nursing_sessions(id, kid_id, note, started_at, ended_at, left_seconds, right_seconds, created_by, updated_by, created_at, updated_at)
+			VALUES ('n1', 'k1', 'done', 100, 400, 120, 180, 'p1', 'p1', 101, 102)`,
+		`INSERT INTO nursing_sessions(id, kid_id, started_at, left_seconds, right_seconds, side, side_since, created_by, updated_by, created_at, updated_at)
+			VALUES ('n2', 'k1', 500, 0, 0, 'right', 500, 'p1', 'p1', 500, 500)`,
+		`INSERT INTO pumping_sessions(id, kid_id, note, started_at, duration_seconds, volume_ml, volume_floz_h, volume_typed, side, created_by, updated_by, created_at, updated_at)
+			VALUES ('u1', 'k1', 'pumped', 700, 900, 110, 372, 'ml', 'both', 'p1', 'p1', 700, 701)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "5" {
+		t.Fatalf("schema_version = %q, want 5", v)
+	}
+	var contents, sources int
+	var volume int64
+	if err := s.r.QueryRow(`SELECT has_breast_milk + has_formula, volume_ml FROM bottle_feeds WHERE id = 'b1'`).Scan(&contents, &volume); err != nil || contents != 2 || volume != 120 {
+		t.Errorf("the mixed bottle after 0005: contents %d, volume %d, err %v", contents, volume, err)
+	}
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM bottle_feed_sources`).Scan(&sources); err != nil || sources != 0 {
+		t.Errorf("%d source rows after 0005 (err %v), want none", sources, err)
+	}
+	var pumpedSide string
+	var pumpedML int64
+	if err := s.r.QueryRow(`SELECT side, volume_ml FROM pumping_sessions WHERE id = 'u1'`).Scan(&pumpedSide, &pumpedML); err != nil || pumpedSide != "both" || pumpedML != 110 {
+		t.Errorf("the pumping session after 0005: side %q, volume %d, err %v", pumpedSide, pumpedML, err)
+	}
+	var sides int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pumping_session_sides`).Scan(&sides); err != nil || sides != 0 {
+		t.Errorf("%d side rows after 0005 (err %v), want none", sides, err)
+	}
+	var note string
+	var started, ended, left, right, created, updated int64
+	var wb, wa any
+	if err := s.r.QueryRow(`SELECT note, started_at, ended_at, left_seconds, right_seconds, created_at, updated_at, weight_before_g, weight_after_g
+		FROM nursing_sessions WHERE id = 'n1'`).Scan(&note, &started, &ended, &left, &right, &created, &updated, &wb, &wa); err != nil {
+		t.Fatal(err)
+	}
+	if note != "done" || started != 100 || ended != 400 || left != 120 || right != 180 || created != 101 || updated != 102 || wb != nil || wa != nil {
+		t.Errorf("the finished session after 0005 = %q %d %d %d %d %d %d %v %v", note, started, ended, left, right, created, updated, wb, wa)
+	}
+	var side string
+	if err := s.r.QueryRow(`SELECT side FROM nursing_sessions WHERE id = 'n2' AND ended_at IS NULL`).Scan(&side); err != nil || side != "right" {
+		t.Errorf("the running session after 0005: side %q, err %v", side, err)
+	}
+	for _, idx := range []string{"nursing_sessions_kid_started", "nursing_one_running"} {
+		var tbl string
+		if err := s.r.QueryRow(`SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&tbl); err != nil || tbl != "nursing_sessions" {
+			t.Errorf("index %s after 0005: table %q, err %v", idx, tbl, err)
+		}
+	}
+	if _, err := s.w.Exec(`INSERT INTO nursing_sessions(id, kid_id, started_at, created_by, updated_by, created_at, updated_at) VALUES ('n3', 'k1', 600, 'p1', 'p1', 600, 600)`); err == nil {
+		t.Error("a second running session was accepted after 0005")
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check after 0005: %d violations, err %v", bad, err)
 	}
 }

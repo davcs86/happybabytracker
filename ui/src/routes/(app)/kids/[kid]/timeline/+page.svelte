@@ -79,7 +79,7 @@
 			{/if}
 			<ul aria-label="Entries" class="flex flex-col gap-2">
 				{#each day.items as item (item.entry.id)}
-					<TimelineRow {item} kidId={data.kid.id} zone={data.kid.timeZone} unit={data.unit} />
+					<TimelineRow {item} kidId={data.kid.id} zone={data.kid.timeZone} units={data.units} />
 				{/each}
 			</ul>
 		</section>

@@ -35,7 +35,7 @@ export const load: PageServerLoad = async ({ locals, params, url, cookies, paren
 	});
 	const view = {
 		kid: kid.data,
-		unit,
+		units: { weight: session?.parent?.units.weight ?? 'kg', volume: unit },
 		filter,
 		newest: filter.cursor ? timelineSearch(filter, null) : null,
 		days: [] as Day[],

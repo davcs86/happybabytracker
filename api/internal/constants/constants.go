@@ -53,6 +53,9 @@ const (
 	GramsPerOzDenominator = 1000000000
 	MaxWeightAmount       = 1 << 24
 
+	// 1.03 g/ml: an approximation in the range commonly used (1.0–1.03 g/ml); not measured.
+	MilkDensityHundredths = 103
+
 	MMPerInchNumerator   = 254
 	MMPerInchDenominator = 10
 	MaxLengthAmount      = 1 << 24

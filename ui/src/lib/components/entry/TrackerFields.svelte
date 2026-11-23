@@ -12,12 +12,14 @@
 		kind,
 		stage,
 		values,
-		error
+		error,
+		estimate = null
 	}: {
 		kind: TrackerKind;
 		stage: EntryStage;
 		values: EntryValues;
 		error: (name: string) => string | null;
+		estimate?: string | null;
 	} = $props();
 </script>
 
@@ -32,5 +34,5 @@
 {:else if kind === 'sleep'}
 	<SleepFields {stage} {values} {error} />
 {:else}
-	<NursingFields {stage} {values} {error} />
+	<NursingFields {stage} {values} {error} {estimate} />
 {/if}

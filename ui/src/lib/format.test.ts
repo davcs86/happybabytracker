@@ -5,6 +5,7 @@ import {
 	formatAgeDays,
 	formatDuration,
 	formatInstant,
+	formatMilk,
 	formatVolume,
 	todayIn
 } from './format';
@@ -161,5 +162,44 @@ describe('formatAgeDays', () => {
 
 	it('never shows a negative age', () => {
 		expect(formatAgeDays(-3)).toBe('0 days');
+	});
+});
+
+describe('formatMilk', () => {
+	const milk = { gain: { grams: 62, ozHundredths: 219 }, volume: { ml: 60, flozHundredths: 204 } };
+	const zero = { gain: { grams: 0, ozHundredths: 0 }, volume: { ml: 0, flozHundredths: 0 } };
+
+	it('shows grams and millilitres for a kilogram and millilitre parent', () => {
+		expect(formatMilk(milk, { weight: 'kg', volume: 'ml' })).toBe('weight gain 62 g, about 60 ml');
+	});
+
+	it('shows ounces and fluid ounces for a pound and fluid ounce parent', () => {
+		expect(formatMilk(milk, { weight: 'lb', volume: 'floz' })).toBe(
+			'weight gain 2.19 oz, about 2.04 fl oz'
+		);
+	});
+
+	it('takes the two units separately', () => {
+		expect(formatMilk(milk, { weight: 'kg', volume: 'floz' })).toBe(
+			'weight gain 62 g, about 2.04 fl oz'
+		);
+		expect(formatMilk(milk, { weight: 'lb', volume: 'ml' })).toBe(
+			'weight gain 2.19 oz, about 60 ml'
+		);
+	});
+
+	it('formats a zero estimate rather than leaving it out', () => {
+		expect(formatMilk(zero, { weight: 'kg', volume: 'ml' })).toBe('weight gain 0 g, about 0 ml');
+		expect(formatMilk(zero, { weight: 'lb', volume: 'floz' })).toBe(
+			'weight gain 0 oz, about 0 fl oz'
+		);
+	});
+
+	it('formats the API columns as they are, converting nothing', () => {
+		const odd = { gain: { grams: 100, ozHundredths: 1 }, volume: { ml: 7, flozHundredths: 90 } };
+		expect(formatMilk(odd, { weight: 'lb', volume: 'floz' })).toBe(
+			'weight gain 0.01 oz, about 0.9 fl oz'
+		);
+		expect(formatMilk(odd, { weight: 'kg', volume: 'ml' })).toBe('weight gain 100 g, about 7 ml');
 	});
 });

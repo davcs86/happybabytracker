@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 // createNursing posts a nursing session and returns its id; the status must be 201.
@@ -29,7 +32,8 @@ func finishedNursingBody(over map[string]any) map[string]any {
 	}, over)
 }
 
-var nursingKeys = []string{"id", "started_at", "ended_at", "left_seconds", "right_seconds", "side", "side_since", "note"}
+var nursingKeys = []string{"id", "started_at", "ended_at", "left_seconds", "right_seconds", "side", "side_since", "note",
+	"weight_before", "weight_after", "milk"}
 
 func TestNursingLifecycle(t *testing.T) {
 	k := newKit(t)
@@ -259,4 +263,258 @@ func TestRunningNursingRefusesAFutureStart(t *testing.T) {
 	if rec := k.do(http.MethodPost, base, ana, finished); rec.Code != http.StatusCreated {
 		t.Errorf("a finished session keeps the skew: %d %q", rec.Code, rec.Body.String())
 	}
+}
+
+func (k *kit) nursingPath(kid string, id ...string) string {
+	path := "/v1/kids/" + kid + "/nursing"
+	if len(id) > 0 {
+		path += "/" + id[0]
+	}
+	return path
+}
+
+func weighedBody(over map[string]any) map[string]any {
+	m := finishedNursingBody(nil)
+	m["weight_before"], m["weight_after"] = amountBody("kg", 3400), amountBody("kg", 3462)
+	return withOverrides(m, over)
+}
+
+func TestNursingWeighIns(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	base := k.nursingPath(kid)
+
+	rec := k.do(http.MethodPost, base, ana, weighedBody(nil))
+	m := bodyMap(t, rec)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create with both: %d %q", rec.Code, rec.Body.String())
+	}
+	sameKeys(t, m, nursingKeys...)
+	want := map[string]any{
+		"weight_before": map[string]any{"grams": 3400.0, "oz_hundredths": 11993.0, "typed_unit": "kg"},
+		"weight_after":  map[string]any{"grams": 3462.0, "oz_hundredths": 12212.0, "typed_unit": "kg"},
+		"milk": map[string]any{
+			"gain":   map[string]any{"grams": 62.0, "oz_hundredths": 219.0},
+			"volume": map[string]any{"ml": 60.0, "floz_hundredths": 204.0},
+		},
+	}
+	for key, v := range want {
+		if !equalJSON(m[key], v) {
+			t.Errorf("%s = %v, want %v", key, m[key], v)
+		}
+	}
+	finished := k.nursingPath(kid, m["id"].(string))
+	if got := bodyMap(t, k.do(http.MethodGet, finished, bo, nil)); !equalJSON(got, m) {
+		t.Errorf("GET = %v, want the created view %v", got, m)
+	}
+
+	runningID := k.createNursing(ana, kid, map[string]any{"side": "left", "weight_before": amountBody("lb", 12000)})
+	running := k.nursingPath(kid, runningID)
+	rec = k.do(http.MethodGet, running, ana, nil)
+	if v := bodyMap(t, rec); v["weight_before"].(map[string]any)["typed_unit"] != "lb" || v["weight_after"] != nil || v["milk"] != nil {
+		t.Errorf("running with before only: %v", v)
+	}
+	rec = k.do(http.MethodPatch, running, bo, map[string]any{"weight_after": amountBody("lb", 12220)})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["milk"] == nil || v["ended_at"] != nil || v["side"] != "left" {
+		t.Fatalf("patch after on a running session: %d %v", rec.Code, v)
+	}
+	rec = k.do(http.MethodPatch, running, ana, map[string]any{"weight_before": nil})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["weight_before"] != nil || v["weight_after"] == nil || v["milk"] != nil {
+		t.Errorf("patch null clears before: %d %v", rec.Code, v)
+	}
+	rec = k.do(http.MethodPatch, running, ana, map[string]any{"note": "kept"})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["weight_after"] == nil || v["note"] != "kept" {
+		t.Errorf("absent keeps the weights: %d %v", rec.Code, v)
+	}
+	rec = k.do(http.MethodPatch, finished, ana, map[string]any{"weight_before": nil, "weight_after": nil})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["weight_before"] != nil || v["weight_after"] != nil || v["milk"] != nil {
+		t.Errorf("patch null clears both on a finished session: %d %v", rec.Code, v)
+	}
+	// A weigh-in does not stop the one-tap End, and the end keeps the weights.
+	rec = k.do(http.MethodPost, running+"/end", ana, map[string]any{})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["weight_after"] == nil || v["ended_at"] == nil {
+		t.Errorf("end keeps the weights: %d %v", rec.Code, v)
+	}
+}
+
+func TestMilkEstimate(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	for name, c := range map[string]struct {
+		before, after map[string]any
+		gain          float64
+		oz, ml, floz  float64
+	}{
+		"kg":      {amountBody("kg", 3400), amountBody("kg", 3462), 62, 219, 60, 204},
+		"lb":      {amountBody("lb", 12000), amountBody("lb", 12220), 62, 220, 60, 204},
+		"no gain": {amountBody("kg", 3400), amountBody("kg", 3400), 0, 0, 0, 0},
+		"mixed":   {amountBody("kg", 3400), amountBody("lb", 12000), 2, 7, 2, 7},
+	} {
+		rec := k.do(http.MethodPost, k.nursingPath(kid), ana, weighedBody(map[string]any{"weight_before": c.before, "weight_after": c.after}))
+		m, _ := bodyMap(t, rec)["milk"].(map[string]any)
+		if rec.Code != http.StatusCreated || m == nil {
+			t.Errorf("%s: %d %q", name, rec.Code, rec.Body.String())
+			continue
+		}
+		gain, vol := m["gain"].(map[string]any), m["volume"].(map[string]any)
+		if gain["grams"] != c.gain || gain["oz_hundredths"] != c.oz || vol["ml"] != c.ml || vol["floz_hundredths"] != c.floz {
+			t.Errorf("%s: milk = %v, want gain %v g %v oz_h, %v ml %v floz_h", name, m, c.gain, c.oz, c.ml, c.floz)
+		}
+	}
+}
+
+func TestAfterBelowBefore(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	rec := k.do(http.MethodPost, k.nursingPath(kid), ana, weighedBody(map[string]any{"weight_before": amountBody("kg", 3500), "weight_after": amountBody("kg", 3450)}))
+	m := bodyMap(t, rec)
+	if rec.Code != http.StatusCreated || m["milk"] != nil || m["weight_before"].(map[string]any)["grams"] != 3500.0 || m["weight_after"].(map[string]any)["grams"] != 3450.0 {
+		t.Fatalf("after below before: %d %v", rec.Code, m)
+	}
+	one := k.nursingPath(kid, m["id"].(string))
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"weight_after": amountBody("kg", 3400)})
+	if v := bodyMap(t, rec); rec.Code != http.StatusOK || v["milk"] != nil || v["weight_after"].(map[string]any)["grams"] != 3400.0 {
+		t.Errorf("patch after below before: %d %v", rec.Code, v)
+	}
+	if v := bodyMap(t, k.do(http.MethodGet, one, ana, nil)); v["milk"] != nil || v["weight_before"] == nil || v["weight_after"] == nil {
+		t.Errorf("stored: %v", v)
+	}
+}
+
+func TestWeightValidation(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	finished := k.nursingPath(kid, k.createNursing(ana, kid, finishedNursingBody(nil)))
+	running := k.nursingPath(kid, k.createNursing(ana, kid, map[string]any{"side": "left"}))
+	for _, field := range []string{"weight_before", "weight_after"} {
+		for name, v := range map[string]any{
+			"below the minimum":  amountBody("kg", constants.MinWeightGrams-1),
+			"above the maximum":  amountBody("kg", constants.MaxWeightGrams+1),
+			"lb below":           amountBody("lb", 700),
+			"lb above":           amountBody("lb", 882000),
+			"zero":               amountBody("kg", 0),
+			"negative":           amountBody("kg", -3400),
+			"unknown unit":       amountBody("stone", 3400),
+			"no amount":          map[string]any{"unit": "kg"},
+			"a bare number":      3400,
+			"a string":           "heavy",
+			"amount is a string": map[string]any{"unit": "kg", "amount": "3400"},
+			"amount too large":   amountBody("kg", constants.MaxWeightAmount+1),
+		} {
+			wantInvalid2(t, field+" "+name+" on create", k.do(http.MethodPost, k.nursingPath(kid), ana, weighedBody(map[string]any{field: v})), field)
+			wantInvalid2(t, field+" "+name+" on a finished patch", k.do(http.MethodPatch, finished, ana, map[string]any{field: v}), field)
+			wantInvalid2(t, field+" "+name+" on a running patch", k.do(http.MethodPatch, running, ana, map[string]any{field: v}), field)
+		}
+		for name, v := range map[string]any{
+			"the minimum": amountBody("kg", constants.MinWeightGrams), "the maximum": amountBody("kg", constants.MaxWeightGrams),
+			"lb minimum": amountBody("lb", 710), "lb maximum": amountBody("lb", 881800),
+		} {
+			if rec := k.do(http.MethodPatch, finished, ana, map[string]any{field: v}); rec.Code != http.StatusOK {
+				t.Errorf("%s %s: %d %q", field, name, rec.Code, rec.Body.String())
+			}
+		}
+	}
+	// Order: side, then weight_before, weight_after, note.
+	bad, noteBad := amountBody("kg", 1), strings.Repeat("a", constants.MaxNoteLen+1)
+	wantInvalid2(t, "before before after", k.do(http.MethodPatch, finished, ana, map[string]any{"weight_after": bad, "weight_before": bad}), "weight_before")
+	wantInvalid2(t, "after before note", k.do(http.MethodPatch, finished, ana, map[string]any{"weight_after": bad, "note": noteBad}), "weight_after")
+	wantInvalid2(t, "side before weight", k.do(http.MethodPatch, finished, ana, map[string]any{"side": "left", "weight_before": bad}), "side")
+	wantInvalid2(t, "create: side before weight", k.do(http.MethodPost, k.nursingPath(kid), ana, finishedNursingBody(map[string]any{"side": "left", "weight_before": bad})), "side")
+	wantInvalid2(t, "create: weight before note", k.do(http.MethodPost, k.nursingPath(kid), ana, finishedNursingBody(map[string]any{"weight_after": bad, "note": noteBad})), "weight_after")
+	wantInvalid2(t, "create: seconds before weight", k.do(http.MethodPost, k.nursingPath(kid), ana, finishedNursingBody(map[string]any{"weight_before": bad, "right_seconds": nil})), "right_seconds")
+	// An unknown key inside a weight is the same refusal as in a growth measure.
+	rec := k.do(http.MethodPost, k.nursingPath(kid), ana, `{"started_at":"2026-11-20T11:00:00Z","ended_at":"2026-11-20T11:10:00Z","left_seconds":1,"right_seconds":1,"weight_before":{"unit":"kg","amount":3400,"precise":true}}`)
+	if rec.Code != http.StatusUnprocessableEntity || strings.TrimSpace(rec.Body.String()) != `{"error":"unknown_field","field":"precise"}` {
+		t.Errorf("unknown key in a weight: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+// A re-sent typed value keeps the stored three columns, as the growth patch does.
+func TestUnchangedTypedWeightKeepsStoredColumns(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	end := t0.Add(-50 * time.Minute)
+	odd := &units.Weight{Grams: 3400, OzHundredths: 12000, Typed: units.UnitKG} // oz column deliberately not the conversion
+	n, err := k.Store.CreateNursing(context.Background(), kid, k.parentID("ana"),
+		model.NursingSession{StartedAt: t0.Add(-time.Hour), EndedAt: &end, LeftSeconds: 1, RightSeconds: 1, WeightBefore: odd}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one := k.nursingPath(kid, n.ID)
+	k.do(http.MethodPatch, one, ana, map[string]any{"weight_before": amountBody("kg", 3400), "note": "same"})
+	if got, _ := k.Store.Nursing(context.Background(), kid, n.ID); got.WeightBefore == nil || *got.WeightBefore != *odd {
+		t.Errorf("re-sent typed value rewrote the columns: %+v, want %+v", got.WeightBefore, odd)
+	}
+	k.do(http.MethodPatch, one, ana, map[string]any{"weight_before": amountBody("kg", 3401)})
+	if got, _ := k.Store.Nursing(context.Background(), kid, n.ID); got.WeightBefore == nil || got.WeightBefore.Grams != 3401 || got.WeightBefore.OzHundredths == 12000 {
+		t.Errorf("a changed value was not converted: %+v", got.WeightBefore)
+	}
+}
+
+func TestWeighInIsNotGrowth(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	k.createGrowth(ana, kid, nil)
+	growth := func() string { return k.do(http.MethodGet, "/v1/kids/"+kid+"/growth", ana, nil).Body.String() }
+	before := growth()
+
+	id := bodyMap(t, k.do(http.MethodPost, k.nursingPath(kid), ana, weighedBody(nil)))["id"].(string)
+	k.do(http.MethodPatch, k.nursingPath(kid, id), ana, map[string]any{"weight_after": amountBody("kg", 3500)})
+	k.createNursing(ana, kid, map[string]any{"side": "right", "weight_before": amountBody("kg", 3400)})
+	if got := growth(); got != before {
+		t.Errorf("growth list changed after weigh-ins:\n got %s\nwant %s", got, before)
+	}
+	rows, err := k.Store.ListGrowth(context.Background(), kid)
+	if err != nil || len(rows) != 1 {
+		t.Errorf("growth rows = %d, %v; want the one seeded", len(rows), err)
+	}
+}
+
+func TestNursingViewKeys(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	id := k.createNursing(ana, kid, map[string]any{"side": "left", "weight_before": amountBody("kg", 3400)})
+	view := bodyMap(t, k.do(http.MethodGet, k.nursingPath(kid, id), ana, nil))
+	sameKeys(t, view, nursingKeys...)
+
+	running := k.home(bo, kid)["running"].(map[string]any)["nursing"].(map[string]any)
+	sameKeys(t, running, nursingKeys...)
+	if !equalJSON(running, view) {
+		t.Errorf("home running nursing = %v, want %v", running, view)
+	}
+
+	k.do(http.MethodPost, k.nursingPath(kid, id)+"/end", ana, map[string]any{})
+	k.do(http.MethodPatch, k.nursingPath(kid, id), ana, map[string]any{"weight_after": amountBody("kg", 3470)})
+	view = bodyMap(t, k.do(http.MethodGet, k.nursingPath(kid, id), ana, nil))
+	_, items, _ := k.timelinePage(bo, kid, "?types=nursing")
+	if len(items) != 1 {
+		t.Fatalf("timeline items = %v", items)
+	}
+	sameKeys(t, items[0], append([]string{"type", "at"}, nursingKeys...)...)
+	for key, v := range view {
+		if !equalJSON(items[0][key], v) {
+			t.Errorf("timeline %s = %v, the tracker's view has %v", key, items[0][key], v)
+		}
+	}
+	list := bodyMap(t, k.do(http.MethodGet, k.nursingPath(kid), ana, nil))["nursing"].([]any)
+	if len(list) != 1 || !equalJSON(list[0], view) {
+		t.Errorf("list = %v, want %v", list, view)
+	}
+}
+
+func TestNursingWeightsNoValuesInLogs(t *testing.T) {
+	const note = "xyzzy-private-note"
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	k.Log.Reset()
+
+	id := bodyMap(t, k.do(http.MethodPost, k.nursingPath(kid), ana, weighedBody(map[string]any{
+		"note": note, "weight_before": amountBody("kg", 4711), "weight_after": amountBody("kg", 4777)})))["id"].(string)
+	k.do(http.MethodGet, k.nursingPath(kid, id), ana, nil)
+	k.do(http.MethodPatch, k.nursingPath(kid, id), ana, map[string]any{"weight_after": amountBody("lb", 17391)})
+	k.do(http.MethodPatch, k.nursingPath(kid, id), ana, map[string]any{"weight_before": amountBody("kg", 1)}) // a refusal
+	k.do(http.MethodPatch, k.nursingPath(kid, id), ana, map[string]any{"weight_before": 4711})                // a refusal
+	k.do(http.MethodDelete, k.nursingPath(kid, id), ana, nil)
+
+	wantCleanLog(t, k.Log.String(), 6, "xyzzy", "4711", "4777", "17391", "weight_before", "weight_after")
 }

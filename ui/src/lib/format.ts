@@ -1,5 +1,10 @@
-import { DAYS_PER_MONTH, HUNDREDTHS_PER_FLOZ, SECONDS_PER_MINUTE } from './constants';
-import type { Volume, VolumeUnit } from './types';
+import {
+	DAYS_PER_MONTH,
+	HUNDREDTHS_PER_FLOZ,
+	HUNDREDTHS_PER_OZ,
+	SECONDS_PER_MINUTE
+} from './constants';
+import type { Milk, Units, Volume, VolumeUnit } from './types';
 
 const MONTHS_PER_YEAR = 12;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -72,6 +77,19 @@ export function ageMonths(birthDate: string, today: string): number {
 export function formatVolume(v: Pick<Volume, 'ml' | 'floz_hundredths'>, unit: VolumeUnit): string {
 	if (unit === 'ml') return `${v.ml} ml`;
 	return `${Number((v.floz_hundredths / HUNDREDTHS_PER_FLOZ).toFixed(2))} fl oz`;
+}
+
+// The API's columns in the parent's units; nothing is converted here.
+export function formatMilk(milk: Milk, units: Pick<Units, 'weight' | 'volume'>): string {
+	const gain =
+		units.weight === 'kg'
+			? `${milk.gain.grams} g`
+			: `${Number((milk.gain.ozHundredths / HUNDREDTHS_PER_OZ).toFixed(2))} oz`;
+	const volume = formatVolume(
+		{ ml: milk.volume.ml, floz_hundredths: milk.volume.flozHundredths },
+		units.volume
+	);
+	return `weight gain ${gain}, about ${volume}`;
 }
 
 export function formatDuration(seconds: number): string {

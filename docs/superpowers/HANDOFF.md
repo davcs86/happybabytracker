@@ -1,7 +1,7 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-22 at the end of plan 5 (vaccination). Read this first in a new session, then the
-design and the plan of the next item.
+Updated 2026-11-23 at the end of plan 5.1 (advanced bottle, nursing and pumping logging). Read this first
+in a new session, then the design and the plan of the next item.
 
 ## State
 
@@ -12,8 +12,9 @@ design and the plan of the next item.
 | Plan 2, edge | `davcs86/homelab-edge` `docs/superpowers/plans/2026-11-21-happybabytracker-edge.md` | merged by the owner in `davcs86/homelab-edge` PR #100 on 2026-11-22 and deployed |
 | Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done, merged to `main` (PR #4) |
 | Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done, merged to `main` (PR #6) |
-| Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done on branch `ccr-174d8c4e-jjczdt`, PR #7, not merged; it is merged only with the owner's go-ahead |
-| Plan 6, sickness, medication, reminders, Web Push, ntfy | not in this repository yet | a draft and its research exist outside this branch and will be added by a later PR; ask the owner |
+| Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done, merged to `main` (PR #7) |
+| Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done on branch `ccr-174d8c4e-jjczdt`; its PR goes to `main`, merged only with the owner's go-ahead |
+| Plan 6, sickness, medication, reminders, Web Push, ntfy | not in this repository yet | a draft and its research exist outside this branch and will be added by a later PR; ask the owner. Plan 5.1 takes migration 0005, so the draft's migration becomes 0006 when it is rebased |
 | Plan 7, milestones and PDF export | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
@@ -22,16 +23,16 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. The owner reviews PR #7, including the generated schedule tables in `docs/vaccine-schedules/*.md`,
-   and decides whether to merge it. After the merge, CI publishes both images. The edge's
-   `bump-happybabytracker` PR then changes the two pins, and a deploy makes plan 5 live. Plan 5 changes
-   nothing else on the edge: no new variable, volume or notice file. The schedules are embedded in the
-   API image.
+1. The owner reviews plan 5.1's PR (from `ccr-174d8c4e-jjczdt` to `main`, merged only with the owner's
+   go-ahead) and decides whether to merge it. After the merge, CI publishes both images. The edge's
+   `bump-happybabytracker` PR then changes the two pins, and a deploy makes plan 5.1 live. Plan 5.1 changes `api/` and `ui/` sources only (no Dockerfile or dependency
+   change) and nothing else on the edge: no new variable, volume or notice file. Whether plan 5's own bump
+   and deploy happened is not recorded here.
 2. Plan 6 (sickness, medication, the reminder worker, Web Push, ntfy): ask the owner for the draft and
    its research, settle its open values with the owner, and add it to `docs/superpowers/plans/` in its
-   own PR from `main` after PR #7. The home read model's `due` list is where medication joins: each
-   entry already carries `kind` (`"vaccine"` today), so plan 6 adds `kind: "medication"` entries
-   without a breaking change.
+   own PR from `main` after plan 5.1's PR. Its draft migration is renumbered 0006 when it is rebased. The
+   home read model's `due` list is where medication joins: each entry already carries `kind`
+   (`"vaccine"` today), so plan 6 adds `kind: "medication"` entries without a breaking change.
 3. Start implementation only when the owner asks for it.
 
 ## Owner decisions in plan 3 (do not reopen)
@@ -86,13 +87,43 @@ what a new session needs to start correctly.
 - Updating a schedule is easy by design: one CSV per schedule, a generated review document checked by a
   test, and stable line ids. The procedure is `docs/runbooks/updating-vaccine-schedules.md`.
 
+## Owner decisions in plan 5.1 (do not reopen)
+
+Plan 5.1 supersedes plan 3's "no per-component split" for bottles, only in an opt-in advanced form; the
+simple forms and every older entry are unchanged. Its open values are in the plan, rows 1 to 21.
+
+- Order: plan 5.1 ships first, as its own PR, before plan 6; plan 6's migration becomes 0006 (row 1).
+- Mode switch: a per-form toggle only ("Advanced: volume per source", "Advanced: weigh before and
+  after", opening the form with `?advanced=1`). Nothing is remembered; every form starts simple. An edit
+  page opens advanced on its own when the entry already carries advanced data.
+- Bottle total: every ticked source has its own volume and the total is their sum; the total is not
+  editable on its own.
+- Nursing weigh-ins: one weight before and one after the whole session (both sides together), each
+  optional, in the parent's weight unit, the same input as the growth form, 200 g to 250 kg.
+- Estimate: both the weight gain (grams for kg users, ounces for lb users) and an estimated milk volume in
+  the parent's volume unit, converted at 1.03 g/ml. An after weight below the before weight is stored as
+  typed, with no estimate and no message.
+- "Do both" wording (rows 8 and 21): wherever the density is described (the constant's comment, the
+  README, the form's help text) it reads
+  "an approximation in the range commonly used (1.0–1.03 g/ml); not measured"; beside every place the
+  estimate is explained, the sentence
+  "A single-feed reading from a home scale can be off by several grams."
+- Pumping per side (rows 17 to 20) is the owner's steer, applied by the designer by analogy with the
+  bottle answers: a per-form toggle, the sum is the total, one unit select, the side is derived (left,
+  right or both), the duration stays one value. The owner may overturn any of it.
+- Design calls (rows 13 and 14; the owner may still correct them): the home's End button stays one tap and takes no
+  weight (end the session, then edit it); the estimate shows on the nursing edit page and the timeline
+  line only, not on the home, the daily summaries or per-source daily totals.
+- Weigh-ins are not growth measurements: no growth row, no score, no chart.
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
 2. **Edge** (`davcs86/homelab-edge`) — compose, the private name, secrets, backup, Gatus, bump workflow, runbook — done.
 3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
 4. Growth — done.
-5. Vaccination — done (PR #7, not merged).
+5. Vaccination — done (PR #7, merged).
+5.1. Advanced bottle, nursing and pumping logging — done on its branch; its PR goes to `main`, merged only with the owner's go-ahead.
 6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
 7. Milestones and PDF export.
 
@@ -169,7 +200,9 @@ log.
   script, which runs both real images together, is the real check. This repo keeps that pattern; since
   plan 3 the smoke logs, times, edits and deletes an entry of every tracker through the UI forms,
   since plan 4 it scores a measurement under both growth sources, and since plan 5 it records, edits
-  and deletes a 6-in-1 dose against the real US schedule and switches the kid to the UK schedule.
+  and deletes a 6-in-1 dose against the real US schedule and switches the kid to the UK schedule, and
+  since plan 5.1 it logs and edits an advanced bottle, pumping session and weighed nursing session through
+  the real forms and checks that none adds to the Growth page.
 
 ## Not yet verified (verify in the plan that needs it)
 
@@ -194,6 +227,13 @@ log.
   local midnight in the kid's zone, so in zones whose DST starts at midnight (America/Havana, Santiago,
   Asunción) they may land a day early. `kidtime.AddAge` (plan 5) does civil-date arithmetic in UTC and
   does not have this flaw. A follow-up should fix the older three, with a Havana/Santiago test.
+- The 1.03 g/ml density is the owner's figure, used as the app's own constant. A check of public sources on
+  2026-11-23 found no measured human-milk mean; one study's working range was 0.9975–1.0566 g/ml, and
+  hospital test-weighing protocols use 1 g as 1 ml. The app calls it an approximation, not measured.
+- The accuracy sentence rests on validation studies of test weighing, whose published single-feed
+  differences ranged from about −12 to +15 ml. A test-weighing estimate is not a clinical measure.
+- The owner's observation that weight loss after nursing is associated with latching problems is not
+  encoded anywhere: the app shows no estimate in that case and says nothing about it.
 
 ## How to verify a plan is done
 
@@ -210,7 +250,7 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker` after PR #7 (plan 5) is merged. Read
+> Start from `main` of `davcs86/happybabytracker` after plan 5.1's PR (advanced logging) is merged. Read
 > `docs/superpowers/HANDOFF.md`, then the design. Ask the owner for the plan 6 draft (sickness,
 > medication, reminders, Web Push, ntfy) and its research, settle its open values with the owner, and
 > execute it with subagent-driven development on a new branch from `main`. `davcs86/commsgun` is the

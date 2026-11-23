@@ -7,7 +7,7 @@ import {
 	TRACKER_LABEL,
 	TRACKER_ROUTE
 } from './constants';
-import { formatDuration, formatVolume } from './format';
+import { formatDuration, formatMilk, formatVolume } from './format';
 import { formatClock, zonedLocalToInstant } from './time-zone';
 import type {
 	ModuleId,
@@ -16,7 +16,7 @@ import type {
 	TimelineItem,
 	TimelineQuery,
 	TrackerKind,
-	VolumeUnit
+	Units
 } from './types';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -29,7 +29,11 @@ const REVERSED_RANGE = 'The end date is before the start date';
 const LONG_RANGE = `Pick at most ${SUMMARY_MAX_DAYS} days`;
 
 // One line per entry. A point entry leads with its clock; a sleep carries its own range.
-export function timelineLine(item: TimelineItem, zone: string, unit: VolumeUnit): string {
+export function timelineLine(
+	item: TimelineItem,
+	zone: string,
+	units: Pick<Units, 'weight' | 'volume'>
+): string {
 	const clock = formatClock(item.at, zone);
 	const label = TRACKER_LABEL[item.kind];
 	switch (item.kind) {
@@ -37,21 +41,28 @@ export function timelineLine(item: TimelineItem, zone: string, unit: VolumeUnit)
 			const contents = item.entry.contents
 				.map((c) => BOTTLE_CONTENT_LABEL[c].toLowerCase())
 				.join(' + ');
-			const volume = formatVolume(item.entry.volume, unit);
+			const volume = formatVolume(item.entry.volume, units.volume);
 			return `${clock} ${label} ${volume}${contents ? `, ${contents}` : ''}`;
 		}
 		case 'nursing': {
-			const { leftSeconds, rightSeconds, endedAt, side } = item.entry;
+			const { leftSeconds, rightSeconds, endedAt, side, milk } = item.entry;
 			const sides = [
 				...(leftSeconds > 0 ? [`${SIDE_INITIAL.left} ${formatDuration(leftSeconds)}`] : []),
 				...(rightSeconds > 0 ? [`${SIDE_INITIAL.right} ${formatDuration(rightSeconds)}`] : [])
 			];
 			const running = endedAt === null ? `, running${side ? ` on ${SIDE_INITIAL[side]}` : ''}` : '';
-			return `${clock} ${label}${sides.length > 0 ? ` ${sides.join(' · ')}` : ''}${running}`;
+			const estimate = milk ? `, ${formatMilk(milk, units)}` : '';
+			return `${clock} ${label}${sides.length > 0 ? ` ${sides.join(' · ')}` : ''}${running}${estimate}`;
 		}
 		case 'pumping': {
-			const { durationSeconds, volume, side } = item.entry;
-			return `${clock} ${label} ${formatDuration(durationSeconds)}, ${formatVolume(volume, unit)} (${side})`;
+			const { durationSeconds, volume, side, sides } = item.entry;
+			const where =
+				sides.length > 0
+					? sides
+							.map((s) => `${SIDE_INITIAL[s.side]} ${formatVolume(s.volume, units.volume)}`)
+							.join(' · ')
+					: side;
+			return `${clock} ${label} ${formatDuration(durationSeconds)}, ${formatVolume(volume, units.volume)} (${where})`;
 		}
 		case 'sleep': {
 			const { startedAt, endedAt } = item.entry;

@@ -11,7 +11,8 @@ What a parent can do so far:
   nursing (a timer that switches sides, or a finished session in minutes per side), pumping, diapers, solids and sleep.
   Times are read and shown in the kid's time zone; volumes in each parent's unit (ml or US fl oz).
   Sleep and nursing run as timers from the home; a timer over 24 hours is settled from its edit page.
-  Every entry can be edited or deleted by any parent with access.
+  Every entry can be edited or deleted by any parent with access. Bottles, pumping and nursing also have
+  opt-in advanced forms (see "Advanced logging" below).
 - The kid's home: quick-log buttons ordered for the kid's age, the running timers and today's totals.
 - A timeline per kid: entries newest first, grouped by the kid's days with each day's totals, filtered
   by date range and tracker. A day's sleep total counts the part of each sleep inside that day, so an
@@ -139,6 +140,33 @@ Licences, per schedule (the full text is under "Third-party data" below):
   decision, not legal advice. It is not endorsed by, or a copy of, the Secretaría de Salud's publication.
 
 Updating a schedule: `docs/runbooks/updating-vaccine-schedules.md`.
+
+## Advanced logging
+
+Three opt-in forms. Every form starts simple; a link at the top of a bottle, pumping or nursing form
+("Advanced: volume per source", "Advanced: volume per side", "Advanced: weigh before and after") opens the
+advanced one for that entry, and nothing is remembered. The simple forms and every entry saved before this
+are unchanged. An edit page opens advanced on its own when the entry already carries advanced data. Saving
+the simple bottle or pumping form over such an entry ("Use one total") replaces its parts with the one total
+typed; hiding the weigh-ins of a session keeps its weights.
+
+- Bottle, a volume per source: each ticked source (breast milk, formula, cow's milk, other) has its own
+  volume and the total is their sum; the total is not typed on its own. One unit select (ml or fl oz) applies
+  to every source, and each amount reads back as typed in the unit it was last saved in (the parts are shown and re-sent in the viewing parent's unit, so editing one part re-types the others).
+- Pumping, a volume per side: a left and a right volume, at least one; the total is their sum and the side
+  (left, right or both) follows from which are filled. The duration stays one value for the session.
+- Nursing, weigh-ins: one optional weight before and one after the whole session, both sides together, typed
+  like a growth weight (kg, or lb and oz; 200 g to 250 kg), on a new or an edited session, running or
+  finished. The home's End button takes no weight: end the session, then edit it to add the after weight.
+
+With both weights and the after weight not below the before weight, the timeline line and the edit page show
+the weight gain in the parent's weight unit and an estimated milk volume in the parent's volume unit. The
+volume converts the gain at 1.03 g/ml: an approximation in the range commonly used (1.0–1.03 g/ml); not measured.
+A single-feed reading from a home scale can be off by several grams.
+An after weight below the before weight is stored as typed, with no estimate and no message.
+
+Weigh-ins are not growth measurements: they stay with their session and never reach the Growth page, a
+score or a chart. The app records and displays; it never interprets a weight, a gain or a loss.
 
 ## Configuration
 

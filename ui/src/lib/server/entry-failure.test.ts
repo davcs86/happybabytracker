@@ -4,8 +4,10 @@ import {
 	entryFieldFailure,
 	ENTRY_FIELD_MESSAGES,
 	FINISHED_SIDE_MESSAGE,
+	sourcesTotalMessage,
 	staleTimerFailure,
 	TIMER_ENDED_MESSAGE,
+	totalRangeMessage,
 	volumeRefusedMessage
 } from './entry-failure';
 import { MEAL_TEXT_MAX_LEN } from '../constants';
@@ -136,6 +138,54 @@ describe('final-wave messages', () => {
 		expect(volumeRefusedMessage('bottles')).toContain('1000 ml');
 		expect(volumeRefusedMessage('pumping')).toContain('2000 ml');
 		expect(volumeRefusedMessage('bottles')).toContain('two decimals');
+	});
+
+	it('an advanced bottle total refused by the API states the range of the total only', () => {
+		const r = entryApiFailure(
+			'bottles',
+			{ ...values, advanced: '1' },
+			refused({ field: 'volume' }),
+			extra
+		);
+		expect(r.data).toMatchObject({ field: 'volume', message: sourcesTotalMessage() });
+		expect(sourcesTotalMessage()).toBe('The total must be from 1 to 1000 ml');
+		const simple = entryApiFailure(
+			'bottles',
+			{ ...values, advanced: '' },
+			refused({ field: 'volume' }),
+			extra
+		);
+		expect(simple.data).toMatchObject({ message: volumeRefusedMessage('bottles') });
+	});
+
+	it('the sources message is plain and carries no value', () => {
+		expect(ENTRY_FIELD_MESSAGES.sources).toBe(
+			'Enter a volume for each source you ticked, in whole millilitres or ounces with up to two decimals'
+		);
+		expect(ENTRY_FIELD_MESSAGES.sources).not.toMatch(/\d/);
+	});
+
+	it('an advanced pumping total refused by the API states the range of the total only', () => {
+		const r = entryApiFailure(
+			'pumping',
+			{ ...values, advanced: '1' },
+			refused({ field: 'volume' }),
+			extra
+		);
+		expect(r.data).toMatchObject({ field: 'volume', message: totalRangeMessage('pumping') });
+		expect(totalRangeMessage('pumping')).toBe('The total must be from 1 to 2000 ml');
+		const simple = entryApiFailure('pumping', values, refused({ field: 'volume' }), extra);
+		expect(simple.data).toMatchObject({ message: volumeRefusedMessage('pumping') });
+	});
+
+	it('a refused sides field has a plain message that carries no value', () => {
+		expect(ENTRY_FIELD_MESSAGES.sides).toBe(
+			'Enter a volume for at least one side, in whole millilitres or ounces with up to two decimals'
+		);
+		expect(ENTRY_FIELD_MESSAGES.sides).not.toMatch(/\d/);
+		expect(
+			entryApiFailure('pumping', values, refused({ field: 'sides' }), extra).data
+		).toMatchObject({ field: 'sides', message: ENTRY_FIELD_MESSAGES.sides });
 	});
 
 	it('an API what refusal states both rules', () => {

@@ -38,3 +38,45 @@ func TestCanonicalContents(t *testing.T) {
 		}
 	}
 }
+
+func TestPumpingSideSet(t *testing.T) {
+	for _, c := range []struct {
+		in, want []string
+		ok       bool
+	}{
+		{[]string{"right", "left"}, []string{"left", "right"}, true},
+		{[]string{"right"}, []string{"right"}, true},
+		{nil, nil, false},
+		{[]string{"left", "left"}, nil, false},
+		{[]string{"both"}, nil, false},
+		{[]string{"left", "middle"}, nil, false},
+	} {
+		got, ok := CanonicalPumpingSides(c.in)
+		if ok != c.ok || (ok && !slices.Equal(got, c.want)) {
+			t.Errorf("CanonicalPumpingSides(%v) = %v, %v; want %v, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+	side := func(names ...string) []PumpingSide {
+		var out []PumpingSide
+		for _, n := range names {
+			out = append(out, PumpingSide{Side: n})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		in   []PumpingSide
+		want string
+		ok   bool
+	}{
+		{side("left"), "left", true},
+		{side("right"), "right", true},
+		{side("right", "left"), "both", true},
+		{nil, "", false},
+		{side("left", "left"), "", false},
+		{side("both"), "", false},
+	} {
+		if got, ok := DerivedPumpingSide(c.in); got != c.want || ok != c.ok {
+			t.Errorf("DerivedPumpingSide(%v) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}

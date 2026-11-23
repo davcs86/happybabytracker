@@ -11,6 +11,8 @@ import {
 } from './timeline';
 import type { ModuleId, ModuleState, TimelineItem, TrackerKind } from './types';
 
+const METRIC = { weight: 'kg', volume: 'ml' } as const;
+const IMPERIAL = { weight: 'lb', volume: 'floz' } as const;
 const vol = (ml: number, hundredths: number) => ({
 	ml,
 	floz_hundredths: hundredths,
@@ -20,7 +22,14 @@ const bottle = (at: string, contents: string[], ml = 120): TimelineItem =>
 	({
 		kind: 'bottles',
 		at,
-		entry: { id: 'b1', at, contents, volume: vol(ml, Math.round(ml / 0.295735)), note: null }
+		entry: {
+			id: 'b1',
+			at,
+			contents,
+			volume: vol(ml, Math.round(ml / 0.295735)),
+			sources: [],
+			note: null
+		}
 	}) as TimelineItem;
 const sleep = (startedAt: string, endedAt: string | null): TimelineItem =>
 	({
@@ -41,6 +50,9 @@ const nursing = (over: Record<string, unknown>): TimelineItem =>
 			side: null,
 			sideSince: null,
 			note: null,
+			weightBefore: null,
+			weightAfter: null,
+			milk: null,
 			...over
 		}
 	}) as TimelineItem;
@@ -48,56 +60,98 @@ const diaper = (at: string, kind = 'wet'): TimelineItem =>
 	({ kind: 'diapers', at, entry: { id: `d-${at}`, at, kind, note: null } }) as TimelineItem;
 
 describe('timelineLine', () => {
+	it('appends the milk estimate to a weighed nursing session, in the parent units', () => {
+		const milk = {
+			gain: { grams: 62, ozHundredths: 219 },
+			volume: { ml: 60, flozHundredths: 204 }
+		};
+		const weighed = nursing({ milk });
+		expect(timelineLine(weighed, 'UTC', METRIC)).toBe(
+			'13:05 Nursing L 8 min · R 5 min, weight gain 62 g, about 60 ml'
+		);
+		expect(timelineLine(weighed, 'UTC', IMPERIAL)).toBe(
+			'13:05 Nursing L 8 min · R 5 min, weight gain 2.19 oz, about 2.04 fl oz'
+		);
+	});
+
+	it('shows a zero estimate, and nothing for a session with weights but no estimate', () => {
+		const zero = { gain: { grams: 0, ozHundredths: 0 }, volume: { ml: 0, flozHundredths: 0 } };
+		expect(timelineLine(nursing({ milk: zero }), 'UTC', METRIC)).toBe(
+			'13:05 Nursing L 8 min · R 5 min, weight gain 0 g, about 0 ml'
+		);
+		const grams = { grams: 3400, ozHundredths: 11992, typedUnit: 'kg' };
+		const lighter = nursing({
+			weightBefore: grams,
+			weightAfter: { ...grams, grams: 3300 },
+			milk: null
+		});
+		expect(timelineLine(lighter, 'UTC', METRIC)).toBe('13:05 Nursing L 8 min · R 5 min');
+	});
+
+	it('leaves an unweighed session exactly as it was', () => {
+		expect(timelineLine(nursing({}), 'UTC', METRIC)).toBe('13:05 Nursing L 8 min · R 5 min');
+	});
+
+	it('appends the estimate after a running tag too', () => {
+		const milk = { gain: { grams: 5, ozHundredths: 18 }, volume: { ml: 5, flozHundredths: 16 } };
+		const running = nursing({ endedAt: null, rightSeconds: 0, side: 'right', milk });
+		expect(timelineLine(running, 'UTC', METRIC)).toBe(
+			'13:05 Nursing L 8 min, running on R, weight gain 5 g, about 5 ml'
+		);
+	});
+
 	it('names a bottle with its volume in the parent unit and its contents', () => {
 		const b = bottle('2026-10-14T13:05:00Z', ['breast_milk', 'formula']);
-		expect(timelineLine(b, 'UTC', 'ml')).toBe('13:05 Bottle 120 ml, breast milk + formula');
-		expect(timelineLine(b, 'UTC', 'floz')).toBe('13:05 Bottle 4.06 fl oz, breast milk + formula');
-		expect(timelineLine(bottle('2026-10-14T13:05:00Z', ['cow_milk', 'other']), 'UTC', 'ml')).toBe(
+		expect(timelineLine(b, 'UTC', METRIC)).toBe('13:05 Bottle 120 ml, breast milk + formula');
+		expect(timelineLine(b, 'UTC', { weight: 'kg', volume: 'floz' })).toBe(
+			'13:05 Bottle 4.06 fl oz, breast milk + formula'
+		);
+		expect(timelineLine(bottle('2026-10-14T13:05:00Z', ['cow_milk', 'other']), 'UTC', METRIC)).toBe(
 			"13:05 Bottle 120 ml, cow's milk + other"
 		);
 	});
 
 	it('shows the clock of the kid zone, never UTC', () => {
-		expect(timelineLine(bottle('2026-03-28T23:30:00Z', ['formula']), 'Europe/Madrid', 'ml')).toBe(
+		expect(timelineLine(bottle('2026-03-28T23:30:00Z', ['formula']), 'Europe/Madrid', METRIC)).toBe(
 			'00:30 Bottle 120 ml, formula'
 		);
-		expect(timelineLine(bottle('2026-03-29T21:30:00Z', ['formula']), 'Europe/Madrid', 'ml')).toBe(
+		expect(timelineLine(bottle('2026-03-29T21:30:00Z', ['formula']), 'Europe/Madrid', METRIC)).toBe(
 			'23:30 Bottle 120 ml, formula'
 		);
 	});
 
 	it('shows a finished sleep as a range with its length, a running one as since', () => {
-		expect(timelineLine(sleep('2026-10-14T13:05:00Z', '2026-10-14T14:40:00Z'), 'UTC', 'ml')).toBe(
+		expect(timelineLine(sleep('2026-10-14T13:05:00Z', '2026-10-14T14:40:00Z'), 'UTC', METRIC)).toBe(
 			'Sleep 13:05–14:40 (1 h 35 min)'
 		);
-		expect(timelineLine(sleep('2026-10-14T13:05:00Z', null), 'UTC', 'ml')).toBe(
+		expect(timelineLine(sleep('2026-10-14T13:05:00Z', null), 'UTC', METRIC)).toBe(
 			'Sleep since 13:05'
 		);
 		expect(
-			timelineLine(sleep('2026-03-28T23:30:00Z', '2026-03-29T00:30:00Z'), 'Europe/Madrid', 'ml')
+			timelineLine(sleep('2026-03-28T23:30:00Z', '2026-03-29T00:30:00Z'), 'Europe/Madrid', METRIC)
 		).toBe('Sleep 00:30–01:30 (1 h)');
 	});
 
 	it('marks the end of a sleep that ends on a later kid-local day', () => {
 		expect(
-			timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-21T05:00:00Z'), 'Europe/Madrid', 'ml')
+			timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-21T05:00:00Z'), 'Europe/Madrid', METRIC)
 		).toBe('Sleep 22:00–06:00 +1 day (8 h)');
 		expect(
-			timelineLine(sleep('2026-11-20T10:00:00Z', '2026-11-21T10:00:00Z'), 'Europe/Madrid', 'ml')
+			timelineLine(sleep('2026-11-20T10:00:00Z', '2026-11-21T10:00:00Z'), 'Europe/Madrid', METRIC)
 		).toBe('Sleep 11:00–11:00 +1 day (24 h)');
-		expect(timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-20T22:30:00Z'), 'UTC', 'ml')).toBe(
+		expect(timelineLine(sleep('2026-11-20T21:00:00Z', '2026-11-20T22:30:00Z'), 'UTC', METRIC)).toBe(
 			'Sleep 21:00–22:30 (1 h 30 min)'
 		);
 	});
 
 	it('shows nursing minutes per side and the running side while it runs', () => {
-		expect(timelineLine(nursing({}), 'UTC', 'ml')).toBe('13:05 Nursing L 8 min · R 5 min');
-		expect(timelineLine(nursing({ rightSeconds: 0 }), 'UTC', 'ml')).toBe('13:05 Nursing L 8 min');
-		expect(timelineLine(nursing({ leftSeconds: 0, rightSeconds: 0 }), 'UTC', 'ml')).toBe(
+		expect(timelineLine(nursing({}), 'UTC', METRIC)).toBe('13:05 Nursing L 8 min · R 5 min');
+		expect(timelineLine(nursing({ rightSeconds: 0 }), 'UTC', METRIC)).toBe('13:05 Nursing L 8 min');
+		expect(timelineLine(nursing({ leftSeconds: 0, rightSeconds: 0 }), 'UTC', METRIC)).toBe(
 			'13:05 Nursing'
 		);
 		expect(
-			timelineLine(nursing({ endedAt: null, rightSeconds: 0, side: 'right' }), 'UTC', 'ml')
+			timelineLine(nursing({ endedAt: null, rightSeconds: 0, side: 'right' }), 'UTC', METRIC)
 		).toBe('13:05 Nursing L 8 min, running on R');
 	});
 
@@ -111,19 +165,62 @@ describe('timelineLine', () => {
 				durationSeconds: 1200,
 				volume: vol(90, 304),
 				side: 'both',
+				sides: [],
 				note: null
 			}
 		} as TimelineItem;
-		expect(timelineLine(pumping, 'UTC', 'ml')).toBe('09:00 Pumping 20 min, 90 ml (both)');
-		expect(timelineLine(diaper('2026-10-14T07:30:00Z'), 'UTC', 'ml')).toBe('07:30 Diaper wet');
+		expect(timelineLine(pumping, 'UTC', METRIC)).toBe('09:00 Pumping 20 min, 90 ml (both)');
+		expect(timelineLine(diaper('2026-10-14T07:30:00Z'), 'UTC', METRIC)).toBe('07:30 Diaper wet');
 		const meal = (reaction: string | null) =>
 			({
 				kind: 'meals',
 				at: '2026-10-14T12:15:00Z',
 				entry: { id: 'm1', at: '2026-10-14T12:15:00Z', what: 'pear', reaction, note: null }
 			}) as TimelineItem;
-		expect(timelineLine(meal(null), 'UTC', 'ml')).toBe('12:15 Solids: pear');
-		expect(timelineLine(meal('liked it'), 'UTC', 'ml')).toBe('12:15 Solids: pear · liked it');
+		expect(timelineLine(meal(null), 'UTC', METRIC)).toBe('12:15 Solids: pear');
+		expect(timelineLine(meal('liked it'), 'UTC', METRIC)).toBe('12:15 Solids: pear · liked it');
+	});
+});
+
+describe('timelineLine pumping with sides', () => {
+	const sided = (side: string, sides: [string, number, number][]) =>
+		({
+			kind: 'pumping',
+			at: '2026-10-14T09:00:00Z',
+			entry: {
+				id: 'p1',
+				startedAt: '2026-10-14T09:00:00Z',
+				durationSeconds: 1200,
+				volume: vol(
+					sides.reduce((n, s) => n + s[1], 0),
+					sides.reduce((n, s) => n + s[2], 0)
+				),
+				side,
+				sides: sides.map(([s, ml, floz]) => ({ side: s, volume: vol(ml, floz) })),
+				note: null
+			}
+		}) as TimelineItem;
+
+	it('gives each side its own volume in the parent unit instead of the side name', () => {
+		const both = sided('both', [
+			['left', 60, 203],
+			['right', 50, 169]
+		]);
+		expect(timelineLine(both, 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 110 ml (L 60 ml · R 50 ml)'
+		);
+		expect(timelineLine(both, 'UTC', IMPERIAL)).toBe(
+			'09:00 Pumping 20 min, 3.72 fl oz (L 2.03 fl oz · R 1.69 fl oz)'
+		);
+	});
+
+	it('a single side shows that side alone', () => {
+		expect(timelineLine(sided('left', [['left', 60, 203]]), 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 60 ml (L 60 ml)'
+		);
+		expect(timelineLine(sided('right', [['right', 50, 169]]), 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 50 ml (R 50 ml)'
+		);
 	});
 });
 

@@ -4,11 +4,14 @@ import {
 	ENTRY_FIELD_MESSAGES,
 	FINISHED_SIDE_MESSAGE,
 	REOPEN_MESSAGE,
+	sourcesTotalMessage,
+	totalRangeMessage,
 	volumeRangeMessage,
 	WHAT_MISSING_MESSAGE,
 	WHAT_TOO_LONG_MESSAGE
 } from './entry-failure';
 import { floorMinutes, readEntryForm, type EntryMode } from './entry-form';
+import { growthRangeMessage } from './growth-form';
 
 const MADRID = 'Europe/Madrid';
 const CREATE: EntryMode = { kind: 'create' };
@@ -556,5 +559,879 @@ describe('readEntryForm final-wave refusals', () => {
 				CREATE
 			).field
 		).toBe('volume');
+	});
+});
+
+describe('readEntryForm advanced bottles', () => {
+	const EDIT: EntryMode = { kind: 'edit', running: false };
+	const valid = {
+		advanced: '1',
+		at: '2026-11-20T10:30',
+		contents: ['breast_milk', 'formula'],
+		volume_unit: 'ml',
+		sources_breast_milk: '60',
+		sources_formula: '90',
+		sources_cow_milk: '',
+		sources_other: '',
+		note: ' warm '
+	};
+	// A bottle stored with breast milk 60 and formula 90, shown in ml as the edit page loads it.
+	const stored = {
+		...valid,
+		at_original: '2026-11-20T10:30',
+		volume_unit_original: 'ml',
+		sources_breast_milk_original: '60',
+		sources_formula_original: '90',
+		sources_cow_milk_original: '',
+		sources_other_original: '',
+		sources_original: 'breast_milk,formula'
+	};
+	const sent = (fields: Record<string, string | string[]>, mode: EntryMode = CREATE) =>
+		readEntryForm('bottles', form(fields), MADRID, mode);
+
+	it('sends one amount per ticked source in the unit typed, and neither volume nor contents', () => {
+		const r = sent(valid);
+		expect(r.field).toBeNull();
+		expect(r.input).toEqual({
+			at: '2026-11-20T09:30:00Z',
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } },
+			note: 'warm'
+		});
+		expect(r.values).toMatchObject({
+			advanced: '1',
+			sources_breast_milk: '60',
+			sources_formula: '90',
+			sources_cow_milk: '',
+			volume_unit: 'ml'
+		});
+	});
+
+	it('turns ounces into hundredths of an ounce, a decimal comma included', () => {
+		const r = sent({
+			...valid,
+			volume_unit: 'floz',
+			sources_breast_milk: '2,25',
+			sources_formula: '3'
+		});
+		expect(r.input).toMatchObject({
+			sources: { unit: 'floz', amounts: { breast_milk: 225, formula: 300 } }
+		});
+	});
+
+	it('ignores an amount typed for a source whose box is not ticked', () => {
+		const r = sent({
+			...valid,
+			contents: ['formula'],
+			sources_breast_milk: 'junk',
+			sources_other: '7'
+		});
+		expect(r.input).toMatchObject({ sources: { unit: 'ml', amounts: { formula: 90 } } });
+	});
+
+	it('sends the sources in the fixed order whatever order the boxes came in', () => {
+		const r = sent({ ...valid, contents: ['formula', 'breast_milk'] });
+		expect(Object.keys((r.input?.sources as { amounts: object }).amounts)).toEqual([
+			'breast_milk',
+			'formula'
+		]);
+	});
+
+	it.each([
+		['blank', ''],
+		['spaces', '   '],
+		['zero', '0'],
+		['exponent', '1e3'],
+		['hex', '0x10'],
+		['double minus', '--1'],
+		['negative', '-5'],
+		['plus sign', '+5'],
+		['leading point', '.5'],
+		['trailing point', '5.'],
+		['too many decimals in ounces', '4.567'],
+		['unsafe integer', '9007199254740993']
+	])('names sources for a ticked source typed as %s, in either unit', (_name, text) => {
+		for (const unit of ['ml', 'floz']) {
+			const r = sent({ ...valid, volume_unit: unit, sources_formula: text });
+			expect(r).toMatchObject({ input: null, field: 'sources', message: null });
+			expect(r.values.sources_formula).toBe(text);
+		}
+	});
+
+	it('refuses a fraction in millilitres and reads it in ounces', () => {
+		for (const text of ['1.5', '1,5']) {
+			const ml = sent({ ...valid, sources_formula: text });
+			expect(ml).toMatchObject({ input: null, field: 'sources' });
+			expect(ml.values.sources_formula).toBe(text);
+			expect(sent({ ...valid, volume_unit: 'floz', sources_formula: text }).input).toMatchObject({
+				sources: { unit: 'floz', amounts: { breast_milk: 6000, formula: 150 } }
+			});
+		}
+	});
+
+	it('refuses zero ounces and reads the smallest one', () => {
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '0.00' }).field).toBe('sources');
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '0.01' }).input).toMatchObject({
+			sources: { amounts: { formula: 1 } }
+		});
+	});
+
+	it('shows the total of the ticked amounts that read, in the unit typed', () => {
+		expect(sent(valid).values.sources_total).toBe('150 ml');
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '2,5' }).values).toMatchObject({
+			sources_total: '62.5 fl oz'
+		});
+		const kept = sent({
+			...valid,
+			sources_formula: 'junk',
+			sources_other: '5',
+			contents: ['formula']
+		});
+		expect(kept.values.sources_total).toBe('0 ml');
+		expect(sent({ ...valid, sources_formula: '' }).values.sources_total).toBe('60 ml');
+		expect(sent({ ...valid, volume_unit: 'liter' }).values.sources_total).toBe('');
+	});
+
+	it('shows no total for a simple bottle', () => {
+		const r = sent({ contents: ['formula'], volume: '90', volume_unit: 'ml' });
+		expect(r.values).not.toHaveProperty('sources_total');
+	});
+
+	it('names sources for a unit that is not one', () => {
+		for (const unit of ['', 'liter']) {
+			expect(sent({ ...valid, volume_unit: unit })).toMatchObject({
+				input: null,
+				field: 'sources'
+			});
+		}
+	});
+
+	it('names contents when no box is ticked or one is unknown, before any amount', () => {
+		expect(sent({ ...valid, contents: [], sources_formula: '' })).toMatchObject({
+			field: 'contents'
+		});
+		expect(sent({ ...valid, contents: ['formula', 'juice'] })).toMatchObject({ field: 'contents' });
+		expect(sent({ ...valid, at: 'x', contents: [] })).toMatchObject({ field: 'at' });
+	});
+
+	it('refuses a total over the bottle range in millilitres, naming volume', () => {
+		const r = sent({ ...valid, sources_breast_milk: '500', sources_formula: '501' });
+		expect(r).toMatchObject({
+			input: null,
+			field: 'volume',
+			message: sourcesTotalMessage()
+		});
+		expect(sent({ ...valid, sources_breast_milk: '500', sources_formula: '500' }).field).toBeNull();
+	});
+
+	it('leaves a total in ounces to the API', () => {
+		const r = sent({
+			...valid,
+			volume_unit: 'floz',
+			sources_breast_milk: '90',
+			sources_formula: '90'
+		});
+		expect(r.field).toBeNull();
+	});
+
+	describe('edit', () => {
+		it('sends neither sources, volume nor contents when nothing changed', () => {
+			const r = sent(stored, EDIT);
+			expect(r.field).toBeNull();
+			expect(r.input).toEqual({ at: '2026-11-20T09:30:00Z', note: 'warm' });
+		});
+
+		it('never fails the range check for a form nothing was changed on', () => {
+			// Per-source columns shown in ml can sum past the range for a bottle typed in ounces.
+			const over = { ...stored, sources_breast_milk: '500', sources_formula: '501' };
+			const fields = {
+				...over,
+				sources_breast_milk_original: '500',
+				sources_formula_original: '501'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({ field: null, input: { note: 'warm' } });
+			const noted = sent({ ...fields, note: 'only the note' }, EDIT);
+			expect(noted.field).toBeNull();
+			expect(noted.input).not.toHaveProperty('sources');
+		});
+
+		it('still refuses a changed set whose total is over the range', () => {
+			const fields = {
+				...stored,
+				sources_breast_milk_original: '500',
+				sources_formula_original: '501',
+				sources_breast_milk: '500',
+				sources_formula: '502'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({
+				input: null,
+				field: 'volume',
+				message: sourcesTotalMessage()
+			});
+		});
+
+		it('sends the whole set when one amount changed', () => {
+			const r = sent({ ...stored, sources_formula: '95' }, EDIT);
+			expect(r.input).toMatchObject({
+				sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 95 } }
+			});
+			expect(r.input).not.toHaveProperty('volume');
+			expect(r.input).not.toHaveProperty('contents');
+		});
+
+		it('sends the set when only the unit changed', () => {
+			const r = sent({ ...stored, volume_unit: 'floz' }, EDIT);
+			expect(r.input).toMatchObject({
+				sources: { unit: 'floz', amounts: { breast_milk: 60 * 100, formula: 90 * 100 } }
+			});
+		});
+
+		it('sends the set without a source that was unticked, and with one that was added', () => {
+			expect(sent({ ...stored, contents: ['breast_milk'] }, EDIT).input).toMatchObject({
+				sources: { unit: 'ml', amounts: { breast_milk: 60 } }
+			});
+			const added = sent(
+				{ ...stored, contents: ['breast_milk', 'formula', 'other'], sources_other: '30' },
+				EDIT
+			);
+			expect(added.input).toMatchObject({
+				sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90, other: 30 } }
+			});
+		});
+
+		it('a text typed for an unticked source changes nothing', () => {
+			const r = sent({ ...stored, sources_other: '44' }, EDIT);
+			expect(r.input).not.toHaveProperty('sources');
+		});
+
+		it('a ticked source left blank is a sources error, never a silent drop', () => {
+			expect(sent({ ...stored, sources_formula: '' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sources'
+			});
+		});
+
+		it('advanced over a simple bottle sends the typed sources, and refuses blank ones', () => {
+			const simple = {
+				...stored,
+				sources_breast_milk_original: '',
+				sources_formula_original: '',
+				sources_original: ''
+			};
+			expect(sent(simple, EDIT).input).toMatchObject({
+				sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+			});
+			expect(sent({ ...simple, sources_formula: '' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sources'
+			});
+		});
+
+		it.each([
+			'sources_original',
+			'volume_unit_original',
+			'sources_breast_milk_original',
+			'sources_cow_milk_original'
+		])('fails closed on a missing %s', (name) => {
+			const fields: Record<string, string | string[]> = { ...stored };
+			delete fields[name];
+			expect(sent(fields, EDIT)).toMatchObject({ input: null, field: 'sources' });
+		});
+
+		it('fails closed on a stored source name it does not know', () => {
+			expect(sent({ ...stored, sources_original: 'breast_milk,juice' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sources'
+			});
+		});
+
+		it('the simple form over a bottle with sources still sends its volume', () => {
+			const r = sent(
+				{
+					at: '2026-11-20T10:30',
+					at_original: '2026-11-20T10:30',
+					contents: ['breast_milk', 'formula'],
+					volume: '150',
+					volume_original: '150',
+					volume_unit: 'ml',
+					volume_unit_original: 'ml',
+					sources_original: 'breast_milk,formula',
+					note: ''
+				},
+				EDIT
+			);
+			expect(r.input).toMatchObject({
+				contents: ['breast_milk', 'formula'],
+				volume: { unit: 'ml', amount: 150 }
+			});
+			expect(r.input).not.toHaveProperty('sources');
+		});
+	});
+
+	it('the simple form never reads a source text', () => {
+		const r = sent({
+			at: '',
+			contents: ['formula'],
+			volume: '90',
+			volume_unit: 'ml',
+			sources_formula: '5'
+		});
+		expect(r.input).toEqual({
+			contents: ['formula'],
+			volume: { unit: 'ml', amount: 90 },
+			note: null
+		});
+	});
+});
+
+describe('readEntryForm nursing weigh-ins', () => {
+	const EDIT_FINISHED: EntryMode = { kind: 'edit', running: false };
+	const EDIT_RUNNING: EntryMode = { kind: 'edit', running: true };
+	const finished = {
+		advanced: '1',
+		started_at: '2026-11-20T10:00',
+		ended_at: '2026-11-20T10:30',
+		left_minutes: '10',
+		right_minutes: '5',
+		weight_before_unit: 'kg',
+		weight_before_kg: '3.4',
+		weight_before_lb: '',
+		weight_before_oz: '',
+		weight_after_unit: 'kg',
+		weight_after_kg: '3.462',
+		weight_after_lb: '',
+		weight_after_oz: ''
+	};
+	const sent = (fields: Record<string, string>, mode: EntryMode = CREATE) =>
+		readEntryForm('nursing', form(fields), MADRID, mode);
+
+	it('reads kilograms as whole grams', () => {
+		const r = sent(finished);
+		expect(r.field).toBeNull();
+		expect(r.input).toMatchObject({
+			weight_before: { unit: 'kg', amount: 3400 },
+			weight_after: { unit: 'kg', amount: 3462 },
+			left_seconds: 600,
+			right_seconds: 300
+		});
+		expect(r.values).toMatchObject({ weight_before_kg: '3.4', weight_after_kg: '3.462' });
+	});
+
+	it('reads pounds and ounces as hundredths of an ounce', () => {
+		const r = sent({
+			...finished,
+			weight_before_unit: 'lb',
+			weight_before_kg: '',
+			weight_before_lb: '7',
+			weight_before_oz: '8.5',
+			weight_after_unit: 'lb',
+			weight_after_kg: '',
+			weight_after_lb: '7',
+			weight_after_oz: '9,25'
+		});
+		expect(r.input).toMatchObject({
+			weight_before: { unit: 'lb', amount: 12050 },
+			weight_after: { unit: 'lb', amount: 12125 }
+		});
+	});
+
+	it('sends one weight alone, and none when both are blank', () => {
+		const only = sent({ ...finished, weight_after_kg: '' });
+		expect(only.input).toHaveProperty('weight_before');
+		expect(only.input).not.toHaveProperty('weight_after');
+		const none = sent({ ...finished, weight_before_kg: '', weight_after_kg: '' });
+		expect(none.field).toBeNull();
+		expect(none.input).not.toHaveProperty('weight_before');
+		expect(none.input).not.toHaveProperty('weight_after');
+	});
+
+	it('reads weights on a running timer too', () => {
+		const r = sent({
+			advanced: '1',
+			started_at: '',
+			ended_at: '',
+			side: 'left',
+			weight_before_unit: 'kg',
+			weight_before_kg: '3.4'
+		});
+		expect(r.input).toEqual({
+			side: 'left',
+			weight_before: { unit: 'kg', amount: 3400 },
+			note: null
+		});
+	});
+
+	it('does not read a weight from a form that is not advanced', () => {
+		const r = sent({ ...finished, advanced: '' });
+		expect(r.input).not.toHaveProperty('weight_before');
+		expect(r.input).not.toHaveProperty('weight_after');
+	});
+
+	it.each([
+		['exponent', '1e3'],
+		['hex', '0x10'],
+		['double minus', '--1'],
+		['negative', '-3'],
+		['four decimals', '3.4567'],
+		['words', 'heavy']
+	])('names the weight for a kilogram text typed as %s', (_name, text) => {
+		expect(sent({ ...finished, weight_before_kg: text })).toMatchObject({
+			input: null,
+			field: 'weight_before',
+			message: null
+		});
+		expect(sent({ ...finished, weight_after_kg: text })).toMatchObject({
+			input: null,
+			field: 'weight_after',
+			message: null
+		});
+	});
+
+	it('refuses a kilogram weight outside 200 g to 250 kg with the growth range message', () => {
+		for (const kg of ['0.1', '0.199', '250.001', '999']) {
+			expect(sent({ ...finished, weight_before_kg: kg })).toMatchObject({
+				input: null,
+				field: 'weight_before',
+				message: growthRangeMessage('weight')
+			});
+		}
+		expect(sent({ ...finished, weight_before_kg: '0.2', weight_after_kg: '250' }).field).toBeNull();
+	});
+
+	it('refuses 16 ounces and a unit that is not one', () => {
+		expect(
+			sent({ ...finished, weight_before_unit: 'lb', weight_before_lb: '7', weight_before_oz: '16' })
+		).toMatchObject({ field: 'weight_before' });
+		expect(sent({ ...finished, weight_before_unit: 'st' })).toMatchObject({
+			field: 'weight_before'
+		});
+	});
+
+	it('names weight_before before weight_after, and both after side', () => {
+		expect(sent({ ...finished, weight_before_kg: 'x', weight_after_kg: 'y' }).field).toBe(
+			'weight_before'
+		);
+		expect(sent({ started_at: '', side: 'both', advanced: '1', weight_before_kg: 'x' }).field).toBe(
+			'side'
+		);
+	});
+
+	describe('edit', () => {
+		const stored = {
+			...finished,
+			left_seconds_original: '600',
+			right_seconds_original: '300',
+			weight_before_unit_original: 'kg',
+			weight_before_kg_original: '3.4',
+			weight_before_lb_original: '7',
+			weight_before_oz_original: '7.99',
+			weight_after_unit_original: 'kg',
+			weight_after_kg_original: '3.462',
+			weight_after_lb_original: '7',
+			weight_after_oz_original: '10.12'
+		};
+
+		it('sends no weight when its texts are as loaded', () => {
+			const r = sent(stored, EDIT_FINISHED);
+			expect(r.field).toBeNull();
+			expect(r.input).not.toHaveProperty('weight_before');
+			expect(r.input).not.toHaveProperty('weight_after');
+		});
+
+		it('sends only the weight whose text changed', () => {
+			const r = sent({ ...stored, weight_after_kg: '3.5' }, EDIT_FINISHED);
+			expect(r.input).toMatchObject({ weight_after: { unit: 'kg', amount: 3500 } });
+			expect(r.input).not.toHaveProperty('weight_before');
+		});
+
+		it('sends the other unit when the unit was flipped, from its own pre-filled texts', () => {
+			const r = sent(
+				{
+					...stored,
+					weight_before_unit: 'lb',
+					weight_before_lb: '7',
+					weight_before_oz: '7.99'
+				},
+				EDIT_FINISHED
+			);
+			expect(r.input).toMatchObject({ weight_before: { unit: 'lb', amount: 7 * 1600 + 799 } });
+		});
+
+		it('clears a weight with null only when the original was filled', () => {
+			const cleared = sent({ ...stored, weight_after_kg: '' }, EDIT_FINISHED);
+			expect(cleared.input).toMatchObject({ weight_after: null });
+			const empty = {
+				...stored,
+				weight_after_kg: '',
+				weight_after_kg_original: '',
+				weight_after_lb_original: '',
+				weight_after_oz_original: ''
+			};
+			expect(sent(empty, EDIT_FINISHED).input).not.toHaveProperty('weight_after');
+		});
+
+		it('adds a weight to a session that had none', () => {
+			const none = {
+				...stored,
+				weight_after_kg: '3.5',
+				weight_after_kg_original: '',
+				weight_after_lb_original: '',
+				weight_after_oz_original: ''
+			};
+			expect(sent(none, EDIT_FINISHED).input).toMatchObject({
+				weight_after: { unit: 'kg', amount: 3500 }
+			});
+		});
+
+		it('reads weights on a running session and never sends seconds there', () => {
+			const r = sent(
+				{
+					...stored,
+					ended_at: '',
+					weight_after_kg: '3.5',
+					weight_after_kg_original: '',
+					weight_after_lb_original: '',
+					weight_after_oz_original: ''
+				},
+				EDIT_RUNNING
+			);
+			expect(r.input).toMatchObject({ weight_after: { unit: 'kg', amount: 3500 } });
+			expect(r.input).not.toHaveProperty('left_seconds');
+		});
+
+		it.each([
+			'weight_before_unit_original',
+			'weight_before_kg_original',
+			'weight_before_lb_original',
+			'weight_before_oz_original'
+		])('fails closed on a missing %s', (name) => {
+			const fields: Record<string, string> = { ...stored };
+			delete fields[name];
+			expect(sent(fields, EDIT_FINISHED)).toMatchObject({
+				input: null,
+				field: 'weight_before'
+			});
+		});
+
+		it('fails closed on an original unit it does not know', () => {
+			expect(sent({ ...stored, weight_after_unit_original: 'st' }, EDIT_FINISHED)).toMatchObject({
+				input: null,
+				field: 'weight_after'
+			});
+		});
+
+		it('a simple form (not advanced) over a weighed session sends no weight', () => {
+			const r = sent({ ...stored, advanced: '' }, EDIT_FINISHED);
+			expect(r.input).not.toHaveProperty('weight_before');
+			expect(r.input).not.toHaveProperty('weight_after');
+		});
+	});
+});
+
+describe('readEntryForm advanced pumping', () => {
+	const EDIT: EntryMode = { kind: 'edit', running: false };
+	const valid = {
+		advanced: '1',
+		started_at: '2026-11-20T08:00',
+		duration_minutes: '15',
+		volume_unit: 'ml',
+		sides_left: '60',
+		sides_right: '50',
+		note: ' warm '
+	};
+	// A session stored with left 60 and right 50, shown in ml as the edit page loads it.
+	const stored = {
+		...valid,
+		started_at_original: '2026-11-20T08:00',
+		volume_unit_original: 'ml',
+		sides_left_original: '60',
+		sides_right_original: '50',
+		sides_original: 'left,right'
+	};
+	const sent = (fields: Record<string, string | string[]>, mode: EntryMode = CREATE) =>
+		readEntryForm('pumping', form(fields), MADRID, mode);
+
+	it('sends one amount per side in the unit typed, and neither volume nor side', () => {
+		const r = sent(valid);
+		expect(r.field).toBeNull();
+		expect(r.input).toEqual({
+			started_at: '2026-11-20T07:00:00Z',
+			duration_seconds: 900,
+			sides: { unit: 'ml', amounts: { left: 60, right: 50 } },
+			note: 'warm'
+		});
+		expect(r.values).toMatchObject({
+			advanced: '1',
+			sides_left: '60',
+			sides_right: '50',
+			volume_unit: 'ml',
+			sides_total: '110 ml'
+		});
+	});
+
+	it('a blank side is absent: left only and right only', () => {
+		expect(sent({ ...valid, sides_right: '' }).input).toMatchObject({
+			sides: { unit: 'ml', amounts: { left: 60 } }
+		});
+		expect(sent({ ...valid, sides_left: '   ' }).input).toMatchObject({
+			sides: { unit: 'ml', amounts: { right: 50 } }
+		});
+	});
+
+	it('reads ounces exactly, a decimal comma included', () => {
+		const r = sent({ ...valid, volume_unit: 'floz', sides_left: '2,25', sides_right: '3' });
+		expect(r.input).toMatchObject({ sides: { unit: 'floz', amounts: { left: 225, right: 300 } } });
+		expect(r.values.sides_total).toBe('5.25 fl oz');
+	});
+
+	it('names sides when both are blank, keeping what was typed', () => {
+		const r = sent({ ...valid, sides_left: '', sides_right: ' ' });
+		expect(r).toMatchObject({ input: null, field: 'sides', message: null });
+		expect(r.values).toMatchObject({ sides_left: '', note: ' warm ', sides_total: '0 ml' });
+	});
+
+	it.each([
+		['1e3'],
+		['0x10'],
+		['--1'],
+		['-5'],
+		['+5'],
+		['.5'],
+		['5.'],
+		['0'],
+		['1.5'],
+		['12abc'],
+		['9007199254740993']
+	])('refuses %j typed for a side in millilitres', (text) => {
+		for (const key of ['sides_left', 'sides_right']) {
+			const r = sent({ ...valid, [key]: text });
+			expect(r).toMatchObject({ input: null, field: 'sides', message: null });
+			expect(r.values[key]).toBe(text);
+		}
+	});
+
+	it('refuses zero ounces and four decimals, and reads the smallest ounce', () => {
+		expect(sent({ ...valid, volume_unit: 'floz', sides_left: '0.00' }).field).toBe('sides');
+		expect(sent({ ...valid, volume_unit: 'floz', sides_left: '1.234' }).field).toBe('sides');
+		expect(sent({ ...valid, volume_unit: 'floz', sides_left: '0.01' }).input).toMatchObject({
+			sides: { amounts: { left: 1, right: 5000 } }
+		});
+	});
+
+	it('shows the total of the sides that read, in the unit typed', () => {
+		expect(sent({ ...valid, sides_left: 'junk' }).values.sides_total).toBe('50 ml');
+		expect(sent({ ...valid, volume_unit: 'liter' }).values.sides_total).toBe('');
+	});
+
+	it('shows no total and no side texts for a simple session', () => {
+		const r = sent({
+			started_at: '2026-11-20T08:00',
+			duration_minutes: '15',
+			volume: '90',
+			volume_unit: 'ml',
+			side: 'both',
+			sides_left: '5'
+		});
+		expect(r.values).not.toHaveProperty('sides_total');
+		expect(r.input).toEqual({
+			started_at: '2026-11-20T07:00:00Z',
+			duration_seconds: 900,
+			volume: { unit: 'ml', amount: 90 },
+			side: 'both',
+			note: null
+		});
+	});
+
+	it('names sides for a unit that is not one', () => {
+		for (const unit of ['', 'liter']) {
+			expect(sent({ ...valid, volume_unit: unit })).toMatchObject({ input: null, field: 'sides' });
+		}
+	});
+
+	it('checks the fields in the API order: started_at, duration, then sides', () => {
+		expect(sent({ ...valid, started_at: 'x', sides_left: '', sides_right: '' }).field).toBe(
+			'started_at'
+		);
+		expect(sent({ ...valid, duration_minutes: '', sides_left: '', sides_right: '' }).field).toBe(
+			'duration_seconds'
+		);
+	});
+
+	it('refuses a total over the pumping range in millilitres, naming volume', () => {
+		const r = sent({ ...valid, sides_left: '1000', sides_right: '1001' });
+		expect(r).toMatchObject({
+			input: null,
+			field: 'volume',
+			message: totalRangeMessage('pumping')
+		});
+		expect(totalRangeMessage('pumping')).toBe('The total must be from 1 to 2000 ml');
+		expect(sent({ ...valid, sides_left: '1000', sides_right: '1000' }).field).toBeNull();
+	});
+
+	it('leaves a total in ounces to the API', () => {
+		expect(sent({ ...valid, volume_unit: 'floz', sides_left: '90', sides_right: '90' }).field).toBe(
+			null
+		);
+	});
+
+	describe('edit', () => {
+		it('sends nothing for the volume when nothing changed', () => {
+			const r = sent(stored, EDIT);
+			expect(r.field).toBeNull();
+			expect(r.input).not.toHaveProperty('sides');
+			expect(r.input).not.toHaveProperty('volume');
+			expect(r.input).not.toHaveProperty('side');
+		});
+
+		it('never fails the range check for a form nothing was changed on', () => {
+			// Per-side columns shown in ml can sum past the range for a session typed in ounces.
+			const fields = {
+				...stored,
+				sides_left: '1000',
+				sides_right: '1001',
+				sides_left_original: '1000',
+				sides_right_original: '1001'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({ field: null, input: { note: 'warm' } });
+			expect(sent(fields, EDIT).input).not.toHaveProperty('sides');
+		});
+
+		it('still refuses a changed set whose total is over the range', () => {
+			const fields = {
+				...stored,
+				sides_left: '1000',
+				sides_right: '1002',
+				sides_left_original: '1000',
+				sides_right_original: '1001'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({
+				input: null,
+				field: 'volume',
+				message: totalRangeMessage('pumping')
+			});
+		});
+
+		it('sends the whole set when one amount changed', () => {
+			const r = sent({ ...stored, sides_right: '55' }, EDIT);
+			expect(r.input).toMatchObject({ sides: { unit: 'ml', amounts: { left: 60, right: 55 } } });
+			expect(r.input).not.toHaveProperty('volume');
+			expect(r.input).not.toHaveProperty('side');
+		});
+
+		it('sends the set when only the unit changed', () => {
+			expect(sent({ ...stored, volume_unit: 'floz' }, EDIT).input).toMatchObject({
+				sides: { unit: 'floz', amounts: { left: 6000, right: 5000 } }
+			});
+		});
+
+		it('sends the set without a side that was cleared, and with one that was added', () => {
+			expect(sent({ ...stored, sides_right: '' }, EDIT).input).toMatchObject({
+				sides: { unit: 'ml', amounts: { left: 60 } }
+			});
+			const leftOnly = {
+				...stored,
+				sides_right: '',
+				sides_right_original: '',
+				sides_original: 'left'
+			};
+			expect(sent(leftOnly, EDIT).input).not.toHaveProperty('sides');
+			expect(sent({ ...leftOnly, sides_right: '40' }, EDIT).input).toMatchObject({
+				sides: { unit: 'ml', amounts: { left: 60, right: 40 } }
+			});
+		});
+
+		it('a side blank in the form and as loaded is not sent', () => {
+			const leftOnly = {
+				...stored,
+				sides_right: '',
+				sides_right_original: '',
+				sides_original: 'left',
+				sides_left: '61'
+			};
+			expect(sent(leftOnly, EDIT).input).toMatchObject({
+				sides: { unit: 'ml', amounts: { left: 61 } }
+			});
+		});
+
+		it('both sides cleared is a sides error, never a silent keep', () => {
+			expect(sent({ ...stored, sides_left: '', sides_right: '' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sides'
+			});
+		});
+
+		it('advanced over a simple session sends the typed sides, and refuses blank ones', () => {
+			const simple = {
+				...stored,
+				sides_left_original: '',
+				sides_right_original: '',
+				sides_original: ''
+			};
+			expect(sent(simple, EDIT).input).toMatchObject({
+				sides: { unit: 'ml', amounts: { left: 60, right: 50 } }
+			});
+			expect(sent({ ...simple, sides_left: '', sides_right: '' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sides'
+			});
+		});
+
+		it.each([
+			'sides_original',
+			'volume_unit_original',
+			'sides_left_original',
+			'sides_right_original'
+		])('fails closed on a missing %s', (name) => {
+			const fields: Record<string, string | string[]> = { ...stored };
+			delete fields[name];
+			expect(sent(fields, EDIT)).toMatchObject({ input: null, field: 'sides' });
+		});
+
+		it('fails closed on a stored side name it does not know', () => {
+			expect(sent({ ...stored, sides_original: 'left,both' }, EDIT)).toMatchObject({
+				input: null,
+				field: 'sides'
+			});
+		});
+
+		it('the simple form over a session with sides sends its volume and side', () => {
+			const r = sent(
+				{
+					started_at: '2026-11-20T08:00',
+					started_at_original: '2026-11-20T08:00',
+					duration_minutes: '15',
+					volume: '110',
+					volume_original: '110',
+					volume_unit: 'ml',
+					volume_unit_original: 'ml',
+					side: 'both',
+					sides_original: 'left,right',
+					note: ''
+				},
+				EDIT
+			);
+			expect(r.input).toMatchObject({
+				volume: { unit: 'ml', amount: 110 },
+				side: 'both'
+			});
+			expect(r.input).not.toHaveProperty('sides');
+		});
+
+		it('the simple form never reads a side text', () => {
+			const r = sent({
+				started_at: '',
+				duration_minutes: '15',
+				volume: '90',
+				volume_unit: 'ml',
+				side: 'left',
+				sides_left: '5',
+				sides_right: 'junk'
+			});
+			expect(r.input).toEqual({
+				duration_seconds: 900,
+				volume: { unit: 'ml', amount: 90 },
+				side: 'left',
+				note: null
+			});
+		});
 	});
 });

@@ -1,11 +1,27 @@
 import {
+	BOTTLE_CONTENTS,
+	GRAMS_PER_KG,
 	HUNDREDTHS_PER_FLOZ,
+	HUNDREDTHS_PER_OZ,
 	MAX_SESSION_HOURS,
+	MILK_ESTIMATE_BASIS,
+	NURSING_SIDES,
+	OZ_PER_LB,
 	SECONDS_PER_HOUR,
 	SECONDS_PER_MINUTE
 } from './constants';
+import { formatMilk, formatVolume } from './format';
+import { decimal } from './growth';
 import { instantToLocalInput } from './time-zone';
-import type { TrackerEntries, TrackerKind, Volume, VolumeUnit } from './types';
+import type {
+	GrowthWeight,
+	Session,
+	TrackerEntries,
+	TrackerKind,
+	Units,
+	Volume,
+	VolumeUnit
+} from './types';
 
 // What the entry form shows: the API's own field names, each a text (the contents a list).
 export type EntryValues = Record<string, string | string[]>;
@@ -54,16 +70,47 @@ export function volumeText(v: Pick<Volume, 'ml' | 'floz_hundredths'>, unit: Volu
 		: String(Number((v.floz_hundredths / HUNDREDTHS_PER_FLOZ).toFixed(2)));
 }
 
+type FormUnits = Pick<Units, 'weight' | 'volume'>;
+
+// What a form shows its amounts in; a page without a signed-in parent's preference is metric.
+export const formUnits = (session: Session | null | undefined): FormUnits => ({
+	weight: session?.parent?.units.weight ?? 'kg',
+	volume: session?.parent?.units.volume ?? 'ml'
+});
+
+// The two weigh-ins of a nursing form, each a unit and the texts that unit makes active (see growth-form).
+export const WEIGHT_NAMES = ['weight_before', 'weight_after'] as const;
+
+const blankSources = () => Object.fromEntries(BOTTLE_CONTENTS.map((c) => [`sources_${c}`, '']));
+const blankSides = () => Object.fromEntries(NURSING_SIDES.map((s) => [`sides_${s}`, '']));
+const blankWeights = (unit: Units['weight']): EntryValues =>
+	Object.fromEntries(
+		WEIGHT_NAMES.flatMap((n) => [
+			[`${n}_unit`, unit],
+			[`${n}_kg`, ''],
+			[`${n}_lb`, ''],
+			[`${n}_oz`, '']
+		])
+	);
+
 export function createValues(
 	kind: TrackerKind,
 	now: string,
 	zone: string,
-	unit: VolumeUnit
+	units: FormUnits
 ): EntryValues {
 	const at = instantToLocalInput(now, zone);
+	const unit = units.volume;
 	switch (kind) {
 		case 'bottles':
-			return { at, contents: [], volume: '', volume_unit: unit, note: '' };
+			return {
+				at,
+				contents: [],
+				volume: '',
+				volume_unit: unit,
+				...blankSources(),
+				note: ''
+			};
 		case 'diapers':
 			return { at, kind: '', note: '' };
 		case 'meals':
@@ -74,6 +121,7 @@ export function createValues(
 				duration_minutes: '',
 				volume: '',
 				volume_unit: unit,
+				...blankSides(),
 				side: '',
 				note: ''
 			};
@@ -86,6 +134,7 @@ export function createValues(
 				left_minutes: '',
 				right_minutes: '',
 				side: '',
+				...blankWeights(units.weight),
 				note: ''
 			};
 	}
@@ -102,6 +151,100 @@ const volumeValues = (v: Volume, unit: VolumeUnit): EntryValues => ({
 	...withOriginal('volume_unit', unit)
 });
 
+// A source shown in the parent's unit; a name the bottle has no source for is blank.
+function sourceValues(e: TrackerEntries['bottles'], unit: VolumeUnit): EntryValues {
+	const shown = BOTTLE_CONTENTS.flatMap((c) => {
+		const source = e.sources.find((s) => s.source === c);
+		return Object.entries(
+			withOriginal(`sources_${c}`, source ? volumeText(source.volume, unit) : '')
+		);
+	});
+	return {
+		...Object.fromEntries(shown),
+		sources_original: e.sources.map((s) => s.source).join(',')
+	};
+}
+
+// A side shown in the parent's unit; a side the session has no volume for is blank.
+function sideValues(e: TrackerEntries['pumping'], unit: VolumeUnit): EntryValues {
+	const shown = NURSING_SIDES.flatMap((name) => {
+		const side = e.sides.find((s) => s.side === name);
+		return Object.entries(withOriginal(`sides_${name}`, side ? volumeText(side.volume, unit) : ''));
+	});
+	return {
+		...Object.fromEntries(shown),
+		sides_original: e.sides.map((s) => s.side).join(',')
+	};
+}
+
+// Each weight in its typed unit; the other unit is pre-filled from its own column, so flipping resends the same weight.
+function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight']): EntryValues {
+	const ozPerLb = OZ_PER_LB * HUNDREDTHS_PER_OZ;
+	return {
+		...withOriginal(`${name}_unit`, w?.typedUnit ?? unit),
+		...withOriginal(`${name}_kg`, w ? decimal(w.grams, GRAMS_PER_KG) : ''),
+		...withOriginal(`${name}_lb`, w ? String(Math.floor(w.ozHundredths / ozPerLb)) : ''),
+		...withOriginal(`${name}_oz`, w ? decimal(w.ozHundredths % ozPerLb, HUNDREDTHS_PER_OZ) : '')
+	};
+}
+
+type ToggleLabels = { advanced: string; simple: string };
+
+// The trackers that have an advanced form, opened by ?advanced=1, with the links that switch it; every form
+// starts simple.
+const TOGGLE_LABELS: Partial<Record<TrackerKind, ToggleLabels>> = {
+	bottles: { advanced: 'Advanced: volume per source', simple: 'Use one total' },
+	nursing: {
+		advanced: 'Advanced: weigh before and after',
+		// Hiding the weigh-ins never deletes one: a form without them sends no weight key.
+		simple: 'Hide weigh-ins'
+	},
+	pumping: { advanced: 'Advanced: volume per side', simple: 'Use one total' }
+};
+
+// Whether an entry already carries advanced data; a kind without a predicate never opens advanced by itself.
+const HAS_ADVANCED_DATA: Partial<Record<TrackerKind, (entry: Entry) => boolean>> = {
+	bottles: (entry) => (entry as TrackerEntries['bottles']).sources.length > 0,
+	nursing: (entry) => {
+		const e = entry as TrackerEntries['nursing'];
+		return e.weightBefore !== null || e.weightAfter !== null;
+	},
+	pumping: (entry) => (entry as TrackerEntries['pumping']).sides.length > 0
+};
+
+// A new form is advanced on ?advanced=1; an edit also when the entry already carries advanced data,
+// unless ?advanced=0 asks for the simple form.
+export function isAdvanced(kind: TrackerKind, param: string | null, entry?: Entry): boolean {
+	if (!TOGGLE_LABELS[kind]) return false;
+	if (param === '1') return true;
+	if (entry === undefined || param === '0') return false;
+	return HAS_ADVANCED_DATA[kind]?.(entry) ?? false;
+}
+
+// The plain link at the top of the form that switches it; typed values are not carried across.
+export function advancedToggle(
+	kind: TrackerKind,
+	advanced: boolean
+): { href: string; label: string } | null {
+	const label = TOGGLE_LABELS[kind];
+	if (!label) return null;
+	return advanced
+		? { href: '?advanced=0', label: label.simple }
+		: { href: '?advanced=1', label: label.advanced };
+}
+
+// The edit page's paragraph under the weigh-ins: the API's estimate in the parent's units, "No estimate" when
+// both weights are set without one, nothing while a weight is missing.
+export function milkStatus(kind: TrackerKind, entry: Entry, units: FormUnits): string | null {
+	if (kind !== 'nursing') return null;
+	const e = entry as TrackerEntries['nursing'];
+	if (e.milk) {
+		const gain = formatMilk(e.milk, units);
+		return `${gain.charAt(0).toUpperCase()}${gain.slice(1)}. ${MILK_ESTIMATE_BASIS}`;
+	}
+	return e.weightBefore !== null && e.weightAfter !== null ? 'No estimate' : null;
+}
+
 const instantValues = (name: string, instant: string | null, zone: string): EntryValues =>
 	withOriginal(name, instant === null ? '' : instantToLocalInput(instant, zone));
 
@@ -110,8 +253,9 @@ export function editValues(
 	kind: TrackerKind,
 	entry: Entry,
 	zone: string,
-	unit: VolumeUnit
+	units: FormUnits
 ): EntryValues {
+	const unit = units.volume;
 	const note = { note: entry.note ?? '' };
 	switch (kind) {
 		case 'bottles': {
@@ -120,6 +264,9 @@ export function editValues(
 				...instantValues('at', e.at, zone),
 				contents: [...e.contents],
 				...volumeValues(e.volume, unit),
+				...sourceValues(e, unit),
+				// The stored total, which the typed sources may differ from by rounding.
+				...(e.sources.length > 0 ? { sources_total: formatVolume(e.volume, unit) } : {}),
 				...note
 			};
 		}
@@ -143,6 +290,9 @@ export function editValues(
 				duration_minutes: String(floorMinutes(e.durationSeconds)),
 				duration_seconds_original: String(e.durationSeconds),
 				...volumeValues(e.volume, unit),
+				...sideValues(e, unit),
+				// The stored total, which the typed sides may differ from by rounding.
+				...(e.sides.length > 0 ? { sides_total: formatVolume(e.volume, unit) } : {}),
 				side: e.side,
 				...note
 			};
@@ -161,14 +311,19 @@ export function editValues(
 				...instantValues('started_at', e.startedAt, zone),
 				...instantValues('ended_at', e.endedAt, zone)
 			};
+			const weights = {
+				...weightValues('weight_before', e.weightBefore, units.weight),
+				...weightValues('weight_after', e.weightAfter, units.weight)
+			};
 			// A running session has no minutes to show or keep.
-			if (e.endedAt === null) return { ...times, ...note };
+			if (e.endedAt === null) return { ...times, ...weights, ...note };
 			return {
 				...times,
 				left_minutes: String(floorMinutes(e.leftSeconds)),
 				right_minutes: String(floorMinutes(e.rightSeconds)),
 				left_seconds_original: String(e.leftSeconds),
 				right_seconds_original: String(e.rightSeconds),
+				...weights,
 				...note
 			};
 		}

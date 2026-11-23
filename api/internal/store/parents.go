@@ -165,3 +165,13 @@ func (s *Store) inTx(ctx context.Context, f func(*sql.Tx) error) error {
 	}
 	return tx.Commit()
 }
+
+// inReadTx runs f on one snapshot of the read pool, so reads that belong together never straddle a write.
+func (s *Store) inReadTx(ctx context.Context, f func(q querier) error) error {
+	tx, err := s.r.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	return f(tx)
+}

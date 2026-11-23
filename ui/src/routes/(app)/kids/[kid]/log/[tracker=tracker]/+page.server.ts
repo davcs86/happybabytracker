@@ -1,5 +1,12 @@
 import { redirect } from '@sveltejs/kit';
-import { createValues, entryInstant, localDate, trackerOf } from '#lib/entry-edit.js';
+import {
+	createValues,
+	entryInstant,
+	formUnits,
+	isAdvanced,
+	localDate,
+	trackerOf
+} from '#lib/entry-edit.js';
 import { timelineDayPath } from '#lib/paths.js';
 import { setKidCookie } from '#lib/server/cookie.js';
 import { entryApiFailure, entryFieldFailure } from '#lib/server/entry-failure.js';
@@ -7,16 +14,18 @@ import { readEntryForm } from '#lib/server/entry-form.js';
 import { failPage } from '#lib/server/outcome.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params, cookies, parent }) => {
+export const load: PageServerLoad = async ({ locals, params, cookies, parent, url }) => {
 	const [kid, { session }] = await Promise.all([locals.api.getKid(params.kid), parent()]);
 	if (!kid.ok) failPage(kid);
 	setKidCookie(cookies, kid.data.id);
 	const kind = trackerOf(params.tracker);
-	const unit = session?.parent?.units.volume ?? 'ml';
 	return {
 		kid: kid.data,
 		kind,
-		values: createValues(kind, new Date().toISOString(), kid.data.timeZone, unit)
+		values: {
+			...createValues(kind, new Date().toISOString(), kid.data.timeZone, formUnits(session)),
+			...(isAdvanced(kind, url.searchParams.get('advanced')) ? { advanced: '1' } : {})
+		}
 	};
 };
 

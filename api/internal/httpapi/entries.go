@@ -59,6 +59,8 @@ func entryOK(w http.ResponseWriter, err error) bool {
 		respondInvalid(w, "at")
 	case errors.Is(err, store.ErrInvalidContents):
 		respondInvalid(w, "contents")
+	case errors.Is(err, store.ErrInvalidSides):
+		respondInvalid(w, "side")
 	default:
 		return kidWriteOK(w, err)
 	}

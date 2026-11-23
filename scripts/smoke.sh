@@ -744,6 +744,185 @@ for p in vaccines:"$VACCINES" vaccines-new:"$VACCINES/new" vaccine-dose:"$DOSE_B
 done
 pass "4i settings offer us, uk and mx; the us page shows the CDC caption, attribution and omissions, groups in age order, birth overdue; the home shows Due; a 6-in-1 fills its 6 lines once, its lot is edited and it is deleted; $USER_B records one and may not dismiss; a dismissal is undone; dismiss-before dismisses 1 line; with uk the dose stays and the us dismissal is gone; $USER_C gets 404 and the admin a 303 on the vaccine pages"
 
+# 4j. Advanced logging through the real forms: a bottle per source, pumping per side, weighed nursing.
+N_ADV_BOTTLE="$(note "adv-bottle-note-${SUFFIX}")"
+N_ADV_PUMPING="$(note "adv-pumping-note-${SUFFIX}")"
+N_WEIGHED="$(note "weighed-note-${SUFFIX}")"
+N_BELOW="$(note "below-note-${SUFFIX}")"
+# Typed amounts, their sums and the weights as typed and in grams; the estimates are 110 g = 107 ml, 119 g = 116 ml.
+for v in 73 117 190 79 196 200 87 63 150 71 158 160 3.412 3412 3.522 3522 3.531 3531 110 107 119 116 \
+  3.6 3600 3.548 3548; do remember_value "$v"; done
+growth_rows() { # body-name -> how many distinct measurements the growth page links
+  { grep -oE '/growth/[0-9a-f]{8}-[0-9a-f-]{27}' "$WORK/$1.body" || true; } | sort -u | wc -l | tr -d ' '
+}
+row_has() { # body-name note text -> succeeds when the timeline row of that note shows text
+  pieces "$1" '<li' | grep -F -- "$2" | grep -F -- "$3" >/dev/null
+}
+row_has_word() { # body-name note words -> succeeds when the row of that note holds one of the words (regex)
+  pieces "$1" '<li' | grep -F -- "$2" | grep -iwE "$3" >/dev/null
+}
+JUDGEMENT='latch|latching|loss|lost|losing|decrease|decreased|problem|problems|worry|concern|poor|low|bad|warning'
+estimate_has_word() { # body-name words -> succeeds when the estimate paragraph of that edit page holds one of the words (regex)
+  tr -d '\n' <"$WORK/$1.body" | { grep -oiE '<p[^>]*>[^<]*estimate[^<]*</p>' || true; } | grep -iwE "$2" >/dev/null
+}
+input_value() { # body-name field -> the value of the named text input
+  pieces "$1" '<input' | grep -F "name=\"$2\"" | head -n 1 | grep -oE ' value="[^"]*"' | head -n 1 |
+    sed -E 's/^ value="(.*)"$/\1/' || true
+}
+edit_form() { # body-name [name=value]... -> FIELDS: each original beside the text it loaded, the given texts in place
+  local kv shown o skip
+  FIELDS=()
+  while IFS= read -r kv; do
+    shown="${kv%_original=*}"
+    skip=
+    for o in "$@"; do
+      if [ "${o%%=*}" = "$shown" ]; then skip=1; fi
+    done
+    if [ -z "$skip" ]; then FIELDS+=("$shown=${kv#*=}"); fi
+    FIELDS+=("$kv")
+  done < <(originals "$1")
+  FIELDS+=("$@")
+}
+save_edit() { # name path field=value... -> as smoke-a, posts that form (new or edit) and expects the 303 to the timeline
+  local name="$1" path="$2" code
+  shift 2
+  code="$(form "$name" "$ADDR_A" "$SESSION_A" "$path?/save" "$@")"
+  case "$code $(location "$name")" in
+    "303 $KID_PATH/timeline?from="*) ;;
+    *) fail "4j $name" "status $code, Location $(location "$name")" ;;
+  esac
+}
+timeline_j() { # name -> the kid's timeline as smoke-a
+  local code
+  code="$(req "$1" "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE")"
+  [ "$code" = 200 ] || fail "4j timeline $1" "status $code"
+}
+code="$(req growth-before-weigh "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+rows_before="$(growth_rows growth-before-weigh)"
+{ [ "$code" = 200 ] && [ "$rows_before" -ge 1 ]; } || fail "4j growth page before" "status $code, $rows_before rows"
+
+# An advanced bottle: a volume per source, the total is their sum, shown per source on the edit page.
+save_edit log-adv-bottle "$KID_PATH/log/bottles" "at=$(ago 35)" advanced=1 contents=breast_milk contents=formula \
+  volume_unit=ml sources_breast_milk=73 sources_formula=117 "note=$N_ADV_BOTTLE"
+timeline_j timeline-j1
+ADV_BOTTLE="$(row_path timeline-j1 "$N_ADV_BOTTLE")"
+{ row_has timeline-j1 "$N_ADV_BOTTLE" 'Bottle 190 ml, breast milk + formula' && [ -n "$ADV_BOTTLE" ]; } ||
+  fail "4j advanced bottle on the timeline" "no 'Bottle 190 ml, breast milk + formula' row"
+code="$(req adv-bottle-page "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_BOTTLE")"
+mapfile -t kept < <(originals adv-bottle-page)
+{ [ "$code" = 200 ] && [ "${#kept[@]}" = 7 ] && body_has adv-bottle-page 'name="advanced" value="1"' &&
+  [ "$(input_value adv-bottle-page sources_breast_milk)" = 73 ] &&
+  [ "$(input_value adv-bottle-page sources_formula)" = 117 ] && body_has adv-bottle-page 'Total: 190 ml' &&
+  ! body_has adv-bottle-page 'name="volume"'; } ||
+  fail "4j advanced bottle edit page" "status $code, ${#kept[@]} originals"
+edit_form adv-bottle-page at= advanced=1 contents=breast_milk contents=formula sources_breast_milk=79 \
+  "note=$N_ADV_BOTTLE"
+save_edit edit-adv-bottle "$ADV_BOTTLE" "${FIELDS[@]}"
+timeline_j timeline-j2
+code="$(req adv-bottle-edited "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_BOTTLE")"
+{ row_has timeline-j2 "$N_ADV_BOTTLE" 'Bottle 196 ml, breast milk + formula' && ! body_has timeline-j2 'Bottle 190 ml' &&
+  [ "$code" = 200 ] && [ "$(input_value adv-bottle-edited sources_breast_milk)" = 79 ] &&
+  [ "$(input_value adv-bottle-edited sources_formula)" = 117 ] && body_has adv-bottle-edited 'Total: 196 ml'; } ||
+  fail "4j edit one source" "status $code"
+# One total over the sources replaces them.
+code="$(req adv-bottle-simple "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_BOTTLE?advanced=0")"
+{ [ "$code" = 200 ] && ! body_has adv-bottle-simple 'name="sources_formula"' &&
+  body_has adv-bottle-simple 'Saving one total replaces the volumes per source'; } ||
+  fail "4j one total form" "status $code"
+edit_form adv-bottle-simple at= contents=breast_milk contents=formula volume=200 volume_unit=ml \
+  "note=$N_ADV_BOTTLE"
+save_edit edit-bottle-total "$ADV_BOTTLE" "${FIELDS[@]}"
+timeline_j timeline-j3
+code="$(req bottle-total-page "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_BOTTLE")"
+{ row_has timeline-j3 "$N_ADV_BOTTLE" 'Bottle 200 ml, breast milk + formula' && [ "$code" = 200 ] &&
+  [ "$(input_value bottle-total-page volume)" = 200 ] && ! body_has bottle-total-page 'name="sources_formula"' &&
+  ! body_has bottle-total-page 'name="sources_breast_milk"' && ! body_has bottle-total-page 'name="advanced"'; } ||
+  fail "4j one total replaces the sources" "status $code"
+
+# An advanced pumping session: a volume per side, shown on the timeline as (L … · R …).
+save_edit log-adv-pumping "$KID_PATH/log/pumping" "started_at=$(ago 70)" duration_minutes=14 advanced=1 volume_unit=ml \
+  sides_left=87 sides_right=63 "note=$N_ADV_PUMPING"
+timeline_j timeline-j4
+ADV_PUMPING="$(row_path timeline-j4 "$N_ADV_PUMPING")"
+{ row_has timeline-j4 "$N_ADV_PUMPING" 'Pumping 14 min, 150 ml (L 87 ml · R 63 ml)' && [ -n "$ADV_PUMPING" ]; } ||
+  fail "4j advanced pumping on the timeline" "no 'Pumping 14 min, 150 ml (L 87 ml · R 63 ml)' row"
+code="$(req adv-pumping-page "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_PUMPING")"
+mapfile -t kept < <(originals adv-pumping-page)
+{ [ "$code" = 200 ] && [ "${#kept[@]}" = 6 ] && body_has adv-pumping-page 'name="advanced" value="1"' &&
+  [ "$(input_value adv-pumping-page sides_left)" = 87 ] && [ "$(input_value adv-pumping-page sides_right)" = 63 ] &&
+  body_has adv-pumping-page 'Total: 150 ml' && ! body_has adv-pumping-page 'name="side"'; } ||
+  fail "4j advanced pumping edit page" "status $code, ${#kept[@]} originals"
+edit_form adv-pumping-page advanced=1 "duration_minutes=$(input_value adv-pumping-page duration_minutes)" \
+  sides_right=71 "note=$N_ADV_PUMPING"
+save_edit edit-adv-pumping "$ADV_PUMPING" "${FIELDS[@]}"
+timeline_j timeline-j5
+code="$(req adv-pumping-edited "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_PUMPING")"
+{ row_has timeline-j5 "$N_ADV_PUMPING" 'Pumping 14 min, 158 ml (L 87 ml · R 71 ml)' && [ "$code" = 200 ] &&
+  [ "$(input_value adv-pumping-edited sides_left)" = 87 ] && [ "$(input_value adv-pumping-edited sides_right)" = 71 ]; } ||
+  fail "4j edit one side" "status $code"
+code="$(req adv-pumping-simple "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_PUMPING?advanced=0")"
+{ [ "$code" = 200 ] && ! body_has adv-pumping-simple 'name="sides_left"' &&
+  body_has adv-pumping-simple 'Saving one total replaces the volumes per side'; } ||
+  fail "4j one total pumping form" "status $code"
+edit_form adv-pumping-simple "duration_minutes=$(input_value adv-pumping-simple duration_minutes)" volume=160 \
+  volume_unit=ml side=both "note=$N_ADV_PUMPING"
+save_edit edit-pumping-total "$ADV_PUMPING" "${FIELDS[@]}"
+timeline_j timeline-j6
+code="$(req pumping-total-page "$ADDR_A" "$SESSION_A" "$UI_URL$ADV_PUMPING")"
+{ row_has timeline-j6 "$N_ADV_PUMPING" 'Pumping 14 min, 160 ml (both)' && ! body_has timeline-j6 '(L 87 ml' &&
+  [ "$code" = 200 ] && [ "$(input_value pumping-total-page volume)" = 160 ] &&
+  ! body_has pumping-total-page 'name="sides_left"' && ! body_has pumping-total-page 'name="advanced"'; } ||
+  fail "4j one total replaces the sides" "status $code"
+
+# A weighed nursing session: the weight gain and the milk estimate, on the timeline and the edit page.
+save_edit log-weighed "$KID_PATH/log/nursing" "started_at=$(ago 160)" "ended_at=$(ago 150)" left_minutes=6 right_minutes=4 \
+  advanced=1 weight_before_unit=kg weight_before_kg=3.412 weight_before_lb= weight_before_oz= \
+  weight_after_unit=kg weight_after_kg=3.522 weight_after_lb= weight_after_oz= "note=$N_WEIGHED"
+timeline_j timeline-j7
+WEIGHED="$(row_path timeline-j7 "$N_WEIGHED")"
+{ row_has timeline-j7 "$N_WEIGHED" 'Nursing L 6 min · R 4 min, weight gain 110 g, about 107 ml' &&
+  [ -n "$WEIGHED" ]; } || fail "4j weighed session on the timeline" "no 'weight gain 110 g, about 107 ml' row"
+code="$(req weighed-page "$ADDR_A" "$SESSION_A" "$UI_URL$WEIGHED")"
+mapfile -t kept < <(originals weighed-page)
+{ [ "$code" = 200 ] && body_has weighed-page 'name="advanced" value="1"' &&
+  [ "$(input_value weighed-page weight_before_kg)" = 3.412 ] &&
+  [ "$(input_value weighed-page weight_after_kg)" = 3.522 ] && body_has weighed-page 'Weight gain 110 g, about 107 ml.' &&
+  body_has weighed-page 'an approximation in the range commonly used (1.0–1.03 g/ml); not measured' &&
+  body_has weighed-page 'A single-feed reading from a home scale can be off by several grams.'; } ||
+  fail "4j weighed session edit page" "status $code, ${#kept[@]} originals"
+edit_form weighed-page advanced=1 "left_minutes=$(input_value weighed-page left_minutes)" \
+  "right_minutes=$(input_value weighed-page right_minutes)" weight_after_kg=3.531 "note=$N_WEIGHED"
+save_edit edit-weighed "$WEIGHED" "${FIELDS[@]}"
+timeline_j timeline-j8
+code="$(req weighed-edited "$ADDR_A" "$SESSION_A" "$UI_URL$WEIGHED")"
+{ row_has timeline-j8 "$N_WEIGHED" 'weight gain 119 g, about 116 ml' && ! body_has timeline-j8 'weight gain 110 g' &&
+  [ "$code" = 200 ] && [ "$(input_value weighed-edited weight_before_kg)" = 3.412 ] &&
+  [ "$(input_value weighed-edited weight_after_kg)" = 3.531 ] && body_has weighed-edited 'Weight gain 119 g, about 116 ml.'; } ||
+  fail "4j edit one weight" "status $code"
+
+# An after weight below the before weight is stored as typed: no estimate, no judgement.
+save_edit log-below "$KID_PATH/log/nursing" "started_at=$(ago 140)" "ended_at=$(ago 130)" left_minutes=5 right_minutes=5 \
+  advanced=1 weight_before_unit=kg weight_before_kg=3.6 weight_before_lb= weight_before_oz= \
+  weight_after_unit=kg weight_after_kg=3.548 weight_after_lb= weight_after_oz= "note=$N_BELOW"
+timeline_j timeline-j9
+BELOW="$(row_path timeline-j9 "$N_BELOW")"
+code="$(req below-page "$ADDR_A" "$SESSION_A" "$UI_URL$BELOW")"
+{ row_has timeline-j9 "$N_BELOW" 'Nursing L 5 min · R 5 min' && ! row_has timeline-j9 "$N_BELOW" 'weight gain' &&
+  ! row_has timeline-j9 "$N_BELOW" 'about' && [ -n "$BELOW" ] && [ "$code" = 200 ] &&
+  [ "$(input_value below-page weight_before_kg)" = 3.6 ] && [ "$(input_value below-page weight_after_kg)" = 3.548 ] &&
+  body_has below-page '>No estimate</p>' && ! body_has below-page 'Weight gain' &&
+  ! estimate_has_word below-page "$JUDGEMENT" && ! row_has_word timeline-j9 "$N_BELOW" "$JUDGEMENT"; } ||
+  fail "4j after below before" "status $code, no estimate and no judgement expected"
+
+# A weigh-in is not a growth measurement.
+code="$(req growth-after-weigh "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+{ [ "$code" = 200 ] && [ "$(growth_rows growth-after-weigh)" = "$rows_before" ] &&
+  ! body_has growth-after-weigh '3.412' && ! body_has growth-after-weigh '3.522' &&
+  ! body_has growth-after-weigh '3.531' && ! body_has growth-after-weigh '3.548' &&
+  ! body_has growth-after-weigh "$N_WEIGHED"; } ||
+  fail "4j a weigh-in adds to growth" "status $code, rows $(growth_rows growth-after-weigh), before $rows_before"
+pass "4j an advanced bottle (73 + 117 = 190 ml, one source edited to 196, then one total of 200 ml with the sources gone), an advanced pumping session (87 + 63 = 150 ml shown as L and R, one side edited to 158, then one total of 160 ml), a weighed nursing session (weight gain 110 g, about 107 ml; one weight edited to 119 g, about 116 ml) and one with the after weight below the before weight (no estimate, no judgement); none adds to the growth page"
+
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
 code="$(req admin-parents "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"

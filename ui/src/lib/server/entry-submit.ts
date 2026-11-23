@@ -23,8 +23,13 @@ const unchanged = (form: FormData, name: string) => {
 export function sendOnlyChanged(kind: TrackerKind, form: FormData, input: EntryBody): EntryBody {
 	const out = { ...input };
 	for (const name of TIME_FIELDS[kind]) if (unchanged(form, name)) delete out[name];
+	// A simple form over a bottle with sources, or a session with sides, must send its total, or they would stay.
+	const hadParts =
+		(kind === 'bottles' && text(form, 'sources_original') !== '') ||
+		(kind === 'pumping' && text(form, 'sides_original') !== '');
 	if (
 		(kind === 'bottles' || kind === 'pumping') &&
+		!hadParts &&
 		unchanged(form, 'volume') &&
 		unchanged(form, 'volume_unit')
 	) {

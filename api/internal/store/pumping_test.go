@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,5 +176,265 @@ func TestPumpingListNewestFirstByStartWithEqualTimestamps(t *testing.T) {
 	r, err := s.ListPumping(ctx, k.ID, ListQuery{From: same.Add(-time.Minute), To: same.Add(time.Minute), Limit: 10})
 	if err != nil || len(r) != 4 {
 		t.Errorf("[-1m, +1m) = %d rows, %v; want the 4 that start before +1m", len(r), err)
+	}
+}
+
+// advancedPumping is a session whose sides are typed in unit and whose total is their sum; its side is the derived one.
+func advancedPumping(t *testing.T, startedAt time.Time, unit units.Unit, amounts map[string]int64) model.PumpingSession {
+	t.Helper()
+	p := model.PumpingSession{StartedAt: startedAt, DurationSeconds: 900}
+	var sum int64
+	for _, name := range model.PumpingSideNames {
+		if n, ok := amounts[name]; ok {
+			p.Sides = append(p.Sides, model.PumpingSide{Side: name, Volume: mustVolume(t, unit, n)})
+			sum += n
+		}
+	}
+	p.Volume = mustVolume(t, unit, sum)
+	p.Side, _ = model.DerivedPumpingSide(p.Sides)
+	return p
+}
+
+func sideRows(t *testing.T, s *Store, sessionID string) int {
+	t.Helper()
+	var n int
+	if err := s.w.QueryRowContext(ctx, `SELECT COUNT(*) FROM pumping_session_sides WHERE session_id = ?`, sessionID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestPumpingSidesRoundTrip(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+
+	in := advancedPumping(t, t0, units.UnitFlOz, map[string]int64{"right": 250, "left": 150})
+	if in.Side != "both" || in.Sides[0].Side != "left" {
+		t.Fatalf("test input = %+v", in)
+	}
+	in.Sides[0], in.Sides[1] = in.Sides[1], in.Sides[0] // given right first; stored left, right
+	created := mustPumping(t, s, k.ID, ana.ID, in)
+	if created.Sides[0].Side != "left" || created.Sides[1].Side != "right" {
+		t.Fatalf("created sides = %+v, want left, right", created.Sides)
+	}
+	got, err := s.Pumping(ctx, k.ID, created.ID)
+	if err != nil || !reflect.DeepEqual(got, created) {
+		t.Fatalf("Pumping = %+v, %v; want %+v", got, err, created)
+	}
+	if got.Sides[0].Volume.Typed != units.UnitFlOz || got.Sides[0].Volume.FlOzHundredths != 150 || got.Sides[1].Volume.FlOzHundredths != 250 || got.Volume.FlOzHundredths != 400 {
+		t.Errorf("sides = %+v total %+v", got.Sides, got.Volume)
+	}
+	list, err := s.ListPumping(ctx, k.ID, wideQuery())
+	if err != nil || len(list) != 1 || !reflect.DeepEqual(list[0], created) {
+		t.Fatalf("ListPumping = %+v, %v", list, err)
+	}
+
+	one := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0.Add(-time.Hour), units.UnitML, map[string]int64{"right": 70}))
+	if one.Side != "right" || len(one.Sides) != 1 {
+		t.Errorf("right only = %+v", one)
+	}
+	simple := mustPumping(t, s, k.ID, ana.ID, newPumping(t, t0.Add(-2*time.Hour)))
+	if got, err := s.Pumping(ctx, k.ID, simple.ID); err != nil || len(got.Sides) != 0 {
+		t.Errorf("simple session = %+v, %v; want no sides", got, err)
+	}
+}
+
+func TestPumpingSidesReplacedOnUpdate(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k, other := mustKid(t, s, ana.ID, "Lía"), mustKid(t, s, ana.ID, "Other")
+	p := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+
+	next := advancedPumping(t, t0, units.UnitML, map[string]int64{"right": 80})
+	next.ID = p.ID
+	if err := s.UpdatePumping(ctx, k.ID, ana.ID, next, t0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Pumping(ctx, k.ID, p.ID)
+	if err != nil || !reflect.DeepEqual(got.Sides, next.Sides) || got.Side != "right" || got.Volume != next.Volume {
+		t.Fatalf("after replace = %+v, %v; want sides %+v", got, err, next.Sides)
+	}
+	if n := sideRows(t, s, p.ID); n != 1 {
+		t.Errorf("%d side rows, want 1", n)
+	}
+
+	foreign := advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 10})
+	foreign.ID = p.ID
+	if err := s.UpdatePumping(ctx, other.ID, ana.ID, foreign, t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update through another kid: %v", err)
+	}
+	if n := sideRows(t, s, p.ID); n != 1 {
+		t.Errorf("%d side rows after a refused update, want 1", n)
+	}
+
+	simple := newPumping(t, t0)
+	simple.ID = p.ID
+	if err := s.UpdatePumping(ctx, k.ID, ana.ID, simple, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Pumping(ctx, k.ID, p.ID); err != nil || len(got.Sides) != 0 || sideRows(t, s, p.ID) != 0 {
+		t.Errorf("after switching to simple = %+v, %v; %d rows", got, err, sideRows(t, s, p.ID))
+	}
+}
+
+func TestDeletePumpingRemovesItsSides(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	p := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+	keep := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0.Add(-time.Hour), units.UnitML, map[string]int64{"left": 20}))
+	if n := sideRows(t, s, p.ID); n != 2 {
+		t.Fatalf("%d side rows, want 2", n)
+	}
+
+	if err := s.DeletePumping(ctx, k.ID, ana.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := sideRows(t, s, p.ID); n != 0 {
+		t.Errorf("%d side rows after the delete, want 0", n)
+	}
+	if n := sideRows(t, s, keep.ID); n != 1 {
+		t.Errorf("%d side rows of another session, want 1", n)
+	}
+}
+
+func TestSidesMustMatchSide(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	good := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+
+	side := func(names ...string) []model.PumpingSide {
+		var out []model.PumpingSide
+		for _, n := range names {
+			out = append(out, model.PumpingSide{Side: n, Volume: mustVolume(t, units.UnitML, 10)})
+		}
+		return out
+	}
+	for name, c := range map[string]struct {
+		side  string
+		sides []model.PumpingSide
+	}{
+		"both beside one side":     {"both", side("left")},
+		"left beside the right":    {"left", side("right")},
+		"right beside two sides":   {"right", side("left", "right")},
+		"left beside two sides":    {"left", side("right", "left")},
+		"an unknown side":          {"both", side("middle")},
+		"the combined side":        {"both", side("both")},
+		"a repeated side":          {"left", side("left", "left")},
+		"two sides, one repeated":  {"both", side("left", "right", "left")},
+		"an empty side beside one": {"", side("left")},
+	} {
+		bad := model.PumpingSession{StartedAt: t0, DurationSeconds: 900, Side: c.side, Sides: c.sides, Volume: mustVolume(t, units.UnitML, 10)}
+		if _, err := s.CreatePumping(ctx, k.ID, ana.ID, bad, t0); !errors.Is(err, ErrInvalidSides) {
+			t.Errorf("create with %s: %v, want ErrInvalidSides", name, err)
+		}
+		bad.ID = good.ID
+		if err := s.UpdatePumping(ctx, k.ID, ana.ID, bad, t0); !errors.Is(err, ErrInvalidSides) {
+			t.Errorf("update with %s: %v, want ErrInvalidSides", name, err)
+		}
+	}
+	if got, err := s.Pumping(ctx, k.ID, good.ID); err != nil || !reflect.DeepEqual(got, good) {
+		t.Errorf("a refused update changed the session: %+v, %v", got, err)
+	}
+	if list, err := s.ListPumping(ctx, k.ID, wideQuery()); err != nil || len(list) != 1 {
+		t.Errorf("a refused create left %d sessions, %v", len(list), err)
+	}
+}
+
+func TestListLoadsSidesWithOneExtraQuery(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	for i := range 100 {
+		mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0.Add(-time.Duration(i)*time.Minute), units.UnitML, map[string]int64{"left": 60, "right": 50}))
+	}
+	n := countReads(t, s, nil)
+
+	if list, err := s.ListPumping(ctx, k.ID, wideQuery()); err != nil || len(list) != 100 || len(list[99].Sides) != 2 {
+		t.Fatalf("ListPumping = %d rows, %v", len(list), err)
+	}
+	if got := n.Load(); got != 2 {
+		t.Errorf("a list of 100 sessions ran %d queries, want 2 (the page and one for every side)", got)
+	}
+
+	n.Store(0)
+	if items, err := s.Timeline(ctx, k.ID, []string{"pumping"}, wideQuery()); err != nil || len(items) != 100 || len(items[99].Entry.(model.PumpingSession).Sides) != 2 {
+		t.Fatalf("Timeline = %d items, %v", len(items), err)
+	}
+	if got := n.Load(); got != 2 {
+		t.Errorf("a pumping timeline of 100 sessions ran %d queries, want 2", got)
+	}
+
+	n.Store(0)
+	if list, err := s.ListPumping(ctx, k.ID, ListQuery{From: t0.Add(time.Hour), To: t0.Add(2 * time.Hour), Limit: 10}); err != nil || len(list) != 0 {
+		t.Fatalf("empty list = %v, %v", list, err)
+	}
+	if got := n.Load(); got != 1 {
+		t.Errorf("an empty list ran %d queries, want 1", got)
+	}
+}
+
+func TestTimelinePumpingCarriesSides(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	adv := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+	mustPumping(t, s, k.ID, ana.ID, newPumping(t, t0.Add(-time.Hour)))
+
+	items, err := s.Timeline(ctx, k.ID, []string{"pumping"}, wideQuery())
+	if err != nil || len(items) != 2 {
+		t.Fatalf("Timeline = %+v, %v", items, err)
+	}
+	if got := items[0].Entry.(model.PumpingSession); !reflect.DeepEqual(got, adv) {
+		t.Errorf("advanced item = %+v, want %+v", got, adv)
+	}
+	if got := items[1].Entry.(model.PumpingSession); len(got.Sides) != 0 {
+		t.Errorf("simple item has sides %+v", got.Sides)
+	}
+}
+
+// A write that lands between the session read and the sides read must not show as a mixed pair.
+func TestPumpingReadIsOneSnapshot(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	old := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+	next := advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 10, "right": 20})
+	next.ID = old.ID
+
+	for name, read := range map[string]func() (model.PumpingSession, error){
+		"Pumping": func() (model.PumpingSession, error) { return s.Pumping(ctx, k.ID, old.ID) },
+		"ListPumping": func() (model.PumpingSession, error) {
+			list, err := s.ListPumping(ctx, k.ID, wideQuery())
+			if err != nil || len(list) != 1 {
+				t.Fatalf("ListPumping = %v, %v", list, err)
+			}
+			return list[0], nil
+		},
+	} {
+		if err := s.UpdatePumping(ctx, k.ID, ana.ID, old, t0); err != nil {
+			t.Fatal(err)
+		}
+		var wrote atomic.Bool
+		countReads(t, s, func(n int64) {
+			if n == 2 && wrote.CompareAndSwap(false, true) {
+				if err := s.UpdatePumping(ctx, k.ID, ana.ID, next, t0); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+		got, err := read()
+		if err != nil || !wrote.Load() {
+			t.Fatalf("%s: %v, wrote between the reads: %v", name, err, wrote.Load())
+		}
+		var sum int64
+		for _, side := range got.Sides {
+			sum += side.Volume.ML
+		}
+		if sum != got.Volume.ML || (got.Volume.ML != old.Volume.ML && got.Volume.ML != next.Volume.ML) {
+			t.Errorf("%s: total %d ml with sides %+v, a mixed read", name, got.Volume.ML, got.Sides)
+		}
 	}
 }

@@ -1,9 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import {
+	type EntryValues,
 	editValues,
 	entryInstant,
+	formUnits,
+	isAdvanced,
 	isRunning,
 	localDate,
+	milkStatus,
 	ranOver,
 	trackerOf
 } from '#lib/entry-edit.js';
@@ -31,7 +35,7 @@ async function stored(locals: App.Locals, params: { kid: string; tracker: string
 	return { kind, kid: kid.data, entry: entry.data };
 }
 
-export const load: PageServerLoad = async ({ locals, params, cookies, parent }) => {
+export const load: PageServerLoad = async ({ locals, params, cookies, parent, url }) => {
 	const [{ kind, kid, entry }, { session }] = await Promise.all([stored(locals, params), parent()]);
 	setKidCookie(cookies, kid.id);
 	const running = isRunning(kind, entry);
@@ -39,8 +43,12 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		kid,
 		kind,
 		running,
+		estimate: milkStatus(kind, entry, formUnits(session)),
 		overrun: running && ranOver(entryInstant(kind, entry), Date.now()),
-		values: editValues(kind, entry, kid.timeZone, session?.parent?.units.volume ?? 'ml')
+		values: {
+			...editValues(kind, entry, kid.timeZone, formUnits(session)),
+			...(isAdvanced(kind, url.searchParams.get('advanced'), entry) ? { advanced: '1' } : {})
+		}
 	};
 };
 
@@ -52,8 +60,10 @@ export const actions: Actions = {
 		const extra = { form: 'save' as const };
 		// Ended elsewhere since the page loaded: a finished read would find no stored seconds to compare.
 		if (!running && fromRunningPage(kind, form)) {
-			const unit = locals.session?.parent?.units.volume ?? 'ml';
-			return staleTimerFailure(editValues(kind, entry, kid.timeZone, unit), extra);
+			const values = editValues(kind, entry, kid.timeZone, formUnits(locals.session));
+			// The finished form stays as advanced as the form that was open.
+			const advanced: EntryValues = form.get('advanced') === '1' ? { advanced: '1' } : {};
+			return staleTimerFailure({ ...values, ...advanced }, extra);
 		}
 		const { values, input, field, message } = readEntryForm(kind, form, kid.timeZone, {
 			kind: 'edit',
