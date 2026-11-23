@@ -2326,6 +2326,7 @@ test.describe('the sickness tracker', () => {
 		await saveAndWait(page);
 		await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
 		await expect(field(page, 'Temperature unit')).toHaveAttribute('aria-invalid', 'true');
+		await expect(field(page, 'Temperature unit')).toHaveAccessibleDescription(TEMP_MESSAGE);
 		await expect(page.getByRole('alert')).toHaveText(TEMP_MESSAGE);
 		await expect(field(page, 'Symptom')).toHaveValue('fever');
 		await expect(field(page, 'Temperature')).toHaveValue('50');

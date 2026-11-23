@@ -1,8 +1,7 @@
 import { expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 
-// The worker's own scope has no DOM-lib types here: describe just what the callbacks touch.
-// Notifications are observed at the registration, not displayed: headless Chromium refuses to
-// show any, whatever the context grants, so a displayed notification cannot be the check.
+// The worker scope's types, just what the callbacks touch; headless Chromium never displays a
+// notification, so the checks read what the worker passes to showNotification.
 type Pending = Promise<unknown>[];
 type Dispatchable = Event & { waitUntil: (p: Promise<unknown>) => void };
 type Shown = { title: string; options: object | undefined };
@@ -42,8 +41,8 @@ async function controlledWorker(context: BrowserContext, page: Page): Promise<Wo
 }
 
 // A real push event cannot be fired from here: dispatch one and wait on what the worker passes to waitUntil.
-function deliverPush(worker: Worker, data: string | undefined): Promise<Shown[]> {
-	return worker.evaluate(async (data) => {
+async function deliverPush(worker: Worker, data: string | undefined): Promise<Shown[]> {
+	const { shown, pending } = await worker.evaluate(async (data) => {
 		const g = globalThis as unknown as WorkerGlobals;
 		const shown: Shown[] = [];
 		g.registration.showNotification = (title, options) => {
@@ -55,8 +54,10 @@ function deliverPush(worker: Worker, data: string | undefined): Promise<Shown[]>
 		event.waitUntil = (p) => void pending.push(p);
 		globalThis.dispatchEvent(event);
 		await Promise.all(pending);
-		return shown;
+		return { shown, pending: pending.length };
 	}, data);
+	expect(pending).toBe(1);
+	return shown;
 }
 
 test('a push with a valid payload shows its title with the reminder tag and path', async ({
@@ -84,7 +85,7 @@ for (const [name, data] of [
 		page
 	}) => {
 		const worker = await controlledWorker(context, page);
-		// No tag key, and a click goes to the home page.
+		// No tag, and a click goes to the home page.
 		expect(await deliverPush(worker, data)).toEqual([
 			{ title: 'Reminder due', options: { body: '', icon: ICON, data: { path: '/' } } }
 		]);
@@ -151,6 +152,9 @@ test('a click opens the path when no window shows it, and focuses the window tha
 
 	const focused = await click(worker, [{ path: '/login' }]);
 	expect(focused.calls).toEqual(['focus /login']);
+
+	const otherSearch = await click(worker, [{ path: '/login?x=1' }]);
+	expect(otherSearch.calls).toEqual(['open /login?x=1']);
 });
 
 test('a window on the same path with a fragment is focused, not duplicated', async ({

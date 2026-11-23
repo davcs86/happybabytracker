@@ -189,6 +189,39 @@ test('the one-tap form logs a dose now and the page shows when it was', async ({
 	).toBeVisible();
 });
 
+test('a double tap on Log dose now logs one dose', async ({ page }) => {
+	const api = await stubAs(ANA);
+	await seedCourse(api, { name: 'Calpol' });
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await untilHydrated(amountOf(card(page, 'Calpol')));
+	const response = page.waitForResponse(
+		(r) => r.request().method() === 'POST' && new URL(r.url()).search.startsWith('?/')
+	);
+	await logNow(card(page, 'Calpol')).dblclick();
+	await (await response).finished();
+	await onMedication(page);
+	await expect(logNow(card(page, 'Calpol'))).toBeEnabled();
+	await page.waitForLoadState('networkidle');
+	expect(await writes('POST', DOSES())).toHaveLength(1);
+	expect(await doses(api)).toHaveLength(1);
+});
+
+test('a dose logged from the filtered list keeps the filter', async ({ page }) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, { name: 'Calpol' });
+	await seedCourse(api, { name: 'Amoxil' });
+	await signIn(page, ANA);
+	await page.goto(`${pageUrl()}?medication=${calpol.id}`);
+	await expect(page.getByRole('heading', { name: 'Doses of Calpol' })).toBeVisible();
+	await submit(logNow(card(page, 'Calpol')));
+	// The new dose shows once the redirect's page has loaded.
+	await expect(page.getByRole('link', { name: /^Calpol, / })).toBeVisible();
+	expect(page.url()).toMatch(new RegExp(`${pageUrl()}\\?medication=${calpol.id}$`));
+	await expect(page.getByRole('heading', { name: 'Doses of Calpol' })).toBeVisible();
+	expect(await doses(api)).toHaveLength(1);
+});
+
 test('a dose logged a day ago shows its date, never a bare time', async ({ page }) => {
 	const api = await stubAs(ANA);
 	const calpol = await seedCourse(api, { name: 'Calpol', start_at: minute(-3 * 24 * 60) });
@@ -1166,13 +1199,13 @@ test('a course gone under an open edit form or an open delete confirm is the 404
 	await untilHydrated(field(page, 'Note'));
 	expect((await api('DELETE', `${COURSES()}/${first.id}`)).status).toBe(204);
 	await field(page, 'Note').fill('too late');
-	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await saveCourse(page);
 	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 
 	await page.goto(courseUrl(second.id));
 	await openDelete(page);
 	expect((await api('DELETE', `${COURSES()}/${second.id}`)).status).toBe(204);
-	await page.getByRole('button', { name: 'Yes, delete this course' }).click();
+	await deleteCourse(page);
 	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 });
 

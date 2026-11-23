@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ANA, DAN, IVY, LEO, MIA, moveStubClock, resetStub, stubAs } from './stub-api.js';
+import { ANA, DAN, IVY, LEO, MIA, STUB_URL, moveStubClock, resetStub, stubAs } from './stub-api.js';
 
 // The stub's symptom, medication, dose and Due routes answer as the Go API does; its clock moves only through
 // /__clock, and /__reset puts it back.
@@ -622,4 +622,93 @@ test('the Due list: gates for the module, inactive and done courses, other kids 
 	expect(await home()).toEqual(vaccines);
 	expect((await ana('GET', path)).body.next_due).toEqual({ due_at: iso(NOON + 24 * H) });
 	expect((await ana('GET', `/v1/kids/${MIA.id}/home`)).body.due).toEqual([]);
+});
+
+test('a done row of an old schedule does not take a later dose', async () => {
+	const ana = await stubAs(ANA);
+	const meds = `/v1/kids/${IVY.id}/medications`;
+	await clockAt(NOON + 5 * H + 40 * M);
+	const course = (
+		await ana('POST', meds, {
+			name: 'Ibuprofen',
+			dose: '5 ml',
+			schedule: { kind: 'every', hours: 6 },
+			start_at: iso(NOON - 12 * H)
+		})
+	).body;
+	const dose = () => ana('POST', `/v1/kids/${IVY.id}/medication-doses`, { medication: course.id });
+	await clockAt(NOON + 5 * H + 45 * M);
+	expect((await dose()).status).toBe(201);
+	await clockAt(NOON + 5 * H + 50 * M);
+	const edit = { schedule: { kind: 'times', times: ['17:55'] } };
+	expect((await ana('PATCH', `${meds}/${course.id}`, edit)).status).toBe(200);
+	await clockAt(NOON + 5 * H + 58 * M);
+	expect((await dose()).status).toBe(201);
+	expect((await ana('GET', `${meds}/${course.id}`)).body.next_due).toEqual({
+		due_at: iso(NOON + 29 * H + 55 * M)
+	});
+	expect((await ana('GET', `/v1/kids/${IVY.id}/home`)).body.due).toEqual([]);
+});
+
+test('the Due list takes a course latest past row in any state', async () => {
+	const ana = await stubAs(ANA);
+	const meds = `/v1/kids/${IVY.id}/medications`;
+	const home = async () => (await ana('GET', `/v1/kids/${IVY.id}/home`)).body.due;
+	await clockAt(NOON - 2 * H);
+	const course = (
+		await ana('POST', meds, {
+			name: 'Calpol',
+			dose: '2.5 ml',
+			schedule: { kind: 'times', times: ['12:00', '13:00'] },
+			start_at: iso(NOON - 12 * H)
+		})
+	).body;
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { reminder_overdue_minutes: 120 })).status).toBe(
+		200
+	);
+	await clockAt(NOON + 10 * M);
+	await home();
+	await clockAt(NOON + 31 * M);
+	await home();
+	await clockAt(NOON + H + 5 * M);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/medication-doses`, { medication: course.id })).status
+	).toBe(201);
+	await clockAt(NOON + H + 10 * M);
+	const edit = { schedule: { kind: 'every', hours: 6 } };
+	expect((await ana('PATCH', `${meds}/${course.id}`, edit)).status).toBe(200);
+	await clockAt(NOON + H + 30 * M);
+	// The expired 12:00 row is older than the done 13:00 one, so nothing is overdue.
+	expect(await home()).toEqual([
+		{
+			kind: 'medication',
+			medication: { id: course.id, name: 'Calpol' },
+			due_at: iso(NOON + 6 * H),
+			state: 'due'
+		}
+	]);
+});
+
+test('no row for an occurrence over 30 minutes before the course exists; a null time; a fractional clock', async () => {
+	const ana = await stubAs(ANA);
+	const meds = `/v1/kids/${IVY.id}/medications`;
+	await clockAt(NOON + 45 * M);
+	const course = (
+		await ana('POST', meds, {
+			name: 'Calpol',
+			dose: '2.5 ml',
+			schedule: { kind: 'every', hours: 24 },
+			start_at: iso(NOON - 24 * H)
+		})
+	).body;
+	expect((await ana('GET', `/v1/kids/${IVY.id}/home`)).body.due).toEqual([]);
+	expect(course.next_due).toEqual({ due_at: iso(NOON + 24 * H) });
+	expect(
+		await ana('POST', meds, { name: 'x', dose: 'y', schedule: { kind: 'times', times: [null] } })
+	).toMatchObject(invalid('schedule'));
+	const clock = await fetch(`${STUB_URL}/__clock`, {
+		method: 'POST',
+		body: JSON.stringify({ offset_seconds: 1.5 })
+	});
+	expect(clock.status).toBe(400);
 });

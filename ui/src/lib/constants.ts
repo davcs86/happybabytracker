@@ -60,10 +60,9 @@ export const MAX_SCHEDULE_TIMES = 12;
 // MinEveryHours and MaxEveryHours.
 export const MIN_EVERY_HOURS = 1;
 export const MAX_EVERY_HOURS = 168;
-// MinReminderOverdueMinutes, MaxReminderOverdueMinutes and DefaultReminderOverdueMinutes.
+// MinReminderOverdueMinutes and MaxReminderOverdueMinutes.
 export const MIN_REMINDER_OVERDUE_MINUTES = 5;
 export const MAX_REMINDER_OVERDUE_MINUTES = 1440;
-export const DEFAULT_REMINDER_OVERDUE_MINUTES = 60;
 // Growth (constants.go and growth.Sources): grams for weight, millimetres for length and head.
 export const MEASURES = ['weight', 'length', 'head', 'bmi'] as const satisfies readonly Measure[];
 export const GROWTH_SOURCES = ['who', 'cdc'] as const satisfies readonly GrowthSourceId[];
@@ -229,11 +228,6 @@ export const SYMPTOM_LABEL: Record<SymptomName, string> = {
 	other: 'Other'
 };
 export const SEVERITIES = ['mild', 'moderate', 'severe'] as const satisfies readonly Severity[];
-export const SEVERITY_LABEL: Record<Severity, string> = {
-	mild: 'Mild',
-	moderate: 'Moderate',
-	severe: 'Severe'
-};
 export const TEMP_METHODS = [
 	'oral',
 	'rectal',

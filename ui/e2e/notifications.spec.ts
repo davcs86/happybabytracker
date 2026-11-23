@@ -21,6 +21,9 @@ const SUBSCRIBE = `${PAGE}/subscribe`;
 const DEVICES = '/v1/me/push-devices';
 const DEVICE_COOKIE = 'hbt_push_device';
 const OFF_SENTENCE = 'Web Push is not configured on this server.';
+const OTHER_KEY_SENTENCE = 'Turn notifications off and on again on this device.';
+const RESEND_FAILED =
+	'This device could not be checked with the server. Reload the page to try again.';
 const IOS_SENTENCE =
 	'On iPhone and iPad, add this app to your Home Screen first, then open it from there to turn on notifications';
 const NTFY_SENTENCE =
@@ -37,7 +40,7 @@ test.beforeEach(async () => {
 	await resetStub();
 });
 
-type FakeState = { visible?: boolean; key?: string; endpoint?: string };
+type FakeState = { visible?: boolean; key?: string; endpoint?: string; noOptions?: boolean };
 
 // A browser subscription that survives navigations (localStorage) and records the key it was made with.
 async function fakePush(context: BrowserContext, n = 'browser'): Promise<Sub> {
@@ -59,7 +62,9 @@ async function fakePush(context: BrowserContext, n = 'browser'): Promise<Sub> {
 			const key = s.key ? Uint8Array.from(atob(s.key), (c) => c.charCodeAt(0)).buffer : null;
 			return {
 				endpoint,
-				options: { userVisibleOnly: s.visible ?? true, applicationServerKey: key },
+				...(s.noOptions
+					? {}
+					: { options: { userVisibleOnly: s.visible ?? true, applicationServerKey: key } }),
 				toJSON: () => ({ endpoint, expirationTime: null, keys: sub.keys }),
 				unsubscribe: async () => {
 					localStorage.removeItem('fake-push');
@@ -391,6 +396,44 @@ test.describe('Web Push on', () => {
 		await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
 		expect(sent).toEqual([]);
 		expect(await pushWrites(before)).toEqual([]);
+		await expect(region(page, 'This device').getByRole('alert')).toHaveText(OTHER_KEY_SENTENCE);
+	});
+
+	test('a subscription without options is sent again on load', async ({ page, context }) => {
+		await fakePush(context);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		await setFakeState(page, { ...(await fakeState(page)), noOptions: true });
+		const resent = page.waitForResponse((r) => new URL(r.url()).pathname === SUBSCRIBE);
+		await open(page);
+		expect((await resent).status()).toBe(204);
+		await expect(region(page, 'This device').getByRole('alert')).toHaveCount(0);
+	});
+
+	test('a re-send that fails on a visit has its own sentence', async ({ page, context }) => {
+		await fakePush(context);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		await page.route(`**${SUBSCRIBE}`, (route) =>
+			route.fulfill({ status: 502, contentType: 'application/json', body: '{}' })
+		);
+		await open(page);
+		await expect(region(page, 'This device').getByRole('alert')).toHaveText(RESEND_FAILED);
+	});
+
+	test('a refused kid on the device form shows its message', async ({ page, context }) => {
+		await fakePush(context);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		const here = region(page, 'This device');
+		const mia = here.getByLabel(MIA.name);
+		await mia.evaluate((el: HTMLInputElement) => (el.value = 'not an id'));
+		await mia.check();
+		await submit(here.getByRole('button', { name: 'Save' }));
+		await expect(page.getByRole('alert')).toHaveText('Choose from your children');
 	});
 
 	test('a renewed subscription keeps the name and the kids, and the old device goes', async ({

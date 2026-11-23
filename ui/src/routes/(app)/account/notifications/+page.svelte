@@ -25,6 +25,9 @@
 		"Notifications are blocked for this site. Allow them in the browser's settings, then try again.";
 	const NOT_TURNED_ON = 'Notifications could not be turned on. Try again.';
 	const DISMISSED = 'Notifications were not turned on. You can try again.';
+	const OTHER_KEY = 'Turn notifications off and on again on this device.';
+	const RESEND_FAILED =
+		'This device could not be checked with the server. Reload the page to try again.';
 
 	// pending until mounted: the enable button exists only once JavaScript runs.
 	let support = $state<'pending' | 'ready' | 'ios' | 'unsupported'>('pending');
@@ -38,7 +41,9 @@
 		(form?.action === 'device' || form?.action === 'ntfy_kids') && form && 'saved' in form
 	);
 	const pageError = $derived(
-		form && 'field' in form && !form.field && 'message' in form ? form.message : null
+		form && 'field' in form && (!form.field || form.field === 'kid') && 'message' in form
+			? form.message
+			: null
 	);
 	const deviceForm = $derived(
 		form?.action === 'device' && 'values' in form && form.device === current?.id ? form : null
@@ -84,7 +89,7 @@
 			const registration = await navigator.serviceWorker.ready;
 			let sub = await registration.pushManager.getSubscription();
 			// The browser refuses a second key while the old subscription exists.
-			if (sub && isOtherKey(sub.options.applicationServerKey, serverKey)) {
+			if (sub && isOtherKey(sub.options?.applicationServerKey, serverKey)) {
 				await sub.unsubscribe();
 				sub = null;
 			}
@@ -107,11 +112,16 @@
 		try {
 			const registration = await navigator.serviceWorker.ready;
 			const sub = await registration.pushManager.getSubscription();
+			if (!sub) return;
 			// A subscription under another key never delivers: it is not kept registered.
-			if (!sub || isOtherKey(sub.options.applicationServerKey, base64UrlToBytes(key))) return;
+			if (isOtherKey(sub.options?.applicationServerKey, base64UrlToBytes(key))) {
+				problem = OTHER_KEY;
+				return;
+			}
 			if (await send(sub)) await invalidateAll();
+			else problem = RESEND_FAILED;
 		} catch {
-			problem = NOT_TURNED_ON;
+			problem = RESEND_FAILED;
 		}
 	}
 

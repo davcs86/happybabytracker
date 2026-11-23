@@ -61,6 +61,12 @@ describe('readKidForm overdue minutes', () => {
 		expect(r.values.reminderOverdue).toBe('');
 	});
 
+	it('refuses a blank value that arrives without its original', () => {
+		const r = readKidForm(form({ ...kid, reminder_overdue_minutes: '' }));
+		expect(r.field).toBe('reminder_overdue_minutes');
+		expect(r.input).toBeNull();
+	});
+
 	it('validates a value that arrives without its original', () => {
 		expect(readKidForm(form({ ...kid, reminder_overdue_minutes: '15' })).input).toMatchObject({
 			reminderOverdueMinutes: 15

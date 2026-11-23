@@ -7,6 +7,8 @@ import {
 	IVY,
 	LEO,
 	MIA,
+	STUB_TOKEN,
+	STUB_URL,
 	fakePushKeys,
 	receivedRequests,
 	resetStub,
@@ -62,8 +64,8 @@ test('push devices answer a parent only: no session 401, admin 403', async () =>
 	] as const) {
 		expect((await admin(method, path, method === 'PUT' ? {} : undefined)).status).toBe(403);
 	}
-	const res = await fetch(`http://127.0.0.1:4181${DEVICES}`, {
-		headers: { authorization: 'Bearer fake-internal-api-token-000000000000' }
+	const res = await fetch(`${STUB_URL}${DEVICES}`, {
+		headers: { authorization: `Bearer ${STUB_TOKEN}` }
 	});
 	expect(res.status).toBe(401);
 });

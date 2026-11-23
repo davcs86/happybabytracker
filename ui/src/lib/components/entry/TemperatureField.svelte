@@ -28,6 +28,7 @@
 					name="temperature_unit"
 					class={SELECT_CLASS}
 					aria-invalid={error('temperature') ? 'true' : undefined}
+					aria-describedby={error('temperature') ? 'entry-temperature-error' : undefined}
 					value={values.temperature_unit as string}
 				>
 					{#each TEMP_UNITS as unit (unit)}

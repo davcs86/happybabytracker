@@ -107,7 +107,8 @@ export function readKidForm(form: FormData): {
 	// Unchanged against the hidden original is checked before the range: a stored value outside it must not block.
 	const overdueChanged =
 		form.get('reminder_overdue_minutes') !== null &&
-		values.reminderOverdue !== values.reminderOverdueOriginal;
+		(form.get('reminder_overdue_minutes_original') === null ||
+			values.reminderOverdue !== values.reminderOverdueOriginal);
 	const overdue = overdueChanged ? overdueMinutes(values.reminderOverdue) : null;
 	if (overdueChanged && overdue === null) {
 		return { values, input: null, field: 'reminder_overdue_minutes' };

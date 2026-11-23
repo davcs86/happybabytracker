@@ -38,7 +38,7 @@ const MS_PER_SECOND = 1000;
 // The minutes a finished session's seconds pre-fill; never rounded up, so an unchanged edit fits its span.
 export const floorMinutes = (seconds: number) => Math.floor(seconds / SECONDS_PER_MINUTE);
 
-// The route matcher admits only the six tracker names, so a path parameter that got here is one.
+// The route matcher admits only the seven tracker names, so a path parameter that got here is one.
 export const trackerOf = (param: string) => param as TrackerKind;
 
 const POINT_KINDS: readonly TrackerKind[] = ['bottles', 'diapers', 'meals', 'symptoms'];

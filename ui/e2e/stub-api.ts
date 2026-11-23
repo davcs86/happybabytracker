@@ -3150,14 +3150,22 @@ function syncReminders(state: State) {
 	state.syncedAt = t;
 }
 
-// markDone in store/doses.go: the latest row due by givenAt + DoseDoneLead, unless givenAt reaches the following
-// occurrence; then the course keeps a not-done next row.
+// markDone in store/doses.go: the latest row due by givenAt + DoseDoneLead, passing over a done row the current
+// timing does not produce, unless givenAt reaches the following occurrence; then the course keeps a not-done next row.
 function markDone(state: State, c: CourseStub, givenAt: number) {
+	if (c.schedule.kind === 'none') return;
+	const zone = zoneOf(state, c);
+	const current = { ...c, active: true };
 	const r = state.reminders
-		.filter((x) => x.medicationId === c.id && x.dueAt <= givenAt + DOSE_DONE_LEAD_S)
+		.filter(
+			(x) =>
+				x.medicationId === c.id &&
+				x.dueAt <= givenAt + DOSE_DONE_LEAD_S &&
+				(x.state !== 'done' || occurrences(current, zone, x.dueAt, x.dueAt).length === 1)
+		)
 		.sort((a, b) => b.dueAt - a.dueAt)[0];
-	if (!r || (r.state !== 'pending' && r.state !== 'expired') || c.schedule.kind === 'none') return;
-	const following = nextOccurrence(c, zoneOf(state, c), r.dueAt);
+	if (!r || (r.state !== 'pending' && r.state !== 'expired')) return;
+	const following = nextOccurrence(c, zone, r.dueAt);
 	if (following !== null && givenAt >= following) return;
 	r.state = 'done';
 	materialiseCourse(state, c, now());
@@ -3278,19 +3286,15 @@ function mergeDose(d: DoseStub, body: Body, c: Ctx): string {
 	return d.note === null || runes(d.note) <= NOTE_MAX_LEN ? '' : 'note';
 }
 
-// DueEntries and medicationDue: pending or expired rows of active courses before the end of the kid-local day,
-// a course's latest past one only while now < min(due + the kid's minutes, the next occurrence).
+// DueEntries and medicationDue: pending or expired rows of active courses before the end of the kid-local day, a past
+// one only as its course's latest past row in any state and while now < min(due + the kid's minutes, the next one).
 function medicationDue(state: State, kid: KidRow) {
 	if (!moduleStates(state, kid).some((m) => m.module === 'medication' && m.enabled)) return [];
 	const t = now();
 	const dayEnd = dayEndOf(kid.timeZone, t);
 	const rows = state.reminders
 		.filter(
-			(r) =>
-				r.kidId === kid.id &&
-				(r.state === 'pending' || r.state === 'expired') &&
-				r.dueAt < dayEnd &&
-				r.dueAt > t - kid.reminderOverdueMinutes * 60
+			(r) => r.kidId === kid.id && r.dueAt < dayEnd && r.dueAt > t - kid.reminderOverdueMinutes * 60
 		)
 		.map((r) => ({ r, c: state.medications.find((m) => m.id === r.medicationId) as CourseStub }))
 		.filter((x) => x.c.active)
@@ -3301,6 +3305,7 @@ function medicationDue(state: State, kid: KidRow) {
 	});
 	return rows
 		.filter((x, i) => {
+			if (x.r.state !== 'pending' && x.r.state !== 'expired') return false;
 			if (t < x.r.dueAt) return true;
 			const next = nextOccurrence(x.c, kid.timeZone, x.r.dueAt);
 			return latest.get(x.c.id) === i && (next === null || t < next);
