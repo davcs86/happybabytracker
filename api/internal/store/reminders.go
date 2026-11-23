@@ -376,8 +376,8 @@ type prependScanner struct {
 
 func (p prependScanner) Scan(dest ...any) error { return p.row.Scan(append(p.head, dest...)...) }
 
-// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping a past one
-// only while now < min(due + overdue, Next), by due time then course id. The caller gates the medication module.
+// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping only a course's
+// latest past one and only while now < min(due + overdue, Next), by due time then course id. The caller gates the module.
 func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Duration, now, dayEnd time.Time) ([]DueEntry, error) {
 	var out []DueEntry
 	err := s.inReadTx(ctx, func(q querier) error {
@@ -386,7 +386,9 @@ func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Durat
 		if err != nil {
 			return err
 		}
-		return eachRow(ctx, q, `SELECT r.id, r.due_at, r.state, `+prefixed("m.", medicationColumns)+`
+		var rows []DueEntry
+		latest := map[string]int{}
+		err = eachRow(ctx, q, `SELECT r.id, r.due_at, r.state, `+prefixed("m.", medicationColumns)+`
 			FROM reminders r JOIN medications m ON m.id = r.medication_id
 			WHERE r.kid_id = ? AND m.active = 1 AND r.state IN ('pending', 'expired') AND r.due_at < ? AND r.due_at > ?
 			ORDER BY r.due_at, m.id`, []any{kidID, dayEnd.Unix(), now.Add(-overdue).Unix()}, func(row rowScanner) error {
@@ -402,12 +404,21 @@ func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Durat
 			if next, ok := schedule.Next(timingOf(v).course(), loc, e.DueAt); ok {
 				e.Next = next
 			}
-			if !now.Before(e.DueAt) && !e.Next.IsZero() && !now.Before(e.Next) {
-				return nil
+			if !now.Before(e.DueAt) {
+				latest[e.MedicationID] = len(rows)
 			}
-			out = append(out, e)
+			rows = append(rows, e)
 			return nil
 		})
+		if err != nil {
+			return err
+		}
+		for i, e := range rows {
+			if now.Before(e.DueAt) || (latest[e.MedicationID] == i && (e.Next.IsZero() || now.Before(e.Next))) {
+				out = append(out, e)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
