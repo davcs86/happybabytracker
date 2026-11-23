@@ -1,6 +1,9 @@
 package config
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -112,5 +115,98 @@ func TestLoadRefuses(t *testing.T) {
 				t.Errorf("error %q contains the value", err)
 			}
 		})
+	}
+}
+
+// testVAPIDKey is generated per test run, never the edge's key.
+func testVAPIDKey(t *testing.T) string {
+	t.Helper()
+	k, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(k.Bytes())
+}
+
+const okSubject = "https://happybaby.private.example.org"
+
+func TestLoadVAPIDOff(t *testing.T) {
+	for name, o := range map[string]map[string]string{
+		"unset": nil,
+		"empty": {"VAPID_PRIVATE_KEY": "", "VAPID_SUBJECT": "", "HBT_ALLOW_FAKE_PUSH": ""},
+	} {
+		cfg, err := Load(env(o))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if cfg.VAPIDKey != nil || cfg.VAPIDSubject != "" || cfg.AllowFakePush {
+			t.Fatalf("%s: push config %+v, want off", name, cfg)
+		}
+	}
+}
+
+func TestLoadVAPIDOn(t *testing.T) {
+	key := testVAPIDKey(t)
+	for _, fake := range []string{"", "1"} {
+		cfg, err := Load(env(map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": okSubject, "HBT_ALLOW_FAKE_PUSH": fake}))
+		if err != nil {
+			t.Fatalf("fake %q: %v", fake, err)
+		}
+		if cfg.VAPIDKey == nil {
+			t.Fatalf("fake %q: key not loaded", fake)
+		}
+		if b, err := cfg.VAPIDKey.Bytes(); err != nil || base64.RawURLEncoding.EncodeToString(b) != key {
+			t.Fatalf("fake %q: key differs: %v", fake, err)
+		}
+		if cfg.VAPIDSubject != okSubject || cfg.AllowFakePush != (fake == "1") {
+			t.Fatalf("fake %q: got subject %q fake %v", fake, cfg.VAPIDSubject, cfg.AllowFakePush)
+		}
+	}
+}
+
+func TestLoadVAPIDRefuses(t *testing.T) {
+	key := testVAPIDKey(t)
+	cases := []struct {
+		name, variable string
+		env            map[string]string
+	}{
+		{"only the key", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key}},
+		{"only the subject", "VAPID_PRIVATE_KEY", map[string]string{"VAPID_SUBJECT": okSubject}},
+		{"malformed key", "VAPID_PRIVATE_KEY", map[string]string{"VAPID_PRIVATE_KEY": key[:42], "VAPID_SUBJECT": okSubject}},
+		{"padded key", "VAPID_PRIVATE_KEY", map[string]string{"VAPID_PRIVATE_KEY": key + "=", "VAPID_SUBJECT": okSubject}},
+		{"zero key", "VAPID_PRIVATE_KEY", map[string]string{"VAPID_PRIVATE_KEY": strings.Repeat("A", 43), "VAPID_SUBJECT": okSubject}},
+		{"http subject", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "http://happybaby.example.org"}},
+		{"mailto subject", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "mailto:zq@example.org"}},
+		{"subject userinfo", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "https://zquser@happybaby.example.org"}},
+		{"subject query", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "https://happybaby.example.org?zq=1"}},
+		{"subject fragment", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "https://happybaby.example.org#zq"}},
+		{"subject no host", "VAPID_SUBJECT", map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": "https://"}},
+		{"fake without VAPID", "HBT_ALLOW_FAKE_PUSH", map[string]string{"HBT_ALLOW_FAKE_PUSH": "1"}},
+		{"fake with only the key", "VAPID_SUBJECT", map[string]string{"HBT_ALLOW_FAKE_PUSH": "1", "VAPID_PRIVATE_KEY": key}},
+		{"fake true", "HBT_ALLOW_FAKE_PUSH", map[string]string{"HBT_ALLOW_FAKE_PUSH": "true", "VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": okSubject}},
+		{"fake 0", "HBT_ALLOW_FAKE_PUSH", map[string]string{"HBT_ALLOW_FAKE_PUSH": "0"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(env(tc.env))
+			if err == nil {
+				t.Fatal("Load accepted an invalid push configuration")
+			}
+			if !strings.Contains(err.Error(), tc.variable) {
+				t.Errorf("error %q does not name %s", err, tc.variable)
+			}
+			for k, v := range tc.env {
+				if k != "HBT_ALLOW_FAKE_PUSH" && strings.Contains(err.Error(), v) {
+					t.Errorf("error %q contains the value of %s", err, k)
+				}
+			}
+			if strings.Contains(err.Error(), "true") || strings.Contains(err.Error(), key[:8]) {
+				t.Errorf("error %q contains a value", err)
+			}
+		})
+	}
+	_, err := Load(env(map[string]string{"VAPID_PRIVATE_KEY": key}))
+	if want := "VAPID_SUBJECT is required when VAPID_PRIVATE_KEY is set"; err == nil || err.Error() != want {
+		t.Fatalf("only the key: %v, want %q", err, want)
 	}
 }

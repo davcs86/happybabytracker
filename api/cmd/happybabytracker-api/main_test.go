@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -217,5 +223,81 @@ func TestRunRefusesToStartOnACollision(t *testing.T) {
 	defer s.Close()
 	if _, ok, err := s.MetaGet(ctx, "admin_fingerprint"); err != nil || ok {
 		t.Fatalf("fingerprint recorded despite the refusal: %v %v", ok, err)
+	}
+}
+
+func baseEnv(dir string) map[string]string {
+	return map[string]string{
+		"ADMIN_USERNAME": "root-admin", "ADMIN_PASSWORD": "admin-password-AAAAAAAA", "DATA_DIR": dir,
+		"INTERNAL_API_TOKEN": "internal-token-0123456789abcdef0123456789abcdef", "PUBLIC_ORIGIN": "http://localhost:9212",
+	}
+}
+
+// pushLine returns the value of "push" on the one start line that carries it.
+func pushLine(t *testing.T, out string) string {
+	t.Helper()
+	var got []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("log line %q: %v", line, err)
+		}
+		if v, ok := m["push"]; ok {
+			got = append(got, fmt.Sprint(v))
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("push log lines %v in %q, want exactly one", got, out)
+	}
+	return got[0]
+}
+
+func TestStartWithoutVAPIDLogsPushOff(t *testing.T) {
+	var out bytes.Buffer
+	env := baseEnv(t.TempDir())
+	a, err := start(context.Background(), func(k string) string { return env[k] }, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.store.Close()
+	if a.handler == nil {
+		t.Fatal("no handler")
+	}
+	if got := pushLine(t, out.String()); got != "off" {
+		t.Fatalf("push = %q, want off", got)
+	}
+	if strings.Contains(out.String(), "listening") {
+		t.Fatal("start listened")
+	}
+}
+
+func TestStartWithVAPIDLogsPushOn(t *testing.T) {
+	k, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := base64.RawURLEncoding.EncodeToString(k.Bytes())
+	var out bytes.Buffer
+	env := baseEnv(t.TempDir())
+	env["VAPID_PRIVATE_KEY"], env["VAPID_SUBJECT"] = key, "https://happybaby.private.example.org"
+	a, err := start(context.Background(), func(k string) string { return env[k] }, &out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.store.Close()
+	if got := pushLine(t, out.String()); got != "on" {
+		t.Fatalf("push = %q, want on", got)
+	}
+	if strings.Contains(out.String(), key) || strings.Contains(out.String(), "happybaby.private") {
+		t.Fatal("start logged a VAPID value")
+	}
+}
+
+func TestStartRefusesHalfSetVAPID(t *testing.T) {
+	env := baseEnv(t.TempDir())
+	env["VAPID_SUBJECT"] = "https://happybaby.private.example.org"
+	_, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard)
+	if want := "VAPID_PRIVATE_KEY is required when VAPID_SUBJECT is set"; err == nil || err.Error() != want {
+		t.Fatalf("start: %v, want %q", err, want)
 	}
 }
