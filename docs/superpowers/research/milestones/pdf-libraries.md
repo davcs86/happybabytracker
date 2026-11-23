@@ -66,6 +66,10 @@ delta (+635 KB) for option 1′.
   600–900 lines plus tests: two more implementer tasks than option 1′, and our own PDF bugs to find.
   The prototype shows the file format side is small. Layout is the real work.
 
+- **Later finding, with an embedded TrueType font** (`AddUTF8FontFromBytes`, after the owner's
+  answer): a rune above U+FFFF (an emoji) **panics** in `Output`, so the app must filter such runes
+  first. Subsetting is automatic. Details and measurements are in `noto-sans-font.md`.
+
 ## 3. Licence compatibility
 
 | Item | Licence | Compatible with the repo's MIT code and public images |

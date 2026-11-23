@@ -5,6 +5,11 @@ experiments, run on **2026-11-23** in a scratch directory outside the repository
 poppler's `pdftotext` and `pdfinfo` from the session's environment (they are not in CI's
 runner or the images).
 
+> **Superseded in part, 2026-11-23:** the owner chose to embed a Unicode font, not to use WinAnsi with
+> `?`. Sections 1 and 4 below describe the core-font option that was not chosen. The chosen design and
+> its measurements are in `noto-sans-font.md`: text is written as 2-byte code units, and the smoke
+> strips NULs before `grep`.
+
 ## 1. Fonts and characters
 
 - The PDF standard 14 fonts (Times, Helvetica, Courier in four styles each, Symbol, ZapfDingbats)
