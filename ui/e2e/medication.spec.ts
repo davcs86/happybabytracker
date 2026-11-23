@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { MEDICATION_TEXT_MAX_LEN } from '../src/lib/constants.js';
-import { instantToLocalInput } from '../src/lib/time-zone.js';
+import { whenLabel } from '../src/lib/medication.js';
+import { instantToLocalInput, todayInOrUtc } from '../src/lib/time-zone.js';
 import {
 	expectAccessible,
 	expectFieldError,
@@ -36,8 +37,9 @@ const rfc = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
 // An instant on a whole minute, so a datetime-local input shows it exactly.
 const minute = (offset: number) =>
 	rfc(Math.floor(Date.now() / MS_PER_MINUTE) * MS_PER_MINUTE + offset * MS_PER_MINUTE);
-const clock = (instant: unknown, zone = 'UTC') =>
-	instantToLocalInput(String(instant), zone).slice(11);
+// What the page shows for an instant: a bare time on the kid's today, else with the date.
+const shown = (instant: unknown, zone = 'UTC') =>
+	whenLabel(String(instant), zone, todayInOrUtc(zone));
 const ymd = (unixS: number) => new Date(unixS * 1000).toISOString().slice(0, 10);
 const realNow = () => Math.floor(Date.now() / 1000);
 // Noon UTC tomorrow: Mia and Ivy live in UTC, so it is never the UI's own today.
@@ -164,10 +166,10 @@ test('the one-tap form logs a dose now and the page shows when it was', async ({
 	const [first] = await doses(api);
 	expect(await written('POST', DOSES())).toEqual({ medication: calpol.id });
 	expect(first).toMatchObject({ medication: calpol.id, amount: null });
-	await expect(card(page, 'Calpol')).toContainText(`Last dose logged at ${clock(first.given_at)}`);
+	await expect(card(page, 'Calpol')).toContainText(`Last dose logged at ${shown(first.given_at)}`);
 	await expect(card(page, 'Calpol')).not.toContainText('No dose logged yet');
 	await expect(
-		page.getByRole('link', { name: new RegExp(`^Calpol, ${clock(first.given_at)}`) })
+		page.getByRole('link', { name: new RegExp(`^Calpol, ${shown(first.given_at)}`) })
 	).toBeVisible();
 	await expectAccessible(page);
 
@@ -403,7 +405,7 @@ for (const [who, role] of [
 		await onMedication(page, LEO.id);
 		const [made] = await doses(api, LEO.id);
 		await expect(card(page, 'Calpol')).toContainText(
-			`Last dose logged at ${clock(made.given_at, 'Europe/Madrid')}`
+			`Last dose logged at ${shown(made.given_at, 'Europe/Madrid')}`
 		);
 		await page.getByRole('link', { name: /^Calpol, / }).click();
 		await expect(field(page, 'Given at')).toHaveValue(
@@ -451,6 +453,73 @@ test('a dose gone under an open edit form is the 404 page', async ({ page }) => 
 	expect((await api('DELETE', `${DOSES()}/${dose.id}`)).status).toBe(204);
 	await field(page, 'Note').fill('too late');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+});
+
+const deleteDose = (page: Page) =>
+	submit(page.getByRole('button', { name: 'Yes, delete this dose' }));
+
+test('a dose is deleted from its edit page behind the confirm, and the last dose follows', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, { name: 'Calpol' });
+	const older = await seedDose(api, calpol.id, { given_at: minute(-60) });
+	const newer = await seedDose(api, calpol.id, { given_at: minute(-10) });
+	await signIn(page, ANA);
+	await page.goto(doseUrl(newer.id));
+	await expect(page.getByRole('button', { name: 'Yes, delete this dose' })).toBeHidden();
+	await page.getByText('Delete this dose', { exact: true }).click();
+	await expect(
+		page.getByText('This removes the dose for everyone with access to Mia.')
+	).toBeVisible();
+	await expectAccessible(page);
+	await deleteDose(page);
+	await onMedication(page);
+	expect((await doses(api)).map((d) => d.id)).toEqual([older.id]);
+	await expect(card(page, 'Calpol')).toContainText(`Last dose logged at ${shown(older.given_at)}`);
+	await expect(
+		page.getByRole('region', { name: 'Recent doses' }).getByRole('listitem')
+	).toHaveCount(1);
+	await deleteDoseThenNone(page, api, older.id);
+});
+
+async function deleteDoseThenNone(page: Page, api: Api, id: unknown) {
+	await page.goto(doseUrl(id));
+	await page.getByText('Delete this dose', { exact: true }).click();
+	await deleteDose(page);
+	await onMedication(page);
+	expect(await doses(api)).toEqual([]);
+	await expect(card(page, 'Calpol')).toContainText('No dose logged yet');
+}
+
+for (const [who, role] of [
+	[ANA, 'caregiver'],
+	[CLEO, 'guardian']
+] as const) {
+	test(`a ${role} deletes a dose`, async ({ page }) => {
+		const api = await stubAs(who);
+		const course = await seedCourse(api, { name: 'Calpol' }, LEO.id);
+		const dose = await seedDose(api, course.id, {}, LEO.id);
+		await signIn(page, who);
+		await page.goto(doseUrl(dose.id, LEO.id));
+		await page.getByText('Delete this dose', { exact: true }).click();
+		await deleteDose(page);
+		await onMedication(page, LEO.id);
+		expect(await doses(api, LEO.id)).toEqual([]);
+		expect(await writes('DELETE', `${DOSES(LEO.id)}/${dose.id}`)).toHaveLength(1);
+	});
+}
+
+test('a dose deleted under an open delete confirm is the 404 page', async ({ page }) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, { name: 'Calpol' });
+	const dose = await seedDose(api, calpol.id);
+	await signIn(page, ANA);
+	await page.goto(doseUrl(dose.id));
+	await page.getByText('Delete this dose', { exact: true }).click();
+	expect((await api('DELETE', `${DOSES()}/${dose.id}`)).status).toBe(204);
+	await page.getByRole('button', { name: 'Yes, delete this dose' }).click();
 	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 });
 
@@ -558,6 +627,22 @@ test.describe('without JavaScript', () => {
 		await saveDose(page);
 		await onMedication(page);
 		expect(await written('PATCH', path)).toEqual({ amount: '5 ml' });
+	});
+
+	test('delete a dose in two steps: the button exists only inside the opened details', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const calpol = await seedCourse(api, { name: 'Calpol' });
+		const dose = await seedDose(api, calpol.id);
+		await signIn(page, ANA);
+		await page.goto(doseUrl(dose.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this dose' })).toBeHidden();
+		await page.getByText('Delete this dose', { exact: true }).click();
+		await deleteDose(page);
+		await onMedication(page);
+		expect(await doses(api)).toEqual([]);
+		await expect(card(page, 'Calpol')).toContainText('No dose logged yet');
 	});
 
 	test('the ended and inactive courses open and close without a script', async ({ page }) => {

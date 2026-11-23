@@ -10,6 +10,7 @@
 	let { data, form }: PageProps = $props();
 
 	const save = $derived(form?.form === 'save' ? form : null);
+	const del = $derived(form?.form === 'delete' ? form : null);
 	// The originals are the loaded ones, never the posted.
 	const values = $derived({
 		...data.values,
@@ -66,3 +67,18 @@
 		<a href={medication} class="text-sm underline">Cancel</a>
 	</div>
 </form>
+
+<!-- Two steps without JavaScript: the button exists only inside the opened details.
+     A failure reopens it, so its message shows after a full-page POST too. -->
+<details class="mt-6 max-w-md rounded-lg border p-3" open={!!del?.message}>
+	<summary class="cursor-pointer text-sm font-medium">Delete this dose</summary>
+	<form method="POST" action="?/delete" class="mt-3 flex flex-col gap-3" use:enhance>
+		{#if del?.message}
+			<p class={ERROR_CLASS} role="alert">{del.message}</p>
+		{/if}
+		<p class="text-sm">This removes the dose for everyone with access to {data.kid.name}.</p>
+		<Button type="submit" variant="outline" class="self-start border-destructive text-destructive"
+			>Yes, delete this dose</Button
+		>
+	</form>
+</details>

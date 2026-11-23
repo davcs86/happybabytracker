@@ -7,7 +7,7 @@ import {
 	doseFieldFailure,
 	readDoseForm
 } from '#lib/server/medication-form.js';
-import { failPage } from '#lib/server/outcome.js';
+import { failAction, failPage } from '#lib/server/outcome.js';
 import type { Actions, PageServerLoad } from './$types';
 
 // The kid and the dose, read together: no grant, an unknown dose and another kid's dose are the same 404 page.
@@ -40,6 +40,12 @@ export const actions: Actions = {
 		if (!input) return doseFieldFailure(values, field!, extra);
 		const r = await locals.api.doses.update(kid.id, params.dose, input);
 		if (!r.ok) return doseApiFailure(values, r, extra);
+		redirect(303, medicationPath(kid.id));
+	},
+	delete: async ({ locals, params }) => {
+		const { kid } = await stored(locals, params);
+		const r = await locals.api.doses.remove(kid.id, params.dose);
+		if (!r.ok) return failAction(r, { form: 'delete' as const });
 		redirect(303, medicationPath(kid.id));
 	}
 };
