@@ -13,7 +13,7 @@ in a new session, then the design and the plan of the next item.
 | Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done, merged to `main` (PR #4) |
 | Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done, merged to `main` (PR #6) |
 | Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done, merged to `main` (PR #7) |
-| Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done on branch `ccr-174d8c4e-jjczdt`, not pushed or merged; its PR goes to `main` and is merged only with the owner's go-ahead |
+| Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done on branch `ccr-174d8c4e-jjczdt`; its PR goes to `main`, merged only with the owner's go-ahead |
 | Plan 6, sickness, medication, reminders, Web Push, ntfy | not in this repository yet | a draft and its research exist outside this branch and will be added by a later PR; ask the owner. Plan 5.1 takes migration 0005, so the draft's migration becomes 0006 when it is rebased |
 | Plan 7, milestones and PDF export | not written | see "Order of work" below |
 
@@ -23,10 +23,9 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. The owner reviews plan 5.1's PR (from `ccr-174d8c4e-jjczdt` to `main`; the remote branch holds only
-   merged history, so the first push is a force-with-lease) and decides whether to merge it. After the
-   merge, CI publishes both images. The edge's `bump-happybabytracker` PR then changes the two pins, and a
-   deploy makes plan 5.1 live. Plan 5.1 changes `api/` and `ui/` sources only (no Dockerfile or dependency
+1. The owner reviews plan 5.1's PR (from `ccr-174d8c4e-jjczdt` to `main`, merged only with the owner's
+   go-ahead) and decides whether to merge it. After the merge, CI publishes both images. The edge's
+   `bump-happybabytracker` PR then changes the two pins, and a deploy makes plan 5.1 live. Plan 5.1 changes `api/` and `ui/` sources only (no Dockerfile or dependency
    change) and nothing else on the edge: no new variable, volume or notice file. Whether plan 5's own bump
    and deploy happened is not recorded here.
 2. Plan 6 (sickness, medication, the reminder worker, Web Push, ntfy): ask the owner for the draft and
@@ -124,7 +123,7 @@ simple forms and every older entry are unchanged. Its open values are in the pla
 3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
 4. Growth — done.
 5. Vaccination — done (PR #7, merged).
-5.1. Advanced bottle, nursing and pumping logging — done on its branch, not merged.
+5.1. Advanced bottle, nursing and pumping logging — done on its branch; its PR goes to `main`, merged only with the owner's go-ahead.
 6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
 7. Milestones and PDF export.
 
@@ -231,8 +230,8 @@ log.
 - The 1.03 g/ml density is the owner's figure, used as the app's own constant. A check of public sources on
   2026-11-23 found no measured human-milk mean; one study's working range was 0.9975–1.0566 g/ml, and
   hospital test-weighing protocols use 1 g as 1 ml. The app calls it an approximation, not measured.
-- The accuracy sentence rests on one validation study of test weighing, whose single-feed differences
-  ran from roughly −12 to +15 ml. A test-weighing estimate is not a clinical measure.
+- The accuracy sentence rests on validation studies of test weighing, whose published single-feed
+  differences ranged from about −12 to +15 ml. A test-weighing estimate is not a clinical measure.
 - The owner's observation that weight loss after nursing is associated with latching problems is not
   encoded anywhere: the app shows no estimate in that case and says nothing about it.
 

@@ -180,5 +180,5 @@ ALTER TABLE nursing_sessions ADD COLUMN weight_before_g INTEGER;   -- and weight
 
 ## Not verified (state in the PR)
 
-- The 1.03 g/ml density is the owner's figure, used as the app's own constant; no source was checked and a test-weighing estimate is not a clinical measure.
+- The 1.03 g/ml density is the owner's figure, used as the app's own constant. Public sources were checked on 2026-11-23 and found no measured human-milk mean (one study's working range 0.9975–1.0566 g/ml; hospital test-weighing protocols use 1 g ≈ 1 ml), so the figure stays an approximation, and a test-weighing estimate is not a clinical measure.
 - The owner's observation that weight loss after nursing is associated with latching problems is not encoded anywhere: the app shows no estimate in that case and says nothing about it.

@@ -166,14 +166,8 @@ func (s *Store) inTx(ctx context.Context, f func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
-// queryer is what *sql.DB and *sql.Tx both offer for reading.
-type queryer interface {
-	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
 // inReadTx runs f on one snapshot of the read pool, so reads that belong together never straddle a write.
-func (s *Store) inReadTx(ctx context.Context, f func(q queryer) error) error {
+func (s *Store) inReadTx(ctx context.Context, f func(q querier) error) error {
 	tx, err := s.r.BeginTx(ctx, nil)
 	if err != nil {
 		return err

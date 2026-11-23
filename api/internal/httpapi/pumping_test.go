@@ -582,6 +582,17 @@ func TestSideBesideSidesMustMatch(t *testing.T) {
 	}
 }
 
+func TestPatchSidesWithMatchingSide(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.pumpingPath(kid), ana, advancedPumpingBody(nil)))["id"].(string)
+
+	rec := k.do(http.MethodPatch, k.pumpingPath(kid, id), ana, map[string]any{"sides": sourcesBody("ml", map[string]int{"right": 90}), "side": "right"})
+	if m := bodyMap(t, rec); rec.Code != http.StatusOK || m["side"] != "right" || !equalJSON(m["sides"], []any{sideView("right", 90, 304, "ml")}) {
+		t.Errorf("sides with the matching side: %d %v", rec.Code, m)
+	}
+}
+
 func TestSidesValidation(t *testing.T) {
 	k := newKit(t)
 	kid, ana, _ := k.trackerKid()

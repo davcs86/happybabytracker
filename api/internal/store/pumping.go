@@ -60,7 +60,7 @@ func replaceSides(ctx context.Context, tx *sql.Tx, sessionID string, sides []mod
 }
 
 // withSides sets Sides on each of sessions, read through r, with one query for the whole page.
-func withSides(ctx context.Context, r queryer, sessions []model.PumpingSession) ([]model.PumpingSession, error) {
+func withSides(ctx context.Context, r querier, sessions []model.PumpingSession) ([]model.PumpingSession, error) {
 	if len(sessions) == 0 {
 		return sessions, nil
 	}
@@ -132,7 +132,7 @@ func (s *Store) CreatePumping(ctx context.Context, kidID, actorID string, p mode
 // Pumping is ErrNotFound for an id that is absent or belongs to another kid.
 func (s *Store) Pumping(ctx context.Context, kidID, id string) (model.PumpingSession, error) {
 	var out model.PumpingSession
-	err := s.inReadTx(ctx, func(q queryer) error {
+	err := s.inReadTx(ctx, func(q querier) error {
 		p, err := scanPumping(q.QueryRowContext(ctx, `SELECT `+pumpingColumns+` FROM pumping_sessions WHERE kid_id = ? AND id = ?`, kidID, id))
 		if err != nil {
 			return err
@@ -149,7 +149,7 @@ func (s *Store) Pumping(ctx context.Context, kidID, id string) (model.PumpingSes
 // ListPumping returns the kid's sessions within q, newest first by (started_at, id); never nil.
 func (s *Store) ListPumping(ctx context.Context, kidID string, q ListQuery) ([]model.PumpingSession, error) {
 	var out []model.PumpingSession
-	err := s.inReadTx(ctx, func(r queryer) error {
+	err := s.inReadTx(ctx, func(r querier) error {
 		rows, err := listEntries(ctx, r, `SELECT `+pumpingColumns+` FROM pumping_sessions`, "started_at", kidID, q, scanPumping)
 		if err != nil {
 			return err

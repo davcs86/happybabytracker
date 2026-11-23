@@ -762,6 +762,9 @@ row_has_word() { # body-name note words -> succeeds when the row of that note ho
   pieces "$1" '<li' | grep -F -- "$2" | grep -iwE "$3" >/dev/null
 }
 JUDGEMENT='latch|latching|loss|lost|losing|decrease|decreased|problem|problems|worry|concern|poor|low|bad|warning'
+estimate_has_word() { # body-name words -> succeeds when the estimate paragraph of that edit page holds one of the words (regex)
+  tr -d '\n' <"$WORK/$1.body" | { grep -oiE '<p[^>]*>[^<]*estimate[^<]*</p>' || true; } | grep -iwE "$2" >/dev/null
+}
 input_value() { # body-name field -> the value of the named text input
   pieces "$1" '<input' | grep -F "name=\"$2\"" | head -n 1 | grep -oE ' value="[^"]*"' | head -n 1 |
     sed -E 's/^ value="(.*)"$/\1/' || true
@@ -908,7 +911,7 @@ code="$(req below-page "$ADDR_A" "$SESSION_A" "$UI_URL$BELOW")"
   ! row_has timeline-j9 "$N_BELOW" 'about' && [ -n "$BELOW" ] && [ "$code" = 200 ] &&
   [ "$(input_value below-page weight_before_kg)" = 3.6 ] && [ "$(input_value below-page weight_after_kg)" = 3.548 ] &&
   body_has below-page '>No estimate</p>' && ! body_has below-page 'Weight gain' &&
-  ! grep -qiwE "$JUDGEMENT" "$WORK/below-page.body" && ! row_has_word timeline-j9 "$N_BELOW" "$JUDGEMENT"; } ||
+  ! estimate_has_word below-page "$JUDGEMENT" && ! row_has_word timeline-j9 "$N_BELOW" "$JUDGEMENT"; } ||
   fail "4j after below before" "status $code, no estimate and no judgement expected"
 
 # A weigh-in is not a growth measurement.

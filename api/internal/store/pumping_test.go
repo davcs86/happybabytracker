@@ -278,6 +278,27 @@ func TestPumpingSidesReplacedOnUpdate(t *testing.T) {
 	}
 }
 
+func TestDeletePumpingRemovesItsSides(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	p := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0, units.UnitML, map[string]int64{"left": 60, "right": 50}))
+	keep := mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, t0.Add(-time.Hour), units.UnitML, map[string]int64{"left": 20}))
+	if n := sideRows(t, s, p.ID); n != 2 {
+		t.Fatalf("%d side rows, want 2", n)
+	}
+
+	if err := s.DeletePumping(ctx, k.ID, ana.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := sideRows(t, s, p.ID); n != 0 {
+		t.Errorf("%d side rows after the delete, want 0", n)
+	}
+	if n := sideRows(t, s, keep.ID); n != 1 {
+		t.Errorf("%d side rows of another session, want 1", n)
+	}
+}
+
 func TestSidesMustMatchSide(t *testing.T) {
 	s := openMem(t)
 	ana := mustParent(t, s, "ana")

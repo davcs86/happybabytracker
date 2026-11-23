@@ -152,7 +152,7 @@ typed; hiding the weigh-ins of a session keeps its weights.
 
 - Bottle, a volume per source: each ticked source (breast milk, formula, cow's milk, other) has its own
   volume and the total is their sum; the total is not typed on its own. One unit select (ml or fl oz) applies
-  to every source, and each amount reads back as typed.
+  to every source, and each amount reads back as typed in the unit it was last saved in (the parts are shown and re-sent in the viewing parent's unit, so editing one part re-types the others).
 - Pumping, a volume per side: a left and a right volume, at least one; the total is their sum and the side
   (left, right or both) follows from which are filled. The duration stays one value for the session.
 - Nursing, weigh-ins: one optional weight before and one after the whole session, both sides together, typed
