@@ -74,7 +74,7 @@ func TestBottleRoutesRoles(t *testing.T) {
 			t.Fatalf("%s create: %d %q", name, rec.Code, rec.Body.String())
 		}
 		m := bodyMap(t, rec)
-		sameKeys(t, m, "id", "at", "contents", "volume", "note")
+		sameKeys(t, m, "id", "at", "contents", "volume", "sources", "note")
 		id := m["id"].(string)
 		if m["at"] != ts(t0.Add(-time.Hour)) || m["note"] != "first" || !equalJSON(m["contents"], []any{"formula"}) ||
 			!equalJSON(m["volume"], map[string]any{"ml": 120.0, "floz_hundredths": 406.0, "typed_unit": "ml"}) {
@@ -407,4 +407,310 @@ func TestNoValueInLogs(t *testing.T) {
 	k.do(http.MethodPatch, "/v1/kids/"+kid+"/diapers/"+bodyMap(t, d)["id"].(string), ana, map[string]any{"note": note + "3"})
 
 	wantCleanLog(t, k.Log.String(), 6, "xyzzy", "639", "2161", "cow_milk", "formula", "contents", "volume")
+}
+
+func sourcesBody(unit string, amounts map[string]int) map[string]any {
+	return map[string]any{"unit": unit, "amounts": amounts}
+}
+
+func advancedBody(over map[string]any) map[string]any {
+	return bottleBody(withOverrides(map[string]any{
+		"contents": nil,
+		"volume":   nil,
+		"sources":  sourcesBody("ml", map[string]int{model.ContentBreastMilk: 60, model.ContentFormula: 90}),
+	}, over))
+}
+
+func srcView(name string, ml, floz float64, typed string) map[string]any {
+	return map[string]any{"source": name, "volume": map[string]any{"ml": ml, "floz_hundredths": floz, "typed_unit": typed}}
+}
+
+func (k *kit) bottlePath(kid string, id ...string) string {
+	return "/v1/kids/" + kid + "/bottles" + strings.Join(append([]string{""}, id...), "/")
+}
+
+func TestAdvancedBottleCreate(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+
+	for name, token := range map[string]string{"guardian": ana, "caregiver": bo} {
+		rec := k.do(http.MethodPost, k.bottlePath(kid), token, advancedBody(nil))
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("%s create: %d %q", name, rec.Code, rec.Body.String())
+		}
+		m := bodyMap(t, rec)
+		sameKeys(t, m, "id", "at", "contents", "volume", "sources", "note")
+		if !equalJSON(m["contents"], []any{"breast_milk", "formula"}) ||
+			!equalJSON(m["volume"], map[string]any{"ml": 150.0, "floz_hundredths": 507.0, "typed_unit": "ml"}) ||
+			!equalJSON(m["sources"], []any{srcView("breast_milk", 60, 203, "ml"), srcView("formula", 90, 304, "ml")}) {
+			t.Errorf("%s create view = %v", name, m)
+		}
+		if rec := k.do(http.MethodGet, k.bottlePath(kid, m["id"].(string)), token, nil); rec.Code != http.StatusOK || !equalJSON(bodyMap(t, rec), m) {
+			t.Errorf("%s get: %d %q", name, rec.Code, rec.Body.String())
+		}
+	}
+
+	// A contents equal to the keys is accepted, in any order.
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(map[string]any{"contents": []string{"formula", "breast_milk"}}))
+	if rec.Code != http.StatusCreated || !equalJSON(bodyMap(t, rec)["contents"], []any{"breast_milk", "formula"}) {
+		t.Errorf("contents beside sources: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Four sources in the fixed order, however the keys were sent.
+	all := sourcesBody("ml", map[string]int{"other": 4, "cow_milk": 3, "formula": 2, "breast_milk": 1})
+	rec = k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(map[string]any{"sources": all}))
+	m := bodyMap(t, rec)
+	var order []string
+	for _, s := range m["sources"].([]any) {
+		order = append(order, s.(map[string]any)["source"].(string))
+	}
+	if rec.Code != http.StatusCreated || !slices.Equal(order, model.ContentNames) || m["volume"].(map[string]any)["ml"] != 10.0 {
+		t.Errorf("four sources: %d %v", rec.Code, m)
+	}
+}
+
+func TestAdvancedBottleOunces(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(map[string]any{
+		"sources": sourcesBody("floz", map[string]int{model.ContentBreastMilk: 150, model.ContentCowMilk: 250}),
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("%d %q", rec.Code, rec.Body.String())
+	}
+	m := bodyMap(t, rec)
+	if !equalJSON(m["contents"], []any{"breast_milk", "cow_milk"}) ||
+		!equalJSON(m["volume"], map[string]any{"ml": 118.0, "floz_hundredths": 400.0, "typed_unit": "floz"}) ||
+		!equalJSON(m["sources"], []any{srcView("breast_milk", 44, 150, "floz"), srcView("cow_milk", 74, 250, "floz")}) {
+		t.Errorf("view = %v", m)
+	}
+}
+
+func TestSumIsTheTotal(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil))
+	id := bodyMap(t, rec)["id"].(string)
+	one := k.bottlePath(kid, id)
+
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"sources": sourcesBody("ml", map[string]int{model.ContentBreastMilk: 60, model.ContentFormula: 100})})
+	m := bodyMap(t, rec)
+	if rec.Code != http.StatusOK ||
+		!equalJSON(m["volume"], map[string]any{"ml": 160.0, "floz_hundredths": 541.0, "typed_unit": "ml"}) ||
+		!equalJSON(m["sources"], []any{srcView("breast_milk", 60, 203, "ml"), srcView("formula", 100, 338, "ml")}) {
+		t.Fatalf("after changing one source: %d %v", rec.Code, m)
+	}
+	stored := k.do(http.MethodGet, one, ana, nil).Body.String()
+
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"note": "only the note"})
+	m = bodyMap(t, rec)
+	if rec.Code != http.StatusOK || m["note"] != "only the note" {
+		t.Fatalf("note patch: %d %q", rec.Code, rec.Body.String())
+	}
+	was := map[string]any{}
+	if err := json.Unmarshal([]byte(stored), &was); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"volume", "sources", "contents", "at"} {
+		if !equalJSON(m[key], was[key]) {
+			t.Errorf("a note-only patch changed %s: %v, was %v", key, m[key], was[key])
+		}
+	}
+
+	// Typed in ounces, the sum of the typed amounts is exact whatever the ml columns round to.
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"sources": sourcesBody("floz", map[string]int{model.ContentBreastMilk: 101, model.ContentFormula: 102, model.ContentCowMilk: 103})})
+	if m := bodyMap(t, rec); rec.Code != http.StatusOK || m["volume"].(map[string]any)["floz_hundredths"] != 306.0 || m["volume"].(map[string]any)["typed_unit"] != "floz" {
+		t.Errorf("ounce sum: %d %v", rec.Code, m)
+	}
+}
+
+// A stored source triple that NewVolume would not produce survives an edit that resends its typed amount.
+func TestUnchangedSourceIsNotRecomputed(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	odd := units.Volume{ML: 119, FlOzHundredths: 400, Typed: units.UnitFlOz}
+	total := units.Volume{ML: 150, FlOzHundredths: 600, Typed: units.UnitFlOz}
+	b, err := k.Store.CreateBottle(context.Background(), kid, k.parentID("ana"), model.BottleFeed{
+		At: t0.Add(-time.Hour), Contents: []string{model.ContentBreastMilk, model.ContentFormula}, Volume: total,
+		Sources: []model.BottleSource{{Source: model.ContentBreastMilk, Volume: odd}, {Source: model.ContentFormula, Volume: units.Volume{ML: 59, FlOzHundredths: 200, Typed: units.UnitFlOz}}},
+	}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := k.do(http.MethodPatch, k.bottlePath(kid, b.ID), ana, map[string]any{
+		"sources": sourcesBody("floz", map[string]int{model.ContentBreastMilk: 400, model.ContentFormula: 300})})
+	m := bodyMap(t, rec)
+	if rec.Code != http.StatusOK ||
+		!equalJSON(m["sources"], []any{srcView("breast_milk", 119, 400, "floz"), srcView("formula", 89, 300, "floz")}) ||
+		m["volume"].(map[string]any)["floz_hundredths"] != 700.0 {
+		t.Errorf("after resending 4.00 and changing the other: %d %v", rec.Code, m)
+	}
+}
+
+func TestSwitchToSimpleAndBack(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil)))["id"].(string)
+	one := k.bottlePath(kid, id)
+
+	// A body with only contents is refused while the sources would disagree; nothing is lost.
+	before := k.do(http.MethodGet, one, ana, nil).Body.String()
+	wantInvalid2(t, "drop a source through contents", k.do(http.MethodPatch, one, ana, map[string]any{"contents": []string{"formula"}}), "contents")
+	wantInvalid2(t, "add a content without a source", k.do(http.MethodPatch, one, ana, map[string]any{"contents": []string{"formula", "breast_milk", "other"}}), "contents")
+	if got := k.do(http.MethodGet, one, ana, nil).Body.String(); got != before {
+		t.Errorf("a refused patch changed the bottle:\n got %s\nwant %s", got, before)
+	}
+	// The same contents, resent, is not a change.
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"contents": []string{"formula", "breast_milk"}}); rec.Code != http.StatusOK || rec.Body.String() != before {
+		t.Errorf("resending the contents: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Advanced to simple: the sources go, the new total stays, the contents keep what they were.
+	rec := k.do(http.MethodPatch, one, ana, map[string]any{"volume": volumeBody("ml", 200)})
+	m := bodyMap(t, rec)
+	if rec.Code != http.StatusOK || !equalJSON(m["sources"], []any{}) || !equalJSON(m["contents"], []any{"breast_milk", "formula"}) ||
+		!equalJSON(m["volume"], map[string]any{"ml": 200.0, "floz_hundredths": 676.0, "typed_unit": "ml"}) {
+		t.Fatalf("to simple: %d %v", rec.Code, m)
+	}
+	if got := bodyMap(t, k.do(http.MethodGet, one, ana, nil)); !equalJSON(got, m) {
+		t.Errorf("stored after switching = %v, want %v", got, m)
+	}
+
+	// Simple to advanced: the sources appear and replace the total and the contents.
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"sources": sourcesBody("ml", map[string]int{model.ContentFormula: 50, model.ContentCowMilk: 25})})
+	m = bodyMap(t, rec)
+	if rec.Code != http.StatusOK || !equalJSON(m["contents"], []any{"formula", "cow_milk"}) ||
+		!equalJSON(m["volume"], map[string]any{"ml": 75.0, "floz_hundredths": 254.0, "typed_unit": "ml"}) ||
+		!equalJSON(m["sources"], []any{srcView("formula", 50, 169, "ml"), srcView("cow_milk", 25, 85, "ml")}) {
+		t.Fatalf("to advanced: %d %v", rec.Code, m)
+	}
+
+	// New contents beside a new volume make a simple bottle with those contents.
+	rec = k.do(http.MethodPatch, one, ana, map[string]any{"contents": []string{"other"}, "volume": volumeBody("ml", 80)})
+	if m := bodyMap(t, rec); rec.Code != http.StatusOK || !equalJSON(m["contents"], []any{"other"}) || !equalJSON(m["sources"], []any{}) {
+		t.Errorf("contents and volume: %d %v", rec.Code, m)
+	}
+	// A simple bottle's contents still change freely.
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"contents": []string{"formula", "other"}}); rec.Code != http.StatusOK {
+		t.Errorf("contents of a simple bottle: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBothVolumeAndSources(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil)))["id"].(string)
+	before := k.do(http.MethodGet, k.bottlePath(kid, id), ana, nil).Body.String()
+
+	both := map[string]any{"volume": volumeBody("ml", 100)}
+	wantInvalid2(t, "create", k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(both)), "sources")
+	wantInvalid2(t, "patch", k.do(http.MethodPatch, k.bottlePath(kid, id), ana, withOverrides(both, map[string]any{
+		"sources": sourcesBody("ml", map[string]int{model.ContentFormula: 10})})), "sources")
+	if got := k.do(http.MethodGet, k.bottlePath(kid, id), ana, nil).Body.String(); got != before {
+		t.Errorf("a refused patch changed the bottle: %s", got)
+	}
+}
+
+func TestSourcesValidation(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil)))["id"].(string)
+	stored := k.do(http.MethodGet, k.bottlePath(kid, id), ana, nil).Body.String()
+	two := func(unit string, a, b int) map[string]any {
+		return sourcesBody(unit, map[string]int{model.ContentBreastMilk: a, model.ContentFormula: b})
+	}
+
+	cases := []struct {
+		name  string
+		over  map[string]any
+		field string
+	}{
+		{"unknown key", map[string]any{"sources": sourcesBody("ml", map[string]int{"goat_milk": 10})}, "sources"},
+		{"an unknown key beside a good one", map[string]any{"sources": sourcesBody("ml", map[string]int{"formula": 10, "goat_milk": 10})}, "sources"},
+		{"empty amounts", map[string]any{"sources": sourcesBody("ml", map[string]int{})}, "sources"},
+		{"no amounts", map[string]any{"sources": map[string]any{"unit": "ml"}}, "sources"},
+		{"no unit", map[string]any{"sources": map[string]any{"amounts": map[string]int{"formula": 10}}}, "sources"},
+		{"empty object", map[string]any{"sources": map[string]any{}}, "sources"},
+		{"zero", map[string]any{"sources": two("ml", 0, 10)}, "sources"},
+		{"negative", map[string]any{"sources": two("ml", -5, 10)}, "sources"},
+		{"huge", map[string]any{"sources": two("ml", 1<<40, 10)}, "sources"},
+		{"unknown unit", map[string]any{"sources": two("cup", 10, 10)}, "sources"},
+		{"ounces that round to 0 ml", map[string]any{"sources": two("floz", 1, 100)}, "sources"},
+		{"contents beside the sources differ", map[string]any{"contents": []string{"formula"}}, "contents"},
+		{"contents add a name", map[string]any{"contents": []string{"formula", "breast_milk", "other"}}, "contents"},
+		{"contents invalid", map[string]any{"contents": []string{"goat_milk"}}, "contents"},
+		{"total over the cap", map[string]any{"sources": two("ml", 600, 401)}, "volume"},
+		{"total over the cap in ounces", map[string]any{"sources": two("floz", 2000, 1500)}, "volume"},
+		{"a note over the limit", map[string]any{"note": strings.Repeat("ñ", constants.MaxNoteLen+1)}, "note"},
+	}
+	for _, c := range cases {
+		wantInvalid2(t, c.name+" (create)", k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(c.over)), c.field)
+		wantInvalid2(t, c.name+" (patch)", k.do(http.MethodPatch, k.bottlePath(kid, id), ana, withOverrides(map[string]any{"sources": nil}, c.over)), c.field)
+	}
+	if got := k.do(http.MethodGet, k.bottlePath(kid, id), ana, nil).Body.String(); got != stored {
+		t.Errorf("a refused patch changed the bottle:\n got %s\nwant %s", got, stored)
+	}
+	if n := len(bodyMap(t, k.do(http.MethodGet, k.bottlePath(kid), ana, nil))["bottles"].([]any)); n != 1 {
+		t.Errorf("%d bottles after the refused creates, want 1", n)
+	}
+
+	// The edges that are valid: one source, the cap exactly, one millilitre each.
+	for name, over := range map[string]map[string]any{
+		"one source":    {"sources": sourcesBody("ml", map[string]int{"other": 5})},
+		"the cap":       {"sources": two("ml", 500, 500)},
+		"1 ml each":     {"sources": two("ml", 1, 1)},
+		"the key order": {"sources": two("ml", 5, 5), "contents": []string{"formula", "breast_milk"}},
+	} {
+		if rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(over)); rec.Code != http.StatusCreated {
+			t.Errorf("%s: %d %q", name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestSimpleBottleViewHasEmptySources(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := k.createBottle(ana, kid, nil)
+
+	for name, path := range map[string]string{"get": k.bottlePath(kid, id), "list": k.bottlePath(kid), "timeline": "/v1/kids/" + kid + "/timeline"} {
+		body := k.do(http.MethodGet, path, ana, nil).Body.String()
+		if !strings.Contains(body, `"sources":[]`) {
+			t.Errorf("%s: a simple bottle's view has no empty sources array: %s", name, body)
+		}
+	}
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil))
+	if !strings.Contains(rec.Body.String(), `"sources":[{"source":"breast_milk"`) {
+		t.Errorf("an advanced bottle's view: %s", rec.Body.String())
+	}
+}
+
+func TestAdvancedBottleOnTheTimelineAndList(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil))
+	created := bodyMap(t, rec)
+
+	list := bodyMap(t, k.do(http.MethodGet, k.bottlePath(kid), ana, nil))["bottles"].([]any)
+	if len(list) != 1 || !equalJSON(list[0], created) {
+		t.Errorf("list = %v, want %v", list, created)
+	}
+	items := bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/timeline?types=bottle", ana, nil))["items"].([]any)
+	if len(items) != 1 || !equalJSON(items[0].(map[string]any)["sources"], created["sources"]) {
+		t.Errorf("timeline = %v", items)
+	}
+}
+
+func TestNoSourceValuesInLogs(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	k.Log.Reset()
+
+	rec := k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(map[string]any{"sources": sourcesBody("ml", map[string]int{"breast_milk": 613, "formula": 287})}))
+	id := bodyMap(t, rec)["id"].(string)
+	k.do(http.MethodPatch, k.bottlePath(kid, id), ana, map[string]any{"sources": sourcesBody("floz", map[string]int{"cow_milk": 1733, "other": 1127})})
+	k.do(http.MethodPatch, k.bottlePath(kid, id), ana, map[string]any{"volume": volumeBody("ml", 100), "sources": sourcesBody("ml", map[string]int{"formula": 441})}) // a refusal
+	k.do(http.MethodPatch, k.bottlePath(kid, id), ana, map[string]any{"volume": volumeBody("ml", 100)})
+	k.do(http.MethodDelete, k.bottlePath(kid, id), ana, nil)
+
+	wantCleanLog(t, k.Log.String(), 5, "613", "287", "900", "1733", "1127", "2860", "441", "breast_milk", "cow_milk", "sources", "amounts")
 }

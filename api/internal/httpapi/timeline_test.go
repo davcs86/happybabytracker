@@ -95,7 +95,7 @@ func TestTimelineMergesInOrderAcrossTrackers(t *testing.T) {
 		t.Fatalf("timeline = %v next %q, want %v", rows, next, want)
 	}
 	shapes := map[string][]string{
-		"bottle":  {"type", "id", "at", "contents", "volume", "note"},
+		"bottle":  {"type", "id", "at", "contents", "volume", "sources", "note"},
 		"diaper":  {"type", "id", "at", "kind", "note"},
 		"meal":    {"type", "id", "at", "what", "reaction", "note"},
 		"pumping": {"type", "id", "at", "started_at", "duration_seconds", "volume", "side", "note"},

@@ -1,10 +1,15 @@
 package store
 
 import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -296,4 +301,234 @@ func bottleIDs(bs []model.BottleFeed) []string {
 		out[i] = b.ID
 	}
 	return out
+}
+
+// advancedBottle is a bottle whose sources are typed in unit and whose total is their sum.
+func advancedBottle(t *testing.T, at time.Time, unit units.Unit, amounts map[string]int64) model.BottleFeed {
+	t.Helper()
+	b := model.BottleFeed{At: at}
+	var sum int64
+	for _, name := range model.ContentNames {
+		if n, ok := amounts[name]; ok {
+			b.Contents = append(b.Contents, name)
+			b.Sources = append(b.Sources, model.BottleSource{Source: name, Volume: mustVolume(t, unit, n)})
+			sum += n
+		}
+	}
+	b.Volume = mustVolume(t, unit, sum)
+	return b
+}
+
+func sourceRows(t *testing.T, s *Store, bottleID string) int {
+	t.Helper()
+	var n int
+	if err := s.w.QueryRowContext(ctx, `SELECT COUNT(*) FROM bottle_feed_sources WHERE bottle_id = ?`, bottleID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestBottleSourcesRoundTrip(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+
+	created := mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0, units.UnitFlOz, map[string]int64{model.ContentFormula: 250, model.ContentBreastMilk: 150}))
+	if want := []string{model.ContentBreastMilk, model.ContentFormula}; !slices.Equal(created.Contents, want) {
+		t.Fatalf("contents = %v, want %v", created.Contents, want)
+	}
+	got, err := s.Bottle(ctx, k.ID, created.ID)
+	if err != nil || !reflect.DeepEqual(got, created) {
+		t.Fatalf("Bottle = %+v, %v; want %+v", got, err, created)
+	}
+	if len(got.Sources) != 2 || got.Sources[0].Source != model.ContentBreastMilk || got.Sources[0].Volume.Typed != units.UnitFlOz ||
+		got.Sources[0].Volume.FlOzHundredths != 150 || got.Sources[1].Volume.FlOzHundredths != 250 || got.Volume.FlOzHundredths != 400 {
+		t.Errorf("sources = %+v total %+v", got.Sources, got.Volume)
+	}
+	list, err := s.ListBottles(ctx, k.ID, wideQuery())
+	if err != nil || len(list) != 1 || !reflect.DeepEqual(list[0], created) {
+		t.Fatalf("ListBottles = %+v, %v", list, err)
+	}
+
+	simple := mustBottle(t, s, k.ID, ana.ID, newBottle(t, t0.Add(-time.Hour), model.ContentFormula))
+	if got, err := s.Bottle(ctx, k.ID, simple.ID); err != nil || len(got.Sources) != 0 {
+		t.Errorf("simple bottle = %+v, %v; want no sources", got, err)
+	}
+}
+
+func TestBottleSourcesReplacedOnUpdate(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k, other := mustKid(t, s, ana.ID, "Lía"), mustKid(t, s, ana.ID, "Other")
+	b := mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}))
+
+	next := advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentFormula: 70, model.ContentCowMilk: 30})
+	next.ID = b.ID
+	if err := s.UpdateBottle(ctx, k.ID, ana.ID, next, t0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Bottle(ctx, k.ID, b.ID)
+	if err != nil || !reflect.DeepEqual(got.Sources, next.Sources) || !slices.Equal(got.Contents, next.Contents) || got.Volume != next.Volume {
+		t.Fatalf("after replace = %+v, %v; want sources %+v", got, err, next.Sources)
+	}
+	if n := sourceRows(t, s, b.ID); n != 2 {
+		t.Errorf("%d source rows, want 2", n)
+	}
+
+	if err := s.UpdateBottle(ctx, other.ID, ana.ID, advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentOther: 10}), t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update through another kid: %v", err)
+	}
+	if n := sourceRows(t, s, b.ID); n != 2 {
+		t.Errorf("%d source rows after a refused update, want 2", n)
+	}
+
+	simple := newBottle(t, t0, model.ContentFormula)
+	simple.ID = b.ID
+	if err := s.UpdateBottle(ctx, k.ID, ana.ID, simple, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Bottle(ctx, k.ID, b.ID); err != nil || len(got.Sources) != 0 || sourceRows(t, s, b.ID) != 0 {
+		t.Errorf("after switching to simple = %+v, %v; %d rows", got, err, sourceRows(t, s, b.ID))
+	}
+}
+
+func TestSourcesMustMatchContents(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	good := mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}))
+
+	src := func(names ...string) []model.BottleSource {
+		var out []model.BottleSource
+		for _, n := range names {
+			out = append(out, model.BottleSource{Source: n, Volume: mustVolume(t, units.UnitML, 10)})
+		}
+		return out
+	}
+	for name, c := range map[string]struct {
+		contents []string
+		sources  []model.BottleSource
+	}{
+		"a content without a source":  {[]string{model.ContentBreastMilk, model.ContentFormula}, src(model.ContentBreastMilk)},
+		"a source without a content":  {[]string{model.ContentBreastMilk}, src(model.ContentBreastMilk, model.ContentFormula)},
+		"another source":              {[]string{model.ContentBreastMilk}, src(model.ContentFormula)},
+		"a repeated source":           {[]string{model.ContentBreastMilk, model.ContentFormula}, src(model.ContentBreastMilk, model.ContentBreastMilk)},
+		"an unknown source":           {[]string{model.ContentBreastMilk}, src("goat_milk")},
+		"a repeated source, one name": {[]string{model.ContentBreastMilk}, src(model.ContentBreastMilk, model.ContentBreastMilk)},
+	} {
+		bad := model.BottleFeed{At: t0, Contents: c.contents, Sources: c.sources, Volume: mustVolume(t, units.UnitML, 10)}
+		if _, err := s.CreateBottle(ctx, k.ID, ana.ID, bad, t0); !errors.Is(err, ErrInvalidContents) {
+			t.Errorf("create with %s: %v, want ErrInvalidContents", name, err)
+		}
+		bad.ID = good.ID
+		if err := s.UpdateBottle(ctx, k.ID, ana.ID, bad, t0); !errors.Is(err, ErrInvalidContents) {
+			t.Errorf("update with %s: %v, want ErrInvalidContents", name, err)
+		}
+	}
+	if got, err := s.Bottle(ctx, k.ID, good.ID); err != nil || !reflect.DeepEqual(got, good) {
+		t.Errorf("a refused update changed the bottle: %+v, %v", got, err)
+	}
+	if list, err := s.ListBottles(ctx, k.ID, wideQuery()); err != nil || len(list) != 1 {
+		t.Errorf("a refused create left %d bottles, %v", len(list), err)
+	}
+}
+
+// countingDriver counts the QueryContext calls that reach the wrapped driver.
+type countingDriver struct {
+	inner   driver.Driver
+	queries *atomic.Int64
+}
+
+func (d countingDriver) Open(name string) (driver.Conn, error) {
+	c, err := d.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &countingConn{Conn: c, queries: d.queries}, nil
+}
+
+type countingConn struct {
+	driver.Conn
+	queries *atomic.Int64
+}
+
+func (c *countingConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	c.queries.Add(1)
+	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
+}
+
+func (c *countingConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	return c.Conn.(driver.ExecerContext).ExecContext(ctx, query, args)
+}
+
+func (c *countingConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	return c.Conn.(driver.ConnPrepareContext).PrepareContext(ctx, query)
+}
+
+func (c *countingConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	return c.Conn.(driver.ConnBeginTx).BeginTx(ctx, opts)
+}
+
+type countingConnector struct {
+	dsn string
+	d   countingDriver
+}
+
+func (c countingConnector) Connect(context.Context) (driver.Conn, error) { return c.d.Open(c.dsn) }
+func (c countingConnector) Driver() driver.Driver                        { return c.d }
+
+// countReads makes s's read pool count its queries.
+func countReads(t *testing.T, s *Store) *atomic.Int64 {
+	t.Helper()
+	n := new(atomic.Int64)
+	rdsn := "file:" + filepath.Join(s.cleanup, dbFile) + "?mode=ro&_pragma=foreign_keys(1)"
+	r := sql.OpenDB(countingConnector{rdsn, countingDriver{s.r.Driver(), n}})
+	t.Cleanup(func() { r.Close() })
+	s.r = r
+	return n
+}
+
+func TestListLoadsSourcesWithOneExtraQuery(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	for i := range 100 {
+		amounts := map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}
+		mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0.Add(-time.Duration(i)*time.Minute), units.UnitML, amounts))
+	}
+	n := countReads(t, s)
+
+	if list, err := s.ListBottles(ctx, k.ID, wideQuery()); err != nil || len(list) != 100 || len(list[99].Sources) != 2 {
+		t.Fatalf("ListBottles = %d rows, %v", len(list), err)
+	}
+	if got := n.Load(); got != 2 {
+		t.Errorf("a list of 100 bottles ran %d queries, want 2 (the page and one for every source)", got)
+	}
+
+	n.Store(0)
+	if list, err := s.ListBottles(ctx, k.ID, ListQuery{From: t0.Add(time.Hour), To: t0.Add(2 * time.Hour), Limit: 10}); err != nil || len(list) != 0 {
+		t.Fatalf("empty list = %v, %v", list, err)
+	}
+	if got := n.Load(); got != 1 {
+		t.Errorf("an empty list ran %d queries, want 1", got)
+	}
+}
+
+func TestTimelineBottleCarriesSources(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	adv := mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}))
+	mustBottle(t, s, k.ID, ana.ID, newBottle(t, t0.Add(-time.Hour), model.ContentFormula))
+
+	items, err := s.Timeline(ctx, k.ID, []string{"bottle"}, wideQuery())
+	if err != nil || len(items) != 2 {
+		t.Fatalf("Timeline = %+v, %v", items, err)
+	}
+	if got := items[0].Entry.(model.BottleFeed); !reflect.DeepEqual(got, adv) {
+		t.Errorf("advanced item = %+v, want %+v", got, adv)
+	}
+	if got := items[1].Entry.(model.BottleFeed); len(got.Sources) != 0 {
+		t.Errorf("simple item has sources %+v", got.Sources)
+	}
 }
