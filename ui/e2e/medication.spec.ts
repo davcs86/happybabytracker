@@ -385,10 +385,11 @@ test('a refused edit keeps what was typed and marks the field', async ({ page })
 	await expectAccessible(page);
 	expect((await doses(api))[0].note).toBeNull();
 	// The originals are the loaded ones: fixing only the time still sends only what differs from the load.
-	await field(page, 'Given at').fill(instantToLocalInput(minute(-20), 'UTC'));
+	const fixed = minute(-20);
+	await field(page, 'Given at').fill(instantToLocalInput(fixed, 'UTC'));
 	await saveDose(page);
 	await onMedication(page);
-	expect(await written('PATCH', path)).toEqual({ given_at: minute(-20), note: 'typed note' });
+	expect(await written('PATCH', path)).toEqual({ given_at: fixed, note: 'typed note' });
 });
 
 test('a refused amount on one course keeps its text and leaves the other courses alone', async ({

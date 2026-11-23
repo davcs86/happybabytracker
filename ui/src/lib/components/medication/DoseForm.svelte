@@ -46,7 +46,8 @@
 			<Input {...control} name="amount" autocomplete="off" bind:value={amount} />
 		{/snippet}
 	</Field>
-	<Button type="submit" class="self-start" disabled={sending}
+	<!-- No fade: re-enabled after its request, the button must be at full contrast at once. -->
+	<Button type="submit" class="self-start transition-none" disabled={sending}
 		>Log dose now<span class="sr-only"> of {name}</span></Button
 	>
 </form>
