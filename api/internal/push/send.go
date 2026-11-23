@@ -63,6 +63,7 @@ type sender struct {
 	resolver Resolver
 	rt       http.RoundTripper
 	client   *http.Client
+	skip     bool
 }
 
 type option func(*sender)
@@ -71,14 +72,19 @@ type option func(*sender)
 func withTransport(rt http.RoundTripper) option { return func(s *sender) { s.rt = rt } }
 func withTimeout(d time.Duration) option        { return func(s *sender) { s.timeout = d } }
 func withResolver(r Resolver) option            { return func(s *sender) { s.resolver = r } }
+func withoutResolveCheck() option               { return func(s *sender) { s.skip = true } }
 
+// NewSender panics on a nil signer or clock, so a wiring fault stops the boot, not a worker at the first reminder.
 func NewSender(sig *Signer, now func() time.Time, opts ...option) Sender {
+	if sig == nil || now == nil {
+		panic("push: NewSender needs a signer and a clock")
+	}
 	s := &sender{sig: sig, now: now, timeout: constants.PushTimeout, resolver: net.DefaultResolver}
 	for _, o := range opts {
 		o(s)
 	}
 	if s.rt == nil {
-		s.rt = newTransport(s.resolver)
+		s.rt = newTransport(&checkedDialer{r: s.resolver, d: newDialer(), timeout: s.timeout, skipCheck: s.skip})
 	}
 	s.client = &http.Client{
 		Transport:     s.rt,
@@ -199,38 +205,62 @@ func encryptFresh(plaintext, uaPub, auth []byte) ([]byte, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
 	}
-	return Encrypt(plaintext, uaPub, auth, as, salt)
+	return encrypt(plaintext, uaPub, auth, as, salt)
 }
 
 func newDialer() *net.Dialer { return &net.Dialer{Control: dialControl} }
 
-// newTransport has no proxy: every connection is dialled here and checked.
-func newTransport(r Resolver) *http.Transport {
-	d := newDialer()
+// checkedDialer refuses a non-public answer before dialling; its dialer's Control re-checks the socket address.
+type checkedDialer struct {
+	r         Resolver
+	d         *net.Dialer
+	timeout   time.Duration
+	skipCheck bool // tests only: proves Control alone still refuses
+}
+
+// DialContext gets a context detached from the request's, so it sets its own timeout for lookup and dial
+// together and shares what remains across the addresses, as net.Dialer does.
+func (c *checkedDialer) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	ctx, cancelAll := context.WithTimeout(ctx, c.timeout)
+	defer cancelAll()
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, errBlocked
+	}
+	var addrs []netip.Addr
+	if c.skipCheck {
+		addrs, err = c.r.LookupNetIP(ctx, "ip", host)
+	} else {
+		addrs, err = resolvePublic(ctx, c.r, host)
+	}
+	if errors.Is(err, errEndpointNotAllowed) {
+		return nil, errBlocked
+	} else if err != nil {
+		return nil, errDial
+	}
+	for i, a := range addrs {
+		dl, _ := ctx.Deadline()
+		dctx, cancel := context.WithTimeout(ctx, time.Until(dl)/time.Duration(len(addrs)-i))
+		conn, err := c.d.DialContext(dctx, network, net.JoinHostPort(a.Unmap().String(), port))
+		cancel()
+		if err == nil {
+			return conn, nil
+		}
+		if errors.Is(err, errBlocked) {
+			return nil, errBlocked
+		}
+	}
+	return nil, errDial
+}
+
+// newTransport has no proxy: every connection is dialled by cd and checked.
+func newTransport(cd *checkedDialer) *http.Transport {
 	return &http.Transport{
-		ForceAttemptHTTP2: true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, errBlocked
-			}
-			addrs, err := resolvePublic(ctx, r, host)
-			if errors.Is(err, errEndpointNotAllowed) {
-				return nil, errBlocked
-			} else if err != nil {
-				return nil, errDial
-			}
-			for _, a := range addrs {
-				c, err := d.DialContext(ctx, network, net.JoinHostPort(a.Unmap().String(), port))
-				if err == nil {
-					return c, nil
-				}
-				if errors.Is(err, errBlocked) {
-					return nil, errBlocked
-				}
-			}
-			return nil, errDial
-		},
+		ForceAttemptHTTP2:      true,
+		DialContext:            cd.DialContext,
+		IdleConnTimeout:        constants.PushIdleConnTimeout,
+		MaxIdleConnsPerHost:    1,
+		MaxResponseHeaderBytes: constants.PushResponseHeaderMaxBytes,
 	}
 }
 

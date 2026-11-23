@@ -7,21 +7,25 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 )
 
 // fakeResolver answers from a map; a missing name is a lookup error. It never touches the network.
 type fakeResolver struct {
-	mu    sync.Mutex
-	addrs map[string][]string
-	asked []string
+	mu        sync.Mutex
+	addrs     map[string][]string
+	asked     []string
+	deadlines []time.Time
 }
 
-func (f *fakeResolver) LookupNetIP(_ context.Context, _, host string) ([]netip.Addr, error) {
+func (f *fakeResolver) LookupNetIP(ctx context.Context, _, host string) ([]netip.Addr, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.asked = append(f.asked, host)
+	dl, _ := ctx.Deadline()
+	f.deadlines = append(f.deadlines, dl)
 	as, ok := f.addrs[host]
 	if !ok {
 		return nil, errors.New("no such host")
@@ -51,6 +55,14 @@ func wantRefused(t *testing.T, err error, endpoint string) {
 	}
 }
 
+// nonGlobalExamples has one address in each nonGlobal prefix (and the reviewer's probes).
+var nonGlobalExamples = []string{
+	"0.1.2.3", "100.64.0.1", "192.0.0.1", "192.0.2.1", "198.18.0.1", "198.19.255.255", "198.51.100.1", "203.0.113.1",
+	"240.0.0.1", "255.255.255.255",
+	"::7f00:1", "::a00:1", "64:ff9b::a00:1", "64:ff9b:1::a00:1", "100::1", "2001::1", "2001:0:ffff::1",
+	"2001:db8::1", "2002:a00:1::1", "fec0::1", "feff::1",
+}
+
 func TestValidateEndpointRefusesSyntax(t *testing.T) {
 	long := "https://push.example.org/" + strings.Repeat("a", constants.PushEndpointMaxLen-len("https://push.example.org/")+1)
 	if len(long) != 2049 {
@@ -78,6 +90,13 @@ func TestValidateEndpointRefusesSyntax(t *testing.T) {
 		"https://[fe80::1%25eth0]/secret-path",
 		"https://100.64.0.1/secret-path",
 		"https://8.8.8.8/secret-path",
+		"https://2130706433/secret-path",
+		"https://0x7f.1/secret-path",
+		"https://127.1/secret-path",
+		"https://0177.0.0.1/secret-path",
+		"https://push.0x7f/secret-path",
+		"https://push.example.123/secret-path",
+		"https://push.example.org.1./secret-path",
 		"https:///secret-path",
 		"https://:443/secret-path",
 		"https:push.example.org/secret-path",
@@ -91,12 +110,12 @@ func TestValidateEndpointRefusesSyntax(t *testing.T) {
 }
 
 func TestValidateEndpointRefusesResolvedAddresses(t *testing.T) {
-	for _, bad := range []string{
+	for _, bad := range append([]string{
 		"127.0.0.1", "127.255.0.1", "::1", "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.1",
 		"169.254.169.254", "fe80::1", "fc00::1", "fd12:3456::1", "100.64.0.1", "100.127.255.255",
 		"0.0.0.0", "::", "224.0.0.1", "239.255.255.250", "ff02::1", "ff05::2",
 		"::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:100.64.0.1",
-	} {
+	}, nonGlobalExamples...) {
 		for _, set := range [][]string{{bad}, {"8.8.8.8", bad}, {bad, "2001:4860:4860::8888"}} {
 			r := &fakeResolver{addrs: map[string][]string{"push.example.org": set}}
 			e := "https://push.example.org/secret-path"
@@ -130,7 +149,8 @@ func TestValidateEndpointAccepts(t *testing.T) {
 		exact,
 	} {
 		r := &fakeResolver{addrs: map[string][]string{
-			"push.example.org": {"8.8.8.8", "2001:4860:4860::8888", "100.63.255.255", "100.128.0.1", "::ffff:8.8.4.4"},
+			"push.example.org": {"8.8.8.8", "2001:4860:4860::8888", "2606:4700:4700::1111", "1.1.1.1", "100.63.255.255",
+				"100.128.0.1", "::ffff:8.8.4.4", "198.17.255.255", "198.20.0.1", "2001:1::1", "2003::1", "64:ff9b:2::1"},
 			"PUSH.example.org": {"8.8.8.8"},
 		}}
 		if err := ValidateEndpoint(context.Background(), r, e); err != nil {
@@ -139,5 +159,18 @@ func TestValidateEndpointAccepts(t *testing.T) {
 		if len(r.asked) != 1 {
 			t.Errorf("%.60q: resolver asked %d times", e, len(r.asked))
 		}
+	}
+}
+
+func TestValidateEndpointSyntax(t *testing.T) {
+	for _, e := range []string{"https://push.example.org/wpush/v2/abc", "https://push.example.org:443/x"} {
+		if err := ValidateEndpointSyntax(e); err != nil {
+			t.Errorf("%q refused: %v", e, err)
+		}
+	}
+	for _, e := range []string{"http://push.example.org/secret-path", "https://10.0.0.1/secret-path", "https://127.1/secret-path",
+		"https://2130706433/secret-path", "https://0x7f.1/secret-path", "https://0177.0.0.1/secret-path", "https://push.0X7F/secret-path",
+		"https://push.example.org:8443/secret-path", "https://localhost/secret-path", ""} {
+		wantRefused(t, ValidateEndpointSyntax(e), e)
 	}
 }

@@ -29,8 +29,8 @@ var (
 	errAuth     = errors.New("push auth is not 16 bytes")
 )
 
-// Encrypt builds the aes128gcm body; asPriv and salt are injected only for the RFC vector: senders use encryptFresh.
-func Encrypt(plaintext, uaPub, auth []byte, asPriv *ecdh.PrivateKey, salt []byte) ([]byte, error) {
+// encrypt builds the aes128gcm body; asPriv and salt are injected only for the RFC vector: senders use encryptFresh.
+func encrypt(plaintext, uaPub, auth []byte, asPriv *ecdh.PrivateKey, salt []byte) ([]byte, error) {
 	if len(plaintext) > MaxPlaintext {
 		return nil, errTooLarge
 	}

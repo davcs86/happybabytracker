@@ -364,9 +364,6 @@ func TestSendRefusesBeforeSending(t *testing.T) {
 }
 
 func TestDialCheckRefusesPrivateAddressThroughDNS(t *testing.T) {
-	var hits atomic.Int32
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits.Add(1) }))
-	defer srv.Close()
 	sig, _ := newTestSigner(t)
 	f := newSub(t, "https://push.example.org/secret-path")
 	for _, set := range [][]string{{"127.0.0.1"}, {"8.8.8.8", "127.0.0.1"}, {"::1"}, {"10.0.0.1"}, {"100.64.0.1"}} {
@@ -379,8 +376,74 @@ func TestDialCheckRefusesPrivateAddressThroughDNS(t *testing.T) {
 			t.Errorf("resolving to %v: resolver asked %d times", set, len(r.asked))
 		}
 	}
-	if hits.Load() != 0 {
-		t.Fatal("a request reached the loopback server")
+}
+
+// With the pre-dial check skipped, only the real transport's Control stands between the sender and loopback:
+// a dial without it reaches 127.0.0.1:443 and is refused by the kernel, which reads as Retry, not Failed.
+// IPv6 loopback is left out: a host without IPv6 fails the socket before Control runs.
+func TestControlRefusesWithoutResolveCheck(t *testing.T) {
+	sig, _ := newTestSigner(t)
+	f := newSub(t, "https://push.example.org/secret-path")
+	for _, set := range [][]string{{"127.0.0.1"}, {"::ffff:127.0.0.1"}, {"127.0.0.2", "127.0.0.1"}} {
+		r := &fakeResolver{addrs: map[string][]string{"push.example.org": set}}
+		s := NewSender(sig, time.Now, withResolver(r), withoutResolveCheck(), withTimeout(2*time.Second))
+		if got := s.Send(context.Background(), f.sub, testMessage()); got != (Result{Outcome: Failed}) {
+			t.Errorf("resolving to %v: %+v (Control not on the transport?)", set, got)
+		}
+	}
+}
+
+// The transport detaches the dial from the request's context, so the dial must carry the timeout itself.
+func TestDialCarriesThePushTimeout(t *testing.T) {
+	sig, _ := newTestSigner(t)
+	f := newSub(t, "https://push.example.org/secret-path")
+	r := &fakeResolver{addrs: map[string][]string{"push.example.org": {"127.0.0.1"}}}
+	const d = 1500 * time.Millisecond
+	start := time.Now()
+	NewSender(sig, time.Now, withResolver(r), withTimeout(d)).Send(context.Background(), f.sub, testMessage())
+	end := time.Now()
+	if len(r.deadlines) != 1 || r.deadlines[0].Before(start.Add(d)) || r.deadlines[0].After(end.Add(d)) {
+		t.Fatalf("dial deadlines %v, want one %v after the dial started", r.deadlines, d)
+	}
+}
+
+func TestTransportLimits(t *testing.T) {
+	sig, _ := newTestSigner(t)
+	tr := NewSender(sig, time.Now).(*sender).rt.(*http.Transport)
+	if tr.Proxy != nil || tr.IdleConnTimeout != constants.PushIdleConnTimeout || tr.MaxIdleConnsPerHost != 1 ||
+		tr.MaxResponseHeaderBytes != constants.PushResponseHeaderMaxBytes {
+		t.Fatalf("transport proxy=%v idle=%v perHost=%d headerMax=%d", tr.Proxy != nil, tr.IdleConnTimeout,
+			tr.MaxIdleConnsPerHost, tr.MaxResponseHeaderBytes)
+	}
+	for size, want := range map[int]Result{
+		constants.PushResponseHeaderMaxBytes / 2: {Outcome: Sent, Status: 201},
+		constants.PushResponseHeaderMaxBytes + 1: {Outcome: Retry},
+	} {
+		p := newPushServer(t, status(201, "X-Big", strings.Repeat("a", size)))
+		real := newTransport(&checkedDialer{r: publicResolver(), d: newDialer(), timeout: time.Second})
+		real.TLSClientConfig = p.srv.Client().Transport.(*http.Transport).TLSClientConfig
+		real.DialContext = p.transport().(*http.Transport).DialContext
+		f := newSub(t, testEndpoint)
+		if got := NewSender(sig, time.Now, withTransport(real)).Send(context.Background(), f.sub, testMessage()); got != want {
+			t.Errorf("%d-byte header: %+v, want %+v", size, got, want)
+		}
+	}
+}
+
+func TestNewSenderRefusesNilWiring(t *testing.T) {
+	sig, _ := newTestSigner(t)
+	for name, fn := range map[string]func(){
+		"nil signer": func() { NewSender(nil, time.Now) },
+		"nil clock":  func() { NewSender(sig, nil) },
+	} {
+		func() {
+			defer func() {
+				if r := recover(); r != "push: NewSender needs a signer and a clock" {
+					t.Errorf("%s: recovered %v", name, r)
+				}
+			}()
+			fn()
+		}()
 	}
 }
 
@@ -411,10 +474,15 @@ func TestDialerControlRefusesTheConnectedAddress(t *testing.T) {
 		"8.8.8.8:443": true, "[2001:4860:4860::8888]:443": true,
 		"8.8.8.8:80": false, "127.0.0.1:443": false, "[::1]:443": false, "10.1.2.3:443": false,
 		"169.254.169.254:443": false, "100.64.0.1:443": false, "[fc00::1]:443": false, "[::ffff:127.0.0.1]:443": false,
-		"0.0.0.0:443": false, "224.0.0.1:443": false, "garbage": false,
+		"0.0.0.0:443": false, "224.0.0.1:443": false, "garbage": false, "[2606:4700:4700::1111]:443": true,
 	} {
 		if err := dialControl("tcp", addr, nil); (err == nil) != ok {
 			t.Errorf("dialControl(%s) = %v", addr, err)
+		}
+	}
+	for _, a := range nonGlobalExamples {
+		if err := dialControl("tcp", net.JoinHostPort(a, "443"), nil); err == nil {
+			t.Errorf("dialControl(%s) accepted", a)
 		}
 	}
 	if accepted.Load() != 0 {

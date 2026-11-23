@@ -145,11 +145,13 @@ const (
 	ReminderHealthStale = 15 * time.Minute
 	WorkerStaleAfter    = 60 * time.Second
 
-	PushTTLMax           = 3600 * time.Second
-	PushTimeout          = 10 * time.Second
-	PushJWTLifetime      = 12 * time.Hour
-	PushResponseMaxBytes = 4096
-	DeliveryConcurrency  = 8
+	PushTTLMax                 = 3600 * time.Second
+	PushTimeout                = 10 * time.Second
+	PushJWTLifetime            = 12 * time.Hour
+	PushResponseMaxBytes       = 4096
+	PushResponseHeaderMaxBytes = 8192
+	PushIdleConnTimeout        = 30 * time.Second
+	DeliveryConcurrency        = 8
 
 	NtfyTimeout        = 10 * time.Second
 	NtfyTopicRandomLen = 22

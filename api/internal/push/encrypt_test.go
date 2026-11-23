@@ -36,7 +36,7 @@ func TestRFC8291Vector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := Encrypt([]byte("When I grow up, I want to be a watermelon"), mustDec(t, vecUAPub),
+	got, err := encrypt([]byte("When I grow up, I want to be a watermelon"), mustDec(t, vecUAPub),
 		mustDec(t, vecAuth), asPriv, mustDec(t, vecSalt))
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func newFixture(t *testing.T) fixture {
 func TestRoundTripAndLimits(t *testing.T) {
 	f := newFixture(t)
 	msg := []byte(`{"v":1,"category":"medication","kid":"k1","title":"Medication due for Mia"}`)
-	body, err := Encrypt(msg, f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt)
+	body, err := encrypt(msg, f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,14 +110,14 @@ func TestRoundTripAndLimits(t *testing.T) {
 	if MaxPlaintext != 3993 {
 		t.Fatalf("MaxPlaintext = %d, want 3993", MaxPlaintext)
 	}
-	b, err := Encrypt(make([]byte, 3993), f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt)
+	b, err := encrypt(make([]byte, 3993), f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt)
 	if err != nil || len(b) != 4096 {
 		t.Fatalf("3993-byte plaintext: len %d, %v; want a 4096-byte body", len(b), err)
 	}
 	if got := decrypt(t, b, f.ua, f.auth); len(got) != 3993 {
 		t.Fatalf("max plaintext decrypts to %d bytes", len(got))
 	}
-	if _, err := Encrypt(make([]byte, 3994), f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt); err == nil {
+	if _, err := encrypt(make([]byte, 3994), f.ua.PublicKey().Bytes(), f.auth, f.as, f.salt); err == nil {
 		t.Fatal("3994-byte plaintext accepted")
 	}
 }
@@ -128,11 +128,11 @@ func TestEncryptRefusesBadKeys(t *testing.T) {
 	invalid := append([]byte{0x04}, bytes.Repeat([]byte{0x01}, 64)...) // not on the curve
 	msg := []byte("x")
 	cases := map[string]func() error{
-		"compressed p256dh": func() error { _, err := Encrypt(msg, pub[:33], f.auth, f.as, f.salt); return err },
-		"invalid p256dh":    func() error { _, err := Encrypt(msg, invalid, f.auth, f.as, f.salt); return err },
-		"auth 15 bytes":     func() error { _, err := Encrypt(msg, pub, f.auth[:15], f.as, f.salt); return err },
-		"auth 17 bytes":     func() error { _, err := Encrypt(msg, pub, append(f.auth, 0), f.as, f.salt); return err },
-		"salt 15 bytes":     func() error { _, err := Encrypt(msg, pub, f.auth, f.as, f.salt[:15]); return err },
+		"compressed p256dh": func() error { _, err := encrypt(msg, pub[:33], f.auth, f.as, f.salt); return err },
+		"invalid p256dh":    func() error { _, err := encrypt(msg, invalid, f.auth, f.as, f.salt); return err },
+		"auth 15 bytes":     func() error { _, err := encrypt(msg, pub, f.auth[:15], f.as, f.salt); return err },
+		"auth 17 bytes":     func() error { _, err := encrypt(msg, pub, append(f.auth, 0), f.as, f.salt); return err },
+		"salt 15 bytes":     func() error { _, err := encrypt(msg, pub, f.auth, f.as, f.salt[:15]); return err },
 	}
 	for name, fn := range cases {
 		if fn() == nil {
@@ -184,7 +184,7 @@ func TestParseKeys(t *testing.T) {
 
 func TestEncryptRefusesNilEphemeralKey(t *testing.T) {
 	f := newFixture(t)
-	if _, err := Encrypt([]byte("x"), f.ua.PublicKey().Bytes(), f.auth, nil, f.salt); err == nil {
+	if _, err := encrypt([]byte("x"), f.ua.PublicKey().Bytes(), f.auth, nil, f.salt); err == nil {
 		t.Fatal("nil ephemeral key accepted")
 	}
 }
