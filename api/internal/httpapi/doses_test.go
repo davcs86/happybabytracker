@@ -444,13 +444,32 @@ func TestDoseByADisabledCaregiver(t *testing.T) {
 		{http.MethodPatch, base + "/" + id, map[string]any{"note": "x"}},
 		{http.MethodDelete, base + "/" + id, nil},
 	} {
-		if rec := k.do(c.method, c.path, bo, c.body); rec.Code < 400 || rec.Code >= 500 {
-			t.Errorf("disabled caregiver %s: %d %q", c.method, rec.Code, rec.Body.String())
-		}
+		wantErr(t, k.do(c.method, c.path, bo, c.body), http.StatusUnauthorized, "no_session") // disabling ends the sessions
 	}
 	list := bodyMap(t, k.do(http.MethodGet, base, ana, nil))["doses"].([]any)
 	if len(list) != 1 || list[0].(map[string]any)["note"] != "after food" {
 		t.Errorf("doses after the refused writes = %v", list)
+	}
+}
+
+func TestDoseByARevokedCaregiver(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	course := k.createMedication(ana, kid, medBody(nil))["id"].(string)
+	base := "/v1/kids/" + kid + "/medication-doses"
+	id := k.createDose(ana, kid, doseBody(course, nil))["id"].(string)
+	if rec := k.do(http.MethodDelete, "/v1/kids/"+kid+"/access/"+k.parentID("bob"), ana, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: %d %q", rec.Code, rec.Body.String())
+	}
+	for _, c := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPost, base, doseBody(course, nil)},
+		{http.MethodPatch, base + "/" + id, map[string]any{"note": "x"}},
+		{http.MethodDelete, base + "/" + id, nil},
+	} {
+		wantErr(t, k.do(c.method, c.path, bo, c.body), http.StatusNotFound, "not_found")
 	}
 }
 

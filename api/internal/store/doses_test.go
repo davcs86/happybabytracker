@@ -247,6 +247,8 @@ func TestDoseMarksOneReminderDone(t *testing.T) {
 			want: map[time.Time]string{pend(8, 0): "done", pend(14, 0): "pending"}},
 		{name: "07:29 marks nothing", given: clock(7, 29), now: clock(10, 0),
 			want: map[time.Time]string{pend(8, 0): "pending", pend(14, 0): "pending"}},
+		{name: "a dose older than every row marks nothing", given: clock(3, 0), now: clock(10, 0),
+			want: map[time.Time]string{pend(8, 0): "pending", pend(14, 0): "pending"}},
 		{name: "13:40 marks only 14:00 and keeps a next row", given: clock(13, 40), now: clock(13, 45),
 			want: map[time.Time]string{pend(8, 0): "pending", pend(14, 0): "done", next: "pending"}},
 		{name: "an expired row becomes done", given: clock(8, 5), now: clock(10, 0),
@@ -366,8 +368,9 @@ func TestInactiveCourseStillTakesDoses(t *testing.T) {
 	if got, err := s.Dose(ctx, k.ID, d.ID); err != nil || got.MedicationID != course.ID {
 		t.Errorf("dose = %+v, %v", got, err)
 	}
-	if n := len(states(t, s, course.ID)); n > 1 {
-		t.Errorf("an inactive course holds %d reminder rows after a dose", n)
+	// A leftover pending row of an inactive course may be marked done: nothing sends a done row.
+	if got, want := states(t, s, course.ID), map[time.Time]string{clock(8, 0): "done"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("reminders after a dose for an inactive course = %v, want %v", got, want)
 	}
 }
 

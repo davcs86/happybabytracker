@@ -27,9 +27,8 @@ func scanMedicationDose(row rowScanner) (model.MedicationDose, error) {
 	return v, nil
 }
 
-// markDone sets done the one reminder a dose given at givenAt answers: the course's latest row due no later than
-// DoseDoneLead after it, when the engine's following occurrence is not yet past givenAt. Only pending and expired
-// rows change. It then keeps the course's next row; it never deletes, so no other row is touched.
+// markDone marks at most one pending or expired reminder done and never deletes a row; it must not be replaced by
+// rematerialise, which would drop undelivered rows.
 func markDone(ctx context.Context, tx *sql.Tx, medicationID string, givenAt, now time.Time) error {
 	var (
 		id, state string
@@ -59,9 +58,8 @@ func markDone(ctx context.Context, tx *sql.Tx, medicationID string, givenAt, now
 	return materialiseCourse(ctx, tx, medicationID, loc, now)
 }
 
-// CreateDose stores v for kidID as actorID, who needs an active grant (else ErrNotFound), and marks its reminder done.
-// ErrInvalidMedication when v.MedicationID is not one of the kid's courses; ErrConflict at MaxMedicationDosesPerKid.
-// The caller validates the rest.
+// CreateDose needs an active grant for actorID (else ErrNotFound); ErrInvalidMedication for a course that is not the
+// kid's, ErrConflict at MaxMedicationDosesPerKid. The caller validates the rest.
 func (s *Store) CreateDose(ctx context.Context, kidID, actorID string, v model.MedicationDose, now time.Time) (model.MedicationDose, error) {
 	v.ID, v.KidID, v.CreatedBy, v.UpdatedBy = model.NewID(), kidID, actorID, actorID
 	v.CreatedAt, v.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
