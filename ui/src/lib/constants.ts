@@ -9,6 +9,9 @@ import type {
 	ModuleId,
 	NursingSide,
 	PumpingSide,
+	Severity,
+	SymptomName,
+	TempMethod,
 	TimelineType,
 	TimerKind,
 	TrackerKind,
@@ -39,6 +42,22 @@ export const VOLUME_ML_RANGE = {
 	pumping: { min: 1, max: 2000 }
 } as const;
 export const MEAL_TEXT_MAX_LEN = 200;
+// Sickness, medication and reminders (constants.go): the names are the Go constants'.
+// MedicationTextMaxLen: a course's name and dose, a dose's amount.
+export const MEDICATION_TEXT_MAX_LEN = 80;
+// SymptomOtherMaxLen.
+export const SYMPTOM_OTHER_MAX_LEN = 80;
+// PushLabelMaxLen.
+export const PUSH_LABEL_MAX_LEN = 40;
+// MaxScheduleTimes.
+export const MAX_SCHEDULE_TIMES = 12;
+// MinEveryHours and MaxEveryHours.
+export const MIN_EVERY_HOURS = 1;
+export const MAX_EVERY_HOURS = 168;
+// MinReminderOverdueMinutes, MaxReminderOverdueMinutes and DefaultReminderOverdueMinutes.
+export const MIN_REMINDER_OVERDUE_MINUTES = 5;
+export const MAX_REMINDER_OVERDUE_MINUTES = 1440;
+export const DEFAULT_REMINDER_OVERDUE_MINUTES = 60;
 // Growth (constants.go and growth.Sources): grams for weight, millimetres for length and head.
 export const MEASURES = ['weight', 'length', 'head', 'bmi'] as const satisfies readonly Measure[];
 export const GROWTH_SOURCES = ['who', 'cdc'] as const satisfies readonly GrowthSourceId[];
@@ -120,7 +139,8 @@ export const TRACKER_KINDS: readonly TrackerKind[] = [
 	'pumping',
 	'sleep',
 	'diapers',
-	'meals'
+	'meals',
+	'symptoms'
 ];
 export const TIMER_KINDS = ['sleep', 'nursing'] as const satisfies readonly TimerKind[];
 // The one place the timeline's singular type names meet the route names that paths and TrackerKind use.
@@ -130,7 +150,8 @@ export const TIMELINE_TYPE: Record<TrackerKind, TimelineType> = {
 	pumping: 'pumping',
 	sleep: 'sleep',
 	diapers: 'diaper',
-	meals: 'meal'
+	meals: 'meal',
+	symptoms: 'symptom'
 };
 export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> = {
 	bottles: { log: 'Log a bottle', edit: 'Edit bottle' },
@@ -138,7 +159,8 @@ export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> =
 	pumping: { log: 'Log pumping', edit: 'Edit pumping' },
 	sleep: { log: 'Log sleep', edit: 'Edit sleep' },
 	diapers: { log: 'Log a diaper', edit: 'Edit diaper' },
-	meals: { log: 'Log a meal', edit: 'Edit meal' }
+	meals: { log: 'Log a meal', edit: 'Edit meal' },
+	symptoms: { log: 'Log a symptom', edit: 'Edit symptom' }
 };
 export const TRACKER_LABEL: Record<TrackerKind, string> = {
 	bottles: 'Bottle',
@@ -146,7 +168,8 @@ export const TRACKER_LABEL: Record<TrackerKind, string> = {
 	pumping: 'Pumping',
 	sleep: 'Sleep',
 	diapers: 'Diaper',
-	meals: 'Solids'
+	meals: 'Solids',
+	symptoms: 'Symptom'
 };
 // Longest range the summary endpoint answers (SummaryMaxDays), so a longer timeline range is refused here.
 export const SUMMARY_MAX_DAYS = 93;
@@ -169,6 +192,56 @@ export const DIAPER_KINDS = [
 	'both',
 	'dry'
 ] as const satisfies readonly DiaperKind[];
+export const SYMPTOMS = [
+	'congestion',
+	'cough',
+	'fever',
+	'vomiting',
+	'diarrhea',
+	'constipation',
+	'rash',
+	'ear_pain',
+	'sore_throat',
+	'poor_appetite',
+	'unusually_sleepy',
+	'other'
+] as const satisfies readonly SymptomName[];
+export const SYMPTOM_LABEL: Record<SymptomName, string> = {
+	congestion: 'Congestion',
+	cough: 'Cough',
+	fever: 'Fever',
+	vomiting: 'Vomiting',
+	diarrhea: 'Diarrhea',
+	constipation: 'Constipation',
+	rash: 'Rash',
+	ear_pain: 'Ear pain',
+	sore_throat: 'Sore throat',
+	poor_appetite: 'Poor appetite',
+	unusually_sleepy: 'Unusually sleepy',
+	other: 'Other'
+};
+export const SEVERITIES = ['mild', 'moderate', 'severe'] as const satisfies readonly Severity[];
+export const SEVERITY_LABEL: Record<Severity, string> = {
+	mild: 'Mild',
+	moderate: 'Moderate',
+	severe: 'Severe'
+};
+export const TEMP_METHODS = [
+	'oral',
+	'rectal',
+	'axillary',
+	'ear',
+	'forehead',
+	'other'
+] as const satisfies readonly TempMethod[];
+export const TEMP_METHOD_LABEL: Record<TempMethod, string> = {
+	oral: 'Oral',
+	rectal: 'Rectal',
+	axillary: 'Armpit',
+	ear: 'Ear',
+	forehead: 'Forehead',
+	other: 'Other'
+};
 export const NURSING_SIDES = ['left', 'right'] as const satisfies readonly NursingSide[];
 export const PUMPING_SIDES = ['left', 'right', 'both'] as const satisfies readonly PumpingSide[];
 export const MODULES = [
@@ -204,7 +277,8 @@ export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {
 	pumping: 'pumping',
 	diapers: 'diapers',
 	sleep: 'sleep',
-	feeding: 'meals'
+	feeding: 'meals',
+	sickness: 'symptoms'
 };
 // Spec 7.3: the quick-log buttons lead with these per age band; the other modules follow in MODULES order.
 export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {

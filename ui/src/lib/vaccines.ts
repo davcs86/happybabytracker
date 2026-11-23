@@ -1,6 +1,6 @@
 import { VACCINE_STATUS_LABEL, VACCINE_UNIT_LABEL } from './constants';
 import type {
-	HomeDue,
+	HomeDueVaccine,
 	VaccineCatalogue,
 	VaccineGroup,
 	VaccineLine,
@@ -15,7 +15,8 @@ export const groupTitle = ({ from }: Pick<VaccineGroup, 'from'>) =>
 
 export const statusLabel = (status: VaccineStatus) => VACCINE_STATUS_LABEL[status];
 
-export const dueLabel = (entry: HomeDue) => `${groupTitle(entry)} · ${statusLabel(entry.status)}`;
+export const dueLabel = (entry: HomeDueVaccine) =>
+	`${groupTitle(entry)} · ${statusLabel(entry.status)}`;
 
 // untilDate is the first day the window is over; recurring lines have no window to show.
 export function windowLabel(line: Pick<VaccineLine, 'kind' | 'fromDate' | 'untilDate'>): string {

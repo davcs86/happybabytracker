@@ -9,22 +9,33 @@ const accepts = (param: string) => {
 };
 
 describe('tracker param matcher', () => {
-	it('accepts exactly the six tracker route names', () => {
+	it('accepts exactly the seven tracker route names', () => {
 		expect([...TRACKER_KINDS].sort()).toEqual([
 			'bottles',
 			'diapers',
 			'meals',
 			'nursing',
 			'pumping',
-			'sleep'
+			'sleep',
+			'symptoms'
 		]);
 		for (const kind of TRACKER_KINDS) expect(accepts(kind)).toBe(true);
 	});
 
-	it.each(['', 'bottle', 'diaper', 'meal', 'growth', 'Bottles', 'sleep/', '..', 'constructor'])(
-		'refuses %j',
-		(param) => {
-			expect(accepts(param)).toBe(false);
-		}
-	);
+	it.each([
+		'',
+		'bottle',
+		'diaper',
+		'meal',
+		'symptom',
+		'sickness',
+		'medications',
+		'growth',
+		'Bottles',
+		'sleep/',
+		'..',
+		'constructor'
+	])('refuses %j', (param) => {
+		expect(accepts(param)).toBe(false);
+	});
 });

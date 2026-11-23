@@ -376,10 +376,17 @@ test('a preterm kid before the due date says before expected term, never a zero 
 	await expectAccessible(page);
 });
 
-test('the Growth tile leads the 24+ band and is gone with the module off', async ({ page }) => {
+test('the Growth tile follows Sickness and Medication in the 24+ band and is gone with the module off', async ({
+	page
+}) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${LEO.id}`);
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth', 'Vaccination']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Sickness',
+		'Medication',
+		'Growth',
+		'Vaccination'
+	]);
 	await expect(quickLog(page).getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
 		'href',
 		newUrl(LEO.id)
@@ -392,7 +399,11 @@ test('the Growth tile leads the 24+ band and is gone with the module off', async
 	);
 	await page.reload();
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Vaccination']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Sickness',
+		'Medication',
+		'Vaccination'
+	]);
 });
 
 test.describe('without JavaScript', () => {

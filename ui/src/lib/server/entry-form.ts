@@ -37,6 +37,7 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 	bottles: ['at', 'volume', 'volume_unit', 'advanced', ...SOURCE_FIELDS, 'note'],
 	diapers: ['at', 'kind', 'note'],
 	meals: ['at', 'what', 'reaction', 'note'],
+	symptoms: ['at', 'note'],
 	pumping: [
 		'started_at',
 		'duration_minutes',
@@ -300,7 +301,9 @@ function build(
 	const bad = (field: string, message: string | null = null): Outcome => ({ field, message });
 	const reopened = () => mode.kind === 'edit' && endShown && s('ended_at').trim() === '';
 	const timeKey =
-		kind === 'bottles' || kind === 'diapers' || kind === 'meals' ? 'at' : 'started_at';
+		kind === 'bottles' || kind === 'diapers' || kind === 'meals' || kind === 'symptoms'
+			? 'at'
+			: 'started_at';
 	if (!putTime(input, timeKey, s(timeKey), zone)) return bad(timeKey);
 
 	switch (kind) {
@@ -333,6 +336,8 @@ function build(
 			Object.assign(input, { what, reaction: orNull(s('reaction')) });
 			break;
 		}
+		case 'symptoms':
+			break;
 		case 'pumping': {
 			const duration = seconds(s('duration_minutes'), false);
 			if (duration === null) return bad('duration_seconds');

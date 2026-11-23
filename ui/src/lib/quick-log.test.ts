@@ -24,7 +24,9 @@ describe('quickLog', () => {
 			'Pumping',
 			'Feeding',
 			'Growth',
-			'Vaccination'
+			'Vaccination',
+			'Sickness',
+			'Medication'
 		]);
 	});
 
@@ -37,14 +39,24 @@ describe('quickLog', () => {
 			'Nursing',
 			'Pumping',
 			'Growth',
-			'Vaccination'
+			'Vaccination',
+			'Sickness',
+			'Medication'
 		]);
 	});
 
-	it('24+ months: of sickness, medication, growth and vaccination, growth and vaccination are built', () => {
-		expect(labels('24+', ['sickness', 'medication', 'growth', 'vaccination'])).toEqual([
+	it('24+ months: sickness, medication, growth, vaccination, then the rest in module order', () => {
+		expect(labels('24+')).toEqual([
+			'Sickness',
+			'Medication',
 			'Growth',
-			'Vaccination'
+			'Vaccination',
+			'Bottle',
+			'Nursing',
+			'Pumping',
+			'Diaper',
+			'Sleep',
+			'Feeding'
 		]);
 		expect(labels('24+', ['vaccination', 'growth', 'sleep', 'bottles'])).toEqual([
 			'Growth',
@@ -52,7 +64,7 @@ describe('quickLog', () => {
 			'Bottle',
 			'Sleep'
 		]);
-		expect(labels('24+', ['sickness', 'medication'])).toEqual([]);
+		expect(labels('24+', ['medication', 'sickness'])).toEqual(['Sickness', 'Medication']);
 	});
 
 	it('leaves out a disabled module and keeps the order of the rest', () => {
@@ -69,7 +81,9 @@ describe('quickLog', () => {
 			['nursing', 'nursing'],
 			['pumping', 'pumping'],
 			['growth', null],
-			['vaccination', null]
+			['vaccination', null],
+			['sickness', 'symptoms'],
+			['medication', null]
 		]);
 	});
 
@@ -83,11 +97,19 @@ describe('quickLog', () => {
 		expect(PAGE_ROUTE.vaccination?.('k-1')).toBe('/kids/k-1/vaccines');
 	});
 
+	it('sickness opens the symptoms tracker', () => {
+		expect(TRACKER_ROUTE.sickness).toBe('symptoms');
+		expect(PAGE_ROUTE.sickness).toBeUndefined();
+	});
+
+	it('medication opens the Medication page, never a tracker route', () => {
+		expect(TRACKER_ROUTE.medication).toBeUndefined();
+		expect(PAGE_ROUTE.medication?.('k-1')).toBe('/kids/k-1/medication');
+	});
+
 	it('never lists a module without a tracker or a page in this build', () => {
 		const kinds = new Set<string>(quickLog('0-11', states(), none).map((e) => e.module));
-		for (const m of ['milestones', 'sickness', 'medication']) {
-			expect(kinds.has(m)).toBe(false);
-		}
+		expect(kinds.has('milestones')).toBe(false);
 	});
 
 	it('a running timer replaces its own start button only', () => {
@@ -99,7 +121,9 @@ describe('quickLog', () => {
 			'Pumping',
 			'Feeding',
 			'Growth',
-			'Vaccination'
+			'Vaccination',
+			'Sickness',
+			'Medication'
 		]);
 	});
 });

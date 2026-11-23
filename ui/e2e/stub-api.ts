@@ -69,6 +69,8 @@ const KID_NAME = { min: 1, max: 64 };
 const KID_MIN_BIRTH_DATE = '1900-01-01';
 const WEEKS = { min: 22, max: 44 };
 const DAYS = { min: 0, max: 6 };
+// MinReminderOverdueMinutes, MaxReminderOverdueMinutes, DefaultReminderOverdueMinutes.
+const REMINDER_OVERDUE = { min: 5, max: 1440, default: 60 };
 const UNIT_SETS = {
 	weight: ['kg', 'lb'],
 	length: ['cm', 'in'],
@@ -116,6 +118,7 @@ type KidRow = {
 	timeZone: string;
 	growthSource: string;
 	vaccineSchema: string | null;
+	reminderOverdueMinutes: number;
 	seq: number;
 };
 type Grant = { kidId: string; parentId: string; role: Role };
@@ -178,6 +181,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationDays: null,
 		growthSource: 'who',
 		vaccineSchema: null,
+		reminderOverdueMinutes: REMINDER_OVERDUE.default,
 		seq: 1
 	};
 	const leo: KidRow = {
@@ -187,6 +191,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationDays: 2,
 		growthSource: 'who',
 		vaccineSchema: null,
+		reminderOverdueMinutes: REMINDER_OVERDUE.default,
 		seq: 2
 	};
 	const ivy: KidRow = {
@@ -196,6 +201,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		gestationDays: null,
 		growthSource: 'who',
 		vaccineSchema: null,
+		reminderOverdueMinutes: REMINDER_OVERDUE.default,
 		seq: 3
 	};
 	return {
@@ -264,7 +270,9 @@ type FieldKind =
 	| 'volume'
 	| 'measure'
 	| 'sources'
-	| 'weighin';
+	| 'weighin'
+	// Left to the handler, which answers 422 rather than decodeJSON's 400.
+	| 'raw';
 type Body = Record<string, unknown>;
 
 const RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -305,6 +313,7 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 		}
 		// Go flags a wrong type inside a weigh-in and the handler answers 422 naming it, never 400.
 		case 'weighin':
+		case 'raw':
 			return true;
 	}
 }
@@ -410,6 +419,7 @@ function kidView(k: KidRow, role: Role) {
 		time_zone: k.timeZone,
 		growth_source: k.growthSource,
 		vaccine_schema: k.vaccineSchema,
+		reminder_overdue_minutes: k.reminderOverdueMinutes,
 		role
 	};
 }
@@ -460,8 +470,9 @@ const inRange = (n: number | null, r: { min: number; max: number }) =>
 	n !== null && n >= r.min && n <= r.max;
 
 // invalidKidField in kids.go, same order: name, birth_date, sex, gestation_weeks, gestation_days, time_zone,
-// growth_source, then vaccine_schema (newSchemaOK: an unchanged stored id passes, even one no longer shipped).
-function invalidKidField(k: KidRow, storedSchema: string | null = null): string {
+// growth_source, vaccine_schema (newSchemaOK: an unchanged stored id passes, even one no longer shipped), then
+// reminder_overdue_minutes (kept when absent; null, a non-integer or out of range refused).
+function invalidKidField(k: KidRow, storedSchema: string | null = null, body: Body = {}): string {
 	const n = codePoints(k.name);
 	if (n < KID_NAME.min || n > KID_NAME.max) return 'name';
 	const zoneOK = validZone(k.timeZone);
@@ -480,6 +491,12 @@ function invalidKidField(k: KidRow, storedSchema: string | null = null): string 
 	if (!GROWTH_SOURCE_IDS.includes(k.growthSource)) return 'growth_source';
 	const changed = k.vaccineSchema !== null && k.vaccineSchema !== storedSchema;
 	if (changed && !STUB_SCHEDULES.has(k.vaccineSchema as string)) return 'vaccine_schema';
+	const minutes = body.reminder_overdue_minutes;
+	if (
+		'reminder_overdue_minutes' in body &&
+		!(Number.isInteger(minutes) && inRange(minutes as number, REMINDER_OVERDUE))
+	)
+		return 'reminder_overdue_minutes';
 	return '';
 }
 
@@ -498,6 +515,9 @@ function mergeKid(k: KidRow, body: Body): KidRow {
 	if ('gestation_weeks' in body) out.gestationWeeks = body.gestation_weeks as number | null;
 	if ('gestation_days' in body) out.gestationDays = body.gestation_days as number | null;
 	if ('vaccine_schema' in body) out.vaccineSchema = body.vaccine_schema as string | null;
+	if (Number.isInteger(body.reminder_overdue_minutes)) {
+		out.reminderOverdueMinutes = body.reminder_overdue_minutes as number;
+	}
 	out.name = out.name.trim();
 	return out;
 }
@@ -510,7 +530,8 @@ const KID_FIELDS: Record<string, FieldKind> = {
 	gestation_days: 'int',
 	time_zone: 'string',
 	growth_source: 'string',
-	vaccine_schema: 'string'
+	vaccine_schema: 'string',
+	reminder_overdue_minutes: 'raw'
 };
 
 const roleFor = (state: State, kidId: string, parentId: string) =>
@@ -764,10 +785,11 @@ const routes: RouteDef[] = [
 				timeZone: '',
 				growthSource: 'who',
 				vaccineSchema: null,
+				reminderOverdueMinutes: REMINDER_OVERDUE.default,
 				seq: 0
 			};
 			const kid = mergeKid(empty, body);
-			const field = invalidKidField(kid);
+			const field = invalidKidField(kid, null, body);
 			if (field) return error(res, 422, 'invalid', field);
 			kid.id = nextId(state, 'k');
 			kid.seq = state.nextId++;
@@ -798,7 +820,7 @@ const routes: RouteDef[] = [
 			const stored = state.kids.get(id);
 			if (!stored) return noKid(res);
 			const kid = mergeKid(stored, body);
-			const field = invalidKidField(kid, stored.vaccineSchema);
+			const field = invalidKidField(kid, stored.vaccineSchema, body);
 			if (field) return error(res, 422, 'invalid', field);
 			state.kids.set(id, kid);
 			send(res, 200, kidView(kid, p.role ?? 'guardian'));
@@ -1746,11 +1768,14 @@ const overviewRoutes: RouteDef[] = [
 			keys = TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]));
 		} else {
 			const names = given.length === 1 ? given[0].split(',') : [''];
-			const wanted = names.map((n) => TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n));
+			// symptom is a real type with no rows until the stub stores symptoms.
+			const wanted = names.map((n) =>
+				n === 'symptom' ? n : TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n)
+			);
 			if (wanted.some((k, i) => !k || wanted.indexOf(k) !== i)) {
 				return error(res, 422, 'invalid', 'types');
 			}
-			keys = wanted as TrackerKey[];
+			keys = wanted.filter((k) => k !== 'symptom') as TrackerKey[];
 		}
 		const items = keys.flatMap((key) =>
 			itemsOf(state, key, kid.id).map((i) => ({

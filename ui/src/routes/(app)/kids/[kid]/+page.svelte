@@ -9,6 +9,7 @@
 	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
 	import TodaySummary from '#lib/components/TodaySummary.svelte';
 	import { HOME_DUE_MAX } from '#lib/constants.js';
+	import type { HomeDueVaccine } from '#lib/types.js';
 	import { dueLabel } from '#lib/vaccines.js';
 	import type { PageProps } from './$types';
 
@@ -24,7 +25,8 @@
 	const overrunFor = (kind: Timer['kind']) =>
 		!!failed(kind === 'sleep' ? 'endSleep' : 'endNursing')?.overrun;
 	// The API lists every due visit in order; the rest are on the Vaccines page.
-	const moreDue = $derived(data.due.length - HOME_DUE_MAX);
+	const vaccineDue = $derived(data.due.filter((e): e is HomeDueVaccine => e.kind === 'vaccine'));
+	const moreDue = $derived(vaccineDue.length - HOME_DUE_MAX);
 </script>
 
 <svelte:head>
@@ -59,12 +61,12 @@
 				</ul>
 			</section>
 		{/if}
-		{#if data.due.length > 0}
+		{#if vaccineDue.length > 0}
 			{@const vaccines = resolve('/(app)/kids/[kid]/vaccines', { kid: data.kid.id })}
 			<section aria-labelledby="due-heading">
 				<h2 id="due-heading" class="mb-2 font-semibold">Due</h2>
 				<ul class="flex flex-col gap-2">
-					{#each data.due.slice(0, HOME_DUE_MAX) as entry, i (i)}
+					{#each vaccineDue.slice(0, HOME_DUE_MAX) as entry, i (i)}
 						<li><a href={vaccines} class="underline">{dueLabel(entry)}</a></li>
 					{/each}
 					{#if moreDue > 0}

@@ -11,6 +11,9 @@ import {
 	MODULES,
 	NURSING_SIDES,
 	PUMPING_SIDES,
+	SEVERITIES,
+	SYMPTOMS,
+	TEMP_METHODS,
 	TIMELINE_TYPE,
 	TIMER_KINDS,
 	TRACKER_KINDS,
@@ -38,12 +41,15 @@ import type {
 	GrowthScore,
 	GrowthSourceInfo,
 	GrowthWeight,
+	DoseQuery,
 	Home,
 	HomeDue,
 	Kid,
 	KidInput,
 	ListQuery,
 	Meal,
+	Medication,
+	MedicationDose,
 	Milk,
 	ModuleId,
 	ModuleState,
@@ -56,10 +62,13 @@ import type {
 	Pumping,
 	PumpingSideVolume,
 	Role,
+	Schedule,
 	Session,
 	SessionInfo,
 	SessionKind,
 	Sleep,
+	Symptom,
+	Temperature,
 	TimelineItem,
 	TimelineQuery,
 	TimerKind,
@@ -116,7 +125,7 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose'}`
 	| 'growth_curves'
 	| 'growth_sources'
 	| 'end_timer'
@@ -270,6 +279,7 @@ function toKid(v: unknown): Kid {
 		timeZone: string(k.time_zone),
 		growthSource: oneOf(k.growth_source, GROWTH_SOURCES),
 		vaccineSchema: stringOrNull(k.vaccine_schema),
+		reminderOverdueMinutes: int(k.reminder_overdue_minutes),
 		role: oneOf(k.role, ROLES)
 	};
 }
@@ -363,6 +373,29 @@ function toMeal(v: unknown): Meal {
 	};
 }
 
+function toTemperature(v: unknown): Temperature {
+	const o = object(v);
+	return {
+		cHundredths: int(o.c_hundredths),
+		fHundredths: int(o.f_hundredths),
+		typedUnit: oneOf(o.typed_unit, ['c', 'f'])
+	};
+}
+
+function toSymptom(v: unknown): Symptom {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		at: string(o.at),
+		symptom: oneOf(o.symptom, SYMPTOMS),
+		severity: o.severity === null ? null : oneOf(o.severity, SEVERITIES),
+		otherText: stringOrNull(o.other_text),
+		temperature: nullOr(o.temperature, toTemperature),
+		method: o.method === null ? null : oneOf(o.method, TEMP_METHODS),
+		note: stringOrNull(o.note)
+	};
+}
+
 function toPumpingSideVolume(v: unknown): PumpingSideVolume {
 	const o = object(v);
 	return { side: oneOf(o.side, NURSING_SIDES), volume: toVolume(o.volume) };
@@ -424,7 +457,8 @@ const PARSERS: { [K in TrackerKind]: (v: unknown) => TrackerEntries[K] } = {
 	pumping: toPumping,
 	sleep: toSleep,
 	diapers: toDiaper,
-	meals: toMeal
+	meals: toMeal,
+	symptoms: toSymptom
 };
 
 function toPage<K extends TrackerKind>(kind: K, v: unknown): Page<TrackerEntries[K]> {
@@ -502,6 +536,15 @@ function toVaccineAge(v: unknown): VaccineAge {
 
 function toHomeDue(v: unknown): HomeDue {
 	const o = object(v);
+	if (o.kind === 'medication') {
+		const m = object(o.medication);
+		return {
+			kind: 'medication',
+			medication: { id: string(m.id), name: string(m.name) },
+			dueAt: string(o.due_at),
+			state: oneOf(o.state, ['due', 'overdue'])
+		};
+	}
 	return {
 		kind: oneOf(o.kind, ['vaccine']),
 		from: toVaccineAge(o.from),
@@ -608,6 +651,55 @@ function toAdministration(v: unknown): Administration {
 		antigens: list(o, 'antigens', string),
 		lot: stringOrNull(o.lot),
 		product: stringOrNull(o.product),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toSchedule(v: unknown): Schedule {
+	const o = object(v);
+	switch (o.kind) {
+		case 'none':
+			return { kind: 'none' };
+		case 'times':
+			return { kind: 'times', times: array(o.times, string) };
+		case 'every':
+			return { kind: 'every', hours: int(o.hours) };
+		default:
+			throw new ShapeError();
+	}
+}
+
+function toMedication(v: unknown): Medication {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		name: string(o.name),
+		dose: string(o.dose),
+		schedule: toSchedule(o.schedule),
+		startAt: string(o.start_at),
+		endOn: stringOrNull(o.end_on),
+		active: boolean(o.active),
+		note: stringOrNull(o.note),
+		lastDose: nullOr(o.last_dose, (d) => {
+			const dose = object(d);
+			return {
+				id: string(dose.id),
+				givenAt: string(dose.given_at),
+				amount: stringOrNull(dose.amount)
+			};
+		}),
+		nextDue: nullOr(o.next_due, (d) => ({ dueAt: string(object(d).due_at) })),
+		doseCount: int(o.dose_count)
+	};
+}
+
+function toMedicationDose(v: unknown): MedicationDose {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		medication: string(o.medication),
+		givenAt: string(o.given_at),
+		amount: stringOrNull(o.amount),
 		note: stringOrNull(o.note)
 	};
 }
@@ -719,12 +811,13 @@ function curvesQuery(q: CurvesQuery): string {
 	return `?${p}`;
 }
 
-function queryString(q: TimelineQuery): string {
+function queryString(q: TimelineQuery & { medication?: string }): string {
 	const p = new URLSearchParams();
 	if (q.from !== undefined) p.set('from', q.from);
 	if (q.to !== undefined) p.set('to', q.to);
 	if (q.limit !== undefined) p.set('limit', String(q.limit));
 	if (q.cursor !== undefined) p.set('cursor', q.cursor);
+	if (q.medication !== undefined) p.set('medication', q.medication);
 	if (q.types?.length) p.set('types', q.types.join(','));
 	const s = p.toString();
 	return s === '' ? '' : `?${s}`;
@@ -738,7 +831,10 @@ const kidBody = (k: KidInput) => ({
 	gestation_days: k.gestationDays,
 	time_zone: k.timeZone,
 	...(k.growthSource === undefined ? {} : { growth_source: k.growthSource }),
-	...(k.vaccineSchema === undefined ? {} : { vaccine_schema: k.vaccineSchema })
+	...(k.vaccineSchema === undefined ? {} : { vaccine_schema: k.vaccineSchema }),
+	...(k.reminderOverdueMinutes === undefined
+		? {}
+		: { reminder_overdue_minutes: k.reminderOverdueMinutes })
 });
 
 const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' } as const;
@@ -951,6 +1047,70 @@ export function createApi(
 						)
 					)
 			};
+		},
+		// input is the API's own JSON body, as the medication form builds it.
+		medications: {
+			list: (kidId: string) =>
+				withId(kidId, (k) =>
+					call('list_medication', 'GET', `/v1/kids/${k}/medications`, (b) =>
+						list(b, 'medications', toMedication)
+					)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_medication', 'GET', `/v1/kids/${k}/medications/${i}`, toMedication)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_medication', 'POST', `/v1/kids/${k}/medications`, toMedication, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('update_medication', 'PATCH', `/v1/kids/${k}/medications/${i}`, toMedication, input)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_medication', 'DELETE', `/v1/kids/${k}/medications/${i}`, null)
+				)
+		},
+		// input is the API's own JSON body; query.medication filters to one course.
+		doses: {
+			list: (kidId: string, query: DoseQuery = {}) =>
+				known(query.medication === undefined || ID_PATTERN.test(query.medication), () =>
+					withId(kidId, (k) =>
+						call(
+							'list_dose',
+							'GET',
+							`/v1/kids/${k}/medication-doses${queryString(query)}`,
+							(b) => ({
+								items: list(b, 'doses', toMedicationDose),
+								nextCursor: stringOrNull(object(b).next_cursor)
+							})
+						)
+					)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_dose', 'GET', `/v1/kids/${k}/medication-doses/${i}`, toMedicationDose)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_dose', 'POST', `/v1/kids/${k}/medication-doses`, toMedicationDose, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call(
+						'update_dose',
+						'PATCH',
+						`/v1/kids/${k}/medication-doses/${i}`,
+						toMedicationDose,
+						input
+					)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_dose', 'DELETE', `/v1/kids/${k}/medication-doses/${i}`, null)
+				)
 		},
 		// at is an RFC 3339 instant; left out it is now.
 		endTimer: <K extends TimerKind>(kind: K, kidId: string, id: string, at?: string) =>

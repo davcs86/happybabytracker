@@ -5,6 +5,7 @@ const TIME_FIELDS: Record<TrackerKind, string[]> = {
 	bottles: ['at'],
 	diapers: ['at'],
 	meals: ['at'],
+	symptoms: ['at'],
 	pumping: ['started_at'],
 	sleep: ['started_at', 'ended_at'],
 	nursing: ['started_at', 'ended_at']

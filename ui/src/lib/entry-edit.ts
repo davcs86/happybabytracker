@@ -115,6 +115,8 @@ export function createValues(
 			return { at, kind: '', note: '' };
 		case 'meals':
 			return { at, what: '', reaction: '', note: '' };
+		case 'symptoms':
+			return { at, note: '' };
 		case 'pumping':
 			return {
 				started_at: at,
@@ -282,6 +284,10 @@ export function editValues(
 				reaction: e.reaction ?? '',
 				...note
 			};
+		}
+		case 'symptoms': {
+			const e = entry as TrackerEntries['symptoms'];
+			return { ...instantValues('at', e.at, zone), ...note };
 		}
 		case 'pumping': {
 			const e = entry as TrackerEntries['pumping'];

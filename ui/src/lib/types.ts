@@ -31,14 +31,19 @@ export type KidInput = {
 	timeZone: string;
 	growthSource?: string;
 	vaccineSchema?: string | null;
+	reminderOverdueMinutes?: number;
 };
 
-export type Kid = Omit<KidInput, 'sex' | 'growthSource' | 'vaccineSchema'> & {
+export type Kid = Omit<
+	KidInput,
+	'sex' | 'growthSource' | 'vaccineSchema' | 'reminderOverdueMinutes'
+> & {
 	id: string;
 	sex: Sex;
 	growthSource: GrowthSourceId;
 	// An id the API no longer ships counts as no schedule (schemaChosen).
 	vaccineSchema: string | null;
+	reminderOverdueMinutes: number;
 	role: Role;
 };
 
@@ -57,9 +62,11 @@ export type ParentLink = { kind: 'invite' | 'reset'; url: string; expiresAt: str
 
 export type SessionInfo = { id: string; createdAt: string; lastSeenAt: string; current: boolean };
 
-export type TrackerKind = 'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals';
+export type TrackerKind =
+	'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals' | 'symptoms';
 
-export type TimelineType = 'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal';
+export type TimelineType =
+	'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal' | 'symptom';
 
 export type VolumeUnit = Units['volume'];
 
@@ -112,6 +119,54 @@ export type Nursing = Noted & {
 	milk: Milk | null;
 };
 
+export type SymptomName =
+	| 'congestion'
+	| 'cough'
+	| 'fever'
+	| 'vomiting'
+	| 'diarrhea'
+	| 'constipation'
+	| 'rash'
+	| 'ear_pain'
+	| 'sore_throat'
+	| 'poor_appetite'
+	| 'unusually_sleepy'
+	| 'other';
+export type Severity = 'mild' | 'moderate' | 'severe';
+export type TempMethod = 'oral' | 'rectal' | 'axillary' | 'ear' | 'forehead' | 'other';
+// Both columns; typedUnit names the exact one.
+export type Temperature = { cHundredths: number; fHundredths: number; typedUnit: Units['temp'] };
+export type Symptom = Noted & {
+	at: string;
+	symptom: SymptomName;
+	severity: Severity | null;
+	otherText: string | null;
+	temperature: Temperature | null;
+	method: TempMethod | null;
+};
+
+// times are HH:MM in the kid's zone; every is a grid from the course's start.
+export type Schedule =
+	{ kind: 'none' } | { kind: 'times'; times: string[] } | { kind: 'every'; hours: number };
+export type Medication = Noted & {
+	name: string;
+	dose: string;
+	schedule: Schedule;
+	startAt: string;
+	// A kid-local date, inclusive.
+	endOn: string | null;
+	active: boolean;
+	lastDose: { id: string; givenAt: string; amount: string | null } | null;
+	nextDue: { dueAt: string } | null;
+	doseCount: number;
+};
+export type MedicationDose = Noted & {
+	medication: string;
+	givenAt: string;
+	amount: string | null;
+};
+export type DoseQuery = ListQuery & { medication?: string };
+
 export type TrackerEntries = {
 	bottles: Bottle;
 	nursing: Nursing;
@@ -119,6 +174,7 @@ export type TrackerEntries = {
 	sleep: Sleep;
 	diapers: Diaper;
 	meals: Meal;
+	symptoms: Symptom;
 };
 export type TimerKind = 'sleep' | 'nursing';
 
@@ -308,9 +364,17 @@ export type AdministrationInput = {
 	product?: string | null;
 	note?: string | null;
 };
-export type HomeDue = {
+export type HomeDueVaccine = {
 	kind: 'vaccine';
 	from: VaccineAge;
 	status: 'due' | 'overdue';
 	count: number;
 };
+// dueAt is an instant; the API decides which entries are listed, the UI applies no window.
+export type HomeDueMedication = {
+	kind: 'medication';
+	medication: { id: string; name: string };
+	dueAt: string;
+	state: 'due' | 'overdue';
+};
+export type HomeDue = HomeDueVaccine | HomeDueMedication;

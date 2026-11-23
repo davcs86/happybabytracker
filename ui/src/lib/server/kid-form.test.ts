@@ -39,6 +39,7 @@ describe('kidValues growth source', () => {
 			timeZone: 'UTC',
 			growthSource: 'cdc',
 			vaccineSchema: null,
+			reminderOverdueMinutes: 60,
 			role: 'guardian'
 		} as const;
 		expect(kidValues(stored).growthSource).toBe('cdc');
@@ -70,6 +71,7 @@ describe('kidValues vaccine schedule', () => {
 			timeZone: 'UTC',
 			growthSource: 'who',
 			vaccineSchema: 'us',
+			reminderOverdueMinutes: 60,
 			role: 'guardian'
 		} as const;
 		expect(kidValues(stored).vaccineSchema).toBe('us');

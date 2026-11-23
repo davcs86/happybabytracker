@@ -62,7 +62,9 @@ test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; link
 		'Pumping',
 		'Feeding',
 		'Growth',
-		'Vaccination'
+		'Vaccination',
+		'Sickness',
+		'Medication'
 	]);
 	const log = (name: string) => quickLog(page).getByRole('link', { name, exact: true });
 	await expect(log('Bottle')).toHaveAttribute('href', `/kids/${MIA.id}/log/bottles`);
@@ -88,7 +90,9 @@ test('a 13-month kid starts with Feeding', async ({ page }) => {
 		'Nursing',
 		'Pumping',
 		'Growth',
-		'Vaccination'
+		'Vaccination',
+		'Sickness',
+		'Medication'
 	]);
 	await expectAccessible(page);
 });
@@ -99,7 +103,12 @@ test('a kid over 24 months has no timer trackers and no empty headings', async (
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByRole('button', { name: /Sleep|Nursing/ })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: /Sleep|Nursing/ })).toHaveCount(0);
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth', 'Vaccination']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Sickness',
+		'Medication',
+		'Growth',
+		'Vaccination'
+	]);
 	for (const heading of ['Due', 'Running now', 'Today']) {
 		await expect(page.getByRole('heading', { name: heading })).toHaveCount(0);
 	}
@@ -135,7 +144,9 @@ test('the Vaccination tile opens the Vaccines page in every band and hides with 
 		'Sleep',
 		'Pumping',
 		'Feeding',
-		'Growth'
+		'Growth',
+		'Sickness',
+		'Medication'
 	]);
 });
 
@@ -230,7 +241,9 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Pumping',
 		'Feeding',
 		'Growth',
-		'Vaccination'
+		'Vaccination',
+		'Sickness',
+		'Medication'
 	]);
 	await expectAccessible(page);
 	const posts = (await receivedRequests()).filter(
@@ -248,7 +261,9 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Pumping',
 		'Feeding',
 		'Growth',
-		'Vaccination'
+		'Vaccination',
+		'Sickness',
+		'Medication'
 	]);
 	await expect(today(page).getByRole('term')).toHaveText([
 		'Bottles',
@@ -419,7 +434,9 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		'Pumping',
 		'Feeding',
 		'Growth',
-		'Vaccination'
+		'Vaccination',
+		'Sickness',
+		'Medication'
 	]);
 	// The entry stays in the data: only the default timeline view follows the modules.
 	const kept = await ana('GET', `/v1/kids/${MIA.id}/timeline?types=bottle`);

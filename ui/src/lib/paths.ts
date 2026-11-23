@@ -8,6 +8,7 @@ export const timelinePath = (kidId: string) => `/kids/${kidId}/timeline`;
 // A kid-local date, YYYY-MM-DD.
 export const timelineDayPath = (kidId: string, date: string) =>
 	`${timelinePath(kidId)}?from=${date}&to=${date}`;
+export const medicationPath = (kidId: string) => `/kids/${kidId}/medication`;
 export const growthPath = (kidId: string) => `/kids/${kidId}/growth`;
 export const growthMeasurePath = (kidId: string, measure: Measure) =>
 	`${growthPath(kidId)}?measure=${measure}`;

@@ -80,6 +80,8 @@ export function timelineLine(
 			const { what, reaction } = item.entry;
 			return `${clock} ${label}: ${what}${reaction ? ` · ${reaction}` : ''}`;
 		}
+		case 'symptoms':
+			return `${clock} ${label}`;
 	}
 }
 
