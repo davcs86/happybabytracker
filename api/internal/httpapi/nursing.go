@@ -1,30 +1,99 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 type nursingView struct {
-	ID           string  `json:"id"`
-	StartedAt    string  `json:"started_at"`
-	EndedAt      *string `json:"ended_at"`
-	LeftSeconds  int     `json:"left_seconds"`
-	RightSeconds int     `json:"right_seconds"`
-	Side         *string `json:"side"`
-	SideSince    *string `json:"side_since"`
-	Note         *string `json:"note"`
+	ID           string      `json:"id"`
+	StartedAt    string      `json:"started_at"`
+	EndedAt      *string     `json:"ended_at"`
+	LeftSeconds  int         `json:"left_seconds"`
+	RightSeconds int         `json:"right_seconds"`
+	Side         *string     `json:"side"`
+	SideSince    *string     `json:"side_since"`
+	Note         *string     `json:"note"`
+	WeightBefore *weightView `json:"weight_before"`
+	WeightAfter  *weightView `json:"weight_after"`
+	Milk         *milkView   `json:"milk"`
+}
+
+// milkView is the estimate: the weight gain and its volume at the assumed density; null when it is not defined.
+type milkView struct {
+	Gain struct {
+		Grams        int64 `json:"grams"`
+		OzHundredths int64 `json:"oz_hundredths"`
+	} `json:"gain"`
+	Volume struct {
+		ML             int64 `json:"ml"`
+		FlOzHundredths int64 `json:"floz_hundredths"`
+	} `json:"volume"`
+}
+
+func newWeightView(w *units.Weight) *weightView {
+	if w == nil {
+		return nil
+	}
+	return &weightView{Grams: w.Grams, OzHundredths: w.OzHundredths, TypedUnit: w.Typed}
+}
+
+func newMilkView(before, after *units.Weight) *milkView {
+	m, ok := units.MilkTransfer(before, after)
+	if !ok {
+		return nil
+	}
+	v := &milkView{}
+	v.Gain.Grams, v.Gain.OzHundredths = m.GainGrams, m.GainOzHundredths
+	v.Volume.ML, v.Volume.FlOzHundredths = m.ML, m.FlOzHundredths
+	return v
 }
 
 func newNursingView(n model.NursingSession) nursingView {
 	return nursingView{
 		ID: n.ID, StartedAt: instantString(n.StartedAt), EndedAt: optionalInstant(n.EndedAt),
 		LeftSeconds: n.LeftSeconds, RightSeconds: n.RightSeconds, Side: n.Side, SideSince: optionalInstant(n.SideSince), Note: n.Note,
+		WeightBefore: newWeightView(n.WeightBefore), WeightAfter: newWeightView(n.WeightAfter), Milk: newMilkView(n.WeightBefore, n.WeightAfter),
 	}
+}
+
+// optionalWeight is an optionalMeasure whose wrong JSON type is flagged Bad, so it answers 422 with the field's name.
+type optionalWeight struct {
+	optionalMeasure
+	Bad bool
+}
+
+// UnmarshalJSON still refuses unknown keys inside the weight, as optionalMeasure does.
+func (o *optionalWeight) UnmarshalJSON(b []byte) error {
+	err := o.optionalMeasure.UnmarshalJSON(b)
+	var typeErr *json.UnmarshalTypeError
+	if errors.As(err, &typeErr) && !bytes.Equal(bytes.TrimSpace(b), []byte("null")) {
+		o.Bad, o.V = true, nil
+		return nil
+	}
+	return err
+}
+
+// mergeWeighIn keeps stored when in is absent or re-sends the typed value, else converts in; false when it is
+// refused or outside MinWeightGrams..MaxWeightGrams.
+func mergeWeighIn(stored *units.Weight, in optionalWeight) (*units.Weight, bool) {
+	if in.Bad {
+		return stored, false
+	}
+	w, ok := mergeWeight(stored, in.optionalMeasure)
+	if !ok || (w != nil && (w.Grams < constants.MinWeightGrams || w.Grams > constants.MaxWeightGrams)) {
+		return stored, false
+	}
+	return w, true
 }
 
 // nursingInput is the body of POST and PATCH; on PATCH an absent key keeps the stored value.
@@ -34,11 +103,13 @@ type nursingInput struct {
 	LeftSeconds  *int           `json:"left_seconds"`
 	RightSeconds *int           `json:"right_seconds"`
 	Side         *string        `json:"side"`
+	WeightBefore optionalWeight `json:"weight_before"`
+	WeightAfter  optionalWeight `json:"weight_after"`
 	Note         optionalString `json:"note"`
 }
 
 // newSession builds a POST's session and names the first invalid field in the order started_at, ended_at,
-// left_seconds, right_seconds, side, note, then the session invariants. No ended_at starts a timer on side.
+// left_seconds, right_seconds, side, weight_before, weight_after, note, then the session invariants. No ended_at starts a timer on side.
 func (in nursingInput) newSession(birth, now time.Time) (model.NursingSession, string) {
 	n := model.NursingSession{StartedAt: wholeSecond(now)}
 	if in.StartedAt != nil {
@@ -68,6 +139,13 @@ func (in nursingInput) newSession(birth, now time.Time) (model.NursingSession, s
 		n.Side, n.SideSince = in.Side, &since
 	} else {
 		n.LeftSeconds, n.RightSeconds = *in.LeftSeconds, *in.RightSeconds
+	}
+	var ok bool
+	if n.WeightBefore, ok = mergeWeighIn(nil, in.WeightBefore); !ok {
+		return n, "weight_before"
+	}
+	if n.WeightAfter, ok = mergeWeighIn(nil, in.WeightAfter); !ok {
+		return n, "weight_after"
 	}
 	n.Note = in.Note.V
 	if !noteOK(n.Note) {
@@ -119,6 +197,13 @@ func (in nursingInput) mergeOnto(n model.NursingSession, birth, now time.Time) (
 	}
 	if in.Side != nil {
 		return n, "side"
+	}
+	var ok bool
+	if n.WeightBefore, ok = mergeWeighIn(n.WeightBefore, in.WeightBefore); !ok {
+		return n, "weight_before"
+	}
+	if n.WeightAfter, ok = mergeWeighIn(n.WeightAfter, in.WeightAfter); !ok {
+		return n, "weight_after"
 	}
 	if in.Note.Set {
 		n.Note = in.Note.V

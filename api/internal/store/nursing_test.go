@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 func runningNursing(start time.Time, side string) model.NursingSession {
@@ -346,5 +347,107 @@ func TestRestartedUnswitchedNursingCreditsTheShownDuration(t *testing.T) {
 	}
 	if got := switched.Restarted(t0.Add(-30 * time.Minute)); !got.SideSince.Equal(*switched.SideSince) || got.LeftSeconds != 600 {
 		t.Errorf("a switched session's side_since moved: %+v", got)
+	}
+}
+
+func weigh(t *testing.T, unit units.Unit, amount int64) *units.Weight {
+	t.Helper()
+	w, err := units.NewWeight(unit, amount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &w
+}
+
+func TestNursingWeightsRoundTrip(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	before, after := weigh(t, units.UnitKG, 3400), weigh(t, units.UnitLB, 12212)
+	for name, c := range map[string]struct{ before, after *units.Weight }{
+		"neither": {nil, nil}, "before only": {before, nil}, "after only": {nil, after}, "both": {before, after},
+	} {
+		in := finishedNursing(t0.Add(-time.Hour), t0.Add(-30*time.Minute), 600, 900)
+		in.WeightBefore, in.WeightAfter = c.before, c.after
+		created, err := s.CreateNursing(ctx, k.ID, ana.ID, in, t0)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got, err := s.Nursing(ctx, k.ID, created.ID); err != nil || !reflect.DeepEqual(got, created) || !reflect.DeepEqual(got.WeightBefore, c.before) || !reflect.DeepEqual(got.WeightAfter, c.after) {
+			t.Errorf("%s: Nursing = %+v, %v; want weights %v %v", name, got, err, c.before, c.after)
+		}
+		if list, err := s.ListNursing(ctx, k.ID, wideQuery()); err != nil || len(list) == 0 {
+			t.Fatalf("%s: ListNursing = %v, %v", name, list, err)
+		} else {
+			found := false
+			for _, n := range list {
+				if n.ID == created.ID {
+					found = reflect.DeepEqual(n, created)
+				}
+			}
+			if !found {
+				t.Errorf("%s: ListNursing does not return the stored weights", name)
+			}
+		}
+		if err := s.DeleteNursing(ctx, k.ID, ana.ID, created.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestRunningNursingKeepsWeightsThroughSideAndEnd(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	in := runningNursing(t0.Add(-20*time.Minute), "left")
+	in.WeightBefore = weigh(t, units.UnitKG, 3400)
+	created := mustNursing(t, s, k.ID, ana.ID, in)
+	if got, err := s.RunningNursing(ctx, k.ID); err != nil || got == nil || !reflect.DeepEqual(got.WeightBefore, in.WeightBefore) {
+		t.Fatalf("RunningNursing = %+v, %v", got, err)
+	}
+	if _, err := s.SwitchNursingSide(ctx, k.ID, ana.ID, created.ID, "right", t0.Add(-10*time.Minute), t0); err != nil {
+		t.Fatal(err)
+	}
+	ended, err := s.EndNursing(ctx, k.ID, ana.ID, created.ID, t0, t0)
+	if err != nil || !reflect.DeepEqual(ended.WeightBefore, in.WeightBefore) || ended.WeightAfter != nil {
+		t.Fatalf("ended = %+v, %v", ended, err)
+	}
+}
+
+func TestNoteOnlyUpdateKeepsWeights(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	in := finishedNursing(t0.Add(-time.Hour), t0.Add(-30*time.Minute), 600, 900)
+	in.WeightBefore, in.WeightAfter = weigh(t, units.UnitLB, 12000), weigh(t, units.UnitKG, 3462)
+	created := mustNursing(t, s, k.ID, ana.ID, in)
+	const columns = `SELECT weight_before_g, weight_before_oz_h, weight_before_typed, weight_after_g, weight_after_oz_h, weight_after_typed FROM nursing_sessions WHERE id = ?`
+	read := func() [6]any {
+		var c [6]any
+		if err := s.r.QueryRow(columns, created.ID).Scan(&c[0], &c[1], &c[2], &c[3], &c[4], &c[5]); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	was := read()
+	updated, err := s.UpdateNursing(ctx, k.ID, ana.ID, created.ID, t0.Add(time.Hour), func(n model.NursingSession) (model.NursingSession, error) {
+		n.Note = strp("only the note")
+		return n, nil
+	})
+	if err != nil || !reflect.DeepEqual(updated.WeightBefore, in.WeightBefore) || !reflect.DeepEqual(updated.WeightAfter, in.WeightAfter) {
+		t.Fatalf("updated = %+v, %v", updated, err)
+	}
+	if now := read(); now != was {
+		t.Errorf("weight columns after a note-only update = %v, want %v", now, was)
+	}
+	cleared, err := s.UpdateNursing(ctx, k.ID, ana.ID, created.ID, t0.Add(time.Hour), func(n model.NursingSession) (model.NursingSession, error) {
+		n.WeightAfter = nil
+		return n, nil
+	})
+	if err != nil || cleared.WeightAfter != nil || cleared.WeightBefore == nil {
+		t.Fatalf("cleared = %+v, %v", cleared, err)
+	}
+	if c := read(); c[3] != nil || c[4] != nil || c[5] != nil || c[0] != was[0] {
+		t.Errorf("columns after clearing after = %v", c)
 	}
 }

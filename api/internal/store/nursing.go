@@ -7,9 +7,26 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
-const nursingColumns = entryColumns + `, started_at, ended_at, left_seconds, right_seconds, side, side_since`
+const nursingColumns = entryColumns + `, started_at, ended_at, left_seconds, right_seconds, side, side_since,
+	weight_before_g, weight_before_oz_h, weight_before_typed, weight_after_g, weight_after_oz_h, weight_after_typed`
+
+func nullableWeight(g, oz sql.NullInt64, typed sql.NullString) *units.Weight {
+	if !g.Valid {
+		return nil
+	}
+	return &units.Weight{Grams: g.Int64, OzHundredths: oz.Int64, Typed: units.Unit(typed.String)}
+}
+
+// weightArgs are w's three columns; an absent weight is three NULLs.
+func weightArgs(w *units.Weight) []any {
+	if w == nil {
+		return []any{nil, nil, nil}
+	}
+	return []any{w.Grams, w.OzHundredths, string(w.Typed)}
+}
 
 func scanNursing(row rowScanner) (model.NursingSession, error) {
 	var (
@@ -17,12 +34,15 @@ func scanNursing(row rowScanner) (model.NursingSession, error) {
 		startedAt          int64
 		endedAt, sideSince sql.NullInt64
 		side               sql.NullString
+		bg, bo, ag, ao     sql.NullInt64
+		bt, at             sql.NullString
 	)
-	e, err := scanEntry(row, &startedAt, &endedAt, &n.LeftSeconds, &n.RightSeconds, &side, &sideSince)
+	e, err := scanEntry(row, &startedAt, &endedAt, &n.LeftSeconds, &n.RightSeconds, &side, &sideSince, &bg, &bo, &bt, &ag, &ao, &at)
 	if err != nil {
 		return model.NursingSession{}, err
 	}
 	n.Entry, n.StartedAt, n.EndedAt, n.SideSince = e, unixTime(startedAt), nullableTime(endedAt), nullableTime(sideSince)
+	n.WeightBefore, n.WeightAfter = nullableWeight(bg, bo, bt), nullableWeight(ag, ao, at)
 	if side.Valid {
 		n.Side = &side.String
 	}
@@ -30,10 +50,11 @@ func scanNursing(row rowScanner) (model.NursingSession, error) {
 }
 
 func insertNursing(ctx context.Context, tx *sql.Tx, n model.NursingSession) error {
+	args := append([]any{n.ID, n.KidID, n.Note, n.CreatedBy, n.UpdatedBy, n.CreatedAt.Unix(), n.UpdatedAt.Unix(),
+		n.StartedAt.Unix(), nullableUnix(n.EndedAt), n.LeftSeconds, n.RightSeconds, n.Side, nullableUnix(n.SideSince)},
+		append(weightArgs(n.WeightBefore), weightArgs(n.WeightAfter)...)...)
 	_, err := tx.ExecContext(ctx,
-		`INSERT INTO nursing_sessions(`+nursingColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		n.ID, n.KidID, n.Note, n.CreatedBy, n.UpdatedBy, n.CreatedAt.Unix(), n.UpdatedAt.Unix(),
-		n.StartedAt.Unix(), nullableUnix(n.EndedAt), n.LeftSeconds, n.RightSeconds, n.Side, nullableUnix(n.SideSince))
+		`INSERT INTO nursing_sessions(`+nursingColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 	return runningConflict(err)
 }
 
@@ -90,7 +111,7 @@ func (s *Store) ListNursing(ctx context.Context, kidID string, q ListQuery) ([]m
 }
 
 // UpdateNursing reads the kid's session id inside the write transaction, applies edit (whose error aborts the write)
-// and stores every timer column and the note; ErrInvalidSession when the result breaks an invariant or re-opens it.
+// and stores every timer column, both weights and the note; ErrInvalidSession when the result breaks an invariant or re-opens it.
 func (s *Store) UpdateNursing(ctx context.Context, kidID, actorID, id string, now time.Time, edit func(model.NursingSession) (model.NursingSession, error)) (model.NursingSession, error) {
 	var out model.NursingSession
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
@@ -113,12 +134,14 @@ func (s *Store) UpdateNursing(ctx context.Context, kidID, actorID, id string, no
 		if n.InvalidField() != "" || (stored.EndedAt != nil && n.EndedAt == nil) {
 			return ErrInvalidSession
 		}
+		args := append([]any{n.StartedAt.Unix(), nullableUnix(n.EndedAt), n.LeftSeconds, n.RightSeconds, n.Side, nullableUnix(n.SideSince)},
+			append(weightArgs(n.WeightBefore), weightArgs(n.WeightAfter)...)...)
 		res, err := tx.ExecContext(ctx,
 			`UPDATE nursing_sessions SET started_at = ?, ended_at = ?, left_seconds = ?, right_seconds = ?, side = ?, side_since = ?,
+			   weight_before_g = ?, weight_before_oz_h = ?, weight_before_typed = ?, weight_after_g = ?, weight_after_oz_h = ?, weight_after_typed = ?,
 			   note = ?, updated_by = ?, updated_at = ?
 			 WHERE kid_id = ? AND id = ?`,
-			n.StartedAt.Unix(), nullableUnix(n.EndedAt), n.LeftSeconds, n.RightSeconds, n.Side, nullableUnix(n.SideSince),
-			n.Note, actorID, n.UpdatedAt.Unix(), kidID, id)
+			append(args, n.Note, actorID, n.UpdatedAt.Unix(), kidID, id)...)
 		if err := oneRow(res, err); err != nil {
 			return err
 		}
