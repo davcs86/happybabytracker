@@ -48,3 +48,13 @@ export function isIosOutsideStandalone(
 	if (standalone) return false;
 	return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && maxTouchPoints > 1);
 }
+
+// A subscription made under another server key is refused by the push service: it must not be reused.
+export function isOtherKey(
+	existing: ArrayBuffer | null | undefined,
+	key: Uint8Array<ArrayBuffer>
+): boolean {
+	if (!existing) return false;
+	const bytes = new Uint8Array(existing);
+	return bytes.length !== key.length || bytes.some((b, i) => b !== key[i]);
+}

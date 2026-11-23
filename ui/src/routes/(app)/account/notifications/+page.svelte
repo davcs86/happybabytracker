@@ -7,7 +7,12 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { PUSH_OFF_MESSAGE } from '#lib/constants.js';
 	import { notificationsSubscribePath } from '#lib/paths.js';
-	import { base64UrlToBytes, isIosOutsideStandalone, subscriptionBody } from '#lib/push.js';
+	import {
+		base64UrlToBytes,
+		isIosOutsideStandalone,
+		isOtherKey,
+		subscriptionBody
+	} from '#lib/push.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -19,6 +24,7 @@
 	const BLOCKED =
 		"Notifications are blocked for this site. Allow them in the browser's settings, then try again.";
 	const NOT_TURNED_ON = 'Notifications could not be turned on. Try again.';
+	const DISMISSED = 'Notifications were not turned on. You can try again.';
 
 	// pending until mounted: the enable button exists only once JavaScript runs.
 	let support = $state<'pending' | 'ready' | 'ios' | 'unsupported'>('pending');
@@ -69,17 +75,23 @@
 		problem = null;
 		busy = true;
 		try {
-			if ((await Notification.requestPermission()) !== 'granted') {
-				problem = BLOCKED;
+			const permission = await Notification.requestPermission();
+			if (permission !== 'granted') {
+				problem = permission === 'denied' ? BLOCKED : DISMISSED;
 				return;
 			}
+			const serverKey = base64UrlToBytes(key);
 			const registration = await navigator.serviceWorker.ready;
-			const sub =
-				(await registration.pushManager.getSubscription()) ??
-				(await registration.pushManager.subscribe({
-					userVisibleOnly: true,
-					applicationServerKey: base64UrlToBytes(key)
-				}));
+			let sub = await registration.pushManager.getSubscription();
+			// The browser refuses a second key while the old subscription exists.
+			if (sub && isOtherKey(sub.options.applicationServerKey, serverKey)) {
+				await sub.unsubscribe();
+				sub = null;
+			}
+			sub ??= await registration.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey: serverKey
+			});
 			if (await send(sub)) await invalidateAll();
 		} catch {
 			problem = NOT_TURNED_ON;
@@ -90,10 +102,14 @@
 
 	// Sending the subscription again on each visit keeps a renewed one registered.
 	async function resend() {
+		if (!data.push.enabled) return;
+		const key = data.push.publicKey;
 		try {
 			const registration = await navigator.serviceWorker.ready;
 			const sub = await registration.pushManager.getSubscription();
-			if (sub && (await send(sub))) await invalidateAll();
+			// A subscription under another key never delivers: it is not kept registered.
+			if (!sub || isOtherKey(sub.options.applicationServerKey, base64UrlToBytes(key))) return;
+			if (await send(sub)) await invalidateAll();
 		} catch {
 			problem = NOT_TURNED_ON;
 		}

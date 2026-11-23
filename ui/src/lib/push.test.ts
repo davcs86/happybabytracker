@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { base64UrlToBytes, isIosOutsideStandalone, parsePayload, subscriptionBody } from './push';
+import {
+	base64UrlToBytes,
+	isIosOutsideStandalone,
+	isOtherKey,
+	parsePayload,
+	subscriptionBody
+} from './push';
 
 describe('base64UrlToBytes', () => {
 	it('decodes the unpadded url alphabet', () => {
@@ -154,5 +160,23 @@ describe('isIosOutsideStandalone', () => {
 		['an empty string', '']
 	])('is false for %s', (_name, ua) => {
 		expect(isIosOutsideStandalone(ua, false, 5)).toBe(false);
+	});
+});
+
+describe('isOtherKey', () => {
+	const key = Uint8Array.from([4, 1, 2, 3]);
+
+	it('is false without a recorded key, so an old subscription is reused', () => {
+		expect(isOtherKey(null, key)).toBe(false);
+		expect(isOtherKey(undefined, key)).toBe(false);
+	});
+
+	it('is false for the same bytes', () => {
+		expect(isOtherKey(Uint8Array.from([4, 1, 2, 3]).buffer, key)).toBe(false);
+	});
+
+	it('is true for other bytes or another length', () => {
+		expect(isOtherKey(Uint8Array.from([4, 1, 2, 9]).buffer, key)).toBe(true);
+		expect(isOtherKey(Uint8Array.from([4, 1, 2]).buffer, key)).toBe(true);
 	});
 });

@@ -37,38 +37,63 @@ test.beforeEach(async () => {
 	await resetStub();
 });
 
+type FakeState = { visible?: boolean; key?: string; endpoint?: string };
+
 // A browser subscription that survives navigations (localStorage) and records the key it was made with.
 async function fakePush(context: BrowserContext, n = 'browser'): Promise<Sub> {
 	const sub = { endpoint: `https://push.example/send/${n}-endpoint-secret`, keys: fakePushKeys() };
 	await context.grantPermissions(['notifications']);
 	await context.addInitScript((sub: Sub) => {
 		if (typeof PushManager === 'undefined') return;
-		const fake = {
-			endpoint: sub.endpoint,
-			options: {},
-			toJSON: () => ({ endpoint: sub.endpoint, expirationTime: null, keys: sub.keys }),
-			unsubscribe: async () => {
-				localStorage.removeItem('fake-push');
-				return true;
-			}
+		const read = () => {
+			const raw = localStorage.getItem('fake-push');
+			return raw ? (JSON.parse(raw) as FakeState) : null;
+		};
+		const bump = (name: string) =>
+			localStorage.setItem(name, String(Number(localStorage.getItem(name) ?? 0) + 1));
+		const make = (s: FakeState) => {
+			const endpoint = s.endpoint ?? sub.endpoint;
+			const key = s.key ? Uint8Array.from(atob(s.key), (c) => c.charCodeAt(0)).buffer : null;
+			return {
+				endpoint,
+				options: { userVisibleOnly: s.visible ?? true, applicationServerKey: key },
+				toJSON: () => ({ endpoint, expirationTime: null, keys: sub.keys }),
+				unsubscribe: async () => {
+					localStorage.removeItem('fake-push');
+					bump('fake-push-unsubscribed');
+					return true;
+				}
+			} as unknown as PushSubscription;
 		};
 		PushManager.prototype.subscribe = async function (options?: PushSubscriptionOptionsInit) {
-			const key = new Uint8Array(options?.applicationServerKey as ArrayBuffer);
-			localStorage.setItem(
-				'fake-push',
-				JSON.stringify({
-					visible: options?.userVisibleOnly,
-					key: btoa(String.fromCharCode(...key))
-				})
+			const key = btoa(
+				String.fromCharCode(...new Uint8Array(options?.applicationServerKey as ArrayBuffer))
 			);
-			return fake as unknown as PushSubscription;
+			const existing = read();
+			// As Chrome does: another key while a subscription exists is refused.
+			if (existing?.key && existing.key !== key) {
+				throw new DOMException('another key', 'InvalidStateError');
+			}
+			const state = { visible: options?.userVisibleOnly, key, endpoint: sub.endpoint };
+			localStorage.setItem('fake-push', JSON.stringify(state));
+			return make(state);
 		};
 		PushManager.prototype.getSubscription = async function () {
-			return (localStorage.getItem('fake-push') ? fake : null) as PushSubscription | null;
+			bump('fake-push-gets');
+			const s = read();
+			return s ? make(s) : null;
 		};
 	}, sub);
 	return sub;
 }
+
+const fakeState = async (page: Page) =>
+	JSON.parse((await page.evaluate(() => localStorage.getItem('fake-push'))) ?? 'null') as FakeState;
+const setFakeState = (page: Page, state: FakeState) =>
+	page.evaluate((s) => localStorage.setItem('fake-push', JSON.stringify(s)), state);
+const fakeCount = async (page: Page, name: string) =>
+	Number((await page.evaluate((n) => localStorage.getItem(n), name)) ?? 0);
+const b64 = (base64url: string) => Buffer.from(base64url, 'base64url').toString('base64');
 
 const region = (page: Page, name: string) => page.getByRole('region', { name });
 const enableButton = (page: Page) =>
@@ -133,14 +158,8 @@ test.describe('Web Push on', () => {
 		const puts = (await receivedRequests()).filter((r) => r.method === 'PUT' && r.path === DEVICES);
 		expect(puts).toHaveLength(1);
 		expect(JSON.parse(puts[0].body ?? '')).toEqual({ ...sub, label: 'This device' });
-		const recorded = JSON.parse(
-			(await page.evaluate(() => localStorage.getItem('fake-push'))) ?? ''
-		);
 		const key = (await ana('GET', '/v1/push')).body.public_key as string;
-		expect(recorded).toEqual({
-			visible: true,
-			key: Buffer.from(key, 'base64url').toString('base64')
-		});
+		expect(await fakeState(page)).toEqual({ visible: true, key: b64(key), endpoint: sub.endpoint });
 
 		const devices = (await ana('GET', DEVICES)).body.devices;
 		expect(devices).toHaveLength(1);
@@ -261,6 +280,20 @@ test.describe('Web Push on', () => {
 		await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 		expect(await page.locator('body').innerText()).toBe(unknown);
 		expect((await dan('GET', DEVICES)).body.devices).toEqual([dans]);
+
+		for (const id of [dans.id, 'not/an id']) {
+			const resent = page.waitForResponse((r) => new URL(r.url()).pathname === SUBSCRIBE);
+			await open(page);
+			await resent;
+			await here.locator('form[action="?/remove"] input[name="device"]').evaluate((el, id) => {
+				(el as HTMLInputElement).value = id;
+			}, id);
+			await submit(here.getByRole('button', { name: 'Turn off on this device' }));
+			await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+			expect(await page.locator('body').innerText()).toBe(unknown);
+		}
+		expect((await dan('GET', DEVICES)).body.devices).toEqual([dans]);
+		expect((await (await stubAs(ANA))('GET', DEVICES)).body.devices).toHaveLength(1);
 	});
 
 	test('a registration by another parent on this browser moves the device and the cookie follows', async ({
@@ -303,6 +336,109 @@ test.describe('Web Push on', () => {
 		);
 		expect(await pushWrites(before)).toEqual([]);
 		await expectAccessible(page);
+	});
+
+	test('a prompt dismissed without a choice says so and sends nothing', async ({ page }) => {
+		await signIn(page, ANA);
+		await page.addInitScript(() => {
+			Notification.requestPermission = async () => 'default';
+		});
+		await openHydrated(page);
+		const before = (await receivedRequests()).length;
+		await enableButton(page).click();
+		await expect(page.getByRole('alert')).toHaveText(
+			'Notifications were not turned on. You can try again.'
+		);
+		expect(await pushWrites(before)).toEqual([]);
+	});
+
+	test('a browser subscription made under another key is replaced on enable', async ({
+		page,
+		context
+	}) => {
+		const sub = await fakePush(context);
+		const ana = await stubAs(ANA);
+		const key = (await ana('GET', '/v1/push')).body.public_key as string;
+		await signIn(page, ANA);
+		await setFakeState(page, { visible: true, key: b64(fakePushKeys().p256dh) });
+		await openHydrated(page);
+		await enable(page);
+		expect(await fakeCount(page, 'fake-push-unsubscribed')).toBe(1);
+		expect(await fakeState(page)).toEqual({ visible: true, key: b64(key), endpoint: sub.endpoint });
+		const puts = (await receivedRequests()).filter((r) => r.method === 'PUT' && r.path === DEVICES);
+		expect(puts.map((r) => JSON.parse(r.body ?? ''))).toEqual([{ ...sub, label: 'This device' }]);
+	});
+
+	test('a subscription under another key is not sent again on load', async ({ page, context }) => {
+		await fakePush(context);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		await setFakeState(page, { ...(await fakeState(page)), key: b64(fakePushKeys().p256dh) });
+		const sent: string[] = [];
+		page.on('request', (r) => {
+			if (new URL(r.url()).pathname === SUBSCRIBE) sent.push(r.method());
+		});
+		const gets = await fakeCount(page, 'fake-push-gets');
+		const before = (await receivedRequests()).length;
+		await open(page);
+		// The page has read the subscription; a send would start before this round trip returns.
+		await expect.poll(() => fakeCount(page, 'fake-push-gets')).toBeGreaterThan(gets);
+		await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+		expect(sent).toEqual([]);
+		expect(await pushWrites(before)).toEqual([]);
+	});
+
+	test('a renewed subscription keeps the name and the kids, and the old device goes', async ({
+		page,
+		context
+	}) => {
+		const sub = await fakePush(context);
+		const ana = await stubAs(ANA);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		const here = region(page, 'This device');
+		await here.getByLabel('Device name').fill('Night phone');
+		await here.getByLabel(MIA.name).check();
+		await here.getByLabel(LEO.name).check();
+		await submit(here.getByRole('button', { name: 'Save' }));
+		await expect(page.getByRole('status')).toHaveText('Saved');
+		const old = (await ana('GET', DEVICES)).body.devices[0];
+
+		await setFakeState(page, { ...(await fakeState(page)), endpoint: `${sub.endpoint}-renewed` });
+		const resent = page.waitForResponse((r) => new URL(r.url()).pathname === SUBSCRIBE);
+		await open(page);
+		expect((await resent).status()).toBe(204);
+		const devices = (await ana('GET', DEVICES)).body.devices;
+		expect(devices).toHaveLength(1);
+		expect(devices[0].id).not.toBe(old.id);
+		expect(devices[0]).toMatchObject({ label: 'Night phone' });
+		expect([...devices[0].kids].sort()).toEqual([LEO.id, MIA.id].sort());
+		expect((await deviceCookie(context))?.value).toBe(devices[0].id);
+		await expect(here.getByLabel(MIA.name)).toBeChecked();
+		await expect(here.getByLabel(LEO.name)).toBeChecked();
+		await expect(here.getByLabel(IVY.name)).not.toBeChecked();
+	});
+
+	test('the subscribe route takes JSON only', async ({ page, context }) => {
+		const sub = await fakePush(context);
+		await signIn(page, ANA);
+		await open(page);
+		const before = (await receivedRequests()).length;
+		const status = await page.evaluate(
+			async ({ path, body }) =>
+				(
+					await fetch(path, {
+						method: 'POST',
+						headers: { 'content-type': 'text/plain' },
+						body: JSON.stringify(body)
+					})
+				).status,
+			{ path: SUBSCRIBE, body: sub }
+		);
+		expect(status).toBe(415);
+		expect(await pushWrites(before)).toEqual([]);
 	});
 
 	test.describe('on an iPhone outside the Home Screen', () => {

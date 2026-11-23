@@ -8,6 +8,7 @@ import {
 	UNREACHABLE_MESSAGE
 } from '#lib/server/constants.js';
 import { setPushDeviceCookie } from '#lib/server/cookie.js';
+import { carryOver } from '#lib/server/push-renew.js';
 import {
 	DEVICE_LIMIT_MESSAGE,
 	SUBSCRIPTION_REFUSED_MESSAGE
@@ -44,6 +45,8 @@ function failure(r: ApiFailure) {
 
 // A re-send keeps the name of the device this browser's cookie names, so it never resets a chosen label.
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
+	const type = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+	if (type !== 'application/json') return json({ message: FAILURE_MESSAGE }, { status: 415 });
 	const state = await locals.api.push.state();
 	if (!state.ok) return failure(state);
 	if (!state.data.enabled) return json({ message: PUSH_OFF_MESSAGE }, { status: 409 });
@@ -51,16 +54,21 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	const sub = readSubscription(await request.json().catch(() => null));
 	if (!sub) return json({ message: FAILURE_MESSAGE }, { status: 400 });
 
-	let label = DEFAULT_LABEL;
+	let previous = null;
 	const cookie = cookies.get(PUSH_DEVICE_COOKIE);
 	if (cookie) {
 		const devices = await locals.api.push.devices();
 		if (!devices.ok) return failure(devices);
-		label = devices.data.find((d) => d.id === cookie)?.label ?? DEFAULT_LABEL;
+		previous = devices.data.find((d) => d.id === cookie) ?? null;
 	}
 
-	const r = await locals.api.push.upsertDevice({ ...sub, label });
+	const r = await locals.api.push.upsertDevice({ ...sub, label: previous?.label ?? DEFAULT_LABEL });
 	if (!r.ok) return failure(r);
+	// A renewed subscription is a new device: it takes the old one's kids, and the cookie moves only then.
+	if (previous && previous.id !== r.data.id) {
+		const refused = await carryOver(locals.api.push, previous, r.data);
+		if (refused) return failure(refused);
+	}
 	// A device another parent registered moves here under a new id: the cookie always takes this one.
 	setPushDeviceCookie(cookies, r.data.id);
 	return new Response(null, { status: 204 });
