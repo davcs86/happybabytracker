@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs both images together and asserts the contract end to end, through the UI only.
-# Needs Linux, GNU coreutils, bash >= 4.
+# Runs both images together and asserts the contract end to end through the UI; steps 4k and 4l
+# also call the unpublished API from a container on the smoke network. Needs Linux, GNU coreutils, bash >= 4, openssl.
 set -euo pipefail
 
 API_IMAGE="${1:?usage: smoke.sh <api-image> <ui-image>}"
@@ -12,6 +12,7 @@ UI_PORT="${SMOKE_UI_PORT:-9212}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
 rand() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
 
 SUFFIX="$(rand 6)"
 API="hbt-smoke-api-${SUFFIX}"
@@ -32,6 +33,9 @@ USER_B="smoke-b"
 USER_C="smoke-c"
 KID_NAME="Kid${SUFFIX}"
 KID_ZONE=Europe/Madrid
+# A smoke-only VAPID key per run: the raw P-256 scalar of SEC1 DER (after its 7-byte header), 43 base64url characters.
+VAPID_KEY="$(openssl ecparam -name prime256v1 -genkey -noout -outform DER | tail -c +8 | head -c 32 | b64url)"
+[ "${#VAPID_KEY}" = 43 ] || { echo "FAIL: the smoke VAPID key is not 43 characters" >&2; exit 1; }
 
 UI_URL="http://127.0.0.1:${UI_PORT}"
 ORIGIN="https://localhost:${UI_PORT}"
@@ -40,7 +44,7 @@ FORWARDED_HOST="localhost:${UI_PORT}"
 # Every secret and identifier the logs must never carry; tokens are appended as they appear.
 SECRETS_FILE="$WORK/secrets"
 printf '%s\n' "$INTERNAL_API_TOKEN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD" "$ADMIN_PASSWORD_2" \
-  "$PASSWORD_A" "$PASSWORD_B" "$PASSWORD_C" "$USER_A" "$USER_B" "$USER_C" "$KID_NAME" >"$SECRETS_FILE"
+  "$PASSWORD_A" "$PASSWORD_B" "$PASSWORD_C" "$USER_A" "$USER_B" "$USER_C" "$KID_NAME" "$VAPID_KEY" >"$SECRETS_FILE"
 remember() { printf '%s\n' "$1" >>"$SECRETS_FILE"; }
 # Tracker notes and texts (also in SECRETS_FILE), and volume and growth figures, matched on digit boundaries.
 NOTES_FILE="$WORK/notes"
@@ -77,7 +81,10 @@ fail() {
     if oom_killed "$c"; then echo "FAIL: $c was OOM-killed" >&2; fi
   done
   echo "FAIL: $1${2:+: $2}" >&2
-  if [ -s "$WORK/api-1.log" ]; then scrub <"$WORK/api-1.log" >&2; fi
+  local f
+  for f in "$WORK"/api-*.log; do
+    if [ -s "$f" ]; then scrub <"$f" >&2; fi
+  done
   docker logs "$API" 2>&1 | scrub >&2 || true
   docker logs "$UI" 2>&1 | scrub >&2 || true
   exit 1
@@ -103,13 +110,32 @@ wait_ok() { # url
   return 1
 }
 
-start_api() { # admin-password
-  docker run -d --name "$API" --network "$NETWORK" \
+# no-push has no channel (what the edge runs); fake-push records Web Push sends for GET /v1/_test/pushes.
+start_api() { # admin-password [no-push|fake-push]
+  local push=()
+  if [ "${2:-no-push}" = fake-push ]; then
+    push=(-e VAPID_PRIVATE_KEY -e VAPID_SUBJECT="$ORIGIN" -e HBT_ALLOW_FAKE_PUSH=1)
+  fi
+  VAPID_PRIVATE_KEY="$VAPID_KEY" docker run -d --name "$API" --network "$NETWORK" \
     --read-only --cap-drop ALL --security-opt no-new-privileges --memory 96m --memory-swap 96m \
     -v "$VOLUME":/data \
     -e ADMIN_USERNAME="$ADMIN_USERNAME" -e ADMIN_PASSWORD="$1" \
-    -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" \
+    -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" "${push[@]}" \
     "$API_IMAGE" >/dev/null
+}
+
+# The API's port is never published, so these calls run node from the UI image on the smoke network.
+API_FETCH='const e = process.env, h = { authorization: "Bearer " + e.HBT_TOKEN, accept: "application/json" };
+if (e.HBT_SESSION !== "-") h["x-session-token"] = e.HBT_SESSION;
+if (e.HBT_BODY) h["content-type"] = "application/json";
+fetch(e.HBT_URL, { method: e.HBT_METHOD, headers: h, body: e.HBT_BODY || undefined, signal: AbortSignal.timeout(10000) })
+  .then(async (r) => process.stdout.write(r.status + "\n" + (await r.text())), () => process.stdout.write("000\n"));'
+api_call() { # name session|- method path [json] -> status; body in $WORK/<name>.body
+  HBT_TOKEN="$INTERNAL_API_TOKEN" HBT_SESSION="$2" HBT_BODY="${5:-}" docker run --rm --network "$NETWORK" \
+    --read-only --cap-drop ALL -e HBT_TOKEN -e HBT_SESSION -e HBT_BODY -e HBT_METHOD="$3" \
+    -e HBT_URL="http://${API}:9210$4" --entrypoint node "$UI_IMAGE" -e "$API_FETCH" >"$WORK/$1.out" 2>/dev/null || true
+  tail -n +2 "$WORK/$1.out" >"$WORK/$1.body"
+  head -n 1 "$WORK/$1.out" | grep -xE '[0-9]{3}' || echo 000
 }
 
 # Sent as the proxy sends it; one client address per actor keeps the login limiter apart.
@@ -923,6 +949,175 @@ code="$(req growth-after-weigh "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
   fail "4j a weigh-in adds to growth" "status $code, rows $(growth_rows growth-after-weigh), before $rows_before"
 pass "4j an advanced bottle (73 + 117 = 190 ml, one source edited to 196, then one total of 200 ml with the sources gone), an advanced pumping session (87 + 63 = 150 ml shown as L and R, one side edited to 158, then one total of 160 ml), a weighed nursing session (weight gain 110 g, about 107 ml; one weight edited to 119 g, about 116 ml) and one with the after weight below the before weight (no estimate, no judgement); none adds to the growth page"
 
+# 4k. No channel configured: symptoms, a medication course, the Due list and health all work without one.
+N_FEVER="$(note "fever-note-${SUFFIX}")"
+N_COUGH="$(note "cough-note-${SUFFIX}")"
+N_COURSE="$(note "course-note-${SUFFIX}")"
+MED_NAME="$(note "med-${SUFFIX}")"
+MED_DOSE="$(note "dose-${SUFFIX}")"
+DOSE_AMOUNT="$(note "amount-${SUFFIX}")"
+# 38.6 °C is 3860 hundredths, 101.48 °F 10148.
+for v in 38.6 3860 101.48 10148; do remember_value "$v"; done
+KID_ID="${KID_PATH#/kids/}"
+MEDICATION="$KID_PATH/medication"
+log_symptom() { # name field=value... -> as smoke-a, expects the 303 to the timeline
+  local name="$1" code
+  shift
+  code="$(form "$name" "$ADDR_A" "$SESSION_A" "$KID_PATH/log/symptoms?/save" "$@")"
+  case "$code $(location "$name")" in
+    "303 $KID_PATH/timeline?from="*) ;;
+    *) fail "4k log $name" "status $code, Location $(location "$name")" ;;
+  esac
+}
+due_label() { # instant -> that instant as the medication pages show it on the kid's clock
+  if [ "$(TZ="$KID_ZONE" date -d "@$1" '+%Y-%m-%d')" = "$(today)" ]; then
+    TZ="$KID_ZONE" date -d "@$1" '+%H:%M'
+  else
+    TZ="$KID_ZONE" date -d "@$1" '+%Y-%m-%d %H:%M'
+  fi
+}
+device_json() { # endpoint label -> a push device body with a fresh P-256 public key and 16-byte auth (remembered)
+  local p256dh auth
+  p256dh="$(openssl ecparam -name prime256v1 -genkey -noout | openssl ec -pubout -outform DER 2>/dev/null | tail -c 65 | b64url)"
+  auth="$(head -c 16 /dev/urandom | b64url)"
+  remember "$p256dh"
+  remember "$auth"
+  printf '{"endpoint":"%s","keys":{"p256dh":"%s","auth":"%s"},"label":"%s"}' "$1" "$p256dh" "$auth" "$2"
+}
+log_symptom log-fever "at=$(ago 20)" symptom=fever severity= other_text= temperature=38.6 temperature_unit=c \
+  method=rectal "note=$N_FEVER"
+log_symptom log-cough "at=$(ago 15)" symptom=cough severity=moderate other_text= temperature= temperature_unit=c \
+  method= "note=$N_COUGH"
+code="$(req timeline-k "$ADDR_A" "$SESSION_A" "$UI_URL$TIMELINE")"
+{ [ "$code" = 200 ] && row_has timeline-k "$N_FEVER" 'Fever 38.6 °C (rectal)' &&
+  row_has timeline-k "$N_COUGH" 'Cough, moderate'; } || fail "4k symptoms on the timeline" "status $code"
+code="$(req settings-k "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
+overdue_kept="$(originals settings-k | grep '^reminder_overdue_minutes_original=' || true)"
+{ [ "$code" = 200 ] && [ -n "$overdue_kept" ]; } || fail "4k settings page" "status $code, no overdue original"
+code="$(form overdue-k "$ADDR_A" "$SESSION_A" "$KID_PATH/settings?/save" "name=$KID_NAME" 'birth_date=2026-01-15' \
+  'sex=female' "time_zone=$KID_ZONE" growth_source=who vaccine_schema=uk reminder_overdue_minutes=15 "$overdue_kept")"
+code_s="$(req settings-k2 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
+{ [ "$code $code_s" = '200 200' ] && body_has overdue-k 'Saved' &&
+  [ "$(input_value settings-k2 reminder_overdue_minutes)" = 15 ]; } ||
+  fail "4k overdue minutes" "save $code, page $code_s"
+# The first occurrence falls on a whole minute 90 to 150 s from now.
+DUE=$((($(date +%s) + 150) / 60 * 60))
+code="$(form course-new "$ADDR_A" "$SESSION_A" "$MEDICATION/new?/save" "name=$MED_NAME" "dose=$MED_DOSE" kind=every \
+  hours=1 "start_at=$(TZ="$KID_ZONE" date -d "@$DUE" '+%Y-%m-%dT%H:%M')" end_on= active=on "note=$N_COURSE")"
+code_m="$(req medication-k "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
+COURSE_ID="$({ grep -oE "$MEDICATION/[0-9a-f-]{36}\"" "$WORK/medication-k.body" || true; } | head -n 1 |
+  sed -E 's|.*/([0-9a-f-]{36})"|\1|')"
+{ [ "$code $(location course-new) $code_m" = "303 $MEDICATION 200" ] && [ -n "$COURSE_ID" ] &&
+  body_has medication-k "$MED_DOSE" && body_has medication-k "Next due $(due_label "$DUE")"; } ||
+  fail "4k add a course" "status $code, Location $(location course-new), page $code_m"
+code="$(req home-k1 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+{ [ "$code" = 200 ] && { [ "$(date +%s)" -ge "$DUE" ] || body_has home-k1 ">$MED_NAME · $(due_label "$DUE")</a>"; }; } ||
+  fail "4k Due before the dose is due" "status $code"
+OVERDUE_LINE=">$MED_NAME · $(due_label "$DUE") · overdue</a>"
+for _ in $(seq 1 40); do
+  code="$(req home-k2 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+  if [ "$code" = 200 ] && body_has home-k2 "$OVERDUE_LINE"; then break; fi
+  sleep 5
+done
+body_has home-k2 "$OVERDUE_LINE" || fail "4k Due once due" "no overdue line within 200 s, status $code"
+code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz" || true)"
+code_r="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/reminders" || true)"
+[ "$code $code_r" = '200 200' ] || fail "4k health" "/healthz $code, /healthz/reminders $code_r"
+code="$(api_call push-off "$SESSION_A" GET /v1/push)"
+{ [ "$code" = 200 ] && [ "$(tr -d '\n' <"$WORK/push-off.body")" = '{"enabled":false}' ]; } ||
+  fail "4k GET /v1/push" "status $code"
+code="$(req notifications-k "$ADDR_A" "$SESSION_A" "$UI_URL/account/notifications")"
+{ [ "$code" = 200 ] && body_has notifications-k 'Web Push is not configured on this server.'; } ||
+  fail "4k notifications page" "status $code"
+ENDPOINT_OFF="https://push.example.org/smoke/$(rand 16)"
+remember "$ENDPOINT_OFF"
+code="$(api_call device-off "$SESSION_A" PUT /v1/me/push-devices "$(device_json "$ENDPOINT_OFF" 'Smoke phone')")"
+{ [ "$code" = 409 ] && body_has device-off '"push_unavailable"'; } || fail "4k device upsert" "status $code"
+pass "4k with no channel: a fever (38.6 °C, rectal) and a cough are on the timeline; overdue minutes set to 15; an every-1-hour course shows its next dose and is on the home Due list, then overdue; /healthz and /healthz/reminders are 200; GET /v1/push is {\"enabled\":false}; the notifications page says Web Push is not configured; a device upsert answers 409 push_unavailable"
+
+# 4l. The fake push sender: one send to the opted-in device only, none after a dose or for a revoked caregiver.
+API_MEM_0="$(mem "$API")"
+docker logs "$API" >"$WORK/api-0.log" 2>&1
+NTFY_SECRET="$(rand 24)"
+remember "$NTFY_SECRET"
+refused() { # variable value|- VAR=value... -> the API exits 1 and its log names the variable, never the value
+  local var="$1" value="$2" kv names=() rc=0
+  shift 2
+  for kv in "$@"; do names+=(-e "${kv%%=*}"); done
+  env "$@" timeout 60 docker run --rm --name "$API-refused" --network none --read-only --cap-drop ALL \
+    -e ADMIN_USERNAME="$ADMIN_USERNAME" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+    -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" "${names[@]}" \
+    "$API_IMAGE" >"$WORK/refused.log" 2>&1 || rc=$?
+  docker rm -f "$API-refused" >/dev/null 2>&1 || true
+  cat "$WORK/refused.log" >>"$WORK/api-refused.log"
+  { [ "$rc" = 1 ] && grep -qF -- "$var" "$WORK/refused.log" &&
+    { [ "$value" = - ] || ! grep -qF -- "$value" "$WORK/refused.log"; }; } ||
+    fail "4l start refusal naming $var" "exit $rc"
+}
+refused VAPID_SUBJECT "$VAPID_KEY" VAPID_PRIVATE_KEY="$VAPID_KEY"
+refused VAPID_PRIVATE_KEY "$ORIGIN" VAPID_SUBJECT="$ORIGIN"
+refused VAPID_PRIVATE_KEY "${VAPID_KEY:0:42}" VAPID_PRIVATE_KEY="${VAPID_KEY:0:42}" VAPID_SUBJECT="$ORIGIN"
+refused VAPID_SUBJECT "http://localhost:${UI_PORT}" VAPID_PRIVATE_KEY="$VAPID_KEY" VAPID_SUBJECT="http://localhost:${UI_PORT}"
+refused HBT_ALLOW_FAKE_PUSH - HBT_ALLOW_FAKE_PUSH=1
+refused NTFY_TOKEN "$NTFY_SECRET" NTFY_TOKEN="$NTFY_SECRET"
+docker rm -f "$API" >/dev/null
+start_api "$ADMIN_PASSWORD" fake-push
+wait_ok "$UI_URL/healthz/api" || fail "4l api in fake-push mode" "no 200 within 30 s"
+code="$(api_call push-on "$SESSION_A" GET /v1/push)"
+{ [ "$code" = 200 ] && body_has push-on '"enabled":true'; } || fail "4l GET /v1/push" "status $code"
+ENDPOINT_A="https://push.example.org/smoke/$(rand 16)"
+ENDPOINT_B="https://push.example.org/smoke/$(rand 16)"
+remember "$ENDPOINT_A"
+remember "$ENDPOINT_B"
+device_id() { { grep -oE '"id":"[0-9a-f-]{36}"' "$WORK/$1.body" || true; } | head -n 1 | cut -d'"' -f4; }
+code="$(api_call device-a "$SESSION_A" PUT /v1/me/push-devices "$(device_json "$ENDPOINT_A" 'Smoke A phone')")"
+DEVICE_A="$(device_id device-a)"
+code_o="$(api_call optin-a "$SESSION_A" PUT "/v1/kids/$KID_ID/push-devices/$DEVICE_A")"
+code_b="$(api_call device-b "$SESSION_B" PUT /v1/me/push-devices "$(device_json "$ENDPOINT_B" 'Smoke B phone')")"
+DEVICE_B="$(device_id device-b)"
+{ [ "$code $code_o $code_b" = '201 204 201' ] && [ -n "$DEVICE_A" ] && [ -n "$DEVICE_B" ]; } ||
+  fail "4l register devices" "$USER_A $code, opt-in $code_o, $USER_B $code_b"
+sends() { { grep -oF '"device":"' "$WORK/$1.body" || true; } | wc -l | tr -d ' '; }
+deadline=$(($(date +%s) + 90))
+while :; do
+  code="$(api_call pushes-1 - GET /v1/_test/pushes)"
+  if { [ "$code" = 200 ] && [ "$(sends pushes-1)" -gt 0 ]; } || [ "$(date +%s)" -ge "$deadline" ]; then break; fi
+  sleep 5
+done
+{ [ "$code" = 200 ] && [ "$(sends pushes-1)" = 1 ] && body_has pushes-1 "\"device\":\"$DEVICE_A\"" &&
+  body_has pushes-1 "\"title\":\"Medication due for $KID_NAME\"" && body_has pushes-1 "\"path\":\"$MEDICATION\"" &&
+  ! body_has pushes-1 "$MED_NAME" && ! body_has pushes-1 "$MED_DOSE"; } ||
+  fail "4l one send to the opted-in device" "status $code, $(sends pushes-1) sends within 90 s"
+code="$(form dose-l "$ADDR_A" "$SESSION_A" "$MEDICATION?/log" "medication=$COURSE_ID" "amount=$DOSE_AMOUNT")"
+code_m="$(req medication-l "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
+{ [ "$code $(location dose-l) $code_m" = "303 $MEDICATION 200" ] && body_has medication-l "$DOSE_AMOUNT" &&
+  body_has medication-l "Next due $(due_label $((DUE + 3600)))"; } ||
+  fail "4l log a dose" "status $code, Location $(location dose-l), page $code_m"
+code="$(req access-l "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/access")"
+ID_B="$(pieces access-l '<li' | grep -F ">$USER_B" | grep -oE 'name="parent_id" value="[^"]+"' | head -n 1 |
+  sed -E 's/.*value="([^"]+)"/\1/' || true)"
+{ [ "$code" = 200 ] && [ -n "$ID_B" ]; } || fail "4l access page" "status $code, no id for $USER_B"
+code="$(form revoke-b "$ADDR_A" "$SESSION_A" "$KID_PATH/access?/remove" "parent_id=$ID_B")"
+[ "$code" = 200 ] || fail "4l revoke $USER_B" "status $code"
+# Past the next worker tick (every 30 s).
+sleep 40
+code="$(api_call pushes-2 - GET /v1/_test/pushes)"
+code_d="$(api_call devices-b "$SESSION_B" GET /v1/me/push-devices)"
+code_o="$(api_call optin-b "$SESSION_B" PUT "/v1/kids/$KID_ID/push-devices/$DEVICE_B")"
+{ [ "$code" = 200 ] && [ "$(sends pushes-2)" = 1 ] && [ "$code_d" = 200 ] &&
+  body_has devices-b "\"id\":\"$DEVICE_B\"" && body_has devices-b '"kids":[]' && [ "$code_o" = 404 ]; } ||
+  fail "4l after the dose and the revoke" "pushes $code ($(sends pushes-2) sends), $USER_B devices $code_d, opt-in $code_o"
+code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/reminders" || true)"
+[ "$code" = 200 ] || fail "4l /healthz/reminders" "status $code"
+code="$(form grant-b-again "$ADDR_A" "$SESSION_A" "$KID_PATH/access?/add" "username=$USER_B" 'role=caregiver')"
+[ "$code" = 200 ] || fail "4l grant $USER_B again" "status $code"
+API_MEM_PUSH="$(mem "$API")"
+docker logs "$API" >"$WORK/api-push.log" 2>&1
+docker rm -f "$API" >/dev/null
+start_api "$ADMIN_PASSWORD"
+wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; after a dose the next occurrence is not sent early; revoked, $USER_B's device keeps no kid and its opt-in is a 404; back in no-push mode"
+
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
 code="$(req admin-parents "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
@@ -1038,19 +1233,19 @@ printf '%s\n' '{"duration_ms":126,"status":200}' >"$WORK/control-miss.log"
   fail "9 control" "logged_value misses a figure or matches a measured one"
 docker logs "$API" >"$WORK/api-2.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
-for f in api-1.log api-2.log ui.log; do
+for f in api-0.log api-refused.log api-push.log api-1.log api-2.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, volume or measurement"
+pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, volume, measurement or temperature"
 
 # 10. Memory of each API process and of the UI, with the login burst in the last API process.
 fail_if_oom "10 memory"
 API_MEM_2="$(mem "$API")"
 UI_MEM_2="$(mem "$UI")"
 api_mem=0
-for m in "$API_MEM_1" "$API_MEM_1B" "$api_burst" "$API_MEM_2"; do
+for m in "$API_MEM_0" "$API_MEM_PUSH" "$API_MEM_1" "$API_MEM_1B" "$api_burst" "$API_MEM_2"; do
   [ "$m" -gt 0 ] 2>/dev/null || fail "10 api memory" "unreadable reading '$m'"
   api_mem=$((m > api_mem ? m : api_mem))
 done
@@ -1060,9 +1255,9 @@ for m in "$UI_MEM_1" "$ui_burst" "$UI_MEM_2"; do
   ui_mem=$((m > ui_mem ? m : ui_mem))
 done
 if [ -n "$MEM_FILE" ]; then
-  readings="$MEM_FILE: api ${API_MEM_1}/${API_MEM_1B}/${api_burst} MiB (first process before/after restart, last process after the ${BURST}-login burst), ui ${UI_MEM_2} MiB"
+  readings="$MEM_FILE: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst} MiB (first process, fake-push process, third process before/after restart, last process after the ${BURST}-login burst), ui ${UI_MEM_2} MiB"
 else
-  readings="sampled docker stats: api ${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_2} MiB (first process before/after restart, during the ${BURST}-login burst, end), ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_2} MiB"
+  readings="sampled docker stats: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_2} MiB (first process, fake-push process, third process before/after restart, during the ${BURST}-login burst, end), ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_2} MiB"
 fi
 code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/api" || true)"
 [ "$code" = 200 ] || fail "10 /healthz/api after the burst" "status $code; $readings"
