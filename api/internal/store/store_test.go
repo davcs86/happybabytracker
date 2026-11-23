@@ -13,7 +13,7 @@ import (
 
 var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time_tokens", "kids", "kid_access",
 	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
-	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources"}
+	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -569,6 +569,7 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 
 const (
 	insertSource  = `INSERT INTO bottle_feed_sources(bottle_id, source, volume_ml, volume_floz_h, volume_typed) VALUES (?, ?, ?, ?, ?)`
+	insertSide    = `INSERT INTO pumping_session_sides(session_id, side, volume_ml, volume_floz_h, volume_typed) VALUES (?, ?, ?, ?, ?)`
 	insertWeighed = `INSERT INTO nursing_sessions(id, kid_id, started_at, ended_at, left_seconds, right_seconds,
 		weight_before_g, weight_before_oz_h, weight_before_typed, weight_after_g, weight_after_oz_h, weight_after_typed,
 		created_by, updated_by, created_at, updated_at)
@@ -593,11 +594,20 @@ func TestAdvancedColumnsCascadeWithKid(t *testing.T) {
 		if _, err := s.w.Exec(insertWeighed, "n"+id, kid, 3400, 11993, "kg", 3462, 12212, "kg", ana.ID, ana.ID); err != nil {
 			t.Fatal(err)
 		}
+		if _, err := s.w.Exec(`INSERT INTO pumping_sessions(id, kid_id, started_at, duration_seconds, volume_ml, volume_floz_h, volume_typed, side, created_by, updated_by, created_at, updated_at)
+			VALUES (?, ?, 100, 600, 110, 372, 'ml', 'both', ?, ?, 100, 100)`, "p"+id, kid, ana.ID, ana.ID); err != nil {
+			t.Fatal(err)
+		}
+		for _, side := range []string{"left", "right"} {
+			if _, err := s.w.Exec(insertSide, "p"+id, side, 55, 186, "ml"); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	if err := s.DeleteKid(ctx, k1.ID, ana.ID); err != nil {
 		t.Fatal(err)
 	}
-	for table, want := range map[string]int{"bottle_feed_sources": 2, "bottle_feeds": 1, "nursing_sessions": 1} {
+	for table, want := range map[string]int{"bottle_feed_sources": 2, "bottle_feeds": 1, "nursing_sessions": 1, "pumping_session_sides": 2, "pumping_sessions": 1} {
 		var n int
 		if err := s.w.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
 			t.Errorf("%s: %d rows after DeleteKid (err %v), want %d", table, n, err, want)
@@ -662,6 +672,34 @@ func TestSourceChecks(t *testing.T) {
 	}
 }
 
+func TestPumpingSideChecks(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	if _, err := s.w.Exec(trackerInserts["pumping_sessions"], k.ID, ana.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.w.Exec(insertSide, "e1", "left", 60, 203, "ml"); err != nil {
+		t.Fatalf("a valid side row: %v", err)
+	}
+	for name, args := range map[string][]any{
+		"the combined side":  {"e1", "both", 60, 203, "ml"},
+		"unknown side name":  {"e1", "middle", 60, 203, "ml"},
+		"wrong case":         {"e1", "Right", 60, 203, "ml"},
+		"unknown typed unit": {"e1", "right", 60, 203, "cup"},
+		"duplicate side":     {"e1", "left", 50, 169, "ml"},
+		"missing session":    {"nope", "right", 60, 203, "ml"},
+		"null volume":        {"e1", "right", nil, 203, "ml"},
+	} {
+		if _, err := s.w.Exec(insertSide, args...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := s.w.Exec(insertSide, "e1", "right", 50, 169, "floz"); err != nil {
+		t.Errorf("the other side: %v", err)
+	}
+}
+
 func TestMigration0005KeepsRows(t *testing.T) {
 	dir := t.TempDir()
 	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
@@ -689,6 +727,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 			VALUES ('n1', 'k1', 'done', 100, 400, 120, 180, 'p1', 'p1', 101, 102)`,
 		`INSERT INTO nursing_sessions(id, kid_id, started_at, left_seconds, right_seconds, side, side_since, created_by, updated_by, created_at, updated_at)
 			VALUES ('n2', 'k1', 500, 0, 0, 'right', 500, 'p1', 'p1', 500, 500)`,
+		`INSERT INTO pumping_sessions(id, kid_id, note, started_at, duration_seconds, volume_ml, volume_floz_h, volume_typed, side, created_by, updated_by, created_at, updated_at)
+			VALUES ('u1', 'k1', 'pumped', 700, 900, 110, 372, 'ml', 'both', 'p1', 'p1', 700, 701)`,
 	} {
 		if _, err := old.Exec(q); err != nil {
 			t.Fatal(err)
@@ -713,6 +753,15 @@ func TestMigration0005KeepsRows(t *testing.T) {
 	}
 	if err := s.r.QueryRow(`SELECT COUNT(*) FROM bottle_feed_sources`).Scan(&sources); err != nil || sources != 0 {
 		t.Errorf("%d source rows after 0005 (err %v), want none", sources, err)
+	}
+	var pumpedSide string
+	var pumpedML int64
+	if err := s.r.QueryRow(`SELECT side, volume_ml FROM pumping_sessions WHERE id = 'u1'`).Scan(&pumpedSide, &pumpedML); err != nil || pumpedSide != "both" || pumpedML != 110 {
+		t.Errorf("the pumping session after 0005: side %q, volume %d, err %v", pumpedSide, pumpedML, err)
+	}
+	var sides int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pumping_session_sides`).Scan(&sides); err != nil || sides != 0 {
+		t.Errorf("%d side rows after 0005 (err %v), want none", sides, err)
 	}
 	var note string
 	var started, ended, left, right, created, updated int64

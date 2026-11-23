@@ -7,6 +7,15 @@ CREATE TABLE bottle_feed_sources (
     PRIMARY KEY (bottle_id, source)
 ) STRICT;
 
+CREATE TABLE pumping_session_sides (
+    session_id    TEXT NOT NULL REFERENCES pumping_sessions (id) ON DELETE CASCADE,
+    side          TEXT NOT NULL CHECK (side IN ('left', 'right')),
+    volume_ml     INTEGER NOT NULL,
+    volume_floz_h INTEGER NOT NULL,
+    volume_typed  TEXT NOT NULL CHECK (volume_typed IN ('ml', 'floz')),
+    PRIMARY KEY (session_id, side)
+) STRICT;
+
 CREATE TABLE nursing_sessions_new (
     id                  TEXT PRIMARY KEY,
     kid_id              TEXT NOT NULL REFERENCES kids (id) ON DELETE CASCADE,

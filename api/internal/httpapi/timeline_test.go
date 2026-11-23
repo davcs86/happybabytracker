@@ -98,7 +98,7 @@ func TestTimelineMergesInOrderAcrossTrackers(t *testing.T) {
 		"bottle":  {"type", "id", "at", "contents", "volume", "sources", "note"},
 		"diaper":  {"type", "id", "at", "kind", "note"},
 		"meal":    {"type", "id", "at", "what", "reaction", "note"},
-		"pumping": {"type", "id", "at", "started_at", "duration_seconds", "volume", "side", "note"},
+		"pumping": {"type", "id", "at", "started_at", "duration_seconds", "volume", "side", "sides", "note"},
 		"sleep":   {"type", "id", "at", "started_at", "ended_at", "note"},
 		"nursing": {"type", "id", "at", "started_at", "ended_at", "left_seconds", "right_seconds", "side", "side_since", "note", "weight_before", "weight_after", "milk"},
 	}

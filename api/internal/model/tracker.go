@@ -44,12 +44,21 @@ type Meal struct {
 	Reaction *string
 }
 
+// PumpingSide is one side's share of an advanced pumping session.
+type PumpingSide struct {
+	Side   string
+	Volume units.Volume
+}
+
+// PumpingSession is simple when Sides is nil or empty; otherwise Sides holds one per side pumped, in PumpingSideNames
+// order, and Side is the one they imply (DerivedPumpingSide).
 type PumpingSession struct {
 	Entry
 	StartedAt       time.Time
 	DurationSeconds int
 	Volume          units.Volume
 	Side            string
+	Sides           []PumpingSide
 }
 
 // SleepSession is running while EndedAt is nil.
@@ -203,6 +212,36 @@ var NursingSides = []string{"left", "right"}
 
 // PumpingSides lists every pumping side.
 var PumpingSides = []string{"left", "right", "both"}
+
+// PumpingSideNames lists the sides that can carry a volume of their own, in storage order.
+var PumpingSideNames = []string{"left", "right"}
+
+// CanonicalPumpingSides returns in as a set in storage order; false for an empty set, a duplicate or an unknown name.
+func CanonicalPumpingSides(in []string) ([]string, bool) {
+	out := make([]string, 0, len(in))
+	for _, name := range PumpingSideNames {
+		if slices.Contains(in, name) {
+			out = append(out, name)
+		}
+	}
+	return out, len(out) > 0 && len(out) == len(in)
+}
+
+// DerivedPumpingSide is the Side that sides imply: both for two, else the one named; false unless they are a valid set.
+func DerivedPumpingSide(sides []PumpingSide) (string, bool) {
+	names := make([]string, len(sides))
+	for i, s := range sides {
+		names[i] = s.Side
+	}
+	set, ok := CanonicalPumpingSides(names)
+	if !ok {
+		return "", false
+	}
+	if len(set) == len(PumpingSideNames) {
+		return "both", true
+	}
+	return set[0], true
+}
 
 // Module is a switchable tracker.
 type Module string
