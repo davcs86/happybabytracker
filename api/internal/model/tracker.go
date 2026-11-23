@@ -86,6 +86,13 @@ type MedicationDose struct {
 	Amount       *string
 }
 
+// Reminder is one materialised occurrence of a scheduled course; State is pending, done, expired or cancelled.
+type Reminder struct {
+	ID, KidID, MedicationID string
+	DueAt                   time.Time
+	State                   string
+}
+
 // PumpingSide is one side's share of an advanced pumping session.
 type PumpingSide struct {
 	Side   string
