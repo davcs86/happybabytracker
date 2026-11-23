@@ -13,11 +13,13 @@ All three are reached through the UI (the API's port is never published).
 
 | Path | 200 means | 503 means |
 |---|---|---|
-| `/healthz` | the UI process answers | (the UI is down: no answer at all) |
+| `/healthz` | the UI process answers | (none: a UI that is down does not answer) |
 | `/healthz/api` | the API's database answers **and** the reminder worker finished a tick within the last 60 seconds (the first 60 seconds after a start count from the start) | the database does not answer, or the worker has not ticked for over 60 seconds: reminders are neither materialised nor sent nor expired |
 | `/healthz/reminders` | no delivery is stuck and none failed lately; always 200 with no channel configured (there are no deliveries) | a delivery of a still-pending reminder is `pending` or `sending` more than 15 minutes after its due time, or a delivery was settled `failed` or `expired` within the last 15 minutes |
 
-The bodies name nothing (`{"status":"ok"}` or `unavailable`): no kid, count or target. A 503 from
+Through the UI every body is plain text: `ok` with a 200, `unavailable` with a 503. The API's own
+routes answer JSON: `/healthz` `{"status":"ok"}` or, on 503, `{"error":"unavailable"}`; `/healthz/reminders`
+`{"status":"ok"}` or `{"status":"unavailable"}`. No body names a kid, a count or a target. A 503 from
 `/healthz/reminders` clears on its own 15 minutes after the last failure once deliveries succeed again.
 
 ## A reminder did not arrive
@@ -26,8 +28,9 @@ Check in this order; each step names what to look at, never a secret.
 
 1. **The course.** On the kid's Medication page the course is active, inside its dates, has a schedule
    (not "as needed") and shows "Next due". The kid's `medication` module is on (Modules page).
-2. **The Due list.** The occurrence shows on the kid's home Due list. If it does, the worker materialised it;
-   if not, check `/healthz/api` (a stalled worker) and the API log for `reminder step failed` (its `step`
+2. **The Due list.** The occurrence shows on the kid's home Due list: the row exists (course, dose and
+   kid-zone writes create rows too, not only the worker). Whether it is sent depends on the worker: check
+   `/healthz/api` (a stalled worker) and the API log for `reminder step failed` (its `step`
    and `cause` say which store call failed).
 3. **A dose already logged.** A dose logged from 30 minutes before the due time marks that occurrence done,
    and nothing is sent for it.

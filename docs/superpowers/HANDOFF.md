@@ -34,7 +34,8 @@ what a new session needs to start correctly.
    `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
    literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
    `api.env`, both or neither, with asserts (43 base64url characters), flips its
-   `test_vapid_is_not_rendered_in_plan_2` and updates the edge runbook's section 7 and `docs/decisions.md`.
+   `test_vapid_is_not_rendered_in_plan_2` and updates the edge runbook's section 7 and
+   `docs/decisions.md`.
    Outbound 443 from the API container was checked at the DigitalOcean firewall and the compose network
    on 2026-11-23; host-level egress is not.
 3. **Edge, ntfy:** after the owner answers E1 and E2 (plan 6, "Questions for the owner"), an edge plan
@@ -274,6 +275,11 @@ log.
   device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page does not prompt: the
   parent uses "Turn off on this device" and turns it on again, which resubscribes under the new key. A
   stale ntfy topic cannot be seen while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it).
+- Plan 6, smoke: the push assertion sees only the title, path and tag (the test route decodes only those);
+  the payload's other fields are covered by the Go tests, so the smoke is not proof that nothing else
+  leaks. The API's memory ceiling has thin headroom: one smoke run on 2026-11-23 read a 61 MiB peak for
+  the first API process (a transient during password hashing; other runs 50–51 MiB) against the 60 MiB
+  ceiling, so step 10 can flake. The ceiling is the owner's call.
 - Plan 6, PR notes: medication entries of the home `due` list carry `state`, vaccine entries `status`;
   medication entries come before vaccine ones; only the first page of doses is reachable from the UI for
   edit and delete.

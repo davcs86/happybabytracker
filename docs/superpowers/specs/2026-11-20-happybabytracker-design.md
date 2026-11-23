@@ -528,8 +528,9 @@ prefix, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, and any other `NTFY_*` vari
 `NTFY_URL` is not.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
-`GET /healthz/reminders` is 503 when a reminder has been due and unsent for more than 15 minutes, or a
-delivery failed or expired within the last 15 minutes **(call)**; with no channel configured it is 200.
+`GET /healthz/reminders` is 503 when a delivery of a due reminder is still pending or sending 15 minutes
+after its due time, or a delivery failed or expired within the last 15 minutes **(call)**; with no channel
+configured it is 200.
 
 ### 13.2 UI (`ui/`, image `ghcr.io/davcs86/happybabytracker-ui`)
 

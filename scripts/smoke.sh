@@ -956,7 +956,6 @@ N_COURSE="$(note "course-note-${SUFFIX}")"
 MED_NAME="$(note "med-${SUFFIX}")"
 MED_DOSE="$(note "dose-${SUFFIX}")"
 DOSE_AMOUNT="$(note "amount-${SUFFIX}")"
-# 38.6 °C is 3860 hundredths, 101.48 °F 10148.
 for v in 38.6 3860 101.48 10148; do remember_value "$v"; done
 KID_ID="${KID_PATH#/kids/}"
 MEDICATION="$KID_PATH/medication"
@@ -1000,8 +999,8 @@ code_s="$(req settings-k2 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/settings")"
 { [ "$code $code_s" = '200 200' ] && body_has overdue-k 'Saved' &&
   [ "$(input_value settings-k2 reminder_overdue_minutes)" = 15 ]; } ||
   fail "4k overdue minutes" "save $code, page $code_s"
-# The first occurrence falls on a whole minute 90 to 150 s from now.
-DUE=$((($(date +%s) + 150) / 60 * 60))
+# The first occurrence falls on a whole minute 60 to 120 s from now.
+DUE=$((($(date +%s) + 120) / 60 * 60))
 code="$(form course-new "$ADDR_A" "$SESSION_A" "$MEDICATION/new?/save" "name=$MED_NAME" "dose=$MED_DOSE" kind=every \
   hours=1 "start_at=$(TZ="$KID_ZONE" date -d "@$DUE" '+%Y-%m-%dT%H:%M')" end_on= active=on "note=$N_COURSE")"
 code_m="$(req medication-k "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
@@ -1044,10 +1043,13 @@ refused() { # variable value|- VAR=value... -> the API exits 1 and its log names
   local var="$1" value="$2" kv names=() rc=0
   shift 2
   for kv in "$@"; do names+=(-e "${kv%%=*}"); done
-  env "$@" timeout 60 docker run --rm --name "$API-refused" --network none --read-only --cap-drop ALL \
-    -e ADMIN_USERNAME="$ADMIN_USERNAME" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-    -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" "${names[@]}" \
-    "$API_IMAGE" >"$WORK/refused.log" 2>&1 || rc=$?
+  # Exported in a subshell so no value is on a command line.
+  (
+    for kv in "$@"; do export "${kv?}"; done
+    timeout 60 docker run --rm --name "$API-refused" --network none --read-only --cap-drop ALL \
+      -e ADMIN_USERNAME="$ADMIN_USERNAME" -e ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+      -e INTERNAL_API_TOKEN="$INTERNAL_API_TOKEN" -e PUBLIC_ORIGIN="$ORIGIN" "${names[@]}" "$API_IMAGE"
+  ) >"$WORK/refused.log" 2>&1 || rc=$?
   docker rm -f "$API-refused" >/dev/null 2>&1 || true
   cat "$WORK/refused.log" >>"$WORK/api-refused.log"
   { [ "$rc" = 1 ] && grep -qF -- "$var" "$WORK/refused.log" &&
@@ -1088,25 +1090,45 @@ done
   body_has pushes-1 "\"title\":\"Medication due for $KID_NAME\"" && body_has pushes-1 "\"path\":\"$MEDICATION\"" &&
   ! body_has pushes-1 "$MED_NAME" && ! body_has pushes-1 "$MED_DOSE"; } ||
   fail "4l one send to the opted-in device" "status $code, $(sends pushes-1) sends within 90 s"
+code="$(req home-l1 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+{ [ "$code" = 200 ] && body_has home-l1 "$OVERDUE_LINE"; } || fail "4l Due before the dose" "status $code"
 code="$(form dose-l "$ADDR_A" "$SESSION_A" "$MEDICATION?/log" "medication=$COURSE_ID" "amount=$DOSE_AMOUNT")"
+code_h="$(req home-l2 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
 code_m="$(req medication-l "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
-{ [ "$code $(location dose-l) $code_m" = "303 $MEDICATION 200" ] && body_has medication-l "$DOSE_AMOUNT" &&
-  body_has medication-l "Next due $(due_label $((DUE + 3600)))"; } ||
-  fail "4l log a dose" "status $code, Location $(location dose-l), page $code_m"
+{ [ "$code $(location dose-l) $code_h $code_m" = "303 $MEDICATION 200 200" ] && ! body_has home-l2 "$OVERDUE_LINE" &&
+  body_has medication-l "$DOSE_AMOUNT" && body_has medication-l "Next due $(due_label $((DUE + 3600)))"; } ||
+  fail "4l a dose marks the sent occurrence done" "status $code, Location $(location dose-l), home $code_h, page $code_m"
+# A second course due 30 to 90 s from now, dosed at once: the dose marks its first occurrence done before it falls due.
+MED_NAME_2="$(note "med-second-${SUFFIX}")"
+DUE_2=$((($(date +%s) + 90) / 60 * 60))
+code="$(form course-new-2 "$ADDR_A" "$SESSION_A" "$MEDICATION/new?/save" "name=$MED_NAME_2" "dose=$MED_DOSE" kind=every \
+  hours=1 "start_at=$(TZ="$KID_ZONE" date -d "@$DUE_2" '+%Y-%m-%dT%H:%M')" end_on= active=on note=)"
+code_m="$(req medication-l2 "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
+COURSE_ID_2="$(pieces medication-l2 '<li' | grep -F ">$MED_NAME_2</a>" | grep -oE "$MEDICATION/[0-9a-f-]{36}\"" |
+  head -n 1 | sed -E 's|.*/([0-9a-f-]{36})"|\1|' || true)"
+{ [ "$code $(location course-new-2) $code_m" = "303 $MEDICATION 200" ] && [ -n "$COURSE_ID_2" ]; } ||
+  fail "4l add a second course" "status $code, Location $(location course-new-2), page $code_m"
+code="$(form dose-l2 "$ADDR_A" "$SESSION_A" "$MEDICATION?/log" "medication=$COURSE_ID_2" amount=)"
+[ "$code $(location dose-l2)" = "303 $MEDICATION" ] || fail "4l dose the second course" "status $code"
+code="$(api_call optin-b "$SESSION_B" PUT "/v1/kids/$KID_ID/push-devices/$DEVICE_B")"
+code_d="$(api_call devices-b1 "$SESSION_B" GET /v1/me/push-devices)"
+{ [ "$code $code_d" = '204 200' ] && body_has devices-b1 "\"kids\":[\"$KID_ID\"]"; } ||
+  fail "4l $USER_B opts in" "opt-in $code, devices $code_d"
 code="$(req access-l "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/access")"
 ID_B="$(pieces access-l '<li' | grep -F ">$USER_B" | grep -oE 'name="parent_id" value="[^"]+"' | head -n 1 |
   sed -E 's/.*value="([^"]+)"/\1/' || true)"
 { [ "$code" = 200 ] && [ -n "$ID_B" ]; } || fail "4l access page" "status $code, no id for $USER_B"
 code="$(form revoke-b "$ADDR_A" "$SESSION_A" "$KID_PATH/access?/remove" "parent_id=$ID_B")"
-[ "$code" = 200 ] || fail "4l revoke $USER_B" "status $code"
-# Past the next worker tick (every 30 s).
-sleep 40
+code_d="$(api_call devices-b2 "$SESSION_B" GET /v1/me/push-devices)"
+code_o="$(api_call optin-b2 "$SESSION_B" PUT "/v1/kids/$KID_ID/push-devices/$DEVICE_B")"
+{ [ "$code $code_d $code_o" = '200 200 404' ] && body_has devices-b2 "\"id\":\"$DEVICE_B\"" &&
+  body_has devices-b2 '"kids":[]'; } ||
+  fail "4l revoke $USER_B" "status $code, devices $code_d, opt-in $code_o"
+# Past the second course's due time and the next worker tick (every 30 s).
+while [ "$(date +%s)" -lt $((DUE_2 + 35)) ]; do sleep 5; done
 code="$(api_call pushes-2 - GET /v1/_test/pushes)"
-code_d="$(api_call devices-b "$SESSION_B" GET /v1/me/push-devices)"
-code_o="$(api_call optin-b "$SESSION_B" PUT "/v1/kids/$KID_ID/push-devices/$DEVICE_B")"
-{ [ "$code" = 200 ] && [ "$(sends pushes-2)" = 1 ] && [ "$code_d" = 200 ] &&
-  body_has devices-b "\"id\":\"$DEVICE_B\"" && body_has devices-b '"kids":[]' && [ "$code_o" = 404 ]; } ||
-  fail "4l after the dose and the revoke" "pushes $code ($(sends pushes-2) sends), $USER_B devices $code_d, opt-in $code_o"
+{ [ "$code" = 200 ] && [ "$(sends pushes-2)" = 1 ]; } ||
+  fail "4l no send after the doses and the revoke" "status $code, $(sends pushes-2) sends"
 code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/reminders" || true)"
 [ "$code" = 200 ] || fail "4l /healthz/reminders" "status $code"
 code="$(form grant-b-again "$ADDR_A" "$SESSION_A" "$KID_PATH/access?/add" "username=$USER_B" 'role=caregiver')"
@@ -1116,7 +1138,7 @@ docker logs "$API" >"$WORK/api-push.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
-pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; after a dose the next occurrence is not sent early; revoked, $USER_B's device keeps no kid and its opt-in is a 404; back in no-push mode"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid when $USER_B is revoked and its opt-in is then a 404; back in no-push mode"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
