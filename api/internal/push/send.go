@@ -144,6 +144,9 @@ func classify(resp *http.Response, now time.Time) Result {
 	return r
 }
 
+// ParseRetryAfter is the Retry-After reading the ntfy publisher shares.
+func ParseRetryAfter(v string, now time.Time) time.Duration { return retryAfter(v, now) }
+
 // retryAfter reads delta-seconds or an HTTP date; capped at ReminderExpiry, past which no retry is sent.
 func retryAfter(v string, now time.Time) time.Duration {
 	if v == "" {

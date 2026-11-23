@@ -65,7 +65,11 @@ func start(ctx context.Context, getenv func(string) string, stdout io.Writer) (*
 	if cfg.VAPIDKey != nil {
 		pushState = "on"
 	}
-	log.Info("channels", "push", pushState)
+	ntfyState := "off"
+	if cfg.NtfyEnabled {
+		ntfyState = "on"
+	}
+	log.Info("channels", "push", pushState, "ntfy", ntfyState)
 
 	handler := httpapi.NewHandler(httpapi.Deps{
 		Store: st, Cfg: cfg, Limiter: auth.NewLimiter(constants.LoginAttemptsPerMinute, time.Now), Now: time.Now, Log: log,

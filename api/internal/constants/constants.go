@@ -153,9 +153,11 @@ const (
 	PushIdleConnTimeout        = 30 * time.Second
 	DeliveryConcurrency        = 8
 
-	NtfyTimeout        = 10 * time.Second
-	NtfyTopicRandomLen = 22
-	NtfyPrefixPattern  = `^[a-z0-9-]{1,32}$`
+	NtfyTimeout          = 10 * time.Second
+	NtfyTopicRandomLen   = 22
+	NtfyPrefixPattern    = `^[a-z0-9-]{1,32}$`
+	NtfyMessageMaxBytes  = 4096
+	NtfyResponseMaxBytes = 4096
 
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"

@@ -301,3 +301,62 @@ func TestStartRefusesHalfSetVAPID(t *testing.T) {
 		t.Fatalf("start: %v, want %q", err, want)
 	}
 }
+
+// channelsLine returns the one start line that logs the channels.
+func channelsLine(t *testing.T, out string) map[string]any {
+	t.Helper()
+	var got []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(line), &m); err != nil {
+			t.Fatalf("log line %q: %v", line, err)
+		}
+		if m["msg"] == "channels" {
+			got = append(got, m)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("%d channels lines in %q, want exactly one", len(got), out)
+	}
+	return got[0]
+}
+
+func TestStartLogsNtfyOffAndOn(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  map[string]string
+		want string
+	}{
+		{"off", nil, "off"},
+		{"on", map[string]string{"NTFY_URL": "http://zqntfy:2586", "NTFY_TOPIC_PREFIX": "zqprefix", "NTFY_TOKEN": "tk_zqsecret", "NTFY_PUBLIC_URL": "https://zqpublic.example.org"}, "on"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			env := baseEnv(t.TempDir())
+			for k, v := range tc.set {
+				env[k] = v
+			}
+			a, err := start(context.Background(), func(k string) string { return env[k] }, &out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer a.store.Close()
+			line := channelsLine(t, out.String())
+			if line["ntfy"] != tc.want || line["push"] != "off" {
+				t.Fatalf("channels line %v, want ntfy %q and push off", line, tc.want)
+			}
+			if strings.Contains(out.String(), "zq") {
+				t.Fatalf("start logged an ntfy value: %s", out.String())
+			}
+		})
+	}
+}
+
+func TestStartRefusesNtfySettingsWithoutURL(t *testing.T) {
+	env := baseEnv(t.TempDir())
+	env["NTFY_TOKEN"] = "tk_zqsecret"
+	_, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard)
+	if want := "NTFY_TOKEN requires NTFY_URL"; err == nil || err.Error() != want {
+		t.Fatalf("start: %v, want %q", err, want)
+	}
+}

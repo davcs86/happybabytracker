@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 )
 
@@ -24,6 +25,9 @@ type Config struct {
 	VAPIDKey      *ecdsa.PrivateKey
 	VAPIDSubject  string
 	AllowFakePush bool
+	// Ntfy is the zero value when ntfy is off.
+	Ntfy        ntfy.Config
+	NtfyEnabled bool
 }
 
 var usernameRE = regexp.MustCompile(constants.UsernamePattern)
@@ -54,6 +58,10 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("PUBLIC_ORIGIN must be http(s)://host[:port] with no path")
 	}
 	if err := loadPush(&cfg, getenv); err != nil {
+		return Config{}, err
+	}
+	var err error
+	if cfg.Ntfy, cfg.NtfyEnabled, err = ntfy.LoadConfig(getenv); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

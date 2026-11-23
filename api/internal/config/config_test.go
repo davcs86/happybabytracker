@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
+
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 )
 
 const (
@@ -208,5 +210,60 @@ func TestLoadVAPIDRefuses(t *testing.T) {
 	_, err := Load(env(map[string]string{"VAPID_PRIVATE_KEY": key}))
 	if want := "VAPID_SUBJECT is required when VAPID_PRIVATE_KEY is set"; err == nil || err.Error() != want {
 		t.Fatalf("only the key: %v, want %q", err, want)
+	}
+}
+
+func TestLoadNtfyOff(t *testing.T) {
+	cfg, err := Load(env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.NtfyEnabled || cfg.Ntfy != (ntfy.Config{}) {
+		t.Fatalf("ntfy %+v enabled=%v, want off", cfg.Ntfy, cfg.NtfyEnabled)
+	}
+}
+
+func TestLoadNtfyOn(t *testing.T) {
+	cfg, err := Load(env(map[string]string{
+		"NTFY_URL": "http://ntfy:2586", "NTFY_TOPIC_PREFIX": "hbt", "NTFY_TOKEN": "tk_x", "NTFY_PUBLIC_URL": "https://ntfy.example.org",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ntfy.Config{URL: "http://ntfy:2586", TopicPrefix: "hbt", Token: "tk_x", PublicURL: "https://ntfy.example.org"}
+	if !cfg.NtfyEnabled || cfg.Ntfy != want {
+		t.Fatalf("ntfy %+v enabled=%v, want %+v on", cfg.Ntfy, cfg.NtfyEnabled, want)
+	}
+}
+
+func TestLoadNtfyIsIndependentOfWebPush(t *testing.T) {
+	key := testVAPIDKey(t)
+	cfg, err := Load(env(map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": okSubject}))
+	if err != nil || cfg.VAPIDKey == nil || cfg.NtfyEnabled {
+		t.Fatalf("Web Push only: key=%v ntfy=%v err=%v", cfg.VAPIDKey != nil, cfg.NtfyEnabled, err)
+	}
+	cfg, err = Load(env(map[string]string{"NTFY_URL": "http://ntfy:2586", "NTFY_TOPIC_PREFIX": "hbt"}))
+	if err != nil || cfg.VAPIDKey != nil || !cfg.NtfyEnabled {
+		t.Fatalf("ntfy only: key=%v ntfy=%v err=%v", cfg.VAPIDKey != nil, cfg.NtfyEnabled, err)
+	}
+	cfg, err = Load(env(map[string]string{"VAPID_PRIVATE_KEY": key, "VAPID_SUBJECT": okSubject, "NTFY_URL": "http://ntfy:2586", "NTFY_TOPIC_PREFIX": "hbt"}))
+	if err != nil || cfg.VAPIDKey == nil || !cfg.NtfyEnabled {
+		t.Fatalf("both: key=%v ntfy=%v err=%v", cfg.VAPIDKey != nil, cfg.NtfyEnabled, err)
+	}
+}
+
+func TestLoadNtfyRefuses(t *testing.T) {
+	for name, tc := range map[string]struct {
+		variable string
+		env      map[string]string
+	}{
+		"token without url":  {"NTFY_TOKEN", map[string]string{"NTFY_TOKEN": "tk_zqsecret"}},
+		"url without prefix": {"NTFY_TOPIC_PREFIX", map[string]string{"NTFY_URL": "http://ntfy:2586"}},
+		"public url http":    {"NTFY_PUBLIC_URL", map[string]string{"NTFY_URL": "http://ntfy:2586", "NTFY_TOPIC_PREFIX": "hbt", "NTFY_PUBLIC_URL": "http://zq.example.org"}},
+	} {
+		_, err := Load(env(tc.env))
+		if err == nil || !strings.Contains(err.Error(), tc.variable) || strings.Contains(err.Error(), "zq") {
+			t.Errorf("%s: error %v, want one naming %s and no value", name, err, tc.variable)
+		}
 	}
 }
