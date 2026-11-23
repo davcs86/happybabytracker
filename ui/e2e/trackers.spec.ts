@@ -2098,6 +2098,8 @@ test.describe('the advanced pumping form without JavaScript', () => {
 const SYMPTOM_PATH = `/v1/kids/${MIA.id}/symptoms`;
 const TEMP_MESSAGE = 'Enter a temperature from 30 to 45 °C (86 to 113 °F), with up to two decimals';
 const pick = (page: Page, symptom: string) => field(page, 'Symptom').selectOption(symptom);
+// Hydration overwrites a control changed before it; Svelte drops the SSR value attribute after it.
+const hydrated = (page: Page) => expect(field(page, 'Temperature')).not.toHaveAttribute('value');
 const fever = (over: Row = {}): Row => ({
 	at: minute(-10),
 	symptom: 'fever',
@@ -2192,6 +2194,7 @@ test.describe('the sickness tracker', () => {
 		const made = await seed(api, 'symptoms', fever());
 		await signIn(page, ANA);
 		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
 		await field(page, 'Temperature').fill('39');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -2205,6 +2208,7 @@ test.describe('the sickness tracker', () => {
 		});
 
 		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
 		await field(page, 'Method').selectOption('oral');
 		await saveAndWait(page);
 		await onTimeline(page);
