@@ -37,6 +37,18 @@ type Diaper struct {
 	Kind string
 }
 
+// Symptom is one symptom at a time. Temperature and Method are both set exactly when Symptom is "fever";
+// OtherText is set exactly when it is "other".
+type Symptom struct {
+	Entry
+	At          time.Time
+	Symptom     string
+	Severity    *string
+	OtherText   *string
+	Temperature *units.Temperature
+	Method      *string
+}
+
 type Meal struct {
 	Entry
 	At       time.Time

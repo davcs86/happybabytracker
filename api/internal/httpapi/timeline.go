@@ -13,6 +13,7 @@ import (
 // timelineModules maps each TimelineTypes name to the module that switches it.
 var timelineModules = map[string]model.Module{
 	"bottle": "bottles", "nursing": "nursing", "pumping": "pumping", "sleep": "sleep", "diaper": "diapers", "meal": "feeding",
+	"symptom": "sickness",
 }
 
 // defaultTimelineTypes is the trackers an absent types parameter selects: those whose module is enabled.
@@ -84,6 +85,12 @@ func newTimelineView(it store.TimelineItem) any {
 			At   string `json:"at"`
 			mealView
 		}{it.Type, at, newMealView(e)}
+	case model.Symptom:
+		return struct {
+			Type string `json:"type"`
+			At   string `json:"at"`
+			symptomView
+		}{it.Type, at, newSymptomView(e)}
 	}
 	return struct {
 		Type string `json:"type"`

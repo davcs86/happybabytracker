@@ -36,6 +36,10 @@ func (k *kit) seedEntry(kid, username, typ string, at time.Time) string {
 		var v model.Meal
 		v, err = k.Store.CreateMeal(ctx, kid, actor, model.Meal{At: at, What: "pear"}, k.now)
 		id = v.ID
+	case "symptom":
+		var v model.Symptom
+		v, err = k.Store.CreateSymptom(ctx, kid, actor, model.Symptom{At: at, Symptom: "cough"}, k.now)
+		id = v.ID
 	case "pumping":
 		var v model.PumpingSession
 		v, err = k.Store.CreatePumping(ctx, kid, actor, model.PumpingSession{StartedAt: at, DurationSeconds: 600, Volume: vol, Side: "both"}, k.now)
@@ -79,12 +83,12 @@ func (k *kit) timelinePage(token, kid, query string) ([]timelineRow, []map[strin
 	return rows, raw, next
 }
 
-var timelineTypeNames = []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal"}
+var timelineTypeNames = []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal", "symptom"}
 
 func TestTimelineMergesInOrderAcrossTrackers(t *testing.T) {
 	k := newKit(t)
 	kid, ana, bob := k.trackerKid()
-	order := []string{"sleep", "bottle", "nursing", "diaper", "pumping", "meal"}
+	order := []string{"sleep", "bottle", "symptom", "nursing", "diaper", "pumping", "meal"}
 	var want []timelineRow
 	for i, typ := range order {
 		at := t0.Add(-time.Duration(i+1) * time.Hour)
@@ -98,6 +102,7 @@ func TestTimelineMergesInOrderAcrossTrackers(t *testing.T) {
 		"bottle":  {"type", "id", "at", "contents", "volume", "sources", "note"},
 		"diaper":  {"type", "id", "at", "kind", "note"},
 		"meal":    {"type", "id", "at", "what", "reaction", "note"},
+		"symptom": {"type", "id", "at", "symptom", "severity", "other_text", "temperature", "method", "note"},
 		"pumping": {"type", "id", "at", "started_at", "duration_seconds", "volume", "side", "sides", "note"},
 		"sleep":   {"type", "id", "at", "started_at", "ended_at", "note"},
 		"nursing": {"type", "id", "at", "started_at", "ended_at", "left_seconds", "right_seconds", "side", "side_since", "note", "weight_before", "weight_after", "milk"},
@@ -109,7 +114,7 @@ func TestTimelineMergesInOrderAcrossTrackers(t *testing.T) {
 			t.Errorf("%s at %v differs from started_at %v", typ, item["at"], started)
 		}
 		single := k.do(http.MethodGet, "/v1/kids/"+kid+"/"+map[string]string{
-			"bottle": "bottles", "diaper": "diapers", "meal": "meals", "pumping": "pumping", "sleep": "sleep", "nursing": "nursing",
+			"bottle": "bottles", "diaper": "diapers", "meal": "meals", "pumping": "pumping", "sleep": "sleep", "nursing": "nursing", "symptom": "symptoms",
 		}[typ]+"/"+item["id"].(string), ana, nil)
 		view := bodyMap(t, single)
 		for key, v := range view {
@@ -176,7 +181,7 @@ func TestTimelineTypesFilter(t *testing.T) {
 		t.Errorf("types=sleep,bottle = %v, want %v", rows, want)
 	}
 	if rows, _, _ := k.timelinePage(ana, kid, ""); len(rows) != len(timelineTypeNames) {
-		t.Errorf("default types return %d entries, want all six", len(rows))
+		t.Errorf("default types return %d entries, want all %d", len(rows), len(timelineTypeNames))
 	}
 	for query, field := range map[string]string{
 		"?types=bottles":            "types",
@@ -226,7 +231,7 @@ func TestTimelineOtherKidsEntriesNeverAppear(t *testing.T) {
 		mine[k.seedEntry(kid, "ana", typ, at)] = true
 		k.seedEntry(other, "ana", typ, at)
 	}
-	for _, query := range []string{"", "?limit=2", "?types=" + "bottle,nursing,pumping,sleep,diaper,meal"} {
+	for _, query := range []string{"", "?limit=2", "?types=" + "bottle,nursing,pumping,sleep,diaper,meal,symptom"} {
 		rows, _, _ := k.timelinePage(ana, kid, query)
 		for _, r := range rows {
 			if !mine[r.ID] {
@@ -236,4 +241,44 @@ func TestTimelineOtherKidsEntriesNeverAppear(t *testing.T) {
 	}
 	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+other+"/timeline", bob, nil), http.StatusNotFound, "not_found")
 	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+other+"/summary?from=2026-11-20&to=2026-11-20", bob, nil), http.StatusNotFound, "not_found")
+}
+
+func TestTimelineSymptomType(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	other := k.createKid(ana, map[string]any{"name": "Teo"})
+	fever := k.createSymptom(ana, kid, symptomBody(feverBody(map[string]any{"at": ts(t0.Add(-2 * time.Minute))})))["id"].(string)
+	k.createSymptom(ana, other, symptomBody(nil))
+	k.seedEntry(kid, "ana", "diaper", t0.Add(-time.Minute))
+
+	rows, raw, _ := k.timelinePage(bob, kid, "?types=symptom")
+	if want := []timelineRow{{"symptom", fever, ts(t0.Add(-2 * time.Minute))}}; !slices.Equal(rows, want) {
+		t.Fatalf("types=symptom = %v, want %v", rows, want)
+	}
+	if temp, _ := raw[0]["temperature"].(map[string]any); temp["typed_unit"] != "c" || temp["c_hundredths"] != float64(3850) || raw[0]["method"] != "oral" {
+		t.Errorf("symptom item = %v", raw[0])
+	}
+	if rows, _, _ := k.timelinePage(bob, kid, ""); len(rows) != 2 || rows[1].Type != "symptom" {
+		t.Errorf("default types = %v, want the diaper and the symptom", rows)
+	}
+}
+
+func TestTimelineDefaultTypesFollowTheSicknessModule(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	k.seedEntry(kid, "ana", "symptom", t0.Add(-time.Minute))
+	k.seedEntry(kid, "ana", "diaper", t0.Add(-2*time.Minute))
+
+	k.setModule(ana, kid, "sickness", false)
+	rows, _, _ := k.timelinePage(ana, kid, "")
+	if len(rows) != 1 || rows[0].Type != "diaper" {
+		t.Errorf("sickness off: default types = %v, want only the diaper", rows)
+	}
+	if rows, _, _ := k.timelinePage(ana, kid, "?types=symptom"); len(rows) != 1 || rows[0].Type != "symptom" {
+		t.Errorf("sickness off: types=symptom = %v, an explicit type is still served", rows)
+	}
+	k.setModule(ana, kid, "sickness", true)
+	if rows, _, _ := k.timelinePage(ana, kid, ""); len(rows) != 2 {
+		t.Errorf("sickness on: default types = %v, want both", rows)
+	}
 }

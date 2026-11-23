@@ -11,7 +11,7 @@ import (
 )
 
 // TimelineTypes names every tracker the timeline merges, as the wire spells them.
-var TimelineTypes = []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal"}
+var TimelineTypes = []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal", "symptom"}
 
 var errUnknownTimelineType = errors.New("store: unknown timeline type")
 
@@ -55,6 +55,9 @@ func (s *Store) timelineOf(ctx context.Context, typ, kidID string, q ListQuery) 
 	case "meal":
 		rows, err := s.ListMeals(ctx, kidID, q)
 		return timelineItems(typ, rows, err, func(v model.Meal) (time.Time, string) { return v.At, v.ID })
+	case "symptom":
+		rows, err := s.ListSymptoms(ctx, kidID, q)
+		return timelineItems(typ, rows, err, func(v model.Symptom) (time.Time, string) { return v.At, v.ID })
 	}
 	return nil, errUnknownTimelineType
 }

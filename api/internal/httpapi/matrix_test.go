@@ -121,6 +121,11 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/growth/{entry}":                   Caregiver,
 	"PATCH /v1/kids/{kid}/growth/{entry}":                 Caregiver,
 	"DELETE /v1/kids/{kid}/growth/{entry}":                Caregiver,
+	"GET /v1/kids/{kid}/symptoms":                         Caregiver,
+	"POST /v1/kids/{kid}/symptoms":                        Caregiver,
+	"GET /v1/kids/{kid}/symptoms/{entry}":                 Caregiver,
+	"PATCH /v1/kids/{kid}/symptoms/{entry}":               Caregiver,
+	"DELETE /v1/kids/{kid}/symptoms/{entry}":              Caregiver,
 	"GET /v1/kids/{kid}/vaccines":                         Caregiver,
 	"GET /v1/kids/{kid}/vaccinations":                     Caregiver,
 	"POST /v1/kids/{kid}/vaccinations":                    Caregiver,
@@ -163,7 +168,7 @@ type fixture struct {
 	kit                                           *kit
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
-	growth, administration                        string
+	growth, administration, symptom               string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -201,6 +206,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.nursing
 		case strings.Contains(rt.Pattern, "/growth/{entry}"):
 			return f.growth
+		case strings.Contains(rt.Pattern, "/symptoms/"):
+			return f.symptom
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -304,6 +311,11 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.growth, f.administration = measurement.ID, dose.ID
+	symptom, err := k.Store.CreateSymptom(ctx, kid.ID, f.parent[aG].ID, model.Symptom{At: k.now, Symptom: "cough"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.symptom = symptom.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {
