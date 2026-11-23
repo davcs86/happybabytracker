@@ -34,8 +34,7 @@ what a new session needs to start correctly.
    `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
    literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
    `api.env`, both or neither, with asserts (43 base64url characters), flips its
-   `test_vapid_is_not_rendered_in_plan_2` and updates the edge runbook's section 7 and
-   `docs/decisions.md`.
+   `test_vapid_is_not_rendered_in_plan_2` and updates the edge runbook's section 7 and `docs/decisions.md`.
    Outbound 443 from the API container was checked at the DigitalOcean firewall and the compose network
    on 2026-11-23; host-level egress is not.
 3. **Edge, ntfy:** after the owner answers E1 and E2 (plan 6, "Questions for the owner"), an edge plan

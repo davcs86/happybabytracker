@@ -487,8 +487,8 @@ object; the timeline filtered to sickness shows the course **(call)**.
   the protection; on a server that denies by default, read access is the server operator's to grant.
 - ntfy keeps a message in its cache (72 hours on the edge's server), so the kid's name rests there in
   plaintext for that long. The settings screen says so next to the switch **(call)**.
-- `GET /healthz/reminders` covers both channels: an occurrence stuck on either one for more than 15
-  minutes turns it 503.
+- `GET /healthz/reminders` covers both channels: a delivery of a due reminder on either one still
+  pending or sending 15 minutes after its due time turns it 503 (13.1).
 
 ## 12. PDF export
 
@@ -522,8 +522,8 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 
 The process refuses to start on a missing or too-short secret, an invalid VAPID key or an invalid
 origin. The VAPID variables are optional, both or neither (neither turns Web Push off) **(owner,
-2026-11-23, superseding "the VAPID variables are always required")**; only one of them, or
-`HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
+2026-11-23, superseding "the VAPID variables are always required")**; one of them without the other,
+an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
 prefix, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, and any other `NTFY_*` variable set while
 `NTFY_URL` is not.
 

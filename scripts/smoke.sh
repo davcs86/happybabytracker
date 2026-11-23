@@ -1034,7 +1034,8 @@ code="$(api_call device-off "$SESSION_A" PUT /v1/me/push-devices "$(device_json 
 { [ "$code" = 409 ] && body_has device-off '"push_unavailable"'; } || fail "4k device upsert" "status $code"
 pass "4k with no channel: a fever (38.6 °C, rectal) and a cough are on the timeline; overdue minutes set to 15; an every-1-hour course shows its next dose and is on the home Due list, then overdue; /healthz and /healthz/reminders are 200; GET /v1/push is {\"enabled\":false}; the notifications page says Web Push is not configured; a device upsert answers 409 push_unavailable"
 
-# 4l. The fake push sender: one send to the opted-in device only, none after a dose or for a revoked caregiver.
+# 4l. The fake push sender: one send, to the opted-in device only; none for a dosed occurrence, a second course
+# dosed ahead of its due time, or a caregiver opted in and then revoked.
 API_MEM_0="$(mem "$API")"
 docker logs "$API" >"$WORK/api-0.log" 2>&1
 NTFY_SECRET="$(rand 24)"
@@ -1098,7 +1099,7 @@ code_m="$(req medication-l "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
 { [ "$code $(location dose-l) $code_h $code_m" = "303 $MEDICATION 200 200" ] && ! body_has home-l2 "$OVERDUE_LINE" &&
   body_has medication-l "$DOSE_AMOUNT" && body_has medication-l "Next due $(due_label $((DUE + 3600)))"; } ||
   fail "4l a dose marks the sent occurrence done" "status $code, Location $(location dose-l), home $code_h, page $code_m"
-# A second course due 30 to 90 s from now, dosed at once: the dose marks its first occurrence done before it falls due.
+# Due 30 to 90 s ahead, so the dose lands inside the 30-minute lead and the wait stays short.
 MED_NAME_2="$(note "med-second-${SUFFIX}")"
 DUE_2=$((($(date +%s) + 90) / 60 * 60))
 code="$(form course-new-2 "$ADDR_A" "$SESSION_A" "$MEDICATION/new?/save" "name=$MED_NAME_2" "dose=$MED_DOSE" kind=every \
@@ -1125,7 +1126,7 @@ code_o="$(api_call optin-b2 "$SESSION_B" PUT "/v1/kids/$KID_ID/push-devices/$DEV
   body_has devices-b2 '"kids":[]'; } ||
   fail "4l revoke $USER_B" "status $code, devices $code_d, opt-in $code_o"
 # Past the second course's due time and the next worker tick (every 30 s).
-while [ "$(date +%s)" -lt $((DUE_2 + 35)) ]; do sleep 5; done
+while [ "$(date +%s)" -lt $((DUE_2 + 40)) ]; do sleep 5; done
 code="$(api_call pushes-2 - GET /v1/_test/pushes)"
 { [ "$code" = 200 ] && [ "$(sends pushes-2)" = 1 ]; } ||
   fail "4l no send after the doses and the revoke" "status $code, $(sends pushes-2) sends"

@@ -220,9 +220,11 @@ API (`ghcr.io/davcs86/happybabytracker-api`):
 | `NTFY_PUBLIC_URL` | Optional `https:` server address shown to parents when it differs from `NTFY_URL` |
 
 The process refuses to start on a missing or invalid value and names the variable, never its value. Only
-`DATA_DIR` has a default; the VAPID and `NTFY_*` variables are optional, but it refuses only
-`VAPID_PRIVATE_KEY`, only `VAPID_SUBJECT`, a malformed key, a subject that is not an `https:` URL,
-`HBT_ALLOW_FAKE_PUSH=1` without both VAPID variables, and any other `NTFY_*` variable without `NTFY_URL`.
+`DATA_DIR` has a default. The VAPID and `NTFY_*` variables are optional, but any value that is set must be
+valid: the two VAPID variables come both or neither, `HBT_ALLOW_FAKE_PUSH` is `1` or unset and needs both
+VAPID variables, and every other `NTFY_*` variable needs `NTFY_URL`. For example, it refuses only
+`VAPID_PRIVATE_KEY` or only `VAPID_SUBJECT`, a malformed key, a subject that is not an `https:` URL,
+`HBT_ALLOW_FAKE_PUSH=1` without VAPID, and `NTFY_TOKEN` without `NTFY_URL`.
 It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
 two concurrent password hashes stay within the edge's 96m container limit and the 60 MiB memory ceiling.
 Changing `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `INTERNAL_API_TOKEN` ends every admin session at the next
