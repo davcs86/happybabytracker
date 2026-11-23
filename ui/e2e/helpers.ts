@@ -30,6 +30,10 @@ export async function submit(button: Locator) {
 	await (await response).finished();
 }
 
+// Hydration resets prefilled controls, then drops the SSR value or checked attribute: edit them after.
+export const untilHydrated = (input: Locator, attribute: 'value' | 'checked' = 'value') =>
+	expect(input).not.toHaveAttribute(attribute);
+
 export const KID_COOKIE = 'hbt_kid';
 
 export async function signIn(page: Page, who: { username: string; password: string }) {

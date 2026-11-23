@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { expectAccessible, expectNotFoundPage, signIn, submit } from './helpers.js';
+import { expectAccessible, expectNotFoundPage, signIn, submit, untilHydrated } from './helpers.js';
 import {
 	ANA,
 	CLEO,
@@ -219,6 +219,7 @@ test.describe('Web Push on', () => {
 			[LEO.id, MIA.id].sort()
 		);
 		await page.reload();
+		await untilHydrated(here.getByLabel(MIA.name), 'checked');
 		await expect(here.getByLabel(MIA.name)).toBeChecked();
 		await expect(here.getByLabel(LEO.name)).toBeChecked();
 		await expect(here.getByLabel(IVY.name)).not.toBeChecked();

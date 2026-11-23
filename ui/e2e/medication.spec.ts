@@ -11,7 +11,8 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	submit
+	submit,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -288,6 +289,7 @@ test('an edit of the note alone sends only the note, and the amount and time go 
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
 	await page.getByRole('link', { name: /^Calpol, / }).click();
+	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(doseUrl(dose.id));
 	await expect(page.getByRole('heading', { name: 'Edit dose', level: 1 })).toBeVisible();
 	await expect(page.getByText('Dose of Calpol')).toBeVisible();
@@ -309,6 +311,7 @@ test('an edit of the note alone sends only the note, and the amount and time go 
 
 	const earlier = minute(-90);
 	await page.goto(doseUrl(dose.id));
+	await untilHydrated(field(page, 'Given at'));
 	await field(page, 'Given at').fill(instantToLocalInput(earlier, 'UTC'));
 	await field(page, 'Amount').fill('');
 	await field(page, 'Note').fill('');
@@ -325,6 +328,7 @@ test('a refused edit keeps what was typed and marks the field', async ({ page })
 	const path = `${DOSES()}/${dose.id}`;
 	await signIn(page, ANA);
 	await page.goto(doseUrl(dose.id));
+	await untilHydrated(field(page, 'Amount'));
 
 	await field(page, 'Amount').fill('x'.repeat(MEDICATION_TEXT_MAX_LEN + 1));
 	await field(page, 'Note').fill('typed note');
@@ -362,6 +366,7 @@ test('a refused amount on one course keeps its text and leaves the other courses
 	await seedCourse(api, { name: 'Amoxil' });
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
+	await untilHydrated(amountOf(card(page, 'Amoxil')));
 	const long = 'x'.repeat(MEDICATION_TEXT_MAX_LEN + 1);
 	await amountOf(card(page, 'Amoxil')).fill(long);
 	await submit(logNow(card(page, 'Amoxil')));
@@ -412,6 +417,7 @@ for (const [who, role] of [
 			`Last dose logged at ${shown(made.given_at, 'Europe/Madrid')}`
 		);
 		await page.getByRole('link', { name: /^Calpol, / }).click();
+		await untilHydrated(field(page, 'Note'));
 		await expect(field(page, 'Given at')).toHaveValue(
 			instantToLocalInput(String(made.given_at), 'Europe/Madrid')
 		);
@@ -454,6 +460,7 @@ test('a dose gone under an open edit form is the 404 page', async ({ page }) => 
 	const dose = await seedDose(api, calpol.id);
 	await signIn(page, ANA);
 	await page.goto(doseUrl(dose.id));
+	await untilHydrated(field(page, 'Note'));
 	expect((await api('DELETE', `${DOSES()}/${dose.id}`)).status).toBe(204);
 	await field(page, 'Note').fill('too late');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -554,6 +561,7 @@ test('long unbroken texts do not overflow the page at phone width', async ({ pag
 	const dose = await seedDose(api, course.id, { amount: text, note });
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
+	await untilHydrated(amountOf(page));
 	await expect(page.getByRole('heading', { name, level: 3 })).toBeVisible();
 	expect(await overflows(page)).toBe(false);
 	await amountOf(page).fill(text);
@@ -905,6 +913,7 @@ test('the edit page shows the stored course and an edit of the note alone sends 
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
 	await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(courseUrl(calpol.id));
 	await expect(page.getByRole('heading', { name: 'Edit course', level: 1 })).toBeVisible();
 	await expect(field(page, 'Name')).toHaveValue('Calpol');
@@ -949,6 +958,7 @@ test('an edit sends the whole schedule when it changed, null for a cleared last 
 	const path = `${COURSES()}/${calpol.id}`;
 	await signIn(page, ANA);
 	await page.goto(courseUrl(calpol.id));
+	await untilHydrated(field(page, 'Name'));
 
 	await time(page, 3).fill('13:00');
 	await field(page, 'Name').fill('Calpol Plus');
@@ -960,6 +970,7 @@ test('an edit sends the whole schedule when it changed, null for a cleared last 
 	});
 
 	await page.goto(courseUrl(calpol.id));
+	await untilHydrated(field(page, 'Name'));
 	await kindRadio(page, EVERY).check();
 	await hoursInput(page).fill('8');
 	await field(page, 'Last day (optional)').fill('');
@@ -976,6 +987,7 @@ test('an edit sends the whole schedule when it changed, null for a cleared last 
 	await expect(card(page, 'Calpol Plus')).toContainText('Every 8 hours from');
 
 	await page.goto(courseUrl(calpol.id));
+	await untilHydrated(field(page, 'Name'));
 	await expect(kindRadio(page, EVERY)).toBeChecked();
 	await expect(hoursInput(page)).toHaveValue('8');
 	await field(page, 'Active').uncheck();
@@ -985,6 +997,7 @@ test('an edit sends the whole schedule when it changed, null for a cleared last 
 	await expect(card(page, 'Calpol Plus')).toBeHidden();
 
 	await page.goto(courseUrl(calpol.id));
+	await untilHydrated(field(page, 'Name'));
 	await expect(field(page, 'Active')).not.toBeChecked();
 	await kindRadio(page, AS_NEEDED).check();
 	await field(page, 'Active').check();
@@ -1002,6 +1015,7 @@ test('a refused edit keeps what was typed and the originals stay the loaded ones
 	const path = `${COURSES()}/${calpol.id}`;
 	await signIn(page, ANA);
 	await page.goto(courseUrl(calpol.id));
+	await untilHydrated(field(page, 'Name'));
 
 	await field(page, 'Name').fill('');
 	await field(page, 'Note').fill('typed note');
@@ -1103,6 +1117,7 @@ for (const [who, role] of [
 		);
 
 		await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+		await untilHydrated(field(page, 'Note'));
 		await expect(field(page, 'Start')).toHaveValue(instantToLocalInput(start, 'Europe/Madrid'));
 		await field(page, 'Note').fill('by the book');
 		await saveCourse(page);
@@ -1148,6 +1163,7 @@ test('a course gone under an open edit form or an open delete confirm is the 404
 	const second = await seedCourse(api, { name: 'Second' });
 	await signIn(page, ANA);
 	await page.goto(courseUrl(first.id));
+	await untilHydrated(field(page, 'Note'));
 	expect((await api('DELETE', `${COURSES()}/${first.id}`)).status).toBe(204);
 	await field(page, 'Note').fill('too late');
 	await page.getByRole('button', { name: 'Save', exact: true }).click();

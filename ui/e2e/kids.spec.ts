@@ -7,7 +7,8 @@ import {
 	expectLanding,
 	expectNotFoundPage,
 	signIn,
-	submit
+	submit,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -325,6 +326,7 @@ test('settings saves the full set; turning off "born early" clears the gestation
 }) => {
 	await signIn(page, CLEO);
 	await page.goto(`/kids/${LEO.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(page.getByRole('heading', { name: `Settings for ${LEO.name}` })).toBeVisible();
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).toBeChecked();
 	await expect(page.getByLabel('Time zone')).toHaveValue(LEO.timeZone);
@@ -337,6 +339,7 @@ test('settings saves the full set; turning off "born early" clears the gestation
 	await expectAccessible(page);
 
 	await page.reload();
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Leonardo');
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).not.toBeChecked();
 	await expect(page.getByLabel('Time zone')).toHaveValue(LEO.timeZone);
@@ -347,6 +350,7 @@ test('settings saves the full set; turning off "born early" clears the gestation
 test('settings shows a 422 on its field', async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await page.getByLabel('Birth date').fill('1899-12-31');
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expectFieldError(
@@ -360,6 +364,7 @@ test('delete needs the exact name', async ({ page, context }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}`);
 	await page.goto(`/kids/${MIA.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	const confirm = page.getByLabel(`Type ${MIA.name} to confirm`);
 	await confirm.fill(MIA.name.toLowerCase());
 	await page.getByRole('button', { name: `Delete ${MIA.name}` }).click();
@@ -398,6 +403,7 @@ test('settings offer None yet and exactly the shipped schedules; saving one show
 }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(schedule(page)).toHaveValue('');
 	expect(await optionValues(page)).toEqual(['', 'us', 'uk']);
 	await expect(schedule(page).locator('option')).toHaveText([
@@ -416,6 +422,7 @@ test('settings offer None yet and exactly the shipped schedules; saving one show
 	await expect(page.getByText(NO_SCHEDULE)).toHaveCount(0);
 
 	await page.goto(`/kids/${IVY.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(schedule(page)).toHaveValue('uk');
 	await schedule(page).selectOption('');
 	await page.getByRole('button', { name: 'Save' }).click();
@@ -451,6 +458,7 @@ test('a retired stored schedule stays selected and kept on save until another is
 	await storeVaccineSchema(IVY.id, 'retired-2020');
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(schedule(page)).toHaveValue('retired-2020');
 	expect(await optionValues(page)).toEqual(['retired-2020', '', 'us', 'uk']);
 	await expect(schedule(page).locator('option').first()).toHaveText(
@@ -478,6 +486,7 @@ test('a retired stored schedule stays selected and kept on save until another is
 test('settings change the overdue minutes from 60 to 15 and read 15 back', async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/settings`);
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(overdue(page)).toHaveValue('60');
 	await expect(overdue(page)).toHaveAccessibleDescription(OVERDUE_HINT);
 	await expectAccessible(page);
@@ -495,6 +504,7 @@ test('settings change the overdue minutes from 60 to 15 and read 15 back', async
 	await expectAccessible(page);
 
 	await page.reload();
+	await untilHydrated(page.getByLabel('Name', { exact: true }));
 	await expect(overdue(page)).toHaveValue('15');
 	await page.getByLabel('Name', { exact: true }).fill('Mia');
 	await submit(page.getByRole('button', { name: 'Save' }));
@@ -508,6 +518,7 @@ test('settings refuse overdue minutes outside the range on the field and keep wh
 }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/settings`);
+	await untilHydrated(overdue(page));
 	const message = 'Enter minutes from 5 to 1440';
 	for (const text of ['4', '1441', '60.5', '']) {
 		await overdue(page).fill(text);

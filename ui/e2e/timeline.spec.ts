@@ -1,7 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { todayIn } from '../src/lib/format.js';
 import { formatDayHeading } from '../src/lib/timeline.js';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn,
+	untilHydrated
+} from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -134,6 +140,7 @@ test('unticking a tracker hides its entries, ticking it again brings them back',
 	await seedTwoDays(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
 
 	await box(page, 'Bottle').uncheck();
@@ -159,6 +166,7 @@ test('a switched-off module’s entries stay hidden until its box is ticked', as
 	);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Diaper')).toBeChecked();
 	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
@@ -225,6 +233,7 @@ test('Older carries a narrowed filter to the next page', async ({ page }) => {
 	});
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${PAGE_DAY}&to=${PAGE_DAY}`));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await box(page, 'Bottle').uncheck();
 	await show(page);
 	await page.waitForURL(/types=/);
@@ -282,6 +291,7 @@ test('a row opens its edit page, and saving returns to the timeline with the cha
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
 	await page.getByRole('link', { name: '11:30 Diaper wet' }).click();
+	await untilHydrated(page.getByLabel('Note', { exact: true }));
 	await expect(page).toHaveURL(`/kids/${MIA.id}/log/diapers/${diaper.id}`);
 	await page.getByRole('radio', { name: 'Both' }).check();
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -417,6 +427,7 @@ test('the Symptom box narrows the timeline to symptoms, and unticking it hides t
 	]);
 
 	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await box(page, 'Symptom').uncheck();
 	await show(page);
 	await page.waitForURL(/types=/);

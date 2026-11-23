@@ -6,7 +6,8 @@ import {
 	expectAccessible,
 	expectLanding,
 	expectNotFoundPage,
-	signIn
+	signIn,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -555,6 +556,7 @@ test('Today shows the day in the parent’s units', async ({ page }) => {
 	await expectAccessible(page);
 
 	await page.goto('/account');
+	await untilHydrated(page.getByLabel('Display name'));
 	await page.getByLabel('Volume').selectOption({ label: 'fl oz' });
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expect(page.getByRole('status')).toHaveText('Saved');
@@ -574,6 +576,7 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		`/kids/${MIA.id}/modules`
 	);
 	await page.getByRole('link', { name: `Modules for ${MIA.name}` }).click();
+	await untilHydrated(page.getByRole('checkbox', { name: 'Diaper', exact: true }), 'checked');
 	await expect(
 		page.getByRole('heading', { name: `Modules for ${MIA.name}`, level: 1 })
 	).toBeVisible();
@@ -608,6 +611,7 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 	expect(bottle.status).toBe(201);
 
 	await page.goto(`/kids/${MIA.id}/modules`);
+	await untilHydrated(page.getByRole('checkbox', { name: 'Bottle', exact: true }), 'checked');
 	await box('Diaper').check();
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expect(page.getByRole('status')).toHaveText('Saved');

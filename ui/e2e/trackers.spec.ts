@@ -5,7 +5,8 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	submit
+	submit,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -201,6 +202,7 @@ for (const c of CASES) {
 		expect(page.url()).toContain(`?from=${day(when)}&to=${day(when)}`);
 
 		await page.goto(entryUrl(c.kind, created.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByRole('heading', { name: /^Edit /, level: 1 })).toBeVisible();
 		await expect(field(page, 'Note')).toHaveValue('first note');
 		await expectAccessible(page);
@@ -268,6 +270,7 @@ test('editing only the note sends no volume and no time; an edited amount sends 
 	const path = `/v1/kids/${MIA.id}/bottles/${bottle.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('bottles', bottle.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Volume')).toHaveValue('126');
 	await field(page, 'Note').fill('only the note');
 	await save(page);
@@ -279,6 +282,7 @@ test('editing only the note sends no volume and no time; an edited amount sends 
 	expect(kept.at).toBe(bottle.at);
 
 	await page.goto(entryUrl('bottles', bottle.id));
+	await untilHydrated(field(page, 'Volume'));
 	await field(page, 'Volume').fill('130');
 	await save(page);
 	await onTimeline(page);
@@ -372,6 +376,7 @@ test('a time in the skipped hour of a Madrid night saves an hour later, in the k
 	expect(stored.at).toBe('2026-03-29T01:30:00Z');
 
 	await page.goto(entryUrl('diapers', stored.id, LEO.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Time')).toHaveValue('2026-03-29T03:30');
 	await field(page, 'Note').fill('after the change');
 	await save(page);
@@ -392,6 +397,7 @@ for (const [who, role] of [
 		const diaper = await seed(api, 'diapers', { at: minute(-10), kind: 'wet' }, LEO.id);
 		await signIn(page, who);
 		await page.goto(entryUrl('diapers', diaper.id, LEO.id));
+		await untilHydrated(field(page, 'Note'));
 		await page.getByRole('radio', { name: 'Dirty' }).check();
 		await save(page);
 		await onTimeline(page);
@@ -418,6 +424,7 @@ test('a finished nursing edit keeps the stored seconds unless a side is changed'
 	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Left minutes')).toHaveValue('12');
 	await expect(field(page, 'Right minutes')).toHaveValue('1');
 	await expect(page.locator('input[name="left_seconds_original"]')).toHaveValue('723');
@@ -436,6 +443,7 @@ test('a finished nursing edit keeps the stored seconds unless a side is changed'
 	});
 
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Left minutes'));
 	await field(page, 'Left minutes').fill('10');
 	await save(page);
 	await onTimeline(page);
@@ -450,6 +458,7 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 	const nursing = await seed(api, 'nursing', { started_at: startedAt, side: 'right' });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await expect(field(page, 'Started at')).toHaveValue(inUtc(startedAt));
 	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 	await expect(page.getByLabel('Right minutes')).toHaveCount(0);
@@ -473,12 +482,13 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 });
 
 // The timer is ended elsewhere between the page loading and the save; the page then shows the finished form.
-async function openStaleNursingEdit(page: Page) {
+async function openStaleNursingEdit(page: Page, scripted: boolean) {
 	const api = await stubAs(ANA);
 	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
 	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	if (scripted) await untilHydrated(field(page, 'Note'));
 	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 	expect((await api('POST', `${path}/end`, {})).status).toBe(200);
 	const [ended] = await rows(api, 'nursing');
@@ -503,8 +513,8 @@ async function expectFreshForm(page: Page, right: number) {
 	await expect(field(page, 'Right minutes')).toHaveValue(String(Math.floor(right / 60)));
 }
 
-async function staleNursingEdit(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEdit(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await field(page, 'Note').fill('after the end');
 	await save(page);
 	await onTimeline(page);
@@ -516,8 +526,8 @@ async function staleNursingEdit(page: Page) {
 }
 
 // Later failures keep the finished form: the field error needs its minutes input.
-async function staleNursingEditThenInvalid(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEditThenInvalid(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await field(page, 'Left minutes').fill('abc');
 	await save(page);
 	await expectFieldError(field(page, 'Left minutes'), 'whole minutes');
@@ -532,8 +542,8 @@ async function staleNursingEditThenInvalid(page: Page) {
 	expect((await rows(api, 'nursing'))[0]).toMatchObject({ right_seconds: right, note: 'fixed' });
 }
 
-async function staleNursingEditThenUnavailable(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEditThenUnavailable(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await setScenario('patch_unavailable');
 	await field(page, 'Note').fill('unsent');
 	await save(page);
@@ -565,6 +575,7 @@ test('a failed save on a running nursing page stays on the running form', async 
 	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await field(page, 'Ended at').fill(inUtc(minute(60)));
 	await save(page);
 	await expectFieldError(field(page, 'Ended at'), 'after the start');
@@ -580,6 +591,7 @@ test('a timer over 24 hours says how to fix it; an end within 24 hours of the st
 	const sleep = await seed(api, 'sleep', { started_at: start });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('sleep', sleep.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await expect(
 		page.getByText('A timer can last at most 24 hours; set the end time or delete it')
 	).toBeVisible();
@@ -654,6 +666,7 @@ for (const kind of ['sleep', 'nursing'] as const) {
 		const entry = await seed(api, kind, body);
 		await signIn(page, ANA);
 		await page.goto(entryUrl(kind, entry.id));
+		await untilHydrated(field(page, 'Ended at'));
 		await field(page, 'Ended at').fill('');
 		await save(page);
 		await expectFieldError(field(page, 'Ended at'), 'A finished session cannot be re-opened');
@@ -701,7 +714,7 @@ test.describe('without JavaScript', () => {
 
 	for (const [name, run] of staleTests) {
 		test(`a nursing edit opened while the timer ran ${name}`, async ({ page }) => {
-			await run(page);
+			await run(page, false);
 		});
 	}
 
@@ -824,6 +837,7 @@ test.describe('the advanced bottle form', () => {
 		expect(body).not.toHaveProperty('contents');
 
 		await page.goto(entryUrl('bottles', created.id));
+		await untilHydrated(field(page, 'Formula volume'));
 		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
 		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
 		await expect(field(page, 'Formula volume')).toHaveValue('90');
@@ -854,6 +868,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id));
+		await untilHydrated(field(page, 'Note'));
 		await field(page, 'Note').fill('only the note');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -989,6 +1004,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id) + '?advanced=0');
+		await untilHydrated(field(page, 'Volume'));
 		await field(page, 'Volume').fill('140');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1011,6 +1027,7 @@ test.describe('the advanced bottle form', () => {
 		await expect(field(page, 'Breast milk volume')).toHaveCount(0);
 		await expect(page.getByText('Saving one total replaces the volumes per source')).toHaveCount(0);
 		await page.getByRole('link', { name: SIMPLE_LINK }).click();
+		await untilHydrated(field(page, 'Breast milk volume'));
 		await expect(page).toHaveURL(new RegExp(`/${bottle.id}\\${ADVANCED}$`));
 		await expect(page.getByRole('checkbox', { name: 'Formula', exact: true })).toBeChecked();
 		await expect(field(page, 'Formula volume')).toHaveValue('');
@@ -1048,6 +1065,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id));
+		await untilHydrated(field(page, 'Breast milk volume'));
 		await page.getByRole('checkbox', { name: 'Other', exact: true }).check();
 		await saveAndWait(page);
 		await expectFieldError(
@@ -1320,6 +1338,7 @@ test.describe('the nursing weigh-ins', () => {
 
 		const [made] = await rows(api, 'nursing');
 		await page.goto(entryUrl('nursing', made.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(weight(page, BEFORE).getByLabel('Pounds')).toHaveValue('7');
 		await expect(weight(page, BEFORE).getByLabel('Ounces')).toHaveValue('8');
 		await expect(weight(page, AFTER).getByLabel('Pounds')).toHaveValue('7');
@@ -1379,6 +1398,7 @@ test.describe('the nursing weigh-ins', () => {
 		const [made] = await rows(api, 'nursing');
 		const path = `/v1/kids/${MIA.id}/nursing/${made.id}`;
 		await page.goto(entryUrl('nursing', made.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await kilograms(page, AFTER).fill('');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1408,6 +1428,7 @@ test.describe('the nursing weigh-ins', () => {
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
 		await page.getByRole('link', { name: HIDE_LINK }).click();
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByRole('link', { name: WEIGH_LINK })).toBeVisible();
 		await expect(page.getByRole('group', { name: BEFORE })).toHaveCount(0);
 		await field(page, 'Note').fill('plain edit');
@@ -1439,6 +1460,7 @@ test.describe('the nursing weigh-ins', () => {
 		expect((await rows(api, 'nursing'))[0].ended_at).not.toBeNull();
 
 		await page.goto(entryUrl('nursing', started.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
 		await expect(kilograms(page, AFTER)).toHaveValue('');
 		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
@@ -1520,6 +1542,7 @@ test.describe('the nursing weigh-ins', () => {
 		const [started] = await rows(api, 'nursing', LEO.id);
 		expect(started).toMatchObject({ weight_before: { grams: 4100 } });
 		await page.goto(entryUrl('nursing', started.id, LEO.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await kilograms(page, AFTER).fill('4.15');
 		await saveAndWait(page);
 		await page.waitForURL(/\/timeline/);
@@ -1541,6 +1564,7 @@ test.describe('the nursing weigh-ins', () => {
 		const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 		expect((await api('POST', `${path}/end`, {})).status).toBe(200);
 		await field(page, 'Note').fill('typed while running');
@@ -1580,6 +1604,7 @@ test.describe('the nursing weigh-ins', () => {
 			);
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByText(/^Weight gain 60 g/)).toBeVisible();
 		expect(await overflows()).toBe(false);
 		await field(page, 'Weight before unit').selectOption('lb');
@@ -1731,6 +1756,7 @@ test.describe('the advanced pumping form', () => {
 		expect(body).not.toHaveProperty('side');
 
 		await page.goto(entryUrl('pumping', created.id));
+		await untilHydrated(field(page, 'Right volume'));
 		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
 		await expect(field(page, 'Left volume')).toHaveValue('60');
 		await expect(field(page, 'Right volume')).toHaveValue('50');
@@ -1764,6 +1790,7 @@ test.describe('the advanced pumping form', () => {
 		expect(body.sides).toEqual({ unit: 'ml', amounts: { left: 60 } });
 
 		await page.goto(entryUrl('pumping', created.id));
+		await untilHydrated(field(page, 'Right volume'));
 		await expect(field(page, 'Left volume')).toHaveValue('60');
 		await expect(field(page, 'Right volume')).toHaveValue('');
 		await expect(page.getByText('Total: 60 ml')).toBeVisible();
@@ -1782,6 +1809,7 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id));
+		await untilHydrated(field(page, 'Note'));
 		await field(page, 'Note').fill('only the note');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1934,6 +1962,7 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id));
+		await untilHydrated(field(page, 'Left volume'));
 		await field(page, 'Left volume').fill('abc');
 		await saveAndWait(page);
 		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
@@ -1965,6 +1994,7 @@ test.describe('the advanced pumping form', () => {
 		await expect(field(page, 'Left volume')).toHaveCount(0);
 		await expect(page.getByText(SIDES_HINT)).toHaveCount(0);
 		await page.getByRole('link', { name: SIDES_LINK }).click();
+		await untilHydrated(field(page, 'Left volume'));
 		await expect(page).toHaveURL(new RegExp(`/${session.id}\\${ADVANCED}$`));
 		await expect(field(page, 'Left volume')).toHaveValue('');
 		await expect(page.getByText('Total: 0 ml')).toBeVisible();
