@@ -29,7 +29,12 @@ what a new session needs to start correctly.
    two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and `ui/` sources only (no Dockerfile or
    dependency change; migration 0006 runs at the API's start) and deploys with the edge unchanged: no
    `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in the app (the home Due
-   list and the Medication page).
+   list and the Medication page). Migration 0006 is forward-only (an older API refuses the newer schema,
+   and the previous UI rejects the home list's medication entries): take an `edge-backup` archive right
+   before the deploy; a rollback is both pins back plus a restore of that archive, losing what was
+   written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
+   alive (503 after 60 seconds without a tick): point the edge's alert runbook at
+   `docs/runbooks/reminders.md` for that answer.
 2. **Edge, Web Push:** whenever the owner wants Web Push on (before or after the plan-6 bump), a PR in
    `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
    literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
@@ -214,7 +219,7 @@ log.
 - **The edge does not render the VAPID or `NTFY_*` variables yet.** Plan 6 reads them, both channels
   optional (VAPID both or neither; owner, 2026-11-23). The edge already generates and stores
   `happybabytracker_vapid_private_key`; an edge PR that renders it turns Web Push on, and plan 6 can deploy
-  before it. Rotating that key later silently stops every registered device until each parent turns
+  before it. Rotating that key later stops every registered device until each parent turns
   notifications off and on again on it (`docs/runbooks/reminders.md`).
 - **CI runs Playwright's headless shell; local runs use full Chromium** (`PW_CHROMIUM_PATH`). Reproduce a
   CI-only e2e failure locally with `PW_CHROMIUM_PATH` pointing at the headless shell under
@@ -271,14 +276,17 @@ log.
   the Notifications page is visited before the next reminder is sent; if a send reaches the dead endpoint
   first (push service 404 or 410), the worker deletes that device and its opt-ins and the new subscription
   registers with no kids (there is no `pushsubscriptionchange` handler). After a VAPID key rotation every
-  device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page does not prompt: the
-  parent uses "Turn off on this device" and turns it on again, which resubscribes under the new key. A
-  stale ntfy topic cannot be seen while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it).
+  device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page, opened on such a
+  device, says "Turn notifications off and on again on this device.": the parent uses "Turn off on this device" and turns it on again, which resubscribes under the new key. A
+  stale ntfy topic cannot be seen while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it). Signing
+  out of the app does not unsubscribe the device: on a shared tablet, use "Turn off on this device" first.
 - Plan 6, smoke: the push assertion sees only the title, path and tag (the test route decodes only those);
   the payload's other fields are covered by the Go tests, so the smoke is not proof that nothing else
   leaks. The API's memory ceiling has thin headroom: one smoke run on 2026-11-23 read a 61 MiB peak for
-  the first API process (a transient during password hashing; other runs 50–51 MiB) against the 60 MiB
-  ceiling, so step 10 can flake. The ceiling is the owner's call.
+  the first API process (a transient during password hashing; other runs 46–55 MiB) against the 60 MiB
+  ceiling, so step 10 can flake. The ceiling is the owner's call, one of: raise it to 64 MiB (the
+  reviewer's recommendation; it touches `scripts/smoke.sh`, the README's memory lines and the API
+  Dockerfile's comment), or keep 60 MiB and treat a step-10 failure at 61 MiB as a known flake to re-run.
 - Plan 6, PR notes: medication entries of the home `due` list carry `state`, vaccine entries `status`;
   medication entries come before vaccine ones; only the first page of doses is reachable from the UI for
   edit and delete.

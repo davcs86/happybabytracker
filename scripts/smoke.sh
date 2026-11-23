@@ -1010,7 +1010,9 @@ COURSE_ID="$({ grep -oE "$MEDICATION/[0-9a-f-]{36}\"" "$WORK/medication-k.body" 
   body_has medication-k "$MED_DOSE" && body_has medication-k "Next due $(due_label "$DUE")"; } ||
   fail "4k add a course" "status $code, Location $(location course-new), page $code_m"
 code="$(req home-k1 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
-{ [ "$code" = 200 ] && { [ "$(date +%s)" -ge "$DUE" ] || body_has home-k1 ">$MED_NAME · $(due_label "$DUE")</a>"; }; } ||
+# The home list ends at the kid's midnight: a DUE on the next kid-local day is not on it yet.
+{ [ "$code" = 200 ] && { [ "$(date +%s)" -ge "$DUE" ] || [ "$(TZ="$KID_ZONE" date -d "@$DUE" '+%Y-%m-%d')" != "$(today)" ] ||
+  body_has home-k1 ">$MED_NAME · $(due_label "$DUE")</a>"; }; } ||
   fail "4k Due before the dose is due" "status $code"
 OVERDUE_LINE=">$MED_NAME · $(due_label "$DUE") · overdue</a>"
 for _ in $(seq 1 40); do
@@ -1034,8 +1036,8 @@ code="$(api_call device-off "$SESSION_A" PUT /v1/me/push-devices "$(device_json 
 { [ "$code" = 409 ] && body_has device-off '"push_unavailable"'; } || fail "4k device upsert" "status $code"
 pass "4k with no channel: a fever (38.6 °C, rectal) and a cough are on the timeline; overdue minutes set to 15; an every-1-hour course shows its next dose and is on the home Due list, then overdue; /healthz and /healthz/reminders are 200; GET /v1/push is {\"enabled\":false}; the notifications page says Web Push is not configured; a device upsert answers 409 push_unavailable"
 
-# 4l. The fake push sender: one send, to the opted-in device only; none for a dosed occurrence, a second course
-# dosed ahead of its due time, or a caregiver opted in and then revoked.
+# 4l. The fake push sender: one send, to the opted-in device only; none for a dosed occurrence or a second course
+# dosed ahead of its due time; a caregiver opted in loses the kid on revoke (no opt-in).
 API_MEM_0="$(mem "$API")"
 docker logs "$API" >"$WORK/api-0.log" 2>&1
 NTFY_SECRET="$(rand 24)"
@@ -1139,7 +1141,7 @@ docker logs "$API" >"$WORK/api-push.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
-pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid when $USER_B is revoked and its opt-in is then a 404; back in no-push mode"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'

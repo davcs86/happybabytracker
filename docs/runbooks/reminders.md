@@ -7,6 +7,14 @@ expires what is past its due time plus 30 minutes. The home Due list and the Med
 read the same rows, so they work with no channel configured. Spec: sections 11 and 11.1 of
 `docs/superpowers/specs/2026-11-20-happybabytracker-design.md`.
 
+## Deploy and rollback
+
+Both images ship together (the edge's bump PR pins both). Migration 0006 is forward-only:
+`api/internal/store/migrate.go` makes an older API refuse a newer schema, and the previous UI rejects the
+home list's medication entries, so rolling back the UI alone breaks the home page of a kid with a course.
+Take an `edge-backup` archive right before the deploy. A rollback is both image pins back plus a restore of
+the last `edge-backup` archive; anything written since that archive is lost.
+
 ## Health answers
 
 All three are reached through the UI (the API's port is never published).
@@ -75,8 +83,9 @@ edge.
 
 Every registered device was subscribed under the old public key, so after a rotation every device stops
 delivering: the push services answer 401 or 403, which is kept as `failed` (the device is not deleted) and
-turns `/healthz/reminders` 503 for 15 minutes after each failure. The Notifications page does not prompt.
-Each parent opens Account, Notifications on each device, uses "Turn off on this device", then "Turn on
+turns `/healthz/reminders` 503 for 15 minutes after each failure. Opened on such a device, the Notifications
+page says "Turn notifications off and on again on this device." Each parent opens Account, Notifications on
+each device, uses "Turn off on this device", then "Turn on
 notifications on this device", which subscribes again under the new key, and ticks the kids again.
 
 ## iPhone and iPad

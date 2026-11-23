@@ -486,7 +486,7 @@ object; the timeline filtered to sickness shows the course **(call)**.
 - The app does not manage who may **read** a topic. On an open ntfy server the unguessable topic is
   the protection; on a server that denies by default, read access is the server operator's to grant.
 - ntfy keeps a message in its cache (72 hours on the edge's server), so the kid's name rests there in
-  plaintext for that long. The settings screen says so next to the switch **(call)**.
+  plaintext for that long. The settings screen says so at the top of its ntfy section **(call)**.
 - `GET /healthz/reminders` covers both channels: a delivery of a due reminder on either one still
   pending or sending 15 minutes after its due time turns it 503 (13.1).
 
@@ -524,8 +524,8 @@ The process refuses to start on a missing or too-short secret, an invalid VAPID 
 origin. The VAPID variables are optional, both or neither (neither turns Web Push off) **(owner,
 2026-11-23, superseding "the VAPID variables are always required")**; one of them without the other,
 an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
-prefix, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, and any other `NTFY_*` variable set while
-`NTFY_URL` is not.
+prefix, a prefix outside 1–32 of `a-z0-9-`, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, an `NTFY_TOKEN`
+with a space or a non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
 `GET /healthz/reminders` is 503 when a delivery of a due reminder is still pending or sending 15 minutes

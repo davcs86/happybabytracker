@@ -196,7 +196,7 @@ score or a chart. The app records and displays; it never interprets a weight, a 
   parent turns them on under Account, Notifications: Web Push per device, choosing the kids; ntfy as one
   generated topic per parent. On iPhone and iPad, Web Push needs the app added to the Home Screen first.
 - ntfy keeps each message in its cache (72 hours on the edge's server), so the kid's name rests on the
-  ntfy server in plain text for that long; the Notifications page says so next to the switch.
+  ntfy server in plain text for that long; the Notifications page says so at the top of its ntfy section.
 
 Operating reminders (health answers, a missing reminder, turning Web Push on): `docs/runbooks/reminders.md`.
 
@@ -246,8 +246,8 @@ session cookie is `Secure`, so the public origin must be `https`.
 
 Health, all through the UI: `GET /healthz` (the UI), `GET /healthz/api` (the API's `/healthz`, 200 only
 while its database answers and the reminder worker has ticked within the last 60 seconds) and
-`GET /healthz/reminders` (the API's, 503 while a reminder delivery is stuck or one failed in the last 15
-minutes; 200 with no channel configured). What each answer means: `docs/runbooks/reminders.md`.
+`GET /healthz/reminders` (the API's, 503 while a reminder delivery is stuck or one failed or expired in the
+last 15 minutes; 200 with no channel configured). What each answer means: `docs/runbooks/reminders.md`.
 
 ## Run locally
 
@@ -322,6 +322,12 @@ Merging to `main` deploys nothing. CI builds both images, smoke-tests them toget
 moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints both `@sha256:…`
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
+
+Deploy and rollback: both images ship together (the bump PR pins both). Migration 0006 (sickness,
+medication, reminders) is forward-only: an older API refuses a database whose schema is newer than its
+own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
+the home page of any kid with a course. Take an `edge-backup` archive right before the deploy. A rollback
+is both pins back plus a restore of the last `edge-backup` archive; anything written since it is lost.
 
 ## Third-party data
 
