@@ -8,9 +8,10 @@ note in `pushproto/` (`push.go.txt` 153 lines, `push_test.go.txt`, `go.mod.txt`;
 
 - The prototype's three tests (`TestRFC8291Vector`, `TestRoundTripAndLimits`, `TestVAPID`) pass on Go 1.27.0.
 - `init_secrets.py::generate_vapid_private_key` in `homelab-edge` still writes 43 base64url characters, and the edge still
-  does not render any `VAPID_*` line (`happybabytracker-config-test.py::test_vapid_is_not_rendered_in_plan_2`). Because
-  plan 6 makes VAPID required at start, the edge must render it **before** the plan-6 images are deployed (section 4
-  item 4 below; the order in `ntfy-and-edge.md` is corrected).
+  does not render any `VAPID_*` line (`happybabytracker-config-test.py::test_vapid_is_not_rendered_in_plan_2`). The owner
+  made VAPID optional on 2026-11-23 (both or neither), so plan 6 deploys with Web Push off and an edge PR that renders the
+  key turns it on (the order in `ntfy-and-edge.md` is corrected). The offline page and its `fetch` handler (section 3) are
+  not built: the owner chose no offline page.
 - `@sveltejs/kit` 3.1.1 in `node_modules` has `src/runtime/app/service-worker` and the `module_removed_service_worker`
   build error: section 3 still holds.
 - xstockstrat `services/xstockstrat-notify/src/fanout/webPush.ts`: `WEBPUSH_TTL_SECONDS = 3600`, `WEBPUSH_SEND_TIMEOUT_MS =

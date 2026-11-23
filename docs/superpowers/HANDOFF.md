@@ -170,7 +170,9 @@ log.
 - Reminders are for medication only in this phase. "Every N hours" is a fixed clock grid and is never
   recomputed from the last dose logged.
 - Notification text is generic: "<Category> due for <kid's name>". It never names the medication.
-- Web Push with VAPID is always required. The VAPID subject is an `https:` URL: the app's own origin.
+- Web Push with VAPID is **optional** (owner, 2026-11-23; this supersedes the earlier "Web Push with VAPID is always
+  required"). With `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` unset the API starts with Web Push off; setting only one of
+  them is a start error. When set, the VAPID subject is an `https:` URL: the app's own origin.
 - ntfy is an optional second channel, on only when `NTFY_URL` is set, one generated topic per parent.
   Nothing in this repository may depend on `homelab-edge`; a fork runs against any ntfy server or none.
   On the edge it is behind one inventory switch, `happybabytracker_ntfy_enabled`.
@@ -180,8 +182,9 @@ log.
 ## Things found during design that are easy to trip on
 
 - **Nothing reads the VAPID or `NTFY_*` variables yet.** Plan 6 adds them, and VAPID becomes
-  required at start then. The edge already generates and stores `happybabytracker_vapid_private_key`
-  but does not render it into the API's environment yet; plan 6 must add that before it deploys.
+  optional (both or neither; owner, 2026-11-23). The edge already generates and stores `happybabytracker_vapid_private_key`
+  but does not render it into the API's environment yet; an edge PR that renders it turns Web Push on, and
+  plan 6 can deploy before it.
 - **Tailnet grants are per port, not per name.** Anyone allowed to reach `tag:edge:443` reaches every
   `*.private` service. This is why other parents are not given tailnet access now.
 - **A `*.private` name is wired in four places** in `homelab-edge` (rule EDGE-07): the hostname
