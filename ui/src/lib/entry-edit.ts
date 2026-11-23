@@ -8,6 +8,7 @@ import {
 	SECONDS_PER_HOUR,
 	SECONDS_PER_MINUTE
 } from './constants';
+import { formatVolume } from './format';
 import { decimal } from './growth';
 import { instantToLocalInput } from './time-zone';
 import type {
@@ -171,6 +172,29 @@ function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight'
 	};
 }
 
+// The trackers that have an advanced form, opened by ?advanced=1; every form starts simple.
+const ADVANCED_KINDS: readonly TrackerKind[] = ['bottles'];
+
+// A new form is advanced on ?advanced=1; an edit also when the entry already carries advanced data,
+// unless ?advanced=0 asks for the simple form.
+export function isAdvanced(kind: TrackerKind, param: string | null, entry?: Entry): boolean {
+	if (!ADVANCED_KINDS.includes(kind)) return false;
+	if (param === '1') return true;
+	if (entry === undefined || param === '0') return false;
+	return (entry as TrackerEntries['bottles']).sources.length > 0;
+}
+
+// The plain link at the top of the form that switches it; typed values are not carried across.
+export function advancedToggle(
+	kind: TrackerKind,
+	advanced: boolean
+): { href: string; label: string } | null {
+	if (!ADVANCED_KINDS.includes(kind)) return null;
+	return advanced
+		? { href: '?advanced=0', label: 'Use one total' }
+		: { href: '?advanced=1', label: 'Advanced: volume per source' };
+}
+
 const instantValues = (name: string, instant: string | null, zone: string): EntryValues =>
 	withOriginal(name, instant === null ? '' : instantToLocalInput(instant, zone));
 
@@ -191,6 +215,8 @@ export function editValues(
 				contents: [...e.contents],
 				...volumeValues(e.volume, unit),
 				...sourceValues(e, unit),
+				// The stored total, which the typed sources may differ from by rounding.
+				...(e.sources.length > 0 ? { sources_total: formatVolume(e.volume, unit) } : {}),
 				...note
 			};
 		}

@@ -11,11 +11,13 @@ import {
 	WEIGHT_UNITS
 } from '../constants';
 import { floorMinutes, WEIGHT_NAMES } from '../entry-edit';
+import { formatVolume } from '../format';
 import { zonedLocalToInstant } from '../time-zone';
 import type { EntryBody, TrackerKind, VolumeUnit } from '../types';
 import {
 	FINISHED_SIDE_MESSAGE,
 	REOPEN_MESSAGE,
+	sourcesTotalMessage,
 	volumeRangeMessage,
 	WHAT_MISSING_MESSAGE,
 	WHAT_TOO_LONG_MESSAGE,
@@ -145,9 +147,12 @@ function readSources(
 		sum += n;
 	}
 	if (!Number.isSafeInteger(sum)) return refuse();
-	const range = volumeRange('bottles', { unit, amount: sum });
-	if (range) return refuse('volume', range);
-	if (!edit) return { send: { unit, amounts } };
+	// Millilitres only: an ounce total is left to the API's conversion.
+	const { min, max } = VOLUME_ML_RANGE.bottles;
+	const outside = unit === 'ml' && (sum < min || sum > max);
+	const send = (): { send: Sources } | Refusal =>
+		outside ? refuse('volume', sourcesTotalMessage()) : { send: { unit, amounts } };
+	if (!edit) return send();
 
 	const kept = text('sources_original');
 	const stored: string[] = kept === undefined || kept === '' ? [] : kept.split(',');
@@ -168,7 +173,22 @@ function readSources(
 				stored.includes(n) &&
 				(text(`sources_${n}`) ?? '').trim() === text(`sources_${n}_original`)?.trim()
 		);
-	return { send: same ? null : { unit, amounts } };
+	// An untouched form is not range-checked: per-source columns shown in ml can sum past the range.
+	return same ? { send: null } : send();
+}
+
+// The sum of the ticked texts that read, as the form shows it; the API's total is the sum of what is sent.
+function typedTotal(v: EntryFormValues, ticked: readonly string[]): string {
+	const unit = v.volume_unit as string;
+	if (!includes(VOLUME_UNITS, unit)) return '';
+	const sum = BOTTLE_CONTENTS.filter((c) => ticked.includes(c)).reduce(
+		(total, c) => total + (amount(unit, v[`sources_${c}`] as string) ?? 0),
+		0
+	);
+	return formatVolume(
+		unit === 'ml' ? { ml: sum, floz_hundredths: 0 } : { ml: 0, floz_hundredths: sum },
+		unit
+	);
 }
 
 // The texts a weight unit makes active, as in the growth form.
@@ -319,6 +339,9 @@ export function readEntryForm(
 		TEXT_FIELDS[kind].map((k) => [k, String(form.get(k) ?? '')])
 	);
 	if (kind === 'bottles') values.contents = form.getAll('contents').map(String);
+	if (kind === 'bottles' && values.advanced === '1') {
+		values.sources_total = typedTotal(values, values.contents as string[]);
+	}
 	if (mode.kind === 'edit') {
 		for (const k of ORIGINALS[kind] ?? []) {
 			const o = form.get(k);

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+	advancedToggle,
 	createValues,
 	editValues,
 	entryInstant,
+	isAdvanced,
 	isRunning,
 	localDate,
 	ranOver,
@@ -346,6 +348,12 @@ describe('editValues', () => {
 		});
 	});
 
+	it('shows the stored total of an advanced bottle in the preferred unit, and none for a simple one', () => {
+		expect(editValues('bottles', advancedBottle(), 'UTC', ML).sources_total).toBe('150 ml');
+		expect(editValues('bottles', advancedBottle(), 'UTC', FLOZ).sources_total).toBe('5.07 fl oz');
+		expect(editValues('bottles', bottle(), 'UTC', ML)).not.toHaveProperty('sources_total');
+	});
+
 	it('shows a simple bottle with no source text and an empty sources_original', () => {
 		expect(editValues('bottles', bottle(), 'UTC', ML)).toMatchObject({
 			sources_formula: '',
@@ -393,5 +401,53 @@ describe('editValues', () => {
 			weight_before_kg: '3.4',
 			weight_after_kg: ''
 		});
+	});
+});
+
+describe('isAdvanced', () => {
+	const withSources = bottle({
+		sources: [{ source: 'formula', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } }]
+	});
+
+	it('opens a new bottle advanced only on ?advanced=1', () => {
+		expect(isAdvanced('bottles', '1')).toBe(true);
+		for (const param of [null, '', '0', '2', 'true']) {
+			expect(isAdvanced('bottles', param)).toBe(false);
+		}
+	});
+
+	it('opens an edit advanced on ?advanced=1 or by itself when the bottle has sources', () => {
+		expect(isAdvanced('bottles', '1', bottle())).toBe(true);
+		expect(isAdvanced('bottles', null, withSources)).toBe(true);
+		expect(isAdvanced('bottles', 'x', withSources)).toBe(true);
+		expect(isAdvanced('bottles', null, bottle())).toBe(false);
+	});
+
+	it('?advanced=0 opens the simple form over a bottle with sources', () => {
+		expect(isAdvanced('bottles', '0', withSources)).toBe(false);
+	});
+
+	it('is never advanced for a tracker without an advanced form', () => {
+		for (const kind of ['diapers', 'meals', 'pumping', 'sleep', 'nursing'] as const) {
+			expect(isAdvanced(kind, '1')).toBe(false);
+		}
+	});
+});
+
+describe('advancedToggle', () => {
+	it('offers the advanced form from the simple one, and one total from the advanced one', () => {
+		expect(advancedToggle('bottles', false)).toEqual({
+			href: '?advanced=1',
+			label: 'Advanced: volume per source'
+		});
+		expect(advancedToggle('bottles', true)).toEqual({
+			href: '?advanced=0',
+			label: 'Use one total'
+		});
+	});
+
+	it('offers nothing for a tracker without an advanced form', () => {
+		expect(advancedToggle('diapers', false)).toBeNull();
+		expect(advancedToggle('nursing', false)).toBeNull();
 	});
 });

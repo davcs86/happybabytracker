@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { instantToLocalInput } from '../src/lib/time-zone.js';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn,
+	submit
+} from './helpers.js';
 import {
 	ANA,
 	CLEO,
@@ -743,5 +749,380 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
 		await deleteEntry(page);
 		expect(await rows(api, 'diapers')).toEqual([]);
+	});
+});
+
+// The advanced bottle: a volume per source. Every save waits for its response.
+const ADVANCED = '?advanced=1';
+const saveAndWait = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+type Source = { source: string; volume: Record<string, unknown> };
+const sourcesOf = (row: Row) => row.sources as Source[];
+const SIMPLE_LINK = 'Advanced: volume per source';
+
+test.describe('the advanced bottle form', () => {
+	test('the simple form is unchanged and offers the advanced one', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles'));
+		await expect(field(page, 'Volume')).toBeVisible();
+		await expect(field(page, 'Volume unit')).toHaveValue('ml');
+		await expect(page.getByRole('checkbox')).toHaveCount(4);
+		await expect(page.getByText(/^Total:/)).toHaveCount(0);
+		await expect(page.getByText('Saving one total replaces the volumes per source')).toHaveCount(0);
+		await expect(page.locator('input[name="advanced"]')).toHaveCount(0);
+		await expectAccessible(page);
+		await page.getByRole('link', { name: SIMPLE_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/log/bottles\\${ADVANCED}$`));
+		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
+	});
+
+	test('?advanced=1 shows a volume input beside each ticked box', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await expect(page.getByRole('heading', { name: 'Log a bottle', level: 1 })).toBeVisible();
+		await expect(field(page, 'Volume unit')).toBeVisible();
+		await expect(field(page, 'Volume')).toHaveCount(0);
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		await expectAccessible(page);
+		const names = ['Breast milk', 'Formula', "Cow's milk", 'Other'];
+		for (const name of names) {
+			await expect(field(page, `${name} volume`)).toBeHidden();
+			await page.getByRole('checkbox', { name, exact: true }).check();
+			await expect(field(page, `${name} volume`)).toBeVisible();
+		}
+		await expectAccessible(page);
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).uncheck();
+		await expect(field(page, 'Formula volume')).toBeHidden();
+	});
+
+	test('a breast milk 60 and formula 90 bottle is one 150 ml bottle with its sources', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Breast milk', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await field(page, 'Breast milk volume').fill('60');
+		await field(page, 'Formula volume').fill('90');
+		await saveAndWait(page);
+		await onTimeline(page);
+		await expect(page.getByText(/Bottle 150 ml, breast milk \+ formula/)).toBeVisible();
+		const [created] = await rows(api, 'bottles');
+		expect(created.volume).toMatchObject({ ml: 150, typed_unit: 'ml' });
+		expect(created.contents).toEqual(['breast_milk', 'formula']);
+		expect(sourcesOf(created).map((s) => [s.source, s.volume.ml])).toEqual([
+			['breast_milk', 60],
+			['formula', 90]
+		]);
+		const body = await written('POST', `/v1/kids/${MIA.id}/bottles`);
+		expect(body).toMatchObject({
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		expect(body).not.toHaveProperty('volume');
+		expect(body).not.toHaveProperty('contents');
+
+		await page.goto(entryUrl('bottles', created.id));
+		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
+		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
+		await expect(field(page, 'Formula volume')).toHaveValue('90');
+		await expect(field(page, "Cow's milk volume")).toBeHidden();
+		await expect(page.getByRole('checkbox', { name: 'Other', exact: true })).not.toBeChecked();
+		await expect(page.getByText('Total: 150 ml')).toBeVisible();
+		await expectAccessible(page);
+
+		await field(page, 'Formula volume').fill('95');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [edited] = await rows(api, 'bottles');
+		expect(sourcesOf(edited).map((s) => [s.source, s.volume.ml])).toEqual([
+			['breast_milk', 60],
+			['formula', 95]
+		]);
+		expect(edited.volume).toMatchObject({ ml: 155 });
+		await expect(page.getByText(/Bottle 155 ml, breast milk \+ formula/)).toBeVisible();
+	});
+
+	test('editing only the note of an advanced bottle sends neither sources nor volume', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id));
+		await field(page, 'Note').fill('only the note');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('PATCH', `/v1/kids/${MIA.id}/bottles/${bottle.id}`);
+		expect(body).toEqual({ note: 'only the note' });
+		const [kept] = await rows(api, 'bottles');
+		expect(kept.volume).toMatchObject({ ml: 150 });
+		expect(sourcesOf(kept)).toHaveLength(2);
+	});
+
+	test('a parent with fl oz types fl oz per source and reads them back exactly', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		expect((await api('PATCH', '/v1/me', { units: { volume: 'floz' } })).status).toBe(200);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await expect(field(page, 'Volume unit')).toHaveValue('floz');
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Other', exact: true }).check();
+		await field(page, 'Formula volume').fill('2,5');
+		await field(page, 'Other volume').fill('3.25');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [created] = await rows(api, 'bottles');
+		expect(created.volume).toMatchObject({ floz_hundredths: 575, typed_unit: 'floz' });
+		expect(sourcesOf(created).map((s) => [s.source, s.volume.floz_hundredths])).toEqual([
+			['formula', 250],
+			['other', 325]
+		]);
+		await page.goto(entryUrl('bottles', created.id));
+		await expect(field(page, 'Volume unit')).toHaveValue('floz');
+		await expect(field(page, 'Formula volume')).toHaveValue('2.5');
+		await expect(field(page, 'Other volume')).toHaveValue('3.25');
+		await expect(page.getByText('Total: 5.75 fl oz')).toBeVisible();
+	});
+
+	test('a ticked source with a blank volume shows the message and keeps what was typed', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Breast milk', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await field(page, 'Breast milk volume').fill('60');
+		await field(page, 'Note').fill('keep me');
+		await saveAndWait(page);
+		const message = 'Enter a volume for each source you ticked';
+		await expectFieldError(field(page, 'Formula volume'), message);
+		await expectFieldError(field(page, 'Breast milk volume'), message);
+		await expect(page.getByRole('alert').filter({ hasText: message })).toHaveCount(1);
+		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
+		await expect(page.getByRole('checkbox', { name: 'Formula', exact: true })).toBeChecked();
+		await expect(field(page, 'Note')).toHaveValue('keep me');
+		await expect(page.getByText('Total: 60 ml')).toBeVisible();
+		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
+		await expectAccessible(page);
+		expect(await rows(api, 'bottles')).toEqual([]);
+
+		await field(page, 'Formula volume').fill('30');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await rows(api, 'bottles')).toHaveLength(1);
+	});
+
+	test('a total over the range is refused on the sources, keeping the values', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Breast milk', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await field(page, 'Breast milk volume').fill('600');
+		await field(page, 'Formula volume').fill('600');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Formula volume'), 'The total must be from 1 to 1000 ml');
+		await expect(page.getByText('Total: 1200 ml')).toBeVisible();
+		await expect(field(page, 'Breast milk volume')).toHaveValue('600');
+		await expectAccessible(page);
+		expect(await rows(api, 'bottles')).toEqual([]);
+	});
+
+	test('no box ticked is refused on the boxes, as in the simple form', async ({ page }) => {
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await saveAndWait(page);
+		for (const name of ['Breast milk', 'Formula', "Cow's milk", 'Other']) {
+			await expectFieldError(
+				page.getByRole('checkbox', { name, exact: true }),
+				'Choose at least one'
+			);
+		}
+		await expectAccessible(page);
+	});
+
+	test('"Use one total" over an advanced bottle saves a plain bottle and the sources are gone', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		const path = `/v1/kids/${MIA.id}/bottles/${bottle.id}`;
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id));
+		await page.getByRole('link', { name: 'Use one total' }).click();
+		await expect(page).toHaveURL(new RegExp(`/${bottle.id}\\?advanced=0$`));
+		await expect(field(page, 'Volume')).toHaveValue('150');
+		await expect(field(page, 'Breast milk volume')).toHaveCount(0);
+		await expect(page.getByText('Saving one total replaces the volumes per source')).toBeVisible();
+		// The hidden original is what makes an untouched total replace the sources.
+		await expect(page.locator('input[name="sources_original"]')).toHaveValue('breast_milk,formula');
+		await expectAccessible(page);
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toMatchObject({ volume: { unit: 'ml', amount: 150 } });
+		const [plain] = await rows(api, 'bottles');
+		expect(sourcesOf(plain)).toEqual([]);
+		expect(plain.volume).toMatchObject({ ml: 150 });
+
+		await page.goto(entryUrl('bottles', bottle.id));
+		await expect(page.getByRole('link', { name: SIMPLE_LINK })).toBeVisible();
+		await expect(field(page, 'Volume')).toHaveValue('150');
+		await expect(page.getByText('Saving one total replaces the volumes per source')).toHaveCount(0);
+	});
+
+	test('the simple form over an advanced bottle sends the changed total', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id) + '?advanced=0');
+		await field(page, 'Volume').fill('140');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'bottles');
+		expect(sourcesOf(plain)).toEqual([]);
+		expect(plain.volume).toMatchObject({ ml: 140 });
+		expect(plain.contents).toEqual(['breast_milk', 'formula']);
+	});
+
+	test('a bottle created simple opens simple, and can be opened advanced', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			contents: ['breast_milk', 'formula'],
+			volume: { unit: 'ml', amount: 120 }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id));
+		await expect(field(page, 'Volume')).toHaveValue('120');
+		await expect(field(page, 'Breast milk volume')).toHaveCount(0);
+		await expect(page.getByText('Saving one total replaces the volumes per source')).toHaveCount(0);
+		await page.getByRole('link', { name: SIMPLE_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/${bottle.id}\\${ADVANCED}$`));
+		await expect(page.getByRole('checkbox', { name: 'Formula', exact: true })).toBeChecked();
+		await expect(field(page, 'Formula volume')).toHaveValue('');
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		await field(page, 'Breast milk volume').fill('50');
+		await field(page, 'Formula volume').fill('70');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [advanced] = await rows(api, 'bottles');
+		expect(advanced.volume).toMatchObject({ ml: 120 });
+		expect(sourcesOf(advanced).map((s) => [s.source, s.volume.ml])).toEqual([
+			['breast_milk', 50],
+			['formula', 70]
+		]);
+	});
+
+	test('a caregiver can log an advanced bottle', async ({ page }) => {
+		const api = await stubAs(CLEO);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles', LEO.id) + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await field(page, 'Formula volume').fill('80');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(sourcesOf((await rows(api, 'bottles', LEO.id))[0])).toHaveLength(1);
+	});
+
+	test('a long note does not overflow the page at phone width', async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90, cow_milk: 20, other: 10 } },
+			note: 'n'.repeat(200)
+		});
+		const overflows = () =>
+			page.evaluate(
+				() => document.documentElement.scrollWidth > document.documentElement.clientWidth
+			);
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id));
+		await expect(page.getByText('Total: 180 ml')).toBeVisible();
+		expect(await overflows()).toBe(false);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		for (const name of ['Breast milk', 'Formula', "Cow's milk", 'Other']) {
+			await page.getByRole('checkbox', { name, exact: true }).check();
+		}
+		await field(page, 'Note').fill('n'.repeat(200));
+		expect(await overflows()).toBe(false);
+	});
+});
+
+test.describe('the advanced bottle form without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create, fail on a blank source, fix it, then edit', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles'));
+		await page.getByRole('link', { name: SIMPLE_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`${ADVANCED.replace('?', '\\?')}$`));
+		await page.getByRole('checkbox', { name: 'Breast milk', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await field(page, 'Breast milk volume').fill('60');
+		await field(page, 'Note').fill('no script');
+		await saveAndWait(page);
+		await expectFieldError(
+			field(page, 'Formula volume'),
+			'Enter a volume for each source you ticked'
+		);
+		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
+		await expect(field(page, 'Note')).toHaveValue('no script');
+		await expect(page.getByText('Total: 60 ml')).toBeVisible();
+		expect(await rows(api, 'bottles')).toEqual([]);
+
+		await field(page, 'Formula volume').fill('90');
+		await saveAndWait(page);
+		await onTimeline(page);
+		await expect(page.getByText(/Bottle 150 ml, breast milk \+ formula/)).toBeVisible();
+		const [created] = await rows(api, 'bottles');
+		expect(sourcesOf(created)).toHaveLength(2);
+
+		await page.goto(entryUrl('bottles', created.id));
+		await expect(field(page, 'Formula volume')).toHaveValue('90');
+		await expect(page.getByText('Total: 150 ml')).toBeVisible();
+		await field(page, 'Formula volume').fill('100');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(sourcesOf((await rows(api, 'bottles'))[0]).map((s) => s.volume.ml)).toEqual([60, 100]);
+
+		await page.goto(entryUrl('bottles', created.id));
+		await page.getByRole('link', { name: 'Use one total' }).click();
+		await expect(field(page, 'Volume')).toHaveValue('160');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'bottles');
+		expect(sourcesOf(plain)).toEqual([]);
+		expect(plain.volume).toMatchObject({ ml: 160 });
+	});
+
+	test('the link back to one total works from a failed post', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await saveAndWait(page);
+		await expectFieldError(
+			field(page, 'Formula volume'),
+			'Enter a volume for each source you ticked'
+		);
+		await page.getByRole('link', { name: 'Use one total' }).click();
+		await expect(field(page, 'Volume')).toBeVisible();
+		await expect(field(page, 'Formula volume')).toHaveCount(0);
 	});
 });

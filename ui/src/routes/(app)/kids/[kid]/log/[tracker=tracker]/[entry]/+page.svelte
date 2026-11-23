@@ -7,6 +7,7 @@
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { MAX_SESSION_HOURS, TRACKER_TITLE } from '#lib/constants.js';
+	import { advancedToggle } from '#lib/entry-edit.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -29,6 +30,7 @@
 	});
 	const error = (name: string) => (save?.field === name ? save.message : null);
 	const title = $derived(TRACKER_TITLE[data.kind].edit);
+	const toggle = $derived(advancedToggle(data.kind, values.advanced === '1'));
 </script>
 
 <svelte:head>
@@ -49,6 +51,7 @@
 	zone={data.kid.timeZone}
 	{values}
 	{error}
+	{toggle}
 	message={save && !save.field ? save.message : null}
 >
 	<TrackerFields

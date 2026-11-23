@@ -3,6 +3,7 @@ import {
 	editValues,
 	entryInstant,
 	formUnits,
+	isAdvanced,
 	isRunning,
 	localDate,
 	ranOver,
@@ -32,7 +33,7 @@ async function stored(locals: App.Locals, params: { kid: string; tracker: string
 	return { kind, kid: kid.data, entry: entry.data };
 }
 
-export const load: PageServerLoad = async ({ locals, params, cookies, parent }) => {
+export const load: PageServerLoad = async ({ locals, params, cookies, parent, url }) => {
 	const [{ kind, kid, entry }, { session }] = await Promise.all([stored(locals, params), parent()]);
 	setKidCookie(cookies, kid.id);
 	const running = isRunning(kind, entry);
@@ -41,7 +42,10 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		kind,
 		running,
 		overrun: running && ranOver(entryInstant(kind, entry), Date.now()),
-		values: editValues(kind, entry, kid.timeZone, formUnits(session))
+		values: {
+			...editValues(kind, entry, kid.timeZone, formUnits(session)),
+			...(isAdvanced(kind, url.searchParams.get('advanced'), entry) ? { advanced: '1' } : {})
+		}
 	};
 };
 

@@ -3,6 +3,7 @@
 	import TrackerFields from '#lib/components/entry/TrackerFields.svelte';
 	import TrackerForm from '#lib/components/entry/TrackerForm.svelte';
 	import { TRACKER_TITLE } from '#lib/constants.js';
+	import { advancedToggle } from '#lib/entry-edit.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -10,6 +11,7 @@
 	const values = $derived(form?.values ?? data.values);
 	const error = (name: string) => (form?.field === name ? form.message : null);
 	const title = $derived(TRACKER_TITLE[data.kind].log);
+	const toggle = $derived(advancedToggle(data.kind, values.advanced === '1'));
 </script>
 
 <svelte:head>
@@ -25,6 +27,7 @@
 	zone={data.kid.timeZone}
 	{values}
 	{error}
+	{toggle}
 	message={form && !form.field ? form.message : null}
 	running={!!form && 'running' in form}
 >

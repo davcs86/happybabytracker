@@ -15,6 +15,7 @@
 		error,
 		message = null,
 		running = false,
+		toggle = null,
 		children
 	}: {
 		kid: { id: string; name: string };
@@ -24,6 +25,8 @@
 		// A failure that belongs to no field; running adds the way to the timer that blocks this one.
 		message?: string | null;
 		running?: boolean;
+		// The plain link that reloads the form advanced or simple; values.advanced says which it is.
+		toggle?: { href: string; label: string } | null;
 		children: Snippet;
 	} = $props();
 
@@ -37,6 +40,13 @@
 	novalidate
 	use:enhance={keepValues}
 >
+	{#if toggle}
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a query on this same page -->
+		<p class="text-sm"><a href={toggle.href} class="underline">{toggle.label}</a></p>
+	{/if}
+	{#if values.advanced === '1'}
+		<input type="hidden" name="advanced" value="1" />
+	{/if}
 	{#if message}
 		<p class={ERROR_CLASS} role="alert">
 			{message}{#if running}.

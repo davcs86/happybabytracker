@@ -4,6 +4,7 @@ import {
 	ENTRY_FIELD_MESSAGES,
 	FINISHED_SIDE_MESSAGE,
 	REOPEN_MESSAGE,
+	sourcesTotalMessage,
 	volumeRangeMessage,
 	WHAT_MISSING_MESSAGE,
 	WHAT_TOO_LONG_MESSAGE
@@ -642,17 +643,56 @@ describe('readEntryForm advanced bottles', () => {
 		['hex', '0x10'],
 		['double minus', '--1'],
 		['negative', '-5'],
-		['fraction in ml', '1.5'],
+		['plus sign', '+5'],
+		['leading point', '.5'],
+		['trailing point', '5.'],
 		['too many decimals in ounces', '4.567'],
 		['unsafe integer', '9007199254740993']
-	])('names sources for a ticked source typed as %s', (_name, text) => {
+	])('names sources for a ticked source typed as %s, in either unit', (_name, text) => {
 		for (const unit of ['ml', 'floz']) {
 			const r = sent({ ...valid, volume_unit: unit, sources_formula: text });
-			if (unit === 'ml' || !['1.5'].includes(text)) {
-				expect(r).toMatchObject({ input: null, field: 'sources', message: null });
-			}
+			expect(r).toMatchObject({ input: null, field: 'sources', message: null });
 			expect(r.values.sources_formula).toBe(text);
 		}
+	});
+
+	it('refuses a fraction in millilitres and reads it in ounces', () => {
+		for (const text of ['1.5', '1,5']) {
+			const ml = sent({ ...valid, sources_formula: text });
+			expect(ml).toMatchObject({ input: null, field: 'sources' });
+			expect(ml.values.sources_formula).toBe(text);
+			expect(sent({ ...valid, volume_unit: 'floz', sources_formula: text }).input).toMatchObject({
+				sources: { unit: 'floz', amounts: { breast_milk: 6000, formula: 150 } }
+			});
+		}
+	});
+
+	it('refuses zero ounces and reads the smallest one', () => {
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '0.00' }).field).toBe('sources');
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '0.01' }).input).toMatchObject({
+			sources: { amounts: { formula: 1 } }
+		});
+	});
+
+	it('shows the total of the ticked amounts that read, in the unit typed', () => {
+		expect(sent(valid).values.sources_total).toBe('150 ml');
+		expect(sent({ ...valid, volume_unit: 'floz', sources_formula: '2,5' }).values).toMatchObject({
+			sources_total: '62.5 fl oz'
+		});
+		const kept = sent({
+			...valid,
+			sources_formula: 'junk',
+			sources_other: '5',
+			contents: ['formula']
+		});
+		expect(kept.values.sources_total).toBe('0 ml');
+		expect(sent({ ...valid, sources_formula: '' }).values.sources_total).toBe('60 ml');
+		expect(sent({ ...valid, volume_unit: 'liter' }).values.sources_total).toBe('');
+	});
+
+	it('shows no total for a simple bottle', () => {
+		const r = sent({ contents: ['formula'], volume: '90', volume_unit: 'ml' });
+		expect(r.values).not.toHaveProperty('sources_total');
 	});
 
 	it('names sources for a unit that is not one', () => {
@@ -677,7 +717,7 @@ describe('readEntryForm advanced bottles', () => {
 		expect(r).toMatchObject({
 			input: null,
 			field: 'volume',
-			message: volumeRangeMessage('bottles')
+			message: sourcesTotalMessage()
 		});
 		expect(sent({ ...valid, sources_breast_milk: '500', sources_formula: '500' }).field).toBeNull();
 	});
@@ -697,6 +737,35 @@ describe('readEntryForm advanced bottles', () => {
 			const r = sent(stored, EDIT);
 			expect(r.field).toBeNull();
 			expect(r.input).toEqual({ at: '2026-11-20T09:30:00Z', note: 'warm' });
+		});
+
+		it('never fails the range check for a form nothing was changed on', () => {
+			// Per-source columns shown in ml can sum past the range for a bottle typed in ounces.
+			const over = { ...stored, sources_breast_milk: '500', sources_formula: '501' };
+			const fields = {
+				...over,
+				sources_breast_milk_original: '500',
+				sources_formula_original: '501'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({ field: null, input: { note: 'warm' } });
+			const noted = sent({ ...fields, note: 'only the note' }, EDIT);
+			expect(noted.field).toBeNull();
+			expect(noted.input).not.toHaveProperty('sources');
+		});
+
+		it('still refuses a changed set whose total is over the range', () => {
+			const fields = {
+				...stored,
+				sources_breast_milk_original: '500',
+				sources_formula_original: '501',
+				sources_breast_milk: '500',
+				sources_formula: '502'
+			};
+			expect(sent(fields, EDIT)).toMatchObject({
+				input: null,
+				field: 'volume',
+				message: sourcesTotalMessage()
+			});
 		});
 
 		it('sends the whole set when one amount changed', () => {

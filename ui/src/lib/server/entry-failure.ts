@@ -15,7 +15,7 @@ export const ENTRY_FIELD_MESSAGES: Record<string, string> = {
 	contents: 'Choose at least one',
 	volume: 'Enter a volume: whole millilitres, or ounces with up to two decimals',
 	sources:
-		'Enter a volume for every ticked source: whole millilitres, or ounces with up to two decimals',
+		'Enter a volume for each source you ticked, in whole millilitres or ounces with up to two decimals',
 	weight_before: GROWTH_FIELD_MESSAGES.weight,
 	weight_after: GROWTH_FIELD_MESSAGES.weight,
 	kind: 'Choose wet, dirty, both or dry',
@@ -37,6 +37,9 @@ export const WHAT_TOO_LONG_MESSAGE = `Keep what was eaten to ${MEAL_TEXT_MAX_LEN
 export type VolumeKind = keyof typeof VOLUME_ML_RANGE;
 export const volumeRangeMessage = (kind: VolumeKind) =>
 	`Enter from ${VOLUME_ML_RANGE[kind].min} to ${VOLUME_ML_RANGE[kind].max} ml`;
+// The advanced bottle has no volume input of its own: its range is the sum of the sources'.
+export const sourcesTotalMessage = () =>
+	`The total must be from ${VOLUME_ML_RANGE.bottles.min} to ${VOLUME_ML_RANGE.bottles.max} ml`;
 // The API refuses an amount the reader let through only by its range, in ounces as much as millilitres.
 export const volumeRefusedMessage = (kind: VolumeKind) =>
 	`${volumeRangeMessage(kind)}, in whole millilitres or ounces with up to two decimals`;
@@ -67,6 +70,13 @@ export function entryApiFailure<T extends object>(
 	r: ApiFailure,
 	extra: T
 ) {
+	if (
+		r.reason === 'invalid' &&
+		r.field === 'volume' &&
+		kind === 'bottles' &&
+		values.advanced === '1'
+	)
+		return entryFieldFailure(values, r.field, extra, sourcesTotalMessage());
 	if (r.reason === 'invalid' && r.field === 'volume' && Object.hasOwn(VOLUME_ML_RANGE, kind))
 		return entryFieldFailure(values, r.field, extra, volumeRefusedMessage(kind as VolumeKind));
 	if (r.reason === 'invalid' && isEntryField(r.field))

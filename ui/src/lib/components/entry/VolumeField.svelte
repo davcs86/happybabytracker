@@ -5,12 +5,20 @@
 	import { VOLUME_UNITS } from '#lib/constants.js';
 	import type { EntryValues } from '#lib/entry-edit.js';
 
-	let { values, error }: { values: EntryValues; error: (name: string) => string | null } = $props();
+	let {
+		values,
+		error,
+		hint = null
+	}: {
+		values: EntryValues;
+		error: (name: string) => string | null;
+		hint?: string | null;
+	} = $props();
 
 	const UNIT_LABEL = { ml: 'ml', floz: 'fl oz' } as const;
 </script>
 
-<Field id="entry-volume" label="Volume" error={error('volume')}>
+<Field id="entry-volume" label="Volume" error={error('volume')} {hint}>
 	{#snippet children(control)}
 		<div class="flex gap-2">
 			<div class="min-w-0 flex-1">
