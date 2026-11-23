@@ -188,6 +188,8 @@ func TestEndpointCanonicalised(t *testing.T) {
 		"https://h.example.org/X/Y?q=Z#f":     "https://h.example.org/X/Y?q=Z#f",
 		"https://PUSH.example.org:443":        "https://push.example.org",
 		"https://push.example.org.?a":         "https://push.example.org?a",
+		"HTTPS://H.Example.org../x":           "https://h.example.org/x",
+		"HtTpS://h.example.org:443/x":         "https://h.example.org/x",
 	} {
 		if got := canonicalEndpoint(in); got != want {
 			t.Errorf("%s: %s, want %s", in, got, want)
@@ -216,6 +218,10 @@ func TestEndpointCanonicalised(t *testing.T) {
 	}
 	if list := k.deviceList(ana); len(list) != 1 {
 		t.Fatalf("a variant made a second binding: %v", list)
+	}
+	upper := k.putDevice(ana, deviceBody("HTTPS://H.Example.org/x?A=B%2F", "u"))
+	if upper.Code != http.StatusCreated || len(k.deviceList(ben)) != 0 || len(k.deviceList(ana)) != 2 {
+		t.Fatalf("an uppercase scheme must move the binding back: %d %q", upper.Code, upper.Body.String())
 	}
 	wantInvalid2(t, "empty port", k.putDevice(ana, deviceBody("https://h.example.org:/x", "x")), "endpoint")
 	wantInvalid2(t, "port 8443", k.putDevice(ana, deviceBody("https://h.example.org:8443/x", "x")), "endpoint")

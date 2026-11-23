@@ -149,7 +149,7 @@ func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// canonicalEndpoint lowercases the host, drops a trailing dot and an explicit :443, and keeps the rest byte for byte.
+// canonicalEndpoint lowercases the scheme and host, drops trailing dots and an explicit :443, and keeps the rest as sent.
 // The endpoint must already have passed validation, which runs on the original input.
 func canonicalEndpoint(endpoint string) string {
 	u, err := url.Parse(endpoint)
@@ -161,11 +161,11 @@ func canonicalEndpoint(endpoint string) string {
 	if i := strings.IndexAny(endpoint[start:], "/?#"); i >= 0 {
 		end = start + i
 	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	host := strings.TrimRight(strings.ToLower(u.Hostname()), ".")
 	if p := u.Port(); p != "" && p != "443" {
 		host += ":" + p
 	}
-	return endpoint[:start] + host + endpoint[end:]
+	return "https://" + host + endpoint[end:]
 }
 
 func (d Deps) renameDevice(w http.ResponseWriter, r *http.Request) {
