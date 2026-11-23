@@ -59,6 +59,7 @@
 		stage={data.running && !ended ? 'running' : 'done'}
 		{values}
 		{error}
+		estimate={data.estimate}
 	/>
 </TrackerForm>
 

@@ -4,11 +4,12 @@ import {
 	HUNDREDTHS_PER_FLOZ,
 	HUNDREDTHS_PER_OZ,
 	MAX_SESSION_HOURS,
+	MILK_ESTIMATE_BASIS,
 	OZ_PER_LB,
 	SECONDS_PER_HOUR,
 	SECONDS_PER_MINUTE
 } from './constants';
-import { formatVolume } from './format';
+import { formatMilk, formatVolume } from './format';
 import { decimal } from './growth';
 import { instantToLocalInput } from './time-zone';
 import type {
@@ -173,11 +174,15 @@ function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight'
 }
 
 // The trackers that have an advanced form, opened by ?advanced=1; every form starts simple.
-const ADVANCED_KINDS: readonly TrackerKind[] = ['bottles'];
+const ADVANCED_KINDS: readonly TrackerKind[] = ['bottles', 'nursing'];
 
 // Whether an entry already carries advanced data; a kind without a predicate never opens advanced by itself.
 const HAS_ADVANCED_DATA: Partial<Record<TrackerKind, (entry: Entry) => boolean>> = {
-	bottles: (entry) => (entry as TrackerEntries['bottles']).sources.length > 0
+	bottles: (entry) => (entry as TrackerEntries['bottles']).sources.length > 0,
+	nursing: (entry) => {
+		const e = entry as TrackerEntries['nursing'];
+		return e.weightBefore !== null || e.weightAfter !== null;
+	}
 };
 
 // A new form is advanced on ?advanced=1; an edit also when the entry already carries advanced data,
@@ -195,9 +200,28 @@ export function advancedToggle(
 	advanced: boolean
 ): { href: string; label: string } | null {
 	if (!ADVANCED_KINDS.includes(kind)) return null;
+	const label = TOGGLE_LABELS[kind as 'bottles' | 'nursing'];
 	return advanced
-		? { href: '?advanced=0', label: 'Use one total' }
-		: { href: '?advanced=1', label: 'Advanced: volume per source' };
+		? { href: '?advanced=0', label: label.simple }
+		: { href: '?advanced=1', label: label.advanced };
+}
+
+// Hiding the weigh-ins never deletes one: a form without them sends no weight key.
+const TOGGLE_LABELS = {
+	bottles: { advanced: 'Advanced: volume per source', simple: 'Use one total' },
+	nursing: { advanced: 'Advanced: weigh before and after', simple: 'Hide weigh-ins' }
+} as const;
+
+// The edit page's paragraph under the weigh-ins: the API's estimate in the parent's units, "No estimate" when
+// both weights are set without one, nothing while a weight is missing.
+export function milkStatus(kind: TrackerKind, entry: Entry, units: FormUnits): string | null {
+	if (kind !== 'nursing') return null;
+	const e = entry as TrackerEntries['nursing'];
+	if (e.milk) {
+		const gain = formatMilk(e.milk, units);
+		return `${gain.charAt(0).toUpperCase()}${gain.slice(1)}. ${MILK_ESTIMATE_BASIS}`;
+	}
+	return e.weightBefore !== null && e.weightAfter !== null ? 'No estimate' : null;
 }
 
 const instantValues = (name: string, instant: string | null, zone: string): EntryValues =>

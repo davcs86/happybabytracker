@@ -1,11 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import {
+	type EntryValues,
 	editValues,
 	entryInstant,
 	formUnits,
 	isAdvanced,
 	isRunning,
 	localDate,
+	milkStatus,
 	ranOver,
 	trackerOf
 } from '#lib/entry-edit.js';
@@ -41,6 +43,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent, ur
 		kid,
 		kind,
 		running,
+		estimate: milkStatus(kind, entry, formUnits(session)),
 		overrun: running && ranOver(entryInstant(kind, entry), Date.now()),
 		values: {
 			...editValues(kind, entry, kid.timeZone, formUnits(session)),
@@ -57,8 +60,10 @@ export const actions: Actions = {
 		const extra = { form: 'save' as const };
 		// Ended elsewhere since the page loaded: a finished read would find no stored seconds to compare.
 		if (!running && fromRunningPage(kind, form)) {
-			const units = formUnits(locals.session);
-			return staleTimerFailure(editValues(kind, entry, kid.timeZone, units), extra);
+			const values = editValues(kind, entry, kid.timeZone, formUnits(locals.session));
+			// The finished form stays as advanced as the form that was open.
+			const advanced: EntryValues = form.get('advanced') === '1' ? { advanced: '1' } : {};
+			return staleTimerFailure({ ...values, ...advanced }, extra);
 		}
 		const { values, input, field, message } = readEntryForm(kind, form, kid.timeZone, {
 			kind: 'edit',

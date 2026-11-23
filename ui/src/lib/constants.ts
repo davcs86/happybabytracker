@@ -48,6 +48,9 @@ export const GROWTH_RANGES = {
 	head: { min: 150, max: 800 }
 } as const;
 export const OZ_PER_LB = 16;
+// The two sentences the weigh-in form and the estimate carry; the density mirrors MilkDensityHundredths.
+export const SCALE_CAVEAT = 'A single-feed reading from a home scale can be off by several grams.';
+export const MILK_ESTIMATE_BASIS = `The volume assumes about 1.03 g per ml, an approximation in the range commonly used (1.0\u20131.03 g/ml); not measured. ${SCALE_CAVEAT}`;
 export const GRAMS_PER_KG = 1000;
 export const MM_PER_CM = 10;
 export const HUNDREDTHS_PER_OZ = 100;

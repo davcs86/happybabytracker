@@ -7,6 +7,7 @@ import {
 	isAdvanced,
 	isRunning,
 	localDate,
+	milkStatus,
 	ranOver,
 	volumeText
 } from './entry-edit';
@@ -428,16 +429,35 @@ describe('isAdvanced', () => {
 	});
 
 	it('reads no advanced data from an entry of a kind without a data check', () => {
-		// A nursing entry has no sources: nothing may be read from it as if it were a bottle.
-		expect(isAdvanced('nursing', null, nursing())).toBe(false);
 		expect(isAdvanced('diapers', null, diaper)).toBe(false);
 		expect(isAdvanced('meals', '0', meal)).toBe(false);
+		expect(isAdvanced('pumping', null, pumping())).toBe(false);
 	});
 
 	it('is never advanced for a tracker without an advanced form', () => {
-		for (const kind of ['diapers', 'meals', 'pumping', 'sleep', 'nursing'] as const) {
+		for (const kind of ['diapers', 'meals', 'pumping', 'sleep'] as const) {
 			expect(isAdvanced(kind, '1')).toBe(false);
 		}
+	});
+
+	describe('nursing', () => {
+		const kg = { grams: 3400, ozHundredths: 11993, typedUnit: 'kg' } as const;
+
+		it('opens a new session advanced only on ?advanced=1', () => {
+			expect(isAdvanced('nursing', '1')).toBe(true);
+			for (const param of [null, '', '0', '2']) expect(isAdvanced('nursing', param)).toBe(false);
+		});
+
+		it('opens an edit advanced by itself when either weight is set', () => {
+			expect(isAdvanced('nursing', null, nursing())).toBe(false);
+			expect(isAdvanced('nursing', null, nursing({ weightBefore: kg }))).toBe(true);
+			expect(isAdvanced('nursing', null, nursing({ weightAfter: kg }))).toBe(true);
+			expect(isAdvanced('nursing', '1', nursing())).toBe(true);
+		});
+
+		it('?advanced=0 opens the simple form over a weighed session', () => {
+			expect(isAdvanced('nursing', '0', nursing({ weightBefore: kg }))).toBe(false);
+		});
 	});
 });
 
@@ -453,8 +473,56 @@ describe('advancedToggle', () => {
 		});
 	});
 
+	it('offers the weigh-ins to nursing, and a way back that does not say one total', () => {
+		expect(advancedToggle('nursing', false)).toEqual({
+			href: '?advanced=1',
+			label: 'Advanced: weigh before and after'
+		});
+		expect(advancedToggle('nursing', true)).toEqual({
+			href: '?advanced=0',
+			label: 'Hide weigh-ins'
+		});
+	});
+
 	it('offers nothing for a tracker without an advanced form', () => {
 		expect(advancedToggle('diapers', false)).toBeNull();
-		expect(advancedToggle('nursing', false)).toBeNull();
+		expect(advancedToggle('pumping', false)).toBeNull();
+	});
+});
+
+describe('milkStatus', () => {
+	const w = (grams: number, ozHundredths: number) =>
+		({ grams, ozHundredths, typedUnit: 'kg' }) as const;
+	const weighed = nursing({
+		weightBefore: w(3400, 11993),
+		weightAfter: w(3462, 12212),
+		milk: { gain: { grams: 62, ozHundredths: 219 }, volume: { ml: 60, flozHundredths: 204 } }
+	});
+	const BASIS =
+		'The volume assumes about 1.03 g per ml, an approximation in the range commonly used (1.0\u20131.03 g/ml); not measured. A single-feed reading from a home scale can be off by several grams.';
+
+	it('states the gain and the volume from the API in the parent units, then the basis', () => {
+		expect(milkStatus('nursing', weighed, ML)).toBe(`Weight gain 62 g, about 60 ml. ${BASIS}`);
+		expect(milkStatus('nursing', weighed, FLOZ)).toBe(
+			`Weight gain 2.19 oz, about 2.04 fl oz. ${BASIS}`
+		);
+	});
+
+	it('says "No estimate" when both weights are set and the API gave no estimate', () => {
+		const lighter = nursing({ weightBefore: w(3462, 12212), weightAfter: w(3400, 11993) });
+		expect(milkStatus('nursing', lighter, ML)).toBe('No estimate');
+	});
+
+	it('says nothing while a weight is missing', () => {
+		expect(milkStatus('nursing', nursing({ weightBefore: w(3400, 11993) }), ML)).toBeNull();
+		expect(milkStatus('nursing', nursing({ weightAfter: w(3400, 11993) }), ML)).toBeNull();
+		expect(milkStatus('nursing', nursing(), ML)).toBeNull();
+	});
+
+	it('says nothing for another tracker, and no judgement wording anywhere', () => {
+		expect(milkStatus('bottles', bottle(), ML)).toBeNull();
+		for (const text of [milkStatus('nursing', weighed, ML), 'No estimate']) {
+			expect(text).not.toMatch(/good|low|enough|concern|normal/i);
+		}
 	});
 });

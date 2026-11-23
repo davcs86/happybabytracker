@@ -1200,3 +1200,460 @@ test.describe('the advanced bottle form without JavaScript', () => {
 		await expect(field(page, 'Formula volume')).toHaveCount(0);
 	});
 });
+
+const WEIGH_LINK = 'Advanced: weigh before and after';
+const HIDE_LINK = 'Hide weigh-ins';
+const BEFORE = 'Weight before';
+const AFTER = 'Weight after';
+const SCALE_HINT =
+	'In your weight unit. These weights stay with this session; they are not added to growth. A single-feed reading from a home scale can be off by several grams.';
+const BASIS =
+	'The volume assumes about 1.03 g per ml, an approximation in the range commonly used (1.0–1.03 g/ml); not measured. A single-feed reading from a home scale can be off by several grams.';
+const JUDGEMENT = /good|low|enough|concern|normal/i;
+
+const weight = (page: Page, name: string) => page.getByRole('group', { name, exact: true });
+const kilograms = (page: Page, name: string) => weight(page, name).getByLabel('Kilograms');
+const running = (page: Page) => page.getByRole('region', { name: 'Running now' });
+const growthRows = async (api: Api, kid = MIA.id) =>
+	((await api('GET', `/v1/kids/${kid}/growth`)).body.growth ?? []) as Row[];
+
+// A finished session on the create page with its weigh-ins open, the minutes typed.
+async function logFinished(page: Page, before: string, after: string) {
+	await page.goto(logUrl('nursing') + ADVANCED);
+	await field(page, 'Started at').fill(inUtc(NURSING_START));
+	await field(page, 'Ended at').fill(inUtc(NURSING_END));
+	await field(page, 'Left minutes').fill('10');
+	await field(page, 'Right minutes').fill('5');
+	if (before) await kilograms(page, BEFORE).fill(before);
+	if (after) await kilograms(page, AFTER).fill(after);
+	await saveAndWait(page);
+	await onTimeline(page);
+}
+
+test.describe('the nursing weigh-ins', () => {
+	test('the simple form is unchanged and offers the weigh-ins', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing'));
+		await expect(page.getByRole('group', { name: BEFORE })).toHaveCount(0);
+		await expect(page.locator('input[name="advanced"]')).toHaveCount(0);
+		await expectAccessible(page);
+		await page.getByRole('link', { name: WEIGH_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/log/nursing\\${ADVANCED}$`));
+		await expect(page.getByRole('link', { name: HIDE_LINK })).toBeVisible();
+		await expect(page.getByRole('link', { name: 'Use one total' })).toHaveCount(0);
+	});
+
+	test('each weight shows the inputs of its unit, with the hint under both', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing') + ADVANCED);
+		await expect(weight(page, BEFORE)).toBeVisible();
+		await expect(weight(page, AFTER)).toBeVisible();
+		await expect(field(page, 'Weight before unit')).toHaveValue('kg');
+		await expect(kilograms(page, BEFORE)).toBeVisible();
+		await expect(weight(page, BEFORE).getByLabel('Pounds')).toBeHidden();
+		await expect(page.getByText(SCALE_HINT, { exact: true })).toBeVisible();
+		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
+		await expectAccessible(page);
+		await field(page, 'Weight before unit').selectOption('lb');
+		await expect(weight(page, BEFORE).getByLabel('Pounds')).toBeVisible();
+		await expect(weight(page, BEFORE).getByLabel('Ounces')).toBeVisible();
+		await expect(kilograms(page, BEFORE)).toBeHidden();
+		await expect(kilograms(page, AFTER)).toBeVisible();
+		await expectAccessible(page);
+	});
+
+	test('a finished session weighed 3.4 and 3.46 kg shows its estimate on the timeline and the edit page', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logFinished(page, '3.4', '3.46');
+		await expect(page.getByRole('link', { name: /Nursing L 10 min · R 5 min/ })).toContainText(
+			'weight gain 60 g, about 58 ml'
+		);
+		const body = await written('POST', `/v1/kids/${MIA.id}/nursing`);
+		expect(body.weight_before).toEqual({ unit: 'kg', amount: 3400 });
+		expect(body.weight_after).toEqual({ unit: 'kg', amount: 3460 });
+		const [made] = await rows(api, 'nursing');
+		expect(made).toMatchObject({ milk: { gain: { grams: 60 }, volume: { ml: 58 } } });
+
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(page.getByRole('link', { name: HIDE_LINK })).toBeVisible();
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(kilograms(page, AFTER)).toHaveValue('3.46');
+		await expect(
+			page.getByText(`Weight gain 60 g, about 58 ml. ${BASIS}`, { exact: true })
+		).toBeVisible();
+		await expect(page.locator('main')).not.toContainText(JUDGEMENT);
+		await expectAccessible(page);
+	});
+
+	test('an imperial parent types pounds and ounces, reads them back and sees ounces', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		expect((await api('PATCH', '/v1/me', { units: { weight: 'lb', volume: 'floz' } })).status).toBe(
+			200
+		);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing') + ADVANCED);
+		await expect(field(page, 'Weight before unit')).toHaveValue('lb');
+		await expect(weight(page, BEFORE).getByLabel('Pounds')).toBeVisible();
+		await expect(kilograms(page, BEFORE)).toBeHidden();
+		await field(page, 'Started at').fill(inUtc(NURSING_START));
+		await field(page, 'Ended at').fill(inUtc(NURSING_END));
+		await field(page, 'Left minutes').fill('10');
+		await weight(page, BEFORE).getByLabel('Pounds').fill('7');
+		await weight(page, BEFORE).getByLabel('Ounces').fill('8');
+		await weight(page, AFTER).getByLabel('Pounds').fill('7');
+		await weight(page, AFTER).getByLabel('Ounces').fill('10,5');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('POST', `/v1/kids/${MIA.id}/nursing`);
+		expect(body.weight_before).toEqual({ unit: 'lb', amount: 12000 });
+		expect(body.weight_after).toEqual({ unit: 'lb', amount: 12250 });
+		await expect(page.getByRole('link', { name: /Nursing L 10 min/ })).toContainText(
+			'weight gain 2.5 oz, about 2.33 fl oz'
+		);
+
+		const [made] = await rows(api, 'nursing');
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(weight(page, BEFORE).getByLabel('Pounds')).toHaveValue('7');
+		await expect(weight(page, BEFORE).getByLabel('Ounces')).toHaveValue('8');
+		await expect(weight(page, AFTER).getByLabel('Pounds')).toHaveValue('7');
+		await expect(weight(page, AFTER).getByLabel('Ounces')).toHaveValue('10.5');
+		await expect(field(page, 'Weight after unit')).toHaveValue('lb');
+		await expect(
+			page.getByText(`Weight gain 2.5 oz, about 2.33 fl oz. ${BASIS}`, { exact: true })
+		).toBeVisible();
+		await field(page, 'Note').fill('weighed');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `/v1/kids/${MIA.id}/nursing/${made.id}`)).toEqual({
+			note: 'weighed'
+		});
+	});
+
+	test('an after weight below the before weight is stored with no estimate and no message', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logFinished(page, '3.4', '3.3');
+		await expect(page.getByRole('link', { name: /Nursing L 10 min/ })).not.toContainText('weight');
+		const [made] = await rows(api, 'nursing');
+		expect(made).toMatchObject({
+			weight_before: { grams: 3400 },
+			weight_after: { grams: 3300 },
+			milk: null
+		});
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(kilograms(page, AFTER)).toHaveValue('3.3');
+		await expect(page.getByText('No estimate', { exact: true })).toBeVisible();
+		await expect(page.getByText(/Weight gain|The volume assumes/)).toHaveCount(0);
+		await expect(page.getByRole('alert')).toHaveCount(0);
+		await expect(page.locator('main')).not.toContainText(JUDGEMENT);
+		await expectAccessible(page);
+	});
+
+	test('a before weight alone shows no estimate paragraph', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logFinished(page, '3.4', '');
+		const [made] = await rows(api, 'nursing');
+		expect(made).toMatchObject({ weight_before: { grams: 3400 }, weight_after: null, milk: null });
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(kilograms(page, AFTER)).toHaveValue('');
+		await expect(page.getByText(/Weight gain|No estimate|The volume assumes/)).toHaveCount(0);
+	});
+
+	test('clearing a weight sends null for it, removes it, and drops the estimate', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logFinished(page, '3.4', '3.46');
+		const [made] = await rows(api, 'nursing');
+		const path = `/v1/kids/${MIA.id}/nursing/${made.id}`;
+		await page.goto(entryUrl('nursing', made.id));
+		await kilograms(page, AFTER).fill('');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({ weight_after: null, note: null });
+		expect((await rows(api, 'nursing'))[0]).toMatchObject({
+			weight_before: { grams: 3400 },
+			weight_after: null,
+			milk: null
+		});
+		await expect(page.getByRole('link', { name: /Nursing L 10 min/ })).not.toContainText('weight');
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(kilograms(page, AFTER)).toHaveValue('');
+		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
+	});
+
+	test('hiding the weigh-ins keeps the stored weights', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const nursing = await seed(api, 'nursing', {
+			started_at: NURSING_START,
+			ended_at: NURSING_END,
+			left_seconds: 600,
+			right_seconds: 300,
+			weight_before: { unit: 'kg', amount: 3400 },
+			weight_after: { unit: 'kg', amount: 3460 }
+		});
+		const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
+		await signIn(page, ANA);
+		await page.goto(entryUrl('nursing', nursing.id));
+		await page.getByRole('link', { name: HIDE_LINK }).click();
+		await expect(page.getByRole('link', { name: WEIGH_LINK })).toBeVisible();
+		await expect(page.getByRole('group', { name: BEFORE })).toHaveCount(0);
+		await field(page, 'Note').fill('plain edit');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({ note: 'plain edit' });
+		expect((await rows(api, 'nursing'))[0]).toMatchObject({
+			weight_before: { grams: 3400 },
+			weight_after: { grams: 3460 }
+		});
+	});
+
+	test('a running session takes a before weight, ends from the home, then gets its after weight', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing') + ADVANCED);
+		await page.getByRole('radio', { name: 'Left' }).check();
+		await kilograms(page, BEFORE).fill('3.4');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [started] = await rows(api, 'nursing');
+		expect(started).toMatchObject({ ended_at: null, weight_before: { grams: 3400 } });
+
+		await page.goto(`/kids/${MIA.id}`);
+		await submit(running(page).getByRole('button', { name: 'End nursing' }));
+		await expect(running(page)).toHaveCount(0);
+		expect((await rows(api, 'nursing'))[0].ended_at).not.toBeNull();
+
+		await page.goto(entryUrl('nursing', started.id));
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(kilograms(page, AFTER)).toHaveValue('');
+		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
+		await kilograms(page, AFTER).fill('3.46');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `/v1/kids/${MIA.id}/nursing/${started.id}`)).toEqual({
+			weight_after: { unit: 'kg', amount: 3460 },
+			note: null
+		});
+		await expect(page.getByRole('link', { name: /Nursing/ })).toContainText(
+			'weight gain 60 g, about 58 ml'
+		);
+	});
+
+	test('a running session edit shows the before weight and no estimate', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const nursing = await seed(api, 'nursing', {
+			started_at: minute(-20),
+			side: 'right',
+			weight_before: { unit: 'kg', amount: 3400 }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('nursing', nursing.id));
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(page.getByLabel('Left minutes')).toHaveCount(0);
+		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('a weight out of range shows the message on the weight and keeps every value', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing') + ADVANCED);
+		await field(page, 'Started at').fill(inUtc(NURSING_START));
+		await field(page, 'Ended at').fill(inUtc(NURSING_END));
+		await field(page, 'Left minutes').fill('10');
+		await kilograms(page, BEFORE).fill('0.1');
+		await kilograms(page, AFTER).fill('3,46');
+		await field(page, 'Note').fill('kept');
+		await saveAndWait(page);
+		await expectFieldError(kilograms(page, BEFORE), 'Enter a weight');
+		await expect(kilograms(page, AFTER)).toHaveValue('3,46');
+		await expect(kilograms(page, BEFORE)).toHaveValue('0.1');
+		await expect(field(page, 'Left minutes')).toHaveValue('10');
+		await expect(field(page, 'Note')).toHaveValue('kept');
+		await expect(page.getByRole('link', { name: HIDE_LINK })).toBeVisible();
+		expect(await rows(api, 'nursing')).toEqual([]);
+		await expectAccessible(page);
+
+		await kilograms(page, BEFORE).fill('3.4');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'nursing'))[0]).toMatchObject({
+			weight_before: { grams: 3400 },
+			weight_after: { grams: 3460 }
+		});
+	});
+
+	test('a weighed session adds nothing to the growth page', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logFinished(page, '3.4', '3.46');
+		expect(await growthRows(api)).toEqual([]);
+		await page.goto(`/kids/${MIA.id}/growth?measure=weight`);
+		await expect(page.getByText('No measurements yet')).toBeVisible();
+	});
+
+	test('a caregiver can record weigh-ins', async ({ page }) => {
+		const api = await stubAs(CLEO);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing', LEO.id) + ADVANCED);
+		await page.getByRole('radio', { name: 'Right' }).check();
+		await kilograms(page, BEFORE).fill('4.1');
+		await saveAndWait(page);
+		await page.waitForURL(/\/timeline/);
+		const [started] = await rows(api, 'nursing', LEO.id);
+		expect(started).toMatchObject({ weight_before: { grams: 4100 } });
+		await page.goto(entryUrl('nursing', started.id, LEO.id));
+		await kilograms(page, AFTER).fill('4.15');
+		await saveAndWait(page);
+		await page.waitForURL(/\/timeline/);
+		expect((await rows(api, 'nursing', LEO.id))[0]).toMatchObject({
+			weight_before: { grams: 4100 },
+			weight_after: { grams: 4150 }
+		});
+	});
+
+	test('a nursing edit opened advanced stays advanced after a stale timer result', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const nursing = await seed(api, 'nursing', {
+			started_at: minute(-20),
+			side: 'right',
+			weight_before: { unit: 'kg', amount: 3400 }
+		});
+		const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
+		await signIn(page, ANA);
+		await page.goto(entryUrl('nursing', nursing.id));
+		await expect(page.getByLabel('Left minutes')).toHaveCount(0);
+		expect((await api('POST', `${path}/end`, {})).status).toBe(200);
+		await field(page, 'Note').fill('typed while running');
+		await saveAndWait(page);
+		await expect(page.getByText('This timer has ended')).toBeVisible();
+		await expect(field(page, 'Left minutes')).toBeVisible();
+		await expect(page.locator('input[name="advanced"]')).toHaveValue('1');
+		await expect(page.getByRole('link', { name: HIDE_LINK })).toBeVisible();
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(page.locator('input[name="weight_before_kg_original"]')).toHaveValue('3.4');
+		expect((await receivedRequests()).filter((r) => r.method === 'PATCH')).toEqual([]);
+
+		await kilograms(page, AFTER).fill('3.46');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			weight_after: { unit: 'kg', amount: 3460 },
+			note: null
+		});
+	});
+
+	test('a long note does not overflow the page at phone width', async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+		const api = await stubAs(ANA);
+		const nursing = await seed(api, 'nursing', {
+			started_at: NURSING_START,
+			ended_at: NURSING_END,
+			left_seconds: 600,
+			right_seconds: 300,
+			weight_before: { unit: 'kg', amount: 3400 },
+			weight_after: { unit: 'kg', amount: 3460 },
+			note: 'n'.repeat(200)
+		});
+		const overflows = () =>
+			page.evaluate(
+				() => document.documentElement.scrollWidth > document.documentElement.clientWidth
+			);
+		await signIn(page, ANA);
+		await page.goto(entryUrl('nursing', nursing.id));
+		await expect(page.getByText(/^Weight gain 60 g/)).toBeVisible();
+		expect(await overflows()).toBe(false);
+		await field(page, 'Weight before unit').selectOption('lb');
+		expect(await overflows()).toBe(false);
+		await page.goto(logUrl('nursing') + ADVANCED);
+		await field(page, 'Weight after unit').selectOption('lb');
+		await field(page, 'Note').fill('n'.repeat(200));
+		expect(await overflows()).toBe(false);
+	});
+});
+
+test.describe('the nursing weigh-ins without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create, fail on a weight out of range, fix it, then edit and clear', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('nursing'));
+		await page.getByRole('link', { name: WEIGH_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/log/nursing\\${ADVANCED}$`));
+		await field(page, 'Started at').fill(inUtc(NURSING_START));
+		await field(page, 'Ended at').fill(inUtc(NURSING_END));
+		await field(page, 'Left minutes').fill('10');
+		await kilograms(page, BEFORE).fill('0.1');
+		await kilograms(page, AFTER).fill('3.46');
+		await field(page, 'Note').fill('no script');
+		await saveAndWait(page);
+		await expectFieldError(kilograms(page, BEFORE), 'Enter a weight');
+		await expect(kilograms(page, AFTER)).toHaveValue('3.46');
+		await expect(field(page, 'Note')).toHaveValue('no script');
+		await expect(page.getByRole('link', { name: HIDE_LINK })).toBeVisible();
+		expect(await rows(api, 'nursing')).toEqual([]);
+
+		await kilograms(page, BEFORE).fill('3.4');
+		await saveAndWait(page);
+		await onTimeline(page);
+		await expect(page.getByRole('link', { name: /Nursing L 10 min/ })).toContainText(
+			'weight gain 60 g, about 58 ml'
+		);
+		const [made] = await rows(api, 'nursing');
+
+		await page.goto(entryUrl('nursing', made.id));
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await expect(
+			page.getByText(`Weight gain 60 g, about 58 ml. ${BASIS}`, { exact: true })
+		).toBeVisible();
+		await kilograms(page, AFTER).fill('');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'nursing'))[0]).toMatchObject({
+			weight_before: { grams: 3400 },
+			weight_after: null
+		});
+	});
+
+	test('a failed save on an edit keeps the form advanced, and the link back works', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const nursing = await seed(api, 'nursing', {
+			started_at: NURSING_START,
+			ended_at: NURSING_END,
+			left_seconds: 600,
+			right_seconds: 300,
+			weight_before: { unit: 'kg', amount: 3400 }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('nursing', nursing.id));
+		await kilograms(page, AFTER).fill('abc');
+		await saveAndWait(page);
+		await expectFieldError(kilograms(page, AFTER), 'Enter a weight');
+		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
+		await page.getByRole('link', { name: HIDE_LINK }).click();
+		await expect(page.getByRole('group', { name: BEFORE })).toHaveCount(0);
+		await expect(page.getByRole('link', { name: WEIGH_LINK })).toBeVisible();
+	});
+});
