@@ -100,11 +100,11 @@ export const VACCINE_STATUS_LABEL: Record<VaccineStatus, string> = {
 	dismissed: 'Dismissed',
 	available: 'Available'
 };
-export const VACCINE_UNIT_LABEL: Record<VaccineAgeUnit, { one: string; many: string }> = {
-	d: { one: 'day', many: 'days' },
-	w: { one: 'week', many: 'weeks' },
-	m: { one: 'month', many: 'months' },
-	y: { one: 'year', many: 'years' }
+export const VACCINE_UNIT_LABEL: Record<VaccineAgeUnit, { one: string }> = {
+	d: { one: 'day' },
+	w: { one: 'week' },
+	m: { one: 'month' },
+	y: { one: 'year' }
 };
 // The home shows at most this many due entries.
 export const HOME_DUE_MAX = 3;

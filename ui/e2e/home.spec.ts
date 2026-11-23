@@ -139,17 +139,19 @@ test('the Vaccination tile opens the Vaccines page in every band and hides with 
 	]);
 });
 
-test('Due lists each visit with its status and count as text, linked to the Vaccines page', async ({
+test('Due lists each visit with its status as text, linked to the Vaccines page', async ({
 	page
 }) => {
+	skipNearMidnight(5);
 	const ana = await stubAs(ANA);
 	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	expect((await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' })).status).toBe(201);
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}`);
 	await expect(page.getByRole('heading', { name: 'Due', level: 2 })).toBeVisible();
 	await expect(due(page).getByRole('listitem')).toHaveText([
-		'8-week vaccines · Overdue (2)',
-		'12-month vaccines · Due (2)'
+		'8-week vaccines · Overdue',
+		'12-month vaccines · Due'
 	]);
 	const links = due(page).getByRole('link');
 	await expect(links).toHaveCount(2);
@@ -159,8 +161,10 @@ test('Due lists each visit with its status and count as text, linked to the Vacc
 		);
 	}
 	// After Running now (the left column) and before Today.
+	await expect(today(page)).toBeVisible();
 	const headings = await page.getByRole('heading', { level: 2 }).allTextContents();
 	expect(headings.indexOf('Due')).toBeGreaterThan(headings.indexOf('Quick log'));
+	expect(headings.indexOf('Due')).toBeLessThan(headings.indexOf('Today'));
 	await expectAccessible(page);
 	await links.first().click();
 	await expect(
@@ -176,6 +180,24 @@ test('Due lists each visit with its status and count as text, linked to the Vacc
 	await expect(quickLog(page).getByRole('link', { name: 'Vaccination' })).toHaveCount(0);
 });
 
+test('with a timer running, Due sits between Running now and Today', async ({ page }) => {
+	skipNearMidnight(5);
+	const ana = await stubAs(ANA);
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/sleep`, { started_at: minutesAgo(5) })).status
+	).toBe(201);
+	expect((await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' })).status).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(running(page)).toBeVisible();
+	await expect(today(page)).toBeVisible();
+	const headings = await page.getByRole('heading', { level: 2 }).allTextContents();
+	expect(headings.indexOf('Running now')).toBeGreaterThan(-1);
+	expect(headings.indexOf('Running now')).toBeLessThan(headings.indexOf('Due'));
+	expect(headings.indexOf('Due')).toBeLessThan(headings.indexOf('Today'));
+});
+
 test('Due shows at most three visits and links the rest from the Vaccines page', async ({
 	page
 }) => {
@@ -183,9 +205,9 @@ test('Due shows at most three visits and links the rest from the Vaccines page',
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}`);
 	await expect(due(page).getByRole('listitem')).toHaveText([
-		'1-year vaccines · Overdue (2)',
-		'2-year vaccines · Due (1)',
-		'3-year vaccines · Due (1)',
+		'1-year vaccines · Overdue',
+		'2-year vaccines · Due',
+		'3-year vaccines · Due',
 		'2 more on the Vaccines page'
 	]);
 	const more = due(page).getByRole('link', { name: '2 more on the Vaccines page' });

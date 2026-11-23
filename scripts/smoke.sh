@@ -650,7 +650,7 @@ mapfile -t groups < <(active_groups vaccines-us)
   [ "$(count vaccines-us 'action="?/dismiss"')" -gt 0 ]; } ||
   fail "4i vaccines page (us)" "status $code, groups '${groups[*]}', birth $(group_status vaccines-us 2026-01-15)"
 code="$(req home-due "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
-due_href="$(grep -oE '<a href="[^"]*"[^>]*>Birth · Overdue \(1\)</a>' "$WORK/home-due.body" |
+due_href="$(grep -oE '<a href="[^"]*"[^>]*>Birth · Overdue</a>' "$WORK/home-due.body" |
   sed -E 's/<a href="([^"]*)".*/\1/' || true)"
 { [ "$code" = 200 ] && body_has home-due 'id="due-heading"' && [[ "$due_href" == *"$VACCINES" ]]; } ||
   fail "4i home Due" "status $code, link '$due_href'"

@@ -15,7 +15,7 @@
 
 	const guardian = $derived(data.kid.role === 'guardian');
 	const schema = $derived(data.chosen ? data.vaccines.schema : null);
-	const done = (g: Group) => g.status === 'given' || g.status === 'dismissed';
+	const done = (g: Group) => ['given', 'dismissed', 'available'].includes(g.status);
 	const active = $derived(data.vaccines.groups.filter((g) => !done(g)));
 	const completed = $derived(data.vaccines.groups.filter(done));
 	const name = (id: string) => antigenName(id, data.catalogue);
@@ -76,7 +76,7 @@
 			<details>
 				<summary class="cursor-pointer">What is not included</summary>
 				<ul class="mt-1 list-disc pl-5 text-muted-foreground">
-					{#each schema.omitted as item (item)}
+					{#each schema.omitted as item, i (i)}
 						<li>{item}</li>
 					{/each}
 				</ul>

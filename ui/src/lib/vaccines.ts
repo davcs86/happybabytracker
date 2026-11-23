@@ -1,7 +1,6 @@
 import { VACCINE_STATUS_LABEL, VACCINE_UNIT_LABEL } from './constants';
 import type {
 	HomeDue,
-	VaccineAge,
 	VaccineCatalogue,
 	VaccineGroup,
 	VaccineLine,
@@ -11,18 +10,12 @@ import type {
 
 // Dates come from the API as kid-local YYYY-MM-DD; nothing here does date arithmetic.
 
-export const ageLabel = ({ n, unit }: VaccineAge) =>
-	n === 0
-		? 'birth'
-		: `${n} ${n === 1 ? VACCINE_UNIT_LABEL[unit].one : VACCINE_UNIT_LABEL[unit].many}`;
-
 export const groupTitle = ({ from }: Pick<VaccineGroup, 'from'>) =>
 	from.n === 0 ? 'Birth' : `${from.n}-${VACCINE_UNIT_LABEL[from.unit].one} vaccines`;
 
 export const statusLabel = (status: VaccineStatus) => VACCINE_STATUS_LABEL[status];
 
-export const dueLabel = (entry: HomeDue) =>
-	`${groupTitle(entry)} · ${statusLabel(entry.status)} (${entry.count})`;
+export const dueLabel = (entry: HomeDue) => `${groupTitle(entry)} · ${statusLabel(entry.status)}`;
 
 // untilDate is the first day the window is over; recurring lines have no window to show.
 export function windowLabel(line: Pick<VaccineLine, 'kind' | 'fromDate' | 'untilDate'>): string {

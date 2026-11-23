@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	ageLabel,
 	antigenName,
 	dueLabel,
 	groupTitle,
@@ -9,20 +8,6 @@ import {
 	windowLabel
 } from './vaccines';
 import type { VaccineSchemaInfo } from './types';
-
-describe('ageLabel', () => {
-	it('names the age in its own unit, singular for one, birth for zero', () => {
-		expect(ageLabel({ n: 8, unit: 'w' })).toBe('8 weeks');
-		expect(ageLabel({ n: 1, unit: 'w' })).toBe('1 week');
-		expect(ageLabel({ n: 4, unit: 'm' })).toBe('4 months');
-		expect(ageLabel({ n: 1, unit: 'm' })).toBe('1 month');
-		expect(ageLabel({ n: 11, unit: 'y' })).toBe('11 years');
-		expect(ageLabel({ n: 1, unit: 'y' })).toBe('1 year');
-		expect(ageLabel({ n: 3, unit: 'd' })).toBe('3 days');
-		expect(ageLabel({ n: 1, unit: 'd' })).toBe('1 day');
-		expect(ageLabel({ n: 0, unit: 'd' })).toBe('birth');
-	});
-});
 
 describe('groupTitle', () => {
 	it('titles a visit by its from age', () => {
@@ -41,13 +26,13 @@ describe('status and due labels', () => {
 		).toEqual(['Given', 'Due', 'Upcoming', 'Overdue', 'Dismissed', 'Available']);
 	});
 
-	it('labels a home due entry by its visit, its status label and its count', () => {
+	it('labels a home due entry by its visit and its status label, without the line count', () => {
 		const entry = { kind: 'vaccine' } as const;
 		expect(dueLabel({ ...entry, from: { n: 4, unit: 'm' }, status: 'overdue', count: 7 })).toBe(
-			'4-month vaccines · Overdue (7)'
+			'4-month vaccines · Overdue'
 		);
 		expect(dueLabel({ ...entry, from: { n: 0, unit: 'd' }, status: 'due', count: 1 })).toBe(
-			'Birth · Due (1)'
+			'Birth · Due'
 		);
 	});
 });

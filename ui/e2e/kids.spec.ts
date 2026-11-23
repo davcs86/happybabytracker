@@ -455,7 +455,7 @@ test('a retired stored schedule stays selected and kept on save until another is
 	await expect(page.getByRole('status')).toHaveText('Saved');
 	const body = await lastPatch(IVY.id);
 	expect(body.name).toBe('Ivy Rose');
-	expect(body.vaccine_schema ?? 'retired-2020').toBe('retired-2020');
+	expect(body.vaccine_schema).toBe('retired-2020');
 	expect(await storedSchedule(IVY.id)).toBe('retired-2020');
 	await expect(schedule(page)).toHaveValue('retired-2020');
 
