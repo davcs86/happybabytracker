@@ -8,6 +8,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 )
 
 var day = time.Date(2026, 11, 20, 0, 0, 0, 0, time.UTC)
@@ -505,5 +506,26 @@ func TestFollowingOccurrenceComesFromTheEngineNotTheRows(t *testing.T) {
 	mustDose(t, s, k.ID, ana.ID, doseOf(course.ID, clock(15, 0)), clock(15, 0))
 	if got := states(t, s, course.ID)[clock(8, 0)]; got != "pending" {
 		t.Errorf("a dose after the unmaterialised 14:00 marked 08:00 %s", got)
+	}
+}
+
+func TestADoneRowOfAnOldScheduleDoesNotAbsorbADose(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKidIn(t, s, ana.ID, "Lía", "UTC")
+	course := mustCourse(t, s, k.ID, ana.ID, everyCourse(clock(0, 0), 6), clock(10, 0))
+	mustMaterialise(t, s, clock(17, 40))
+	mustDose(t, s, k.ID, ana.ID, doseOf(course.ID, clock(17, 45)), clock(17, 45))
+	if got := states(t, s, course.ID)[clock(18, 0)]; got != "done" {
+		t.Fatalf("18:00 is %q after the 17:45 dose, want done", got)
+	}
+	edit := course
+	edit.Schedule = schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"17:55"}}
+	if _, err := s.UpdateMedication(ctx, k.ID, ana.ID, edit, clock(17, 50)); err != nil {
+		t.Fatal(err)
+	}
+	mustDose(t, s, k.ID, ana.ID, doseOf(course.ID, clock(17, 58)), clock(17, 58))
+	if got := states(t, s, course.ID)[clock(17, 55)]; got != "done" {
+		t.Errorf("17:55 is %q after the 17:58 dose, want done (all: %v)", got, states(t, s, course.ID))
 	}
 }

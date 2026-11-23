@@ -476,36 +476,71 @@ func TestEachTargetOnItsOwn(t *testing.T) {
 func TestNoDuplicateAfterRestartMidSend(t *testing.T) {
 	t.Run("a row left sending is never sent again", func(t *testing.T) {
 		e := newEnv(t)
-		tctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		var calls atomic.Int32
-		// The process dies after the push service accepted, before the outcome is stored.
-		e.push.hook = func(context.Context, push.Subscription, push.Message) (push.Result, bool) {
-			calls.Add(1)
-			cancel()
-			return push.Result{Outcome: push.Sent, Status: 201}, true
-		}
 		e.set(at(14, 0))
-		_ = e.worker(true, false).Tick(tctx)
-		if got := e.deliveries(t)["push "+e.anaDev.ID]; got != "sending" || calls.Load() != 1 {
-			t.Fatalf("after the interrupted tick: %q, %d calls", got, calls.Load())
+		// A process killed mid-send leaves its claimed row sending.
+		if _, err := e.st.OpenDue(ctx, e.now(), store.Channels{Push: true}); err != nil {
+			t.Fatal(err)
 		}
-
+		if ds, err := e.st.ClaimDeliveries(ctx, e.now(), 10); err != nil || len(ds) != 1 {
+			t.Fatalf("claimed %d, %v", len(ds), err)
+		}
 		if err := e.st.MarkUnconfirmed(ctx); err != nil {
 			t.Fatal(err)
 		}
-		e.push.hook = nil
 		w := e.worker(true, false)
 		e.tick(t, w, at(14, 1))
 		e.tick(t, w, at(14, 5))
-		if n := len(e.push.rec.Sends()); n != 0 || calls.Load() != 1 {
-			t.Fatalf("resent after a restart: %d recorded, %d hooked", n, calls.Load())
+		if n := len(e.push.rec.Sends()); n != 0 {
+			t.Fatalf("resent after a restart: %d", n)
 		}
 		if got := e.deliveries(t)["push "+e.anaDev.ID]; got != "unconfirmed" {
 			t.Fatalf("delivery %q, want unconfirmed", got)
 		}
 		e.logLines(t)
 	})
+	for _, tc := range []struct {
+		name    string
+		outcome push.Outcome
+		after   string // the row's state once the cancelled tick returns
+		resends int
+	}{
+		{"a send finished during shutdown keeps its outcome", push.Sent, "sent", 0},
+		{"a send cut off by shutdown goes back to pending", push.Retry, "pending", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			tctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			var calls atomic.Int32
+			e.push.hook = func(context.Context, push.Subscription, push.Message) (push.Result, bool) {
+				calls.Add(1)
+				cancel()
+				return push.Result{Outcome: tc.outcome, Status: 201}, true
+			}
+			e.set(at(14, 0))
+			_ = e.worker(true, false).Tick(tctx)
+			if got := e.deliveries(t)["push "+e.anaDev.ID]; got != tc.after || calls.Load() != 1 {
+				t.Fatalf("after the cancelled tick: %q, %d calls; want %q", got, calls.Load(), tc.after)
+			}
+
+			if err := e.st.MarkUnconfirmed(ctx); err != nil {
+				t.Fatal(err)
+			}
+			e.push.hook = nil
+			w := e.worker(true, false)
+			e.tick(t, w, at(14, 1))
+			e.tick(t, w, at(14, 5))
+			if n := len(e.push.rec.Sends()); n != tc.resends || calls.Load() != 1 {
+				t.Fatalf("after a restart: %d recorded, %d hooked; want %d recorded", n, calls.Load(), tc.resends)
+			}
+			if got := e.deliveries(t)["push "+e.anaDev.ID]; got != "sent" {
+				t.Fatalf("delivery %q, want sent", got)
+			}
+			if n := countMsg(e.logLines(t), "reminder step failed"); n != 0 {
+				t.Fatalf("%d step failure lines: %s", n, e.log)
+			}
+		})
+	}
 	t.Run("two workers on one store send each target once", func(t *testing.T) {
 		e := newEnv(t)
 		a, b := e.worker(true, true), e.worker(true, true)
@@ -619,6 +654,54 @@ func TestAFailingStepRunsTheRest(t *testing.T) {
 		if l["msg"] == "reminder step failed" && (l["step"] != "materialise" || l["cause"] == "" || l["cause"] == nil) {
 			t.Fatalf("failure line %v", l)
 		}
+	}
+}
+
+func TestADeliveryDeletedMidSendIsNotAFailure(t *testing.T) {
+	e := newEnv(t)
+	// The course is deleted between the claim and the settle, so its delivery row cascades away.
+	e.push.hook = func(context.Context, push.Subscription, push.Message) (push.Result, bool) {
+		if err := e.st.DeleteMedication(ctx, e.kid.ID, e.ana.ID, e.course.ID); err != nil {
+			t.Error(err)
+		}
+		return push.Result{Outcome: push.Sent, Status: 201}, true
+	}
+	e.tick(t, e.worker(true, false), at(14, 0))
+	if n := countMsg(e.logLines(t), "reminder step failed"); n != 0 {
+		t.Fatalf("%d step failure lines: %s", n, e.log)
+	}
+	if got := e.deliveries(t); len(got) != 0 {
+		t.Fatalf("deliveries %v, want none", got)
+	}
+}
+
+func TestABadZoneDoesNotStopOtherKids(t *testing.T) {
+	e := newEnv(t)
+	leo := e.newKid(t, "Leo")
+	e.newCourse(t, leo.ID, "13:50")
+	if _, err := e.db.Exec(`UPDATE kids SET time_zone = 'Nowhere/Atlantis' WHERE id = ?`, leo.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.banned = append(e.banned, "Leo", "Atlantis")
+	w := e.worker(true, false)
+	e.set(at(14, 0))
+	if err := w.Tick(ctx); err == nil {
+		t.Fatal("Tick hid the bad zone")
+	}
+	if sends := e.push.rec.Sends(); len(sends) != 1 || sends[0].Device != e.anaDev.ID {
+		t.Fatalf("Mia's reminder was not sent: %+v", sends)
+	}
+	if s := e.reminderStates(t, e.course.ID)[at(14, 0).Add(24*time.Hour)]; s != "pending" {
+		t.Fatalf("Mia's next row %q, want pending", s)
+	}
+	steps := map[any]int{}
+	for _, l := range e.logLines(t) {
+		if l["msg"] == "reminder step failed" {
+			steps[l["step"]]++
+		}
+	}
+	if steps["materialise"] != 1 || steps["open_due"] != 1 || len(steps) != 2 {
+		t.Fatalf("step failures %v, want materialise and open_due once each", steps)
 	}
 }
 

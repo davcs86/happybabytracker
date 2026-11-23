@@ -28,19 +28,8 @@ func scanMedicationDose(row rowScanner) (model.MedicationDose, error) {
 }
 
 // markDone marks at most one pending or expired reminder done and never deletes a row; it must not be replaced by
-// rematerialise, which would drop undelivered rows.
+// rematerialise, which would drop undelivered rows. A done row the current timing does not produce is passed over.
 func markDone(ctx context.Context, tx *sql.Tx, medicationID string, givenAt, now time.Time) error {
-	var (
-		id, state string
-		due       int64
-	)
-	err := tx.QueryRowContext(ctx, `SELECT id, due_at, state FROM reminders WHERE medication_id = ? AND due_at <= ? ORDER BY due_at DESC LIMIT 1`,
-		medicationID, givenAt.Add(constants.DoseDoneLead).Unix()).Scan(&id, &due, &state)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && state != "pending" && state != "expired") {
-		return nil
-	} else if err != nil {
-		return err
-	}
 	v, err := scanMedication(tx.QueryRowContext(ctx, `SELECT `+medicationColumns+` FROM medications WHERE id = ?`, medicationID))
 	if err != nil || v.Kind == schedule.KindNone {
 		return err
@@ -48,6 +37,27 @@ func markDone(ctx context.Context, tx *sql.Tx, medicationID string, givenAt, now
 	loc, err := kidZone(ctx, tx, v.KidID)
 	if err != nil {
 		return err
+	}
+	current := timingOf(v).course()
+	current.Active = true
+	var (
+		id, state string
+		due       int64
+	)
+	for bound := givenAt.Add(constants.DoseDoneLead).Unix(); ; bound = due - 1 {
+		err := tx.QueryRowContext(ctx, `SELECT id, due_at, state FROM reminders WHERE medication_id = ? AND due_at <= ? ORDER BY due_at DESC LIMIT 1`,
+			medicationID, bound).Scan(&id, &due, &state)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if state != "done" || len(schedule.Occurrences(current, loc, unixTime(due), unixTime(due))) == 1 {
+			break
+		}
+	}
+	if state != "pending" && state != "expired" {
+		return nil
 	}
 	if following, ok := schedule.Next(timingOf(v).course(), loc, unixTime(due)); ok && !givenAt.Before(following) {
 		return nil

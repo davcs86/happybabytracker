@@ -668,7 +668,8 @@ func TestExpireNeverTouchesDoneOrCancelled(t *testing.T) {
 	}
 	mustDose(t, k.s, k.kid.ID, k.ana.ID, doseOf(k.course.ID, clock(14, 0)), clock(14, 0))
 	execOK(t, k.s, `UPDATE reminders SET state = 'cancelled' WHERE id = ?`, cancelled)
-	now := clock(14, 31)
+	// No cutoff: the pending deliveries of a reminder no longer pending are cancelled before due + ReminderExpiry.
+	now := clock(14, 16)
 	if err := k.s.Expire(ctx, now); err != nil {
 		t.Fatal(err)
 	}
@@ -677,6 +678,9 @@ func TestExpireNeverTouchesDoneOrCancelled(t *testing.T) {
 	}
 	if ok, err := k.s.RemindersHealthy(ctx, now); err != nil || !ok {
 		t.Fatalf("healthy = %v, %v", ok, err)
+	}
+	if err := k.s.Expire(ctx, clock(14, 31)); err != nil {
+		t.Fatal(err)
 	}
 	if st := reminderState(t, k.s, done); st != "done" {
 		t.Fatalf("done became %s", st)
@@ -908,5 +912,36 @@ func TestRemindersHealthyIgnoresAPendingDeliveryOfADoneReminder(t *testing.T) {
 	mustDose(t, k.s, k.kid.ID, k.ana.ID, doseOf(k.course.ID, clock(14, 0)), clock(14, 0))
 	if ok, err := k.s.RemindersHealthy(ctx, clock(14, 16)); err != nil || !ok {
 		t.Fatalf("healthy = %v, %v", ok, err)
+	}
+}
+
+func TestDueEntriesTakeTheLatestPastRowInAnyState(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKidIn(t, s, ana.ID, "Mia", "UTC")
+	course := mustCourse(t, s, k.ID, ana.ID, timesCourse(clock(0, 0), "12:00", "13:00"), clock(10, 0))
+	mustMaterialise(t, s, clock(12, 10))
+	if err := s.Expire(ctx, clock(12, 31)); err != nil {
+		t.Fatal(err)
+	}
+	mustDose(t, s, k.ID, ana.ID, doseOf(course.ID, clock(13, 5)), clock(13, 5))
+	edit := course
+	edit.Schedule = everyCourse(clock(0, 0), 6).Schedule
+	if _, err := s.UpdateMedication(ctx, k.ID, ana.ID, edit, clock(13, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if got := states(t, s, course.ID); got[clock(12, 0)] != "expired" || got[clock(13, 0)] != "done" || got[clock(18, 0)] != "pending" {
+		t.Fatalf("setup rows %v", got)
+	}
+	got, err := s.DueEntries(ctx, k.ID, 2*time.Hour, clock(13, 30), day.Add(24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dues []time.Time
+	for _, e := range got {
+		dues = append(dues, e.DueAt)
+	}
+	if want := []time.Time{clock(18, 0)}; !slices.Equal(dues, want) {
+		t.Errorf("due entries at %v, want %v: the expired 12:00 is older than the done 13:00", dues, want)
 	}
 }

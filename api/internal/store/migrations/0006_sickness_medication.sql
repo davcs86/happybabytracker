@@ -88,6 +88,8 @@ CREATE TABLE reminder_deliveries (
     UNIQUE (reminder_id, channel, target_id)
 ) STRICT;
 
+CREATE INDEX reminder_deliveries_state_settled ON reminder_deliveries (state, settled_at);
+
 CREATE TABLE push_subscriptions (
     id         TEXT PRIMARY KEY,
     parent_id  TEXT NOT NULL REFERENCES parents (id) ON DELETE CASCADE,

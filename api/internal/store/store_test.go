@@ -875,6 +875,12 @@ func TestMigration0006KeepsRows(t *testing.T) {
 		minutes != constants.DefaultReminderOverdueMinutes || source != "cdc" {
 		t.Errorf("the kid after 0006: overdue %d, source %q, err %v", minutes, source, err)
 	}
+	for _, idx := range []string{"reminder_deliveries_state_settled"} {
+		var tbl string
+		if err := s.r.QueryRow(`SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&tbl); err != nil || tbl != "reminder_deliveries" {
+			t.Errorf("index %s after 0006: table %q, err %v", idx, tbl, err)
+		}
+	}
 	var bad int
 	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
 		t.Errorf("foreign_key_check after 0006: %d violations, err %v", bad, err)

@@ -57,8 +57,11 @@ var errOutcome = errors.New("store: unknown delivery outcome")
 const medicationOff = `EXISTS (SELECT 1 FROM kid_modules km WHERE km.kid_id = k.id AND km.module = 'medication' AND km.enabled = 0)`
 
 // Materialise keeps Open value 14's rows for every active scheduled course of a kid with the medication module on.
+// A course whose kid's zone does not load is skipped; the rest commit and the error is returned after them.
 func (s *Store) Materialise(ctx context.Context, now time.Time) error {
-	return s.inTx(ctx, func(tx *sql.Tx) error {
+	var skipped error
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		skipped = nil
 		type course struct{ id, zone string }
 		var courses []course
 		if err := eachRow(ctx, tx, `SELECT m.id, k.time_zone FROM medications m JOIN kids k ON k.id = m.kid_id
@@ -75,7 +78,8 @@ func (s *Store) Materialise(ctx context.Context, now time.Time) error {
 		for _, c := range courses {
 			loc, err := loadZone(c.zone)
 			if err != nil {
-				return err
+				skipped = err
+				continue
 			}
 			if err := materialiseCourse(ctx, tx, c.id, loc, now); err != nil {
 				return err
@@ -83,6 +87,10 @@ func (s *Store) Materialise(ctx context.Context, now time.Time) error {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return skipped
 }
 
 // reminderCheck is a reminder with what decides at send time whether it may still go out.
@@ -120,11 +128,15 @@ func checkReminder(ctx context.Context, q querier, id string) (c reminderCheck, 
 }
 
 // OpenDue cancels each due pending reminder a reminder-level gate closes and otherwise adds a pending delivery for each
-// allowed target of each configured channel; it returns how many deliveries it added.
+// allowed target of each configured channel; it returns how many deliveries it added. A reminder whose kid's zone does
+// not load is skipped; the rest commit and the error is returned after them.
 func (s *Store) OpenDue(ctx context.Context, now time.Time, ch Channels) (int, error) {
-	var added int
+	var (
+		added   int
+		skipped error
+	)
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		added = 0
+		added, skipped = 0, nil
 		var ids []string
 		if err := eachRow(ctx, tx, `SELECT id FROM reminders WHERE state = 'pending' AND due_at <= ? AND due_at >= ? ORDER BY due_at, id`,
 			[]any{now.Unix(), now.Add(-constants.ReminderExpiry).Unix()}, func(row rowScanner) error {
@@ -150,6 +162,10 @@ func (s *Store) OpenDue(ctx context.Context, now time.Time, ch Channels) (int, e
 		}
 		for _, id := range ids {
 			c, found, err := checkReminder(ctx, tx, id)
+			if errors.Is(err, errKidZone) {
+				skipped = err
+				continue
+			}
 			if err != nil {
 				return err
 			}
@@ -190,7 +206,7 @@ func (s *Store) OpenDue(ctx context.Context, now time.Time, ch Channels) (int, e
 	if err != nil {
 		return 0, err
 	}
-	return added, nil
+	return added, skipped
 }
 
 // ClaimDeliveries moves up to limit pending deliveries that are due for an attempt, and whose reminder is not past
@@ -376,8 +392,9 @@ type prependScanner struct {
 
 func (p prependScanner) Scan(dest ...any) error { return p.row.Scan(append(p.head, dest...)...) }
 
-// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping only a course's
-// latest past one and only while now < min(due + overdue, Next), by due time then course id. The caller gates the module.
+// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping a past one only
+// when it is its course's latest past row in any state and now < min(due + overdue, Next), by due time then course id.
+// The caller gates the module.
 func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Duration, now, dayEnd time.Time) ([]DueEntry, error) {
 	var out []DueEntry
 	err := s.inReadTx(ctx, func(q querier) error {
@@ -390,7 +407,7 @@ func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Durat
 		latest := map[string]int{}
 		err = eachRow(ctx, q, `SELECT r.id, r.due_at, r.state, `+prefixed("m.", medicationColumns)+`
 			FROM reminders r JOIN medications m ON m.id = r.medication_id
-			WHERE r.kid_id = ? AND m.active = 1 AND r.state IN ('pending', 'expired') AND r.due_at < ? AND r.due_at > ?
+			WHERE r.kid_id = ? AND m.active = 1 AND r.due_at < ? AND r.due_at > ?
 			ORDER BY r.due_at, m.id`, []any{kidID, dayEnd.Unix(), now.Add(-overdue).Unix()}, func(row rowScanner) error {
 			var (
 				e   DueEntry
@@ -414,6 +431,9 @@ func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Durat
 			return err
 		}
 		for i, e := range rows {
+			if e.State != "pending" && e.State != "expired" {
+				continue
+			}
 			if now.Before(e.DueAt) || (latest[e.MedicationID] == i && (e.Next.IsZero() || now.Before(e.Next))) {
 				out = append(out, e)
 			}

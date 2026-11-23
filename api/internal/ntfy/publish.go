@@ -37,9 +37,8 @@ type option func(*publisher)
 
 func withTimeout(d time.Duration) option { return func(p *publisher) { p.timeout = d } }
 
-// NewPublisher panics on an empty URL, so a wiring fault stops the boot, not a worker at the first reminder.
-// The URL is the operator's own, possibly an internal address such as http://ntfy:2586, so the push package's
-// public-address checks do not apply here.
+// NewPublisher panics on an empty URL. The URL is the operator's own, possibly internal (http://ntfy:2586), so the
+// push package's public-address checks do not apply.
 func NewPublisher(cfg Config, opts ...option) Publisher {
 	if cfg.URL == "" {
 		panic("ntfy: NewPublisher needs a URL")

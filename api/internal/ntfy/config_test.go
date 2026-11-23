@@ -73,6 +73,7 @@ func TestLoadConfigRefuses(t *testing.T) {
 		{"prefix with underscore", "NTFY_TOPIC_PREFIX", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": "zq_pre"}},
 		{"prefix with upper case", "NTFY_TOPIC_PREFIX", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": "ZqPre"}},
 		{"prefix with newline", "NTFY_TOPIC_PREFIX", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": "zq\n"}},
+		{"url only whitespace", "NTFY_URL", map[string]string{"NTFY_URL": "   ", "NTFY_TOPIC_PREFIX": prefix}},
 		{"url no scheme", "NTFY_URL", map[string]string{"NTFY_URL": "zqhost:2586", "NTFY_TOPIC_PREFIX": prefix}},
 		{"url bad scheme", "NTFY_URL", map[string]string{"NTFY_URL": "ftp://zqhost", "NTFY_TOPIC_PREFIX": prefix}},
 		{"url no host", "NTFY_URL", map[string]string{"NTFY_URL": "http://", "NTFY_TOPIC_PREFIX": prefix}},
@@ -82,6 +83,7 @@ func TestLoadConfigRefuses(t *testing.T) {
 		{"url with fragment", "NTFY_URL", map[string]string{"NTFY_URL": "http://zqhost#zq", "NTFY_TOPIC_PREFIX": prefix}},
 		{"url with userinfo", "NTFY_URL", map[string]string{"NTFY_URL": "http://zquser:zqpass@zqhost", "NTFY_TOPIC_PREFIX": prefix}},
 		{"url bad port", "NTFY_URL", map[string]string{"NTFY_URL": "http://zqhost:zq", "NTFY_TOPIC_PREFIX": prefix}},
+		{"public url only whitespace", "NTFY_PUBLIC_URL", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": prefix, "NTFY_PUBLIC_URL": " \t"}},
 		{"public url http", "NTFY_PUBLIC_URL", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": prefix, "NTFY_PUBLIC_URL": "http://zqhost.example.org"}},
 		{"public url no scheme", "NTFY_PUBLIC_URL", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": prefix, "NTFY_PUBLIC_URL": "zqhost.example.org"}},
 		{"public url with path", "NTFY_PUBLIC_URL", map[string]string{"NTFY_URL": url, "NTFY_TOPIC_PREFIX": prefix, "NTFY_PUBLIC_URL": "https://zqhost.example.org/zqpath"}},
@@ -104,7 +106,7 @@ func TestLoadConfigRefuses(t *testing.T) {
 				t.Errorf("error %q does not name %s", err, tc.variable)
 			}
 			for k, v := range tc.env {
-				if v != "" && strings.Contains(err.Error(), strings.TrimSpace(v)) {
+				if tv := strings.TrimSpace(v); tv != "" && strings.Contains(err.Error(), tv) {
 					t.Errorf("error %q contains the value of %s", err, k)
 				}
 			}

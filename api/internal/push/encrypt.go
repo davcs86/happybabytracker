@@ -16,10 +16,12 @@ import (
 
 var b64 = base64.RawURLEncoding
 
-// Protocol constants of RFC 8291/8188, not tunable limits: one 4096-byte record, an 86-byte header.
+// Protocol constants of RFC 8291/8188, not tunable limits: one 4096-byte record, an 86-byte header; RFC 8030's
+// Topic is at most 32 characters.
 const (
 	recordSize   = 4096
 	MaxPlaintext = recordSize - 16 - 1 - 86
+	maxTopicLen  = 32
 )
 
 var (

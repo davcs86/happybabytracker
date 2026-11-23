@@ -187,7 +187,7 @@ func ttlSeconds(d time.Duration) int64 {
 }
 
 func validTopic(t string) bool {
-	if len(t) > 32 {
+	if len(t) > maxTopicLen {
 		return false
 	}
 	for _, c := range []byte(t) {

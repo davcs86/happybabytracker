@@ -5,15 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	sqlite "modernc.org/sqlite"
-
+	"github.com/davcs86/happybabytracker/api/internal/cause"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
@@ -82,7 +80,7 @@ func (t *tick) fail(step string, err error) {
 		return
 	}
 	t.failed[step] = true
-	t.w.d.Log.Warn("reminder step failed", "step", step, "cause", cause(err))
+	t.w.d.Log.Warn("reminder step failed", "step", step, "cause", cause.Of(err))
 }
 
 // Tick is one pass: materialise, open due reminders, send what is claimable, expire. It returns every failure.
@@ -205,9 +203,15 @@ func (w *Worker) send(t *tick, d store.Delivery) {
 }
 
 // settle stores the outcome and logs one line for it unless started is zero; a failed settle leaves the row sending,
-// which the next start marks unconfirmed.
+// which the next start marks unconfirmed. A row gone since the claim (its course or kid deleted) is no failure.
 func (w *Worker) settle(t *tick, d store.Delivery, s store.Settle, status int, started time.Time) {
-	if err := w.d.Store.SettleDelivery(t.ctx, d.ID, s, w.d.Now()); err != nil {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.ctx), constants.ReminderSettleTimeout)
+	err := w.d.Store.SettleDelivery(ctx, d.ID, s, w.d.Now())
+	cancel()
+	if errors.Is(err, store.ErrNotFound) {
+		return
+	}
+	if err != nil {
 		t.fail("settle", err)
 		return
 	}
@@ -216,13 +220,4 @@ func (w *Worker) settle(t *tick, d store.Delivery, s store.Settle, status int, s
 	}
 	w.d.Log.Info("delivery", "delivery", d.ID, "reminder", d.Reminder.ID, "channel", d.Channel, "outcome", string(s.Outcome),
 		"status", status, "attempt", d.Attempts, "duration_ms", time.Since(started).Milliseconds())
-}
-
-// cause names a failure without its text, which can carry SQL or values.
-func cause(err error) string {
-	var se *sqlite.Error
-	if errors.As(err, &se) {
-		return fmt.Sprintf("%s(%d)", constants.CauseSQLite, se.Code())
-	}
-	return fmt.Sprintf("%s%T", constants.CauseOtherPrefix, err)
 }

@@ -144,6 +144,8 @@ const (
 	DoseDoneLead        = 30 * time.Minute
 	ReminderHealthStale = 15 * time.Minute
 	WorkerStaleAfter    = 60 * time.Second
+	// A settle outlives the worker's cancelled context by at most this, so a send cut off by shutdown is still stored.
+	ReminderSettleTimeout = 5 * time.Second
 
 	PushTTLMax                 = 3600 * time.Second
 	PushTimeout                = 10 * time.Second

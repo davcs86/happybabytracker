@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -492,6 +493,9 @@ func TestStartWithFakePushMarksSendingRowsUnconfirmed(t *testing.T) {
 }
 
 func TestStartWithRealPushRegistersADevice(t *testing.T) {
+	if _, err := net.DefaultResolver.LookupHost(context.Background(), "fcm.googleapis.com"); err != nil {
+		t.Skipf("registration resolves a real push service name and this host cannot: %v", err)
+	}
 	key := testVAPIDKey(t)
 	env := baseEnv(t.TempDir())
 	env["VAPID_PRIVATE_KEY"], env["VAPID_SUBJECT"] = key, "https://happybaby.private.example.org"

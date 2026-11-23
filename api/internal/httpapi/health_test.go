@@ -171,6 +171,26 @@ func TestRemindersHealthWithNoChannelConfigured(t *testing.T) {
 	k := newKitNoPush(t)
 	k.Cfg.NtfyEnabled = false
 	k.Handler = NewHandler(k.deps())
+	ctx := context.Background()
+	g := k.addParent("gwen")
+	due := t0
+	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who",
+		ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}, g.ID, due)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := k.Store.CreateMedication(ctx, kid.ID, g.ID, model.Medication{Name: "Amoxicillin", Dose: "2.5 ml", Active: true, StartAt: due,
+		Schedule: schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 1}}, due); err != nil {
+		t.Fatal(err)
+	}
+	// Past the window a channel's pending delivery would make this 503; with no channel none is opened.
+	now := due.Add(constants.ReminderHealthStale + time.Second)
+	if n := k.tick(now); n != 0 {
+		t.Fatalf("OpenDue opened %d deliveries with no channel", n)
+	}
+	if got, err := k.Store.DueEntries(ctx, kid.ID, time.Hour, now, now.Add(time.Hour)); err != nil || len(got) == 0 || !got[0].DueAt.Equal(due) {
+		t.Fatalf("due reminder = %+v, %v", got, err)
+	}
 	rec := k.serve(k.newReq(http.MethodGet, "/healthz/reminders", nil))
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"status":"ok"}` {
 		t.Fatalf("%d %q", rec.Code, rec.Body.String())
