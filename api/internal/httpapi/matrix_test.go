@@ -58,6 +58,7 @@ var matrixWant = map[Access][actorCount]want{
 // declared class cannot make its own expectations pass.
 var routeClasses = map[string]Access{
 	"GET /healthz":                                        Open,
+	"GET /healthz/reminders":                              Open,
 	"POST /v1/session":                                    Internal,
 	"GET /v1/session":                                     Session,
 	"DELETE /v1/session":                                  Session,

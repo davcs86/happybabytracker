@@ -91,6 +91,7 @@ func start(ctx context.Context, getenv func(string) string, stdout io.Writer) (*
 		return nil, errors.Join(err, st.Close())
 	}
 	worker := reminders.New(reminders.Deps{Store: st, Push: deps.Push, Ntfy: publisher, Origin: cfg.PublicOrigin, Now: time.Now, Log: log})
+	deps.LastTick = worker.LastTick
 	return &app{cfg: cfg, log: log, store: st, handler: httpapi.NewHandler(deps), worker: worker}, nil
 }
 

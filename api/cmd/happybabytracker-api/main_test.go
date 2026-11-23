@@ -430,6 +430,11 @@ func TestStartRunsTheWorkerWithNeitherChannel(t *testing.T) {
 	if rec := call(t, a, http.MethodGet, "/v1/_test/pushes", "", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("test route without the fake: %d", rec.Code)
 	}
+	for _, path := range []string{"/healthz", "/healthz/reminders"} {
+		if rec := call(t, a, http.MethodGet, path, "", nil); rec.Code != http.StatusOK {
+			t.Fatalf("%s with no channel: %d", path, rec.Code)
+		}
+	}
 }
 
 func TestStartWithFakePushMarksSendingRowsUnconfirmed(t *testing.T) {

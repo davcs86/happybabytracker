@@ -35,6 +35,7 @@ type Deps struct {
 	Cfg            config.Config
 	Limiter        *auth.Limiter
 	Now            func() time.Time
+	LastTick       func() time.Time // the reminder worker's last finished tick; required
 	Log            *slog.Logger
 	Push           push.Sender    // nil when Web Push is off
 	Resolver       push.Resolver  // registration's DNS check; unused under HBT_ALLOW_FAKE_PUSH
@@ -44,8 +45,12 @@ type Deps struct {
 
 // Routes is the only place routes are declared.
 func Routes(d Deps) []Route {
+	if d.LastTick == nil {
+		panic("httpapi: Deps.LastTick is required")
+	}
 	routes := []Route{
-		{http.MethodGet, "/healthz", Open, Health(d.Store)},
+		{http.MethodGet, "/healthz", Open, Health(d.Store, d.Now, d.LastTick)},
+		{http.MethodGet, "/healthz/reminders", Open, RemindersHealth(d.Store, d.Now)},
 		{http.MethodPost, "/v1/session", Internal, d.login},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
 		{http.MethodDelete, "/v1/session", Session, d.logout},

@@ -122,7 +122,7 @@ func (k *kit) clock() time.Time { return k.now }
 
 func (k *kit) deps() Deps {
 	d := Deps{
-		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock,
+		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock, LastTick: k.clock,
 		Log:  slog.New(slog.NewJSONHandler(k.Log, nil)),
 		Push: k.Push, Resolver: k.Resolver, PushRecorder: k.Recorder,
 	}
