@@ -430,6 +430,62 @@ func TestTransportLimits(t *testing.T) {
 	}
 }
 
+// A server that accepts TCP and never answers the ClientHello: the send returns Retry on time and the
+// handshake does not hold the socket open after it (the dial and handshake outlive the request's context).
+func TestStalledHandshakeIsClosed(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	closed := make(chan struct{}, 4)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				io.Copy(io.Discard, c) // returns once the client closes
+				c.Close()
+				closed <- struct{}{}
+			}()
+		}
+	}()
+	const d = 300 * time.Millisecond
+	tr := newTransport(&checkedDialer{r: publicResolver(), d: newDialer(), timeout: d})
+	tr.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, ln.Addr().String())
+	}
+	if tr.TLSHandshakeTimeout != d || tr.ResponseHeaderTimeout != d || tr.ExpectContinueTimeout != d || tr.MaxConnsPerHost != 1 {
+		t.Fatalf("transport timeouts %v %v %v, max conns %d", tr.TLSHandshakeTimeout, tr.ResponseHeaderTimeout,
+			tr.ExpectContinueTimeout, tr.MaxConnsPerHost)
+	}
+	sig, _ := newTestSigner(t)
+	f := newSub(t, testEndpoint)
+	start := time.Now()
+	if got := NewSender(sig, time.Now, withTransport(tr), withTimeout(d)).Send(context.Background(), f.sub, testMessage()); got != (Result{Outcome: Retry}) {
+		t.Fatalf("stalled handshake: %+v", got)
+	}
+	if e := time.Since(start); e > 5*d {
+		t.Fatalf("send took %v", e)
+	}
+	select {
+	case <-closed:
+	case <-time.After(10 * d):
+		t.Fatal("the stalled connection is still open: no handshake timeout")
+	}
+}
+
+func TestDefaultTransportTimeoutsArePushTimeout(t *testing.T) {
+	sig, _ := newTestSigner(t)
+	tr := NewSender(sig, time.Now).(*sender).rt.(*http.Transport)
+	if tr.TLSHandshakeTimeout != constants.PushTimeout || tr.ResponseHeaderTimeout != constants.PushTimeout ||
+		tr.ExpectContinueTimeout != constants.PushTimeout {
+		t.Fatalf("timeouts %v %v %v", tr.TLSHandshakeTimeout, tr.ResponseHeaderTimeout, tr.ExpectContinueTimeout)
+	}
+}
+
 func TestNewSenderRefusesNilWiring(t *testing.T) {
 	sig, _ := newTestSigner(t)
 	for name, fn := range map[string]func(){

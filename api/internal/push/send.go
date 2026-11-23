@@ -253,13 +253,18 @@ func (c *checkedDialer) DialContext(ctx context.Context, network, addr string) (
 	return nil, errDial
 }
 
-// newTransport has no proxy: every connection is dialled by cd and checked.
+// newTransport has no proxy: every connection is dialled by cd and checked. Dial and handshake outlive the
+// request's context, so each phase carries cd.timeout (PushTimeout unless a test shortens it).
 func newTransport(cd *checkedDialer) *http.Transport {
 	return &http.Transport{
 		ForceAttemptHTTP2:      true,
 		DialContext:            cd.DialContext,
+		TLSHandshakeTimeout:    cd.timeout,
+		ResponseHeaderTimeout:  cd.timeout,
+		ExpectContinueTimeout:  cd.timeout,
 		IdleConnTimeout:        constants.PushIdleConnTimeout,
 		MaxIdleConnsPerHost:    1,
+		MaxConnsPerHost:        1,
 		MaxResponseHeaderBytes: constants.PushResponseHeaderMaxBytes,
 	}
 }

@@ -60,7 +60,7 @@ var nonGlobalExamples = []string{
 	"0.1.2.3", "100.64.0.1", "192.0.0.1", "192.0.2.1", "198.18.0.1", "198.19.255.255", "198.51.100.1", "203.0.113.1",
 	"240.0.0.1", "255.255.255.255",
 	"::7f00:1", "::a00:1", "64:ff9b::a00:1", "64:ff9b:1::a00:1", "100::1", "2001::1", "2001:0:ffff::1",
-	"2001:db8::1", "2002:a00:1::1", "fec0::1", "feff::1",
+	"2001:db8::1", "2002:a00:1::1", "fec0::1", "feff::1", "3fff::1", "3fff:fff:ffff::1", "2001:2::1", "2001:2:0:ffff::1",
 }
 
 func TestValidateEndpointRefusesSyntax(t *testing.T) {
@@ -146,12 +146,20 @@ func TestValidateEndpointAccepts(t *testing.T) {
 		"https://push.example.org:443/wpush/v2/abc",
 		"https://PUSH.example.org/wpush/v2/abc",
 		"https://push.example.org/fcm/send/abc?x=1",
+		"https://fcm.googleapis.com/fcm/send/abc",
+		"https://updates.push.services.mozilla.com/wpush/v2/abc",
+		"https://web.push.apple.com/abc",
+		"https://push1.example.com/abc",
+		"https://a.b.c.e2/abc",
 		exact,
 	} {
+		public := []string{"8.8.8.8", "2001:4860:4860::8888", "2606:4700:4700::1111", "1.1.1.1", "100.63.255.255",
+			"100.128.0.1", "::ffff:8.8.4.4", "198.17.255.255", "198.20.0.1", "2001:1::1", "2003::1", "64:ff9b:2::1",
+			"192.0.1.1", "203.0.114.1", "34.120.0.1", "142.250.0.1", "17.0.0.1", "2a00:1450::1", "2001:3::1", "3fff:1000::1"}
 		r := &fakeResolver{addrs: map[string][]string{
-			"push.example.org": {"8.8.8.8", "2001:4860:4860::8888", "2606:4700:4700::1111", "1.1.1.1", "100.63.255.255",
-				"100.128.0.1", "::ffff:8.8.4.4", "198.17.255.255", "198.20.0.1", "2001:1::1", "2003::1", "64:ff9b:2::1"},
-			"PUSH.example.org": {"8.8.8.8"},
+			"push.example.org": public, "PUSH.example.org": {"8.8.8.8"}, "fcm.googleapis.com": {"142.250.0.1", "2a00:1450::1"},
+			"updates.push.services.mozilla.com": {"34.120.0.1"}, "web.push.apple.com": {"17.0.0.1"},
+			"push1.example.com": {"8.8.8.8"}, "a.b.c.e2": {"8.8.8.8"},
 		}}
 		if err := ValidateEndpoint(context.Background(), r, e); err != nil {
 			t.Errorf("%.60q refused: %v", e, err)
@@ -172,5 +180,44 @@ func TestValidateEndpointSyntax(t *testing.T) {
 		"https://2130706433/secret-path", "https://0x7f.1/secret-path", "https://0177.0.0.1/secret-path", "https://push.0X7F/secret-path",
 		"https://push.example.org:8443/secret-path", "https://localhost/secret-path", ""} {
 		wantRefused(t, ValidateEndpointSyntax(e), e)
+	}
+}
+
+// wantNonGlobal is the test's own copy, so a widened entry in nonGlobal fails here rather than moving its siblings.
+var wantNonGlobal = []string{
+	"0.0.0.0/8", "100.64.0.0/10", "192.0.0.0/24", "192.0.2.0/24", "198.18.0.0/15", "198.51.100.0/24",
+	"203.0.113.0/24", "240.0.0.0/4",
+	"::/96", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001::/32", "2001:db8::/32", "2002::/16", "fec0::/10",
+	"3fff::/20", "2001:2::/48",
+}
+
+// TestNonGlobalPrefixesAreTight requires the exact list and accepts the last address of each prefix's sibling half,
+// so widening any prefix by even one bit fails. Two siblings are non-global already: 224/4 (multicast), fe80::/10.
+func TestNonGlobalPrefixesAreTight(t *testing.T) {
+	var got []string
+	for _, p := range nonGlobal {
+		got = append(got, p.String())
+	}
+	if strings.Join(got, " ") != strings.Join(wantNonGlobal, " ") {
+		t.Fatalf("nonGlobal\n got %v\nwant %v", got, wantNonGlobal)
+	}
+	for _, ps := range wantNonGlobal {
+		p := netip.MustParsePrefix(ps)
+		b := p.Addr().AsSlice()
+		bits := p.Bits()
+		b[(bits-1)/8] ^= 0x80 >> ((bits - 1) % 8)
+		for i := bits; i < len(b)*8; i++ {
+			b[i/8] |= 0x80 >> (i % 8)
+		}
+		sib, _ := netip.AddrFromSlice(b)
+		if ps == "240.0.0.0/4" || ps == "fec0::/10" {
+			if publicAddr(sib) {
+				t.Errorf("%s sibling %s should already be non-global", ps, sib)
+			}
+			continue
+		}
+		if !publicAddr(sib) {
+			t.Errorf("%s: sibling address %s refused (a prefix wider than listed?)", ps, sib)
+		}
 	}
 }
