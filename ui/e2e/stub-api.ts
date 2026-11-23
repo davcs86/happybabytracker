@@ -122,7 +122,7 @@ type KidRow = {
 	seq: number;
 };
 type Grant = { kidId: string; parentId: string; role: Role };
-type TrackerKey = 'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals';
+type TrackerKey = 'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals' | 'symptoms';
 // view is the entry as the API answers it; every merge works on it directly.
 type Row = { kidId: string; view: Body & { id: string } };
 
@@ -141,11 +141,18 @@ type State = {
 	dismissals: Map<string, string>;
 	// kid id + ':' + module id; a row is a guardian's choice (or a band-crossing re-enable).
 	modules: Map<string, boolean>;
+	medications: CourseStub[];
+	doses: DoseStub[];
+	reminders: ReminderStub[];
+	// The stub clock when the simulated reminder worker last ran.
+	syncedAt: number;
 	nextId: number;
 };
 
 const iso = (unixS: number) => new Date(unixS * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-const now = () => Math.floor(Date.now() / 1000);
+// Set by POST /__clock and cleared by /__reset; every stub instant reads it.
+let clockOffsetS = 0;
+const now = () => Math.floor(Date.now() / 1000) + clockOffsetS;
 
 // Thirteen whole months old on the stub's clock, whatever day the suite runs.
 export const IVY = {
@@ -222,11 +229,23 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 			{ kidId: leo.id, parentId: ana.id, role: 'caregiver' },
 			{ kidId: ivy.id, parentId: ana.id, role: 'guardian' }
 		],
-		entries: { bottles: [], nursing: [], pumping: [], sleep: [], diapers: [], meals: [] },
+		entries: {
+			bottles: [],
+			nursing: [],
+			pumping: [],
+			sleep: [],
+			diapers: [],
+			meals: [],
+			symptoms: []
+		},
 		growth: leoGrowth(),
 		vaccinations: [],
 		dismissals: new Map(),
 		modules: new Map(),
+		medications: [],
+		doses: [],
+		reminders: [],
+		syncedAt: now(),
 		nextId: 1
 	};
 }
@@ -271,6 +290,7 @@ type FieldKind =
 	| 'measure'
 	| 'sources'
 	| 'weighin'
+	| 'schedule'
 	// Left to the handler, which answers 422 rather than decodeJSON's 400.
 	| 'raw';
 type Body = Record<string, unknown>;
@@ -311,6 +331,15 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 						Object.values(amounts as Body).every((a) => a === null || Number.isInteger(a))))
 			);
 		}
+		case 'schedule': {
+			const times = isObject(v) ? (v as Body).times : null;
+			return (
+				isObject(v) &&
+				nullOr('string')((v as Body).kind) &&
+				(times == null || (Array.isArray(times) && times.every(nullOr('string')))) &&
+				((v as Body).hours == null || Number.isInteger((v as Body).hours))
+			);
+		}
 		// Go flags a wrong type inside a weigh-in and the handler answers 422 naming it, never 400.
 		case 'weighin':
 		case 'raw':
@@ -324,7 +353,8 @@ const NESTED_KEYS: Partial<Record<FieldKind, readonly string[]>> = {
 	volume: ['unit', 'amount'],
 	measure: ['unit', 'amount'],
 	sources: ['unit', 'amounts'],
-	weighin: ['unit', 'amount']
+	weighin: ['unit', 'amount'],
+	schedule: ['kind', 'times', 'hours']
 };
 
 // decodeJSON in respond.go: unknown key (also nested) -> 422 unknown_field, a wrong type or bad JSON -> 400.
@@ -437,13 +467,13 @@ function cleanDisplayName(s: string): string | null {
 	return n >= DISPLAY_NAME.min && n <= DISPLAY_NAME.max ? t : null;
 }
 
-function todayIn(timeZone: string): string {
+function todayIn(timeZone: string, at = now()): string {
 	const p = new Intl.DateTimeFormat('en-CA', {
 		timeZone,
 		year: 'numeric',
 		month: '2-digit',
 		day: '2-digit'
-	}).formatToParts(new Date());
+	}).formatToParts(new Date(at * 1000));
 	const part = (t: string) => p.find((x) => x.type === t)?.value;
 	return `${part('year')}-${part('month')}-${part('day')}`;
 }
@@ -823,6 +853,9 @@ const routes: RouteDef[] = [
 			const field = invalidKidField(kid, stored.vaccineSchema, body);
 			if (field) return error(res, 422, 'invalid', field);
 			state.kids.set(id, kid);
+			if (kid.timeZone !== stored.timeZone) {
+				for (const c of state.medications.filter((m) => m.kidId === id)) rematerialise(state, c);
+			}
 			send(res, 200, kidView(kid, p.role ?? 'guardian'));
 		}
 	},
@@ -841,6 +874,9 @@ const routes: RouteDef[] = [
 			}
 			state.kids.delete(id);
 			state.grants = state.grants.filter((g) => g.kidId !== id);
+			state.medications = state.medications.filter((m) => m.kidId !== id);
+			state.doses = state.doses.filter((d) => d.kidId !== id);
+			state.reminders = state.reminders.filter((r) => r.kidId !== id);
 			send(res, 204);
 		}
 	},
@@ -922,7 +958,8 @@ const TRACKER_KEYS: readonly TrackerKey[] = [
 	'pumping',
 	'sleep',
 	'diapers',
-	'meals'
+	'meals',
+	'symptoms'
 ];
 // The timeline names an entry by its singular type, REST paths by the route name.
 const TIMELINE_TYPES: Record<TrackerKey, string> = {
@@ -931,7 +968,8 @@ const TIMELINE_TYPES: Record<TrackerKey, string> = {
 	pumping: 'pumping',
 	sleep: 'sleep',
 	diapers: 'diaper',
-	meals: 'meal'
+	meals: 'meal',
+	symptoms: 'symptom'
 };
 const MODULES = [
 	'bottles',
@@ -952,16 +990,36 @@ const MODULE_OF: Record<TrackerKey, string> = {
 	pumping: 'pumping',
 	diapers: 'diapers',
 	sleep: 'sleep',
-	meals: 'feeding'
+	meals: 'feeding',
+	symptoms: 'sickness'
 };
 const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication'];
 const BOTTLE_CONTENTS = ['breast_milk', 'formula', 'cow_milk', 'other'];
 const DIAPER_KINDS = ['wet', 'dirty', 'both', 'dry'];
 const NURSING_SIDES = ['left', 'right'];
 const PUMPING_SIDES = ['left', 'right', 'both'];
+const SYMPTOMS = [
+	'congestion',
+	'cough',
+	'fever',
+	'vomiting',
+	'diarrhea',
+	'constipation',
+	'rash',
+	'ear_pain',
+	'sore_throat',
+	'poor_appetite',
+	'unusually_sleepy',
+	'other'
+];
+const SEVERITIES = ['mild', 'moderate', 'severe'];
+const TEMP_METHODS = ['oral', 'rectal', 'axillary', 'ear', 'forehead', 'other'];
 // The API's limits (constants.go), mirrored for the stub only.
 const NOTE_MAX_LEN = 500;
 const MEAL_TEXT_MAX_LEN = 200;
+const SYMPTOM_OTHER_MAX_LEN = 80;
+// MinTempCHundredths, MaxTempCHundredths.
+const TEMP_C_HUNDREDTHS = { min: 3000, max: 4500 };
 const MAX_FUTURE_SKEW_S = 5 * 60;
 const MAX_SESSION_S = 24 * 3600;
 const BOTTLE_ML = { min: 1, max: 1000 };
@@ -1046,6 +1104,13 @@ function mergeTime(view: Body, body: Body, key: string, c: Ctx): boolean {
 	return instantOK(unix(view[key]), c);
 }
 
+// changedOK: a time the body changed must be instantOK; an unchanged stored one stays valid.
+function mergeChangedTime(view: Body, body: Body, key: string, c: Ctx): boolean {
+	const stored = view[key];
+	if (typeof body[key] === 'string') view[key] = iso(unix(body[key]));
+	return view[key] === stored || instantOK(unix(view[key]), c);
+}
+
 // optionalString: absent keeps, null clears, a string replaces.
 function mergeNote(view: Body, body: Body): boolean {
 	if ('note' in body) view.note = body.note;
@@ -1081,6 +1146,32 @@ function mergeVolume(view: Body, body: Body, range: { min: number; max: number }
 	}
 	const ml = (view.volume as Vol).ml;
 	return ml >= range.min && ml <= range.max;
+}
+
+type Temp = { c_hundredths: number; f_hundredths: number; typed_unit: string };
+const cToF = (c: number) => roundHalfUp(c * 9, 5) + 3200;
+const fToC = (f: number) => roundHalfUp((f - 3200) * 5, 9);
+
+// units.NewTemperature: hundredths of the typed unit, refused outside TEMP_C_HUNDREDTHS after conversion.
+function newTemperature(unit: unknown, amount: unknown): Temp | null {
+	if ((unit !== 'c' && unit !== 'f') || !Number.isInteger(amount)) return null;
+	const a = amount as number;
+	const { min, max } = TEMP_C_HUNDREDTHS;
+	const [lo, hi] = unit === 'c' ? [min - 1, max + 1] : [cToF(min) - 1, cToF(max) + 1];
+	if (a < lo || a > hi) return null;
+	const t = unit === 'c' ? { c: a, f: cToF(a) } : { c: fToC(a), f: a };
+	if (t.c < min || t.c > max) return null;
+	return { c_hundredths: t.c, f_hundredths: t.f, typed_unit: unit };
+}
+
+// mergeTemperature: absent or the unchanged typed value keeps stored, before any range check; undefined when refused.
+function mergeTemperature(stored: Temp | null, body: Body): Temp | null | undefined {
+	if (!('temperature' in body)) return stored;
+	const input = body.temperature as { unit?: unknown; amount?: unknown } | null;
+	if (input === null) return null;
+	const typed = stored?.typed_unit === 'f' ? stored.f_hundredths : stored?.c_hundredths;
+	if (stored && input.unit === stored.typed_unit && input.amount === typed) return stored;
+	return newTemperature(input.unit, input.amount) ?? undefined;
 }
 
 type SourceView = { source: string; volume: Vol };
@@ -1465,6 +1556,57 @@ const SPECS: Record<TrackerKey, Spec> = {
 			if (!mergeNote(view, body)) return 'note';
 			return invalidSession('nursing', view) || view;
 		}
+	},
+	symptoms: {
+		timeKey: 'at',
+		timer: false,
+		fields: {
+			at: 'time',
+			symptom: 'string',
+			severity: 'string',
+			other_text: 'string',
+			temperature: 'measure',
+			method: 'string',
+			...NOTE_FIELD
+		},
+		// symptomInput.mergeOnto: at, symptom, severity, other_text, temperature, method, note.
+		merge: (view, body, c) => {
+			const storedSymptom = view.symptom;
+			if (!mergeChangedTime(view, body, 'at', c)) return 'at';
+			if (typeof body.symptom === 'string') view.symptom = body.symptom;
+			if (!SYMPTOMS.includes(view.symptom as string)) return 'symptom';
+			if ('severity' in body) view.severity = body.severity;
+			if (view.severity !== null && !SEVERITIES.includes(view.severity as string)) {
+				return 'severity';
+			}
+			if ('other_text' in body) view.other_text = body.other_text;
+			if (view.symptom === 'other') {
+				const text = ((view.other_text as string | null) ?? '').trim();
+				if (text === '' || runes(text) > SYMPTOM_OTHER_MAX_LEN) return 'other_text';
+				view.other_text = text;
+			} else if (view.other_text !== null) return 'other_text';
+			const isFever = view.symptom === 'fever';
+			const cleared = body.temperature === null && body.method === null;
+			if (storedSymptom === 'fever' && !isFever && !cleared) return 'temperature';
+			const t = mergeTemperature(view.temperature as Temp | null, body);
+			if (t === undefined || (t !== null) !== isFever) return 'temperature';
+			view.temperature = t;
+			if ('method' in body) view.method = body.method;
+			const method = view.method as string | null;
+			if ((method !== null) !== isFever || (method !== null && !TEMP_METHODS.includes(method))) {
+				return 'method';
+			}
+			return mergeNote(view, body) ? '' : 'note';
+		},
+		blank: (c) => ({
+			at: iso(c.now),
+			symptom: '',
+			severity: null,
+			other_text: null,
+			temperature: null,
+			method: null,
+			note: null
+		})
 	}
 };
 
@@ -1768,14 +1910,11 @@ const overviewRoutes: RouteDef[] = [
 			keys = TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]));
 		} else {
 			const names = given.length === 1 ? given[0].split(',') : [''];
-			// symptom is a real type with no rows until the stub stores symptoms.
-			const wanted = names.map((n) =>
-				n === 'symptom' ? n : TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n)
-			);
+			const wanted = names.map((n) => TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n));
 			if (wanted.some((k, i) => !k || wanted.indexOf(k) !== i)) {
 				return error(res, 422, 'invalid', 'types');
 			}
-			keys = wanted.filter((k) => k !== 'symptom') as TrackerKey[];
+			keys = wanted as TrackerKey[];
 		}
 		const items = keys.flatMap((key) =>
 			itemsOf(state, key, kid.id).map((i) => ({
@@ -1829,7 +1968,10 @@ const overviewRoutes: RouteDef[] = [
 				nursing: runningOf(state, 'nursing', kid.id)
 			},
 			today: daySummary(state, kid, todayIn(kid.timeZone)),
-			due: state.scenario === 'home_due_many' ? MANY_DUE : vaccineDue(state, kid)
+			due:
+				state.scenario === 'home_due_many'
+					? MANY_DUE
+					: [...medicationDue(state, kid), ...vaccineDue(state, kid)]
 		});
 	})
 ];
@@ -2759,11 +2901,540 @@ const vaccineRoutes: RouteDef[] = [
 	})
 ];
 
+// Medication: courses, doses and the home Due entries as the Go handlers answer them. syncReminders stands in for
+// the reminder worker, so the rows follow the stub clock (POST /__clock) on every request.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const MAX_MEDICATIONS_PER_KID = 50;
+const MAX_DOSES_PER_KID = 5000;
+const MEDICATION_TEXT_MAX_LEN = 80;
+const MAX_SCHEDULE_TIMES = 12;
+// MinEveryHours, MaxEveryHours.
+const EVERY_HOURS = { min: 1, max: 168 };
+const MAX_SCHEDULE_OCCURRENCES = 1000;
+const REMINDER_EXPIRY_S = 30 * 60;
+const DOSE_DONE_LEAD_S = 30 * 60;
+
+type Schedule = { kind: string; times: string[]; hours: number };
+type CourseStub = {
+	kidId: string;
+	id: string;
+	name: string;
+	dose: string;
+	schedule: Schedule;
+	startAt: number;
+	endOn: string | null;
+	active: boolean;
+	note: string | null;
+};
+type DoseStub = {
+	kidId: string;
+	id: string;
+	medication: string;
+	givenAt: number;
+	amount: string | null;
+	note: string | null;
+};
+type ReminderStub = {
+	kidId: string;
+	medicationId: string;
+	dueAt: number;
+	state: 'pending' | 'done' | 'expired' | 'cancelled';
+};
+
+// clockMinutes in schedule.go: strict HH:MM.
+function clockMinutes(v: string): number | null {
+	const m = /^(\d{2}):(\d{2})$/.exec(v);
+	if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+	return Number(m[1]) * 60 + Number(m[2]);
+}
+
+// schedule.Valid.
+function scheduleValid(s: Schedule): boolean {
+	switch (s.kind) {
+		case 'none':
+			return s.times.length === 0 && s.hours === 0;
+		case 'times': {
+			const mins = s.times.map(clockMinutes);
+			return (
+				s.hours === 0 &&
+				mins.length >= 1 &&
+				mins.length <= MAX_SCHEDULE_TIMES &&
+				mins.every((m, i) => m !== null && mins.indexOf(m) === i)
+			);
+		}
+		case 'every':
+			return s.times.length === 0 && inRange(s.hours, EVERY_HOURS);
+	}
+	return false;
+}
+
+// canonicalSchedule in store/medications.go: times sorted; the columns a kind does not use are empty.
+const canonicalSchedule = (s: Schedule): Schedule => ({
+	kind: s.kind,
+	times: s.kind === 'times' ? [...s.times].sort() : [],
+	hours: s.kind === 'every' ? s.hours : 0
+});
+
+const wallOf = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
+
+// resolve in schedule.go: a wall time (unix seconds read as UTC) as an instant in zone; the earlier of two in an
+// overlap, the gap's end in a gap.
+function resolveWall(wall: number, zone: string): number {
+	const offsetAt = (t: number) => wallOffsetMs(t * 1000, zone) / 1000;
+	const before = offsetAt(wall - DAY_S);
+	const after = offsetAt(wall + DAY_S);
+	const hits = [before, after].map((o) => wall - o).filter((t) => offsetAt(t) === wall - t);
+	if (hits.length > 0) return Math.min(...hits);
+	let lo = wall - after;
+	let hi = wall - before;
+	while (hi - lo > 1) {
+		const mid = Math.floor((lo + hi) / 2);
+		if (offsetAt(mid) === after) hi = mid;
+		else lo = mid;
+	}
+	return hi;
+}
+
+// schedule.DayEnd: the first valid instant of the kid-local day after t's.
+const dayEndOf = (zone: string, t: number) =>
+	resolveWall(wallOf(addDays(todayIn(zone, t), 1)), zone);
+
+// walk in schedule.go: each occurrence >= from, ascending, until each returns false.
+function walkCourse(c: CourseStub, zone: string, from: number, each: (t: number) => boolean) {
+	if (!c.active || !scheduleValid(c.schedule)) return;
+	const end = c.endOn === null ? Infinity : resolveWall(wallOf(addDays(c.endOn, 1)), zone);
+	const start = Math.max(from, c.startAt);
+	if (c.schedule.kind === 'every') {
+		const step = c.schedule.hours * 3600;
+		let k = Math.floor((start - c.startAt) / step);
+		for (let i = 0; i < MAX_SCHEDULE_OCCURRENCES + 2; i++, k++) {
+			const t = c.startAt + k * step;
+			if (t < start) continue;
+			if (t >= end || !each(t)) return;
+		}
+		return;
+	}
+	const clocks = c.schedule.times.map((v) => clockMinutes(v) as number).sort((a, b) => a - b);
+	let day = addDays(todayIn(zone, start), -1);
+	let last = -Infinity;
+	for (let i = 0; i < MAX_SCHEDULE_OCCURRENCES + 2; i++, day = addDays(day, 1)) {
+		for (const cm of clocks) {
+			const t = resolveWall(wallOf(day) + cm * 60, zone);
+			if (t <= last || t < start) continue;
+			if (t >= end || !each(t)) return;
+			last = t;
+		}
+	}
+}
+
+function occurrences(c: CourseStub, zone: string, from: number, to: number): number[] {
+	const out: number[] = [];
+	walkCourse(c, zone, from, (t) => {
+		if (t > to) return false;
+		out.push(t);
+		return out.length < MAX_SCHEDULE_OCCURRENCES;
+	});
+	return out;
+}
+
+function nextOccurrence(c: CourseStub, zone: string, after: number): number | null {
+	let next: number | null = null;
+	walkCourse(c, zone, after + 1, (t) => {
+		next = t;
+		return false;
+	});
+	return next;
+}
+
+const zoneOf = (state: State, c: CourseStub) => (state.kids.get(c.kidId) as KidRow).timeZone;
+const reminderAt = (state: State, c: CourseStub, due: number) =>
+	state.reminders.find((r) => r.medicationId === c.id && r.dueAt === due);
+
+// materialiseCourse: a row per occurrence in [from, at], then the first occurrence after at whose row is not done.
+function materialiseCourse(state: State, c: CourseStub, at: number, from = at - REMINDER_EXPIRY_S) {
+	if (!c.active || c.schedule.kind === 'none') return;
+	const zone = zoneOf(state, c);
+	const insert = (dueAt: number) => {
+		if (!reminderAt(state, c, dueAt)) {
+			state.reminders.push({ kidId: c.kidId, medicationId: c.id, dueAt, state: 'pending' });
+		}
+	};
+	for (const due of occurrences(c, zone, from, at)) insert(due);
+	let after = at;
+	for (let i = 0; i < MAX_SCHEDULE_OCCURRENCES; i++) {
+		const due = nextOccurrence(c, zone, after);
+		if (due === null) return;
+		if (reminderAt(state, c, due)?.state !== 'done') return insert(due);
+		after = due;
+	}
+}
+
+// rematerialise: drop the pending rows due after now, and those in the lookback that are no longer occurrences
+// (the stub has no deliveries), then materialise again.
+function rematerialise(state: State, c: CourseStub) {
+	const t = now();
+	const kept = occurrences(c, zoneOf(state, c), t - REMINDER_EXPIRY_S, t);
+	state.reminders = state.reminders.filter(
+		(r) =>
+			r.medicationId !== c.id ||
+			r.state !== 'pending' ||
+			(r.dueAt <= t && (r.dueAt < t - REMINDER_EXPIRY_S || kept.includes(r.dueAt)))
+	);
+	materialiseCourse(state, c, t);
+}
+
+const medicationOff = (state: State, kidId: string) =>
+	state.modules.get(`${kidId}:medication`) === false;
+
+// checkReminder's Open: the module on, the course active and covering the due time.
+function reminderOpen(state: State, r: ReminderStub): boolean {
+	const c = state.medications.find((m) => m.id === r.medicationId) as CourseStub;
+	return (
+		c.active &&
+		!medicationOff(state, r.kidId) &&
+		r.dueAt >= c.startAt &&
+		(c.endOn === null || todayIn(zoneOf(state, c), r.dueAt) <= c.endOn)
+	);
+}
+
+// The worker's ticks since the last request, as one pass: Materialise, OpenDue's cancellations, then Expire.
+function syncReminders(state: State) {
+	const t = now();
+	const from = Math.min(state.syncedAt, t) - REMINDER_EXPIRY_S;
+	for (const c of state.medications) {
+		if (!medicationOff(state, c.kidId)) materialiseCourse(state, c, t, from);
+	}
+	for (const r of state.reminders) {
+		if (r.state === 'pending' && r.dueAt <= t && r.dueAt >= from && !reminderOpen(state, r)) {
+			r.state = 'cancelled';
+		}
+	}
+	for (const r of state.reminders) {
+		if (r.state === 'pending' && r.dueAt < t - REMINDER_EXPIRY_S) r.state = 'expired';
+	}
+	state.syncedAt = t;
+}
+
+// markDone in store/doses.go: the latest row due by givenAt + DoseDoneLead, unless givenAt reaches the following
+// occurrence; then the course keeps a not-done next row.
+function markDone(state: State, c: CourseStub, givenAt: number) {
+	const r = state.reminders
+		.filter((x) => x.medicationId === c.id && x.dueAt <= givenAt + DOSE_DONE_LEAD_S)
+		.sort((a, b) => b.dueAt - a.dueAt)[0];
+	if (!r || (r.state !== 'pending' && r.state !== 'expired') || c.schedule.kind === 'none') return;
+	const following = nextOccurrence(c, zoneOf(state, c), r.dueAt);
+	if (following !== null && givenAt >= following) return;
+	r.state = 'done';
+	materialiseCourse(state, c, now());
+}
+
+const newer = <T extends { id: string }>(a: T, b: T, at: (x: T) => number) =>
+	at(b) - at(a) || (a.id < b.id ? 1 : -1);
+
+function medicationView(state: State, c: CourseStub) {
+	const doses = state.doses.filter((d) => d.medication === c.id);
+	const last = [...doses].sort((a, b) => newer(a, b, (d) => d.givenAt))[0];
+	const t = now();
+	const next = state.reminders
+		.filter((r) => r.medicationId === c.id && r.state !== 'done' && r.dueAt > t)
+		.reduce((min, r) => Math.min(min, r.dueAt), Infinity);
+	const s = c.schedule;
+	return {
+		id: c.id,
+		name: c.name,
+		dose: c.dose,
+		// omitempty: times and hours only where the kind uses them.
+		schedule: {
+			kind: s.kind,
+			...(s.times.length > 0 ? { times: s.times } : {}),
+			...(s.hours !== 0 ? { hours: s.hours } : {})
+		},
+		start_at: iso(c.startAt),
+		end_on: c.endOn,
+		active: c.active,
+		note: c.note,
+		last_dose: last ? { id: last.id, given_at: iso(last.givenAt), amount: last.amount } : null,
+		next_due: next === Infinity ? null : { due_at: iso(next) },
+		dose_count: doses.length
+	};
+}
+
+const doseView = (d: DoseStub) => ({
+	id: d.id,
+	medication: d.medication,
+	given_at: iso(d.givenAt),
+	amount: d.amount,
+	note: d.note
+});
+
+const medicationTextOK = (s: string) => runes(s) >= 1 && runes(s) <= MEDICATION_TEXT_MAX_LEN;
+
+const MEDICATION_FIELDS: Record<string, FieldKind> = {
+	name: 'string',
+	dose: 'string',
+	schedule: 'schedule',
+	start_at: 'time',
+	end_on: 'string',
+	active: 'bool',
+	...NOTE_FIELD
+};
+
+type ScheduleBody = {
+	kind?: string | null;
+	times?: (string | null)[] | null;
+	hours?: number | null;
+};
+
+// medicationInput.mergeOnto: name, dose, schedule, start_at, end_on, active, note; start_at and end_on only when
+// changed, so a stored course stays editable.
+function mergeMedication(c: CourseStub, body: Body, kid: KidRow): string {
+	if (typeof body.name === 'string') c.name = body.name.trim();
+	if (!medicationTextOK(c.name)) return 'name';
+	if (typeof body.dose === 'string') c.dose = body.dose.trim();
+	if (!medicationTextOK(c.dose)) return 'dose';
+	const s = body.schedule as ScheduleBody | null | undefined;
+	if (s) {
+		c.schedule = {
+			kind: s.kind ?? '',
+			times: (s.times ?? []).map((v) => v ?? ''),
+			hours: s.hours ?? 0
+		};
+	}
+	if (!scheduleValid(c.schedule)) return 'schedule';
+	const storedStart = c.startAt;
+	if (typeof body.start_at === 'string') c.startAt = unix(body.start_at);
+	const startChanged = c.startAt !== storedStart;
+	if (startChanged && c.startAt < midnight(kid.birthDate, kid.timeZone)) return 'start_at';
+	const storedEnd = c.endOn;
+	if ('end_on' in body) c.endOn = body.end_on as string | null;
+	const endChanged = 'end_on' in body && c.endOn !== storedEnd;
+	if (
+		c.endOn !== null &&
+		(endChanged || startChanged) &&
+		!(validDate(c.endOn) && c.endOn >= todayIn(kid.timeZone, c.startAt))
+	) {
+		return 'end_on';
+	}
+	if (typeof body.active === 'boolean') c.active = body.active;
+	if ('note' in body) c.note = body.note as string | null;
+	return c.note === null || runes(c.note) <= NOTE_MAX_LEN ? '' : 'note';
+}
+
+const timing = (c: CourseStub) => JSON.stringify([c.schedule, c.startAt, c.endOn, c.active]);
+
+const DOSE_FIELDS: Record<string, FieldKind> = {
+	medication: 'string',
+	given_at: 'time',
+	amount: 'string',
+	...NOTE_FIELD
+};
+
+// doseInput.mergeOnto: given_at, amount, note.
+function mergeDose(d: DoseStub, body: Body, c: Ctx): string {
+	const stored = d.givenAt;
+	if (typeof body.given_at === 'string') d.givenAt = unix(body.given_at);
+	if (d.givenAt !== stored && !instantOK(d.givenAt, c)) return 'given_at';
+	if ('amount' in body) d.amount = body.amount as string | null;
+	if (d.amount !== null) {
+		d.amount = d.amount.trim();
+		if (!medicationTextOK(d.amount)) return 'amount';
+	}
+	if ('note' in body) d.note = body.note as string | null;
+	return d.note === null || runes(d.note) <= NOTE_MAX_LEN ? '' : 'note';
+}
+
+// DueEntries and medicationDue: pending or expired rows of active courses before the end of the kid-local day,
+// a course's latest past one only while now < min(due + the kid's minutes, the next occurrence).
+function medicationDue(state: State, kid: KidRow) {
+	if (!moduleStates(state, kid).some((m) => m.module === 'medication' && m.enabled)) return [];
+	const t = now();
+	const dayEnd = dayEndOf(kid.timeZone, t);
+	const rows = state.reminders
+		.filter(
+			(r) =>
+				r.kidId === kid.id &&
+				(r.state === 'pending' || r.state === 'expired') &&
+				r.dueAt < dayEnd &&
+				r.dueAt > t - kid.reminderOverdueMinutes * 60
+		)
+		.map((r) => ({ r, c: state.medications.find((m) => m.id === r.medicationId) as CourseStub }))
+		.filter((x) => x.c.active)
+		.sort((a, b) => a.r.dueAt - b.r.dueAt || (a.c.id < b.c.id ? -1 : a.c.id > b.c.id ? 1 : 0));
+	const latest = new Map<string, number>();
+	rows.forEach((x, i) => {
+		if (t >= x.r.dueAt) latest.set(x.c.id, i);
+	});
+	return rows
+		.filter((x, i) => {
+			if (t < x.r.dueAt) return true;
+			const next = nextOccurrence(x.c, kid.timeZone, x.r.dueAt);
+			return latest.get(x.c.id) === i && (next === null || t < next);
+		})
+		.map((x) => ({
+			kind: 'medication',
+			medication: { id: x.c.id, name: x.c.name },
+			due_at: iso(x.r.dueAt),
+			state: t < x.r.dueAt ? 'due' : 'overdue'
+		}));
+}
+
+const courseOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.medications.find((m) => m.kidId === kidId && m.id === id) : undefined;
+const doseOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.doses.find((d) => d.kidId === kidId && d.id === id) : undefined;
+
+// An entry route: the body decoded first (PATCH), then the 404 an unknown, another kid's or a malformed id shares.
+const medicationEntryRoute = <T>(
+	method: string,
+	suffix: string,
+	fields: Record<string, FieldKind>,
+	find: (state: State, kidId: string, id: string) => T | undefined,
+	run: (state: State, res: ServerResponse, kid: KidRow, row: T, body: Body) => unknown
+): RouteDef => ({
+	method,
+	pattern: new RegExp(`^\\/v1\\/kids\\/([^/]+)\\/${suffix}\\/([^/]+)$`),
+	access: 'caregiver',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, id]) => {
+		const body = method === 'PATCH' ? await decodeBody(req, res, fields) : {};
+		if (!body) return;
+		const row = find(state, kidId, id);
+		if (!row) return noKid(res);
+		return run(state, res, state.kids.get(kidId) as KidRow, row, body);
+	}
+});
+
+const medicationRoutes: RouteDef[] = [
+	kidRoute('GET', 'medications', 'caregiver', (state, _req, res, kid) => {
+		const rows = state.medications
+			.filter((c) => c.kidId === kid.id)
+			.sort((a, b) => newer(a, b, (c) => c.startAt));
+		send(res, 200, { medications: rows.map((c) => medicationView(state, c)) });
+	}),
+	kidRoute('POST', 'medications', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, MEDICATION_FIELDS);
+		if (!body) return;
+		const c: CourseStub = {
+			kidId: kid.id,
+			id: '',
+			name: '',
+			dose: '',
+			schedule: { kind: '', times: [], hours: 0 },
+			startAt: now(),
+			endOn: null,
+			active: true,
+			note: null
+		};
+		const field = mergeMedication(c, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (state.medications.filter((m) => m.kidId === kid.id).length >= MAX_MEDICATIONS_PER_KID) {
+			return error(res, 409, 'limit');
+		}
+		c.schedule = canonicalSchedule(c.schedule);
+		c.id = nextId(state, 'm');
+		state.medications.push(c);
+		materialiseCourse(state, c, now());
+		send(res, 201, medicationView(state, c));
+	}),
+	medicationEntryRoute('GET', 'medications', {}, courseOf, (state, res, _kid, c) =>
+		send(res, 200, medicationView(state, c))
+	),
+	medicationEntryRoute(
+		'PATCH',
+		'medications',
+		MEDICATION_FIELDS,
+		courseOf,
+		(state, res, kid, c, body) => {
+			const merged = structuredClone(c);
+			const field = mergeMedication(merged, body, kid);
+			if (field) return error(res, 422, 'invalid', field);
+			merged.schedule = canonicalSchedule(merged.schedule);
+			const changed = timing(merged) !== timing(c);
+			Object.assign(c, merged);
+			if (changed) rematerialise(state, c);
+			send(res, 200, medicationView(state, c));
+		}
+	),
+	medicationEntryRoute('DELETE', 'medications', {}, courseOf, (state, res, _kid, c) => {
+		state.medications = state.medications.filter((m) => m !== c);
+		state.doses = state.doses.filter((d) => d.medication !== c.id);
+		state.reminders = state.reminders.filter((r) => r.medicationId !== c.id);
+		send(res, 204);
+	}),
+	kidRoute('GET', 'medication-doses', 'caregiver', (state, req, res, kid) => {
+		const url = new URL(req.url ?? '/', STUB_URL);
+		const q = parsePage(url);
+		if (typeof q === 'string') return error(res, 422, 'invalid', q);
+		const medication = url.searchParams.get('medication');
+		if (medication !== null && !ENTRY_ID.test(medication)) {
+			return error(res, 422, 'invalid', 'medication');
+		}
+		const items = state.doses
+			.filter((d) => d.kidId === kid.id && (medication === null || d.medication === medication))
+			.map((d) => ({ at: d.givenAt, id: d.id, out: doseView(d) }));
+		respondPage(res, 'doses', items, q);
+	}),
+	// createDose: given_at, amount and note, then a course that is not the kid's, then the cap.
+	kidRoute('POST', 'medication-doses', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, DOSE_FIELDS);
+		if (!body) return;
+		const c = ctxFor(kid);
+		const d: DoseStub = {
+			kidId: kid.id,
+			id: '',
+			medication: typeof body.medication === 'string' ? body.medication : '',
+			givenAt: c.now,
+			amount: null,
+			note: null
+		};
+		const field = mergeDose(d, body, c);
+		if (field) return error(res, 422, 'invalid', field);
+		const course = state.medications.find((m) => m.id === d.medication && m.kidId === kid.id);
+		if (!course) return error(res, 422, 'invalid', 'medication');
+		if (state.doses.filter((x) => x.kidId === kid.id).length >= MAX_DOSES_PER_KID) {
+			return error(res, 409, 'limit');
+		}
+		d.id = nextId(state, 'd');
+		state.doses.push(d);
+		markDone(state, course, d.givenAt);
+		send(res, 201, doseView(d));
+	}),
+	medicationEntryRoute('GET', 'medication-doses', {}, doseOf, (_state, res, _kid, d) =>
+		send(res, 200, doseView(d))
+	),
+	// mergePatch: mergeOnto, then a medication other than the stored one; a new given_at marks its reminder done.
+	medicationEntryRoute(
+		'PATCH',
+		'medication-doses',
+		DOSE_FIELDS,
+		doseOf,
+		(state, res, kid, d, body) => {
+			const merged = structuredClone(d);
+			const field = mergeDose(merged, body, ctxFor(kid));
+			if (field) return error(res, 422, 'invalid', field);
+			if (typeof body.medication === 'string' && body.medication !== d.medication) {
+				return error(res, 422, 'invalid', 'medication');
+			}
+			const moved = merged.givenAt !== d.givenAt;
+			Object.assign(d, merged);
+			const course = state.medications.find((m) => m.id === d.medication) as CourseStub;
+			if (moved) markDone(state, course, d.givenAt);
+			send(res, 200, doseView(d));
+		}
+	),
+	medicationEntryRoute('DELETE', 'medication-doses', {}, doseOf, (state, res, _kid, d) => {
+		state.doses = state.doses.filter((x) => x !== d);
+		send(res, 204);
+	})
+];
+
 routes.push(
 	...TRACKER_KEYS.flatMap(trackerRoutes),
 	...overviewRoutes,
 	...growthRoutes,
-	...vaccineRoutes
+	...vaccineRoutes,
+	...medicationRoutes
 );
 
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {
@@ -2771,6 +3442,7 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	const path = url.pathname;
 	if (method === 'GET' && path === '/healthz') return send(res, 200, { status: 'ok' });
 	if (req.headers.authorization !== `Bearer ${STUB_TOKEN}`) return error(res, 401, 'unauthorized');
+	syncReminders(state);
 
 	const sessionToken = header(req, 'x-session-token');
 	const session = sessionToken ? state.sessions.get(sessionToken) : undefined;
@@ -2900,7 +3572,14 @@ async function control(state: State, req: IncomingMessage, res: ServerResponse, 
 		return send(res, 204);
 	}
 	if (req.method === 'POST' && url.pathname === '/__reset') {
+		clockOffsetS = 0;
 		Object.assign(state, { scenario: 'normal', requests: [], ...freshState() });
+		return send(res, 204);
+	}
+	if (req.method === 'POST' && url.pathname === '/__clock') {
+		const body = JSON.parse((await readBody(req)) || '{}') as { offset_seconds?: unknown };
+		if (!Number.isInteger(body.offset_seconds)) return send(res, 400);
+		clockOffsetS = body.offset_seconds as number;
 		return send(res, 204);
 	}
 	if (req.method === 'GET' && url.pathname === '/__requests') return send(res, 200, state.requests);
@@ -2926,6 +3605,15 @@ export async function setScenario(name: Scenario): Promise<void> {
 export async function resetStub(): Promise<void> {
 	const res = await fetch(`${STUB_URL}/__reset`, { method: 'POST' });
 	if (res.status !== 204) throw new Error(`resetStub: ${res.status}`);
+}
+
+// Moves the stub clock offsetSeconds from the real one; resetStub puts it back.
+export async function moveStubClock(offsetSeconds: number): Promise<void> {
+	const res = await fetch(`${STUB_URL}/__clock`, {
+		method: 'POST',
+		body: JSON.stringify({ offset_seconds: offsetSeconds })
+	});
+	if (res.status !== 204) throw new Error(`moveStubClock: ${res.status}`);
 }
 
 export async function storeVaccineSchema(kid: string, schema: string): Promise<void> {
