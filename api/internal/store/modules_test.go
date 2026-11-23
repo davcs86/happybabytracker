@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
@@ -13,7 +14,7 @@ import (
 // toddler is born so that at t0 (Madrid's 2026-11-20) it is exactly 24 months old; bandStart is that local midnight.
 func toddler(t *testing.T, s *Store, creator string) (kid model.Kid, loc *time.Location, bandStart time.Time) {
 	t.Helper()
-	k, err := s.CreateKid(ctx, model.Kid{Name: "Toddler", BirthDate: "2024-11-20", Sex: "male", TimeZone: "Europe/Madrid", GrowthSource: "who"}, creator, t0)
+	k, err := s.CreateKid(ctx, model.Kid{Name: "Toddler", BirthDate: "2024-11-20", Sex: "male", TimeZone: "Europe/Madrid", GrowthSource: "who", ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}, creator, t0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func TestGuardiansOffBeforeTheCrossingBlocksTheOverride(t *testing.T) {
 func TestOffByDefaultModuleIsReEnabledByALaterEntryOnceAndAnOffIsFinal(t *testing.T) {
 	s := openMem(t)
 	ana := mustParent(t, s, "ana")
-	k, err := s.CreateKid(ctx, model.Kid{Name: "Older", BirthDate: "2024-05-20", Sex: "male", TimeZone: "Europe/Madrid", GrowthSource: "who"}, ana.ID, t0)
+	k, err := s.CreateKid(ctx, model.Kid{Name: "Older", BirthDate: "2024-05-20", Sex: "male", TimeZone: "Europe/Madrid", GrowthSource: "who", ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}, ana.ID, t0)
 	if err != nil {
 		t.Fatal(err)
 	}

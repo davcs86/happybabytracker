@@ -80,10 +80,10 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 		t.Fatalf("create: %d %q", rec.Code, rec.Body.String())
 	}
 	got := bodyMap(t, rec)
-	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "role")
+	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "reminder_overdue_minutes", "role")
 	id, _ := got["id"].(string)
 	want := map[string]any{"id": id, "name": testKidName, "birth_date": "2026-03-04", "sex": "female",
-		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "growth_source": "who", "vaccine_schema": nil, "role": "guardian"}
+		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "growth_source": "who", "vaccine_schema": nil, "reminder_overdue_minutes": float64(60), "role": "guardian"}
 	if id == "" || !reflect.DeepEqual(got, want) {
 		t.Fatalf("created = %v", got)
 	}
@@ -98,7 +98,7 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 
 	plain := k.createKid(ana, nil)
 	rec = k.do(http.MethodGet, "/v1/kids/"+plain, ana, nil)
-	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 10 {
+	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 11 {
 		t.Errorf("without gestation = %v", b)
 	}
 }
@@ -120,7 +120,7 @@ func TestKidsForListsOnlyGranted(t *testing.T) {
 	}
 	for i, want := range []struct{ id, role string }{{first, "guardian"}, {shared, "caregiver"}, {last, "guardian"}} {
 		row := rows[i].(map[string]any)
-		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "role")
+		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "reminder_overdue_minutes", "role")
 		if row["id"] != want.id || row["role"] != want.role {
 			t.Errorf("row %d = %v, want %s %s", i, row, want.id, want.role)
 		}
@@ -230,7 +230,7 @@ func TestPatchKid(t *testing.T) {
 		t.Fatalf("patch name: %d %q", rec.Code, rec.Body.String())
 	}
 	want := map[string]any{"id": kid, "name": "Nova", "birth_date": "2026-11-20", "sex": "female",
-		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "growth_source": "who", "vaccine_schema": nil, "role": "guardian"}
+		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "growth_source": "who", "vaccine_schema": nil, "reminder_overdue_minutes": float64(60), "role": "guardian"}
 	if got := bodyMap(t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("patch response = %v", got)
 	}
@@ -276,6 +276,55 @@ func TestPatchKid(t *testing.T) {
 	rec = k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"id": "other"})
 	if rec.Code != http.StatusUnprocessableEntity || strings.TrimSpace(rec.Body.String()) != `{"error":"unknown_field","field":"id"}` {
 		t.Errorf("patch id: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReminderOverdueMinutes(t *testing.T) {
+	k := newKit(t)
+	ana, cara, eve := k.asParent("ana"), k.asParent("cara"), k.asParent("eve")
+	kid := k.createKid(ana, nil)
+	minutes := func(id, token string) any {
+		t.Helper()
+		rec := k.do(http.MethodGet, "/v1/kids/"+id, token, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET: %d %q", rec.Code, rec.Body.String())
+		}
+		return bodyMap(t, rec)["reminder_overdue_minutes"]
+	}
+	if got := minutes(kid, ana); got != float64(60) {
+		t.Errorf("a new kid reads %v, want 60", got)
+	}
+	if got := minutes(k.createKid(ana, map[string]any{"name": "Fifteen", "reminder_overdue_minutes": 15}), ana); got != float64(15) {
+		t.Errorf("POST with 15 reads %v", got)
+	}
+	for _, bad := range []any{4, 1441, "60", 60.5, true} { // null: raw body below (kidBody drops nil)
+		wantInvalid(t, k.do(http.MethodPost, "/v1/kids", ana, kidBody(map[string]any{"reminder_overdue_minutes": bad, "name": "Bad"})), "reminder_overdue_minutes")
+	}
+	wantInvalid(t, k.do(http.MethodPost, "/v1/kids", ana, `{"name":"X","birth_date":"2026-03-04","sex":"female","time_zone":"UTC","reminder_overdue_minutes":null}`), "reminder_overdue_minutes")
+
+	for _, n := range []int{5, 1440} {
+		rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"reminder_overdue_minutes": n})
+		if rec.Code != http.StatusOK || bodyMap(t, rec)["reminder_overdue_minutes"] != float64(n) || minutes(kid, ana) != float64(n) {
+			t.Errorf("PATCH %d: %d %q", n, rec.Code, rec.Body.String())
+		}
+	}
+	for _, raw := range []string{`4`, `1441`, `null`, `"60"`, `60.5`, `1e2`, `true`, `[]`} {
+		wantInvalid(t, k.do(http.MethodPatch, "/v1/kids/"+kid, ana, `{"reminder_overdue_minutes":`+raw+`}`), "reminder_overdue_minutes")
+		if got := minutes(kid, ana); got != float64(1440) {
+			t.Fatalf("after refused %s: %v", raw, got)
+		}
+	}
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"name": "Renamed"}); rec.Code != http.StatusOK || minutes(kid, ana) != float64(1440) {
+		t.Errorf("a patch without the key: %d %q, minutes %v", rec.Code, rec.Body.String(), minutes(kid, ana))
+	}
+
+	k.grant(ana, kid, "cara", "caregiver")
+	rec := k.do(http.MethodPatch, "/v1/kids/"+kid, cara, map[string]any{"reminder_overdue_minutes": 30})
+	if rec.Code != http.StatusForbidden || minutes(kid, ana) != float64(1440) {
+		t.Errorf("caregiver PATCH: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid, eve, map[string]any{"reminder_overdue_minutes": 30}); rec.Code != http.StatusNotFound {
+		t.Errorf("no-grant PATCH: %d %q", rec.Code, rec.Body.String())
 	}
 }
 

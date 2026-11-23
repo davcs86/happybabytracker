@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 func intp(n int) *int { return &n }
 
 func newKid(name string) model.Kid {
-	return model.Kid{Name: name, BirthDate: "2026-01-02", Sex: "female", TimeZone: "Europe/Madrid", GrowthSource: "who"}
+	return model.Kid{Name: name, BirthDate: "2026-01-02", Sex: "female", TimeZone: "Europe/Madrid", GrowthSource: "who", ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}
 }
 
 func mustKid(t *testing.T, s *Store, creator, name string) model.Kid {
@@ -42,6 +43,27 @@ func activeGuardians(t *testing.T, s *Store, kidID string) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func TestKidReminderOverdueMinutesRoundTrip(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	in := newKid("Lía")
+	in.ReminderOverdueMinutes = 15
+	k, err := s.CreateKid(ctx, in, ana.ID, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.Kid(ctx, k.ID); err != nil || got.ReminderOverdueMinutes != 15 {
+		t.Fatalf("Kid = %+v, %v", got, err)
+	}
+	k.ReminderOverdueMinutes = 90
+	if err := s.UpdateKid(ctx, k, ana.ID, t0); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := s.KidsFor(ctx, ana.ID); err != nil || len(rows) != 1 || rows[0].ReminderOverdueMinutes != 90 {
+		t.Errorf("KidsFor = %+v, %v", rows, err)
+	}
 }
 
 func TestCreateKidStoresKidAndGuardianGrant(t *testing.T) {

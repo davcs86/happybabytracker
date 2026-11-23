@@ -251,7 +251,7 @@ func newMatrixFixture(t *testing.T) *fixture {
 
 	schema := "us"
 	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who",
-		VaccineSchema: &schema}, f.parent[aG].ID, k.now)
+		VaccineSchema: &schema, ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}, f.parent[aG].ID, k.now)
 	if err != nil {
 		t.Fatal(err)
 	}

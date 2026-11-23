@@ -56,6 +56,7 @@ type Kid struct {
 	GestationWeeks, GestationDays      *int
 	GrowthSource                       string  // a growth.Source: "who" or "cdc"
 	VaccineSchema                      *string // a vaccines schedule id; nil until a guardian chooses one
+	ReminderOverdueMinutes             int     // minutes after a due time before a reminder counts as overdue
 }
 
 // Administration is one vaccination visit's dose: one stored row per antigen, sharing ID; Antigens are sorted.
