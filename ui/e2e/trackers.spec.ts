@@ -1916,6 +1916,8 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id) + '?advanced=0');
+		// Filled before hydration, the total is appended to the SSR one; Svelte drops this attribute after it.
+		await expect(field(page, 'Volume')).not.toHaveAttribute('value');
 		await field(page, 'Volume').fill('90');
 		await page.getByRole('radio', { name: 'Left' }).check();
 		await saveAndWait(page);
