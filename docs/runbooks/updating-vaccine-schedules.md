@@ -62,7 +62,7 @@ licence findings for each source; read the country's note before an update.
      - the US and UK captions, the CDC attribution and the omitted item "Tdap: 1 dose during each
        pregnancy";
      - the 6-in-1 lines `diphtheria-1 … hepatitis_b-1`;
-     - the birth group overdue ("Birth · Overdue (1)"), the window text of `hepatitis_b-1` and the one
+     - the birth group overdue (the home's "Birth · Overdue" link), the window text of `hepatitis_b-1` and the one
        line that dismiss-before dismisses. That count of 1 relies on `rsv-1` being Available (past its
        8-month window) and `hepatitis_b-1` being given by the 6-in-1; a data edit that changes either
        changes the count;
@@ -70,6 +70,19 @@ licence findings for each source; read the country's note before an update.
    - The UI tests run against made-up stub schedules (`ui/e2e/stub-api.ts`) and need no change.
 5. Run the whole pipeline in `CLAUDE.md` (API, UI, images and smoke) and open the pull request (see
    "Pull request checklist").
+
+## Catalogue files
+
+Nothing in the steps above covers `antigens.csv` and `products.csv` in `api/internal/vaccines/data/`;
+they have their own rules:
+
+- **Never rename or remove an antigen id.** Stored doses reference antigen ids. A renamed or removed id
+  silently moves those doses to "Other recorded vaccinations", and a later edit of such a dose that
+  touches its antigens fails validation. Add a new antigen id instead; changing an antigen's display
+  name is fine.
+- **Products** may be added, renamed or removed freely: they are only shortcuts on the form that tick
+  antigens, and no dose stores a product id. Keep them generic, without brand names (the brand-name
+  tests check this). `TestProductCatalogue` in `catalogue_test.go` pins the product list.
 
 ## What happens to stored data
 
@@ -89,8 +102,12 @@ licence findings for each source; read the country's note before an update.
 - **Count matching and an earlier optional dose.** A child who skips an optional or product-dependent
   dose has every later dose counted one line early. That can flag a later line overdue when nothing is
   missing. Mexico's hepatitis B (no birth dose for some children) is why every Mexican hepatitis B line
-  is `may_not_be_needed` (ruling R17). Re-check this for any new optional first dose. The US birth dose
-  of hepatitis B and the UK schedule were not re-checked for it.
+  is `may_not_be_needed` (ruling R17). Re-check this for any new optional first dose. The final review
+  of plan 5 simulated 14 on-schedule children (US combination-product variants, UK cohort edges, Mexico
+  with and without the birth dose) and found no false overdue. Sanctioned variants can still show an
+  overdue line to dismiss: UK babies born in late December 2024 who had MMRV at 12 months, the US
+  DTaP dose 5 that CDC calls "not necessary" after a late dose 4, and a US rotavirus series never
+  started.
 - **A 4-dose combination series consumes a later line.** In the US, polio has 4 lines (2m, 4m, 6m, 4y).
   A combination product can give a 4th IPV dose before age 4 (for example at 15 months). By count, that
   dose fills `polio-4`, although CDC still wants a dose at 4 years or later. The row's note says so.
@@ -122,19 +139,19 @@ licence findings for each source; read the country's note before an update.
 
 ## Adding a country
 
-1. Add its id to `constants.VaccineSchedules` in `api/internal/constants/constants.go`; the order there
-   is the order in the settings select.
-2. Add `api/internal/vaccines/data/<id>.csv`. The loader refuses a schedule file whose id is not listed.
-3. Add its tests to `data_test.go`: a full line table, a visit, an age-15 check, cohort boundaries,
-   brand names and its `mandatoryAttribution`. Update `TestSchemasInShippedOrder`.
-4. Generate `docs/vaccine-schedules/<id>.md` (step 3 above) and add its row to
-   `docs/vaccine-schedules/README.md`.
-5. Add rows to the README: the "Vaccination" table, the licence list, and the "Third-party data" table.
-   If the licence needs a notice file in the image, copy it in `api/Dockerfile` as the growth notices are.
-6. Update `scripts/smoke.sh` step 4i's expected settings options.
-7. Settle the licence with the owner first. A schedule ships under an open licence, with written
+1. Settle the licence with the owner first. A schedule ships under an open licence, with written
    permission, or (as for Mexico) on the owner's decision to ship a facts-only transcription with the
    required citation. Switzerland waits for the BAG's written consent.
+2. Add its id to `constants.VaccineSchedules` in `api/internal/constants/constants.go`; the order there
+   is the order in the settings select.
+3. Add `api/internal/vaccines/data/<id>.csv`. The loader refuses a schedule file whose id is not listed.
+4. Add its tests to `data_test.go`: a full line table, a visit, an age-15 check, cohort boundaries,
+   brand names and its `mandatoryAttribution`. Update `TestSchemasInShippedOrder`.
+5. Generate `docs/vaccine-schedules/<id>.md` (step 3 of "Steps") and add its row to
+   `docs/vaccine-schedules/README.md`.
+6. Add rows to the README: the "Vaccination" table, the licence list, and the "Third-party data" table.
+   If the licence needs a notice file in the image, copy it in `api/Dockerfile` as the growth notices are.
+7. Update `scripts/smoke.sh` step 4i's expected settings options.
 
 ## Pull request checklist
 

@@ -112,6 +112,8 @@ func reviewRow(l Line, names map[string]string) string {
 		window = "from " + ageLabel(l.From) + ", every season"
 	case l.Until != nil:
 		window = "from " + ageLabel(l.From) + " until " + ageLabel(*l.Until)
+	case l.Kind == KindSupplementary:
+		window = "from " + ageLabel(l.From)
 	}
 	if l.BornFrom != "" || l.BornTo != "" {
 		window += fmt.Sprintf("; born %s to %s", cmp.Or(l.BornFrom, "any date"), cmp.Or(l.BornTo, "any date"))
@@ -157,6 +159,7 @@ func TestRenderMarkdown(t *testing.T) {
 		line("b-1", "B|x", "rotavirus", 1, age(2, UnitMonth), nil, KindRoutine),
 		line("a-1", "A", "hepatitis_b", 1, age(0, UnitDay), until(1, UnitMonth), KindSupplementary),
 		line("influenza-1", "Flu", "influenza", 1, age(2, UnitYear), nil, KindRecurring),
+		line("varicella-1", "Var", "varicella", 1, age(12, UnitMonth), nil, KindSupplementary),
 	}}
 	s.Lines[0].BornFrom = "2024-07-01"
 	s.Lines[2].Note = "(verify) season"
@@ -167,6 +170,7 @@ func TestRenderMarkdown(t *testing.T) {
 		"## Not transcribed from the source\n\n- Mpox\n- Dengue\n", "without `until` it is 1 month.",
 		"is due inside its window; afterwards it is listed as available and never overdue",
 		"| Flu | Influenza | 1 | from 2 years, every season | `recurring` |",
+		"| Var | Varicella (chickenpox) | 1 | from 12 months | `supplementary` |  |\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("renderMarkdown lacks %q:\n%s", want, got)

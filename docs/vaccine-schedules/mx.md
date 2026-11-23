@@ -44,7 +44,7 @@ These lines carry `(verify)`: check them against the source first.
 |---|---|---|---|---|---|
 | COVID-19 | COVID-19 | 1 | from 6 months, every season | `recurring` | (verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; the source says the COVID-19 policy may change during 2026. |
 | Influenza | Influenza | 1 | from 6 months, every season | `recurring` | (verify) “A partir de los 6 meses”, in the winter season: a first season of 2 doses 4 weeks apart (6 and 7 months), then one dose each winter season up to 59 months; from 5 years only with a comorbidity. |
-| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |
+| HPV | Human papillomavirus (HPV) | 1 | from 11 years | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |
 
 ## Birth
 
@@ -100,7 +100,7 @@ These lines carry `(verify)`: check them against the source first.
 | SRP (MMR) | Measles | 1 | from 12 months until 13 months (default window) | `routine` | “12 meses”: triple viral (SRP), 1st dose. A dosis cero given at 6 to 11 months in an outbreak does not count. |
 | SRP (MMR) | Mumps | 1 | from 12 months until 13 months (default window) | `routine` | “12 meses”: triple viral (SRP), 1st dose. |
 | SRP (MMR) | Rubella | 1 | from 12 months until 13 months (default window) | `routine` | “12 meses”: triple viral (SRP), 1st dose. |
-| Varicella | Varicella (chickenpox) | 1 | from 12 months until 13 months (default window) | `supplementary` | “Un año”: one dose, listed in Cuadros 1 and 6 but not part of the basic schedule; given to children of 12 months who attend daycare. |
+| Varicella | Varicella (chickenpox) | 1 | from 12 months | `supplementary` | “Un año”: one dose, listed in Cuadros 1 and 6 but not part of the basic schedule; given to children of 12 months who attend daycare. |
 
 ## 18 months
 
@@ -137,4 +137,4 @@ These lines carry `(verify)`: check them against the source first.
 
 | Vaccine | Antigen | Dose | Window | Kind | Note |
 |---|---|---|---|---|---|
-| HPV | Human papillomavirus (HPV) | 1 | from 11 years until 11 years and 1 month (default window) | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |
+| HPV | Human papillomavirus (HPV) | 1 | from 11 years | `supplementary` | (verify) Single dose for girls and boys in the 5th grade of primary school (“5º grado de primaria”, about 10 to 11 years) and at “11 años” for those not in school; delivered by school grade, not by age, so it is supplementary and never flagged by age; the age is derived. |

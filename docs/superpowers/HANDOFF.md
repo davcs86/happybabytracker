@@ -190,6 +190,10 @@ log.
 - The rows marked `(verify)` in the schedule files, listed in the update runbook.
 - The licence readings for all three schedules are not legal advice, and no authority (CDC, UKHSA, the
   Secretaría de Salud, the BAG) was contacted.
+- Midnight DST starts: `kidtime.BandStart`, `correctionOn` and `CorrectedBirthDate` (plans 3 and 4) build
+  local midnight in the kid's zone, so in zones whose DST starts at midnight (America/Havana, Santiago,
+  Asunción) they may land a day early. `kidtime.AddAge` (plan 5) does civil-date arithmetic in UTC and
+  does not have this flaw. A follow-up should fix the older three, with a Havana/Santiago test.
 
 ## How to verify a plan is done
 
