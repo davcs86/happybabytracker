@@ -65,7 +65,7 @@ func (s *Store) SetAccess(ctx context.Context, kidID, actorID, username string, 
 }
 
 // RemoveAccess needs an active grant for actorID (ErrNotFound) and, to remove someone else, the
-// guardian role (ErrForbidden); a target without a grant is ErrNotFound. The target's push opt-ins for the kid go too.
+// guardian role (ErrForbidden); a target without a grant is ErrNotFound. The target's push and ntfy opt-ins for the kid go too.
 func (s *Store) RemoveAccess(ctx context.Context, kidID, actorID, parentID string) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		role, err := actorRole(ctx, tx, kidID, actorID)
@@ -80,6 +80,9 @@ func (s *Store) RemoveAccess(ctx context.Context, kidID, actorID, parentID strin
 			return err
 		}
 		if err := deletePushOptins(ctx, tx, kidID, parentID); err != nil {
+			return err
+		}
+		if err := deleteNtfyOptin(ctx, tx, kidID, parentID); err != nil {
 			return err
 		}
 		return keepsActiveGuardian(ctx, tx, kidID)

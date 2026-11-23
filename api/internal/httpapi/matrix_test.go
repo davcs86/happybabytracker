@@ -80,6 +80,12 @@ var routeClasses = map[string]Access{
 	"PUT /v1/kids/{kid}/push-devices/{device}":            Caregiver,
 	"DELETE /v1/kids/{kid}/push-devices/{device}":         Caregiver,
 	"GET /v1/_test/pushes":                                Internal,
+	"GET /v1/me/ntfy":                                     Parent,
+	"PUT /v1/me/ntfy":                                     Parent,
+	"POST /v1/me/ntfy/regenerate":                         Parent,
+	"DELETE /v1/me/ntfy":                                  Parent,
+	"PUT /v1/kids/{kid}/ntfy":                             Caregiver,
+	"DELETE /v1/kids/{kid}/ntfy":                          Caregiver,
 	"GET /v1/growth-sources":                              Parent,
 	"GET /v1/vaccine-schemas":                             Parent,
 	"GET /v1/vaccine-catalogue":                           Parent,
@@ -367,6 +373,14 @@ func newMatrixFixture(t *testing.T) *fixture {
 		f.device[a] = dev.ID
 		if a != aX {
 			if err := k.Store.SetPushOptin(ctx, kid.ID, f.parent[a].ID, dev.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, _, err := k.Store.SetNtfyTopic(ctx, f.parent[a].ID, k.Cfg.Ntfy.TopicPrefix, false, k.now); err != nil {
+			t.Fatal(err)
+		}
+		if a != aX {
+			if err := k.Store.SetNtfyOptin(ctx, kid.ID, f.parent[a].ID); err != nil {
 				t.Fatal(err)
 			}
 		}

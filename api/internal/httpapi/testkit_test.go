@@ -21,6 +21,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
@@ -90,7 +91,19 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 	k.Cfg.VAPIDKey, k.Cfg.VAPIDSubject, k.Cfg.AllowFakePush = testVAPID(), "https://example.test", true
 	k.Recorder = &push.Recorder{}
 	k.Push = k.Recorder
+	k.Cfg.Ntfy, k.Cfg.NtfyEnabled = ntfy.Config{URL: testNtfyURL, TopicPrefix: "hbt-test"}, true
 	k.Limiter = auth.NewLimiter(constants.LoginAttemptsPerMinute, k.clock)
+	k.Handler = NewHandler(k.deps())
+	return k
+}
+
+const testNtfyURL = "http://ntfy:2586"
+
+// newKitNoNtfy is the kit without NTFY_URL: ntfy off, Web Push unchanged.
+func newKitNoNtfy(t *testing.T) *kit {
+	t.Helper()
+	k := newKit(t)
+	k.Cfg.Ntfy, k.Cfg.NtfyEnabled = ntfy.Config{}, false
 	k.Handler = NewHandler(k.deps())
 	return k
 }

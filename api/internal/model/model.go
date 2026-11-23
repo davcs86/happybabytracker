@@ -92,3 +92,9 @@ type PushDevice struct {
 	CreatedAt time.Time
 	Kids      []string // kids the device is opted in for that the parent still holds a grant on
 }
+
+// NtfyTopic is a parent's ntfy topic; it is shown only to that parent.
+type NtfyTopic struct {
+	Topic string
+	Kids  []string // kids opted in that the parent still holds a grant on
+}

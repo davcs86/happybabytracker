@@ -69,6 +69,10 @@ func Routes(d Deps) []Route {
 		{http.MethodPut, "/v1/me/push-devices", Parent, d.upsertDevice},
 		{http.MethodPatch, "/v1/me/push-devices/{device}", Parent, d.renameDevice},
 		{http.MethodDelete, "/v1/me/push-devices/{device}", Parent, d.deleteDevice},
+		{http.MethodGet, "/v1/me/ntfy", Parent, d.ntfyState},
+		{http.MethodPut, "/v1/me/ntfy", Parent, d.setNtfyTopic(false)},
+		{http.MethodPost, "/v1/me/ntfy/regenerate", Parent, d.setNtfyTopic(true)},
+		{http.MethodDelete, "/v1/me/ntfy", Parent, d.deleteNtfyTopic},
 
 		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
 		{http.MethodGet, "/v1/vaccine-schemas", Parent, d.vaccineSchemas},
@@ -164,6 +168,8 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},
 		{http.MethodPut, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.setOptin},
 		{http.MethodDelete, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.clearOptin},
+		{http.MethodPut, "/v1/kids/{kid}/ntfy", Caregiver, d.setNtfyOptin},
+		{http.MethodDelete, "/v1/kids/{kid}/ntfy", Caregiver, d.clearNtfyOptin},
 	}
 	if d.PushRecorder != nil {
 		routes = append(routes, Route{http.MethodGet, "/v1/_test/pushes", Internal, d.testPushes})
