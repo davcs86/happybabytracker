@@ -6,7 +6,8 @@ import {
 	expectFieldError,
 	expectLanding,
 	expectNotFoundPage,
-	signIn
+	signIn,
+	submit
 } from './helpers.js';
 import {
 	ANA,
@@ -460,7 +461,7 @@ test('a retired stored schedule stays selected and kept on save until another is
 	await expect(schedule(page)).toHaveValue('retired-2020');
 
 	await schedule(page).selectOption('');
-	await page.getByRole('button', { name: 'Save' }).click();
+	await submit(page.getByRole('button', { name: 'Save' }));
 	await expect(page.getByRole('status')).toHaveText('Saved');
 	expect(await storedSchedule(IVY.id)).toBeNull();
 	await page.reload();

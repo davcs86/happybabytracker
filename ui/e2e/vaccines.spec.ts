@@ -1,6 +1,12 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { todayIn } from '../src/lib/format.js';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn,
+	submit
+} from './helpers.js';
 import {
 	ANA,
 	CLEO,
@@ -35,7 +41,7 @@ const newUrl = (kid: string) => `${pageUrl(kid)}/new`;
 const editUrl = (kid: string, id: unknown) => `${pageUrl(kid)}/${id}`;
 const apiPath = (kid: string, id?: unknown) => `/v1/kids/${kid}/vaccinations${id ? `/${id}` : ''}`;
 const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const save = (page: Page) => page.getByRole('button', { name: 'Save', exact: true }).click();
+const save = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
 const groups = (page: Page) => page.getByRole('region', { name: /^(Birth|\d+-\w+ vaccines)/ });
 const group = (page: Page, title: string) =>
 	page.getByRole('region', { name: new RegExp(`^${title}`) });

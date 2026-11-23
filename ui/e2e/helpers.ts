@@ -20,6 +20,16 @@ export async function login(page: Page, username: string, password: string) {
 	return response;
 }
 
+// Waits for the action's response: an assertion the previous submit already satisfied cannot.
+export async function submit(button: Locator) {
+	const page = button.page();
+	const response = page.waitForResponse(
+		(r) => r.request().method() === 'POST' && new URL(r.url()).search.startsWith('?/')
+	);
+	await button.click();
+	await (await response).finished();
+}
+
 export const KID_COOKIE = 'hbt_kid';
 
 export async function signIn(page: Page, who: { username: string; password: string }) {
