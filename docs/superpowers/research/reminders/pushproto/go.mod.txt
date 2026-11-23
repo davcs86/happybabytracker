@@ -1,0 +1,3 @@
+module pushproto
+
+go 1.27
