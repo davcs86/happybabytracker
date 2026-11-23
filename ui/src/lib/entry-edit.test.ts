@@ -427,6 +427,13 @@ describe('isAdvanced', () => {
 		expect(isAdvanced('bottles', '0', withSources)).toBe(false);
 	});
 
+	it('reads no advanced data from an entry of a kind without a data check', () => {
+		// A nursing entry has no sources: nothing may be read from it as if it were a bottle.
+		expect(isAdvanced('nursing', null, nursing())).toBe(false);
+		expect(isAdvanced('diapers', null, diaper)).toBe(false);
+		expect(isAdvanced('meals', '0', meal)).toBe(false);
+	});
+
 	it('is never advanced for a tracker without an advanced form', () => {
 		for (const kind of ['diapers', 'meals', 'pumping', 'sleep', 'nursing'] as const) {
 			expect(isAdvanced(kind, '1')).toBe(false);

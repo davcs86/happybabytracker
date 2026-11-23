@@ -12,7 +12,7 @@
 	const UNIT_LABEL = { ml: 'ml', floz: 'fl oz' } as const;
 	const chosen = $derived(values.contents as string[]);
 	const total = $derived(
-		(values.sources_total as string | undefined) ??
+		(values.sources_total as string | undefined) ||
 			formatVolume({ ml: 0, floz_hundredths: 0 }, values.volume_unit as VolumeUnit)
 	);
 	// A refused total or source is no single input's fault: every ticked input is marked.
@@ -85,6 +85,7 @@
 {#if error('volume')}
 	<p id="entry-total-error" class={ERROR_CLASS} role="alert">{error('volume')}</p>
 {/if}
+<!-- editValues always emits sources_original for a bottle, so its absence means a new entry. -->
 {#if values.sources_original !== undefined}
 	<input type="hidden" name="volume_unit_original" value={values.volume_unit_original} />
 	<input type="hidden" name="sources_original" value={values.sources_original} />

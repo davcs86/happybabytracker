@@ -1038,6 +1038,53 @@ test.describe('the advanced bottle form', () => {
 		expect(sourcesOf((await rows(api, 'bottles', LEO.id))[0])).toHaveLength(1);
 	});
 
+	test('a failed save over a bottle with sources stays advanced and keeps the values', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id));
+		await page.getByRole('checkbox', { name: 'Other', exact: true }).check();
+		await saveAndWait(page);
+		await expectFieldError(
+			field(page, 'Other volume'),
+			'Enter a volume for each source you ticked'
+		);
+		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
+		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
+		await expect(field(page, 'Formula volume')).toHaveValue('90');
+		await expect(field(page, 'Volume')).toHaveCount(0);
+		const [kept] = await rows(api, 'bottles');
+		expect(sourcesOf(kept)).toHaveLength(2);
+
+		await field(page, 'Other volume').fill('30');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(sourcesOf((await rows(api, 'bottles'))[0])).toHaveLength(3);
+	});
+
+	test('a source typed and then unticked is not sent', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('bottles') + ADVANCED);
+		await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
+		await page.getByRole('checkbox', { name: 'Other', exact: true }).check();
+		await field(page, 'Formula volume').fill('90');
+		await field(page, 'Other volume').fill('30');
+		await page.getByRole('checkbox', { name: 'Other', exact: true }).uncheck();
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('POST', `/v1/kids/${MIA.id}/bottles`);
+		expect(body.sources).toEqual({ unit: 'ml', amounts: { formula: 90 } });
+		const [created] = await rows(api, 'bottles');
+		expect(created.contents).toEqual(['formula']);
+		expect(created.volume).toMatchObject({ ml: 90 });
+	});
+
 	test('a long note does not overflow the page at phone width', async ({ page }, testInfo) => {
 		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
 		const api = await stubAs(ANA);
@@ -1109,6 +1156,33 @@ test.describe('the advanced bottle form without JavaScript', () => {
 		const [plain] = await rows(api, 'bottles');
 		expect(sourcesOf(plain)).toEqual([]);
 		expect(plain.volume).toMatchObject({ ml: 160 });
+	});
+
+	test('a failed simple save over an advanced bottle stays simple and keeps the hint', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const bottle = await seed(api, 'bottles', {
+			at: minute(-10),
+			sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 90 } }
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('bottles', bottle.id) + '?advanced=0');
+		await field(page, 'Volume').fill('');
+		await saveAndWait(page);
+		// The post went to ?/save: the query string is gone, the form must not turn advanced.
+		await expectFieldError(field(page, 'Volume'), 'Enter a volume');
+		await expect(field(page, 'Breast milk volume')).toHaveCount(0);
+		await expect(page.getByText('Saving one total replaces the volumes per source')).toBeVisible();
+		await expect(page.getByRole('link', { name: SIMPLE_LINK })).toBeVisible();
+		expect(sourcesOf((await rows(api, 'bottles'))[0])).toHaveLength(2);
+
+		await field(page, 'Volume').fill('140');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'bottles');
+		expect(sourcesOf(plain)).toEqual([]);
+		expect(plain.volume).toMatchObject({ ml: 140 });
 	});
 
 	test('the link back to one total works from a failed post', async ({ page }) => {

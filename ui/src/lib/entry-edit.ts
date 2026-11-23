@@ -175,13 +175,18 @@ function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight'
 // The trackers that have an advanced form, opened by ?advanced=1; every form starts simple.
 const ADVANCED_KINDS: readonly TrackerKind[] = ['bottles'];
 
+// Whether an entry already carries advanced data; a kind without a predicate never opens advanced by itself.
+const HAS_ADVANCED_DATA: Partial<Record<TrackerKind, (entry: Entry) => boolean>> = {
+	bottles: (entry) => (entry as TrackerEntries['bottles']).sources.length > 0
+};
+
 // A new form is advanced on ?advanced=1; an edit also when the entry already carries advanced data,
 // unless ?advanced=0 asks for the simple form.
 export function isAdvanced(kind: TrackerKind, param: string | null, entry?: Entry): boolean {
 	if (!ADVANCED_KINDS.includes(kind)) return false;
 	if (param === '1') return true;
 	if (entry === undefined || param === '0') return false;
-	return (entry as TrackerEntries['bottles']).sources.length > 0;
+	return HAS_ADVANCED_DATA[kind]?.(entry) ?? false;
 }
 
 // The plain link at the top of the form that switches it; typed values are not carried across.
