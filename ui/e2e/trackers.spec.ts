@@ -2120,6 +2120,7 @@ test.describe('the sickness tracker', () => {
 		await setUnits(api, 'f');
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
 		await expect(field(page, 'Left minutes')).toHaveCount(0);
 		await expect(field(page, 'Temperature')).toBeHidden();
@@ -2177,6 +2178,7 @@ test.describe('the sickness tracker', () => {
 		await setUnits(api, 'f');
 		await signIn(page, ANA);
 		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
 		await expect(field(page, 'Temperature')).toHaveValue('101.12');
 		await expect(field(page, 'Temperature unit')).toHaveValue('f');
 		await field(page, 'Note').fill('warm');
@@ -2224,6 +2226,7 @@ test.describe('the sickness tracker', () => {
 		const api = await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'cough');
 		await expect(field(page, 'Temperature')).toBeHidden();
 		await page.getByRole('radio', { name: 'Moderate' }).check();
@@ -2237,6 +2240,7 @@ test.describe('the sickness tracker', () => {
 		await expect(page.getByRole('link', { name: /^\d\d:\d\d Cough, moderate/ })).toBeVisible();
 
 		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
 		await expect(page.getByRole('radio', { name: 'Moderate' })).toBeChecked();
 		await expectAccessible(page);
 		await page.getByRole('radio', { name: 'Not set' }).check();
@@ -2253,6 +2257,7 @@ test.describe('the sickness tracker', () => {
 		const api = await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'other');
 		await expect(field(page, 'Other symptom')).toBeVisible();
 		await expect(field(page, 'Temperature')).toBeHidden();
@@ -2281,6 +2286,7 @@ test.describe('the sickness tracker', () => {
 		const api = await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'fever');
 		await field(page, 'Temperature').fill('50');
 		await field(page, 'Method').selectOption('rectal');
@@ -2309,6 +2315,7 @@ test.describe('the sickness tracker', () => {
 		const api = await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'fever');
 		await field(page, 'Method').selectOption('oral');
 		for (const typed of ['1e3', '0x10', '--1', '38.456', '']) {
@@ -2329,6 +2336,7 @@ test.describe('the sickness tracker', () => {
 		await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'fever');
 		await field(page, 'Temperature').fill('38');
 		await saveAndWait(page);
@@ -2354,6 +2362,7 @@ test.describe('the sickness tracker', () => {
 		const path = `${SYMPTOM_PATH}/${made.id}`;
 		const edit = async () => {
 			await page.goto(entryUrl('symptoms', made.id));
+			await hydrated(page);
 			await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
 		};
 		await signIn(page, ANA);
@@ -2425,6 +2434,7 @@ test.describe('the sickness tracker', () => {
 		const made = await seed(api, 'symptoms', fever());
 		await signIn(page, ANA);
 		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
 		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
 		await page.getByText('Delete this entry', { exact: true }).click();
 		await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
@@ -2440,6 +2450,7 @@ test.describe('the sickness tracker', () => {
 			const api = await stubAs(CLEO);
 			await signIn(page, who);
 			await page.goto(logUrl('symptoms', LEO.id));
+			await hydrated(page);
 			await pick(page, 'fever');
 			await field(page, 'Temperature').fill('38.2');
 			await field(page, 'Method').selectOption('forehead');
@@ -2450,12 +2461,14 @@ test.describe('the sickness tracker', () => {
 			expect(made.temperature).toMatchObject({ c_hundredths: 3820 });
 
 			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await hydrated(page);
 			await field(page, 'Temperature').fill('38.6');
 			await saveAndWait(page);
 			await onTimeline(page);
 			expect(((await rows(api, 'symptoms', LEO.id))[0].temperature as Row).c_hundredths).toBe(3860);
 
 			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await hydrated(page);
 			await page.getByText('Delete this entry', { exact: true }).click();
 			await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
 			await onTimeline(page);
@@ -2513,6 +2526,7 @@ test.describe('the sickness tracker', () => {
 		expect(await symptomOverflows(page)).toBe(false);
 
 		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
 		await pick(page, 'other');
 		await field(page, 'Other symptom').fill(longText);
 		await field(page, 'Note').fill('n'.repeat(200));
