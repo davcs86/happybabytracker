@@ -7,9 +7,10 @@ import {
 	PUMPING_SIDES,
 	SECONDS_PER_MINUTE,
 	VOLUME_ML_RANGE,
-	VOLUME_UNITS
+	VOLUME_UNITS,
+	WEIGHT_UNITS
 } from '../constants';
-import { floorMinutes } from '../entry-edit';
+import { floorMinutes, WEIGHT_NAMES } from '../entry-edit';
 import { zonedLocalToInstant } from '../time-zone';
 import type { EntryBody, TrackerKind, VolumeUnit } from '../types';
 import {
@@ -20,11 +21,16 @@ import {
 	WHAT_TOO_LONG_MESSAGE,
 	type VolumeKind
 } from './entry-failure';
+import { weight as readWeight } from './growth-form';
 
 export type EntryFormValues = Record<string, string | string[]>;
 
+const WEIGHT_PARTS = ['unit', 'kg', 'lb', 'oz'] as const;
+const WEIGHT_FIELDS = WEIGHT_NAMES.flatMap((n) => WEIGHT_PARTS.map((p) => `${n}_${p}`));
+const SOURCE_FIELDS = BOTTLE_CONTENTS.map((c) => `sources_${c}`);
+
 const TEXT_FIELDS: Record<TrackerKind, string[]> = {
-	bottles: ['at', 'volume', 'volume_unit', 'note'],
+	bottles: ['at', 'volume', 'volume_unit', 'advanced', ...SOURCE_FIELDS, 'note'],
 	diapers: ['at', 'kind', 'note'],
 	meals: ['at', 'what', 'reaction', 'note'],
 	pumping: ['started_at', 'duration_minutes', 'volume', 'volume_unit', 'side', 'note'],
@@ -37,8 +43,16 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 		'left_seconds_original',
 		'right_seconds_original',
 		'side',
+		'advanced',
+		...WEIGHT_FIELDS,
 		'note'
 	]
+};
+
+// What an edit of an advanced form compares against, as loaded; one that is missing is refused, never guessed.
+const ORIGINALS: Partial<Record<TrackerKind, string[]>> = {
+	bottles: ['volume_unit', 'sources', ...SOURCE_FIELDS].map((k) => `${k}_original`),
+	nursing: WEIGHT_FIELDS.map((k) => `${k}_original`)
 };
 
 // create, or an edit of a running (running: true) or finished nursing session.
@@ -105,6 +119,93 @@ function volumeRange(kind: VolumeKind, vol: { unit: VolumeUnit; amount: number }
 		: null;
 }
 
+type Sources = { unit: VolumeUnit; amounts: Record<string, number> };
+type Refusal = { field: string; message: string | null };
+
+// The advanced bottle: one amount per ticked source in one unit. A source typed for an unticked box is not read.
+// An edit sends the set only if a ticked text, the set of boxes or the unit differs from what was loaded.
+function readSources(
+	v: EntryFormValues,
+	ticked: readonly string[],
+	edit: boolean
+): { send: Sources | null } | Refusal {
+	const text = (k: string) => v[k] as string | undefined;
+	const refuse = (field = 'sources', message: string | null = null): Refusal => ({
+		field,
+		message
+	});
+	const unit = text('volume_unit') ?? '';
+	if (!includes(VOLUME_UNITS, unit)) return refuse();
+	const amounts: Record<string, number> = {};
+	let sum = 0;
+	for (const name of BOTTLE_CONTENTS.filter((c) => ticked.includes(c))) {
+		const n = amount(unit, text(`sources_${name}`) ?? '');
+		if (n === null || n < 1) return refuse();
+		amounts[name] = n;
+		sum += n;
+	}
+	if (!Number.isSafeInteger(sum)) return refuse();
+	const range = volumeRange('bottles', { unit, amount: sum });
+	if (range) return refuse('volume', range);
+	if (!edit) return { send: { unit, amounts } };
+
+	const kept = text('sources_original');
+	const stored: string[] = kept === undefined || kept === '' ? [] : kept.split(',');
+	if (
+		kept === undefined ||
+		text('volume_unit_original') === undefined ||
+		stored.some((n) => !BOTTLE_CONTENTS.some((c) => c === n)) ||
+		BOTTLE_CONTENTS.some((c) => text(`sources_${c}_original`) === undefined)
+	) {
+		return refuse();
+	}
+	const names = Object.keys(amounts);
+	const same =
+		unit === text('volume_unit_original') &&
+		names.length === stored.length &&
+		names.every(
+			(n) =>
+				stored.includes(n) &&
+				(text(`sources_${n}`) ?? '').trim() === text(`sources_${n}_original`)?.trim()
+		);
+	return { send: same ? null : { unit, amounts } };
+}
+
+// The texts a weight unit makes active, as in the growth form.
+const activeTexts = (unit: string): string[] | null =>
+	unit === 'kg' ? ['kg'] : unit === 'lb' ? ['lb', 'oz'] : null;
+
+// One weigh-in: nothing to send ({}), a weight, or null to clear it. An edit compares with the texts as loaded and
+// fails closed without them, like the growth form.
+function readWeighIn(
+	v: EntryFormValues,
+	name: string,
+	edit: boolean
+): { send?: { unit: string; amount: number } | null } | Refusal {
+	const t = (p: string) => (v[`${name}_${p}`] as string).trim();
+	const o = (p: string) => (v[`${name}_${p}_original`] as string | undefined)?.trim();
+	let wasFilled = false;
+	if (edit) {
+		const shown = activeTexts(o('unit') ?? '');
+		if (WEIGHT_PARTS.some((p) => o(p) === undefined) || shown === null) {
+			return { field: name, message: null };
+		}
+		if (!includes(WEIGHT_UNITS, t('unit'))) return { field: name, message: null };
+		wasFilled = shown.some((p) => o(p) !== '');
+		const active = activeTexts(t('unit')) ?? [];
+		if (t('unit') === o('unit') && active.every((p) => t(p) === o(p))) return {};
+	}
+	const r = readWeight({
+		weight_unit: t('unit'),
+		weight_kg: t('kg'),
+		weight_lb: t('lb'),
+		weight_oz: t('oz')
+	});
+	if (r === 'blank') return edit && wasFilled ? { send: null } : {};
+	if ('message' in r) return { field: name, message: r.message };
+	return { send: r.body };
+}
+
 // Fields are checked in the API's order, so the one named is the one the API would name. endShown is true when
 // the form was loaded with an end time, which a blank one would silently keep.
 function build(
@@ -127,6 +228,12 @@ function build(
 			const contents = v.contents as string[];
 			if (contents.length === 0 || !contents.every((c) => includes(BOTTLE_CONTENTS, c))) {
 				return bad('contents');
+			}
+			if (s('advanced') === '1') {
+				const r = readSources(v, contents, mode.kind === 'edit');
+				if ('field' in r) return r;
+				if (r.send) input.sources = r.send;
+				break;
 			}
 			const vol = volume(s('volume_unit'), s('volume'));
 			if (!vol) return bad('volume');
@@ -183,6 +290,11 @@ function build(
 				if (input.ended_at !== undefined) return bad('side', FINISHED_SIDE_MESSAGE);
 				input.side = s('side');
 			}
+			for (const name of s('advanced') === '1' ? WEIGHT_NAMES : []) {
+				const r = readWeighIn(v, name, mode.kind === 'edit');
+				if ('field' in r) return r;
+				if (r.send !== undefined) input[name] = r.send;
+			}
 			break;
 		}
 	}
@@ -207,6 +319,12 @@ export function readEntryForm(
 		TEXT_FIELDS[kind].map((k) => [k, String(form.get(k) ?? '')])
 	);
 	if (kind === 'bottles') values.contents = form.getAll('contents').map(String);
+	if (mode.kind === 'edit') {
+		for (const k of ORIGINALS[kind] ?? []) {
+			const o = form.get(k);
+			if (o !== null) values[k] = String(o);
+		}
+	}
 	const endShown = String(form.get('ended_at_original') ?? '').trim() !== '';
 	const r = build(kind, values, zone, mode, endShown);
 	return 'field' in r

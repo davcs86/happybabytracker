@@ -166,7 +166,8 @@ function validDate(s: string): boolean {
 	return d.getUTCFullYear() === +m[1] && d.getUTCMonth() === +m[2] - 1 && d.getUTCDate() === +m[3];
 }
 
-type Measured = { body: { unit: string; amount: number } } | 'blank' | { message: string | null };
+export type Measured =
+	{ body: { unit: string; amount: number } } | 'blank' | { message: string | null };
 
 // A metric amount outside its range is refused here; imperial ones are left to the API's conversion.
 function ranged(m: Ranged, unit: string, amount: number): Measured {
@@ -177,7 +178,7 @@ function ranged(m: Ranged, unit: string, amount: number): Measured {
 	return amount < 1 ? { message: null } : { body: { unit, amount } };
 }
 
-function weight(v: GrowthFormValues): Measured {
+export function weight(v: GrowthFormValues): Measured {
 	const unit = v.weight_unit;
 	if (!includes(WEIGHT_UNITS, unit)) {
 		const typed = [v.weight_kg, v.weight_lb, v.weight_oz].some((t) => t.trim() !== '');

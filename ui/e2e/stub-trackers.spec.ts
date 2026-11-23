@@ -103,6 +103,256 @@ test('bottles: validation names the field, volumes convert, an unchanged volume 
 	expect((await ana('GET', `${path}/${made.body.id}`)).body.note).toBe('warm');
 });
 
+test('advanced bottles: the sources sum into the total, switch modes and validate as the API does', async () => {
+	const ana = await as(ANA);
+	const path = `/v1/kids/${IVY.id}/bottles`;
+	const sources = { unit: 'ml', amounts: { formula: 90, breast_milk: 60 } };
+
+	const simple = await ana('POST', path, {
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 90 }
+	});
+	expect(simple.body.sources).toEqual([]);
+
+	const made = await ana('POST', path, { sources });
+	expect(made.status).toBe(201);
+	expect(made.body).toMatchObject({
+		contents: ['breast_milk', 'formula'],
+		volume: { ml: 150, floz_hundredths: 507, typed_unit: 'ml' },
+		sources: [
+			{ source: 'breast_milk', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } },
+			{ source: 'formula', volume: { ml: 90, floz_hundredths: 304, typed_unit: 'ml' } }
+		]
+	});
+	const one = `${path}/${made.body.id}`;
+	expect((await ana('GET', one)).body).toEqual(made.body);
+
+	// A note alone keeps every column; one changed source keeps the other and re-sums the total.
+	expect((await ana('PATCH', one, { note: 'x' })).body).toMatchObject({
+		volume: made.body.volume,
+		sources: made.body.sources,
+		note: 'x'
+	});
+	const edited = await ana('PATCH', one, {
+		sources: { unit: 'ml', amounts: { breast_milk: 60, formula: 100 } }
+	});
+	expect(edited.body.volume).toMatchObject({ ml: 160, typed_unit: 'ml' });
+	expect(edited.body.sources[0]).toEqual(made.body.sources[0]);
+	expect(edited.body.sources[1].volume).toMatchObject({ ml: 100 });
+	// A new set replaces contents; contents beside it must be its keys.
+	expect(
+		(await ana('PATCH', one, { sources: { unit: 'ml', amounts: { cow_milk: 30 } } })).body
+	).toMatchObject({ contents: ['cow_milk'], volume: { ml: 30 } });
+	expect(
+		await ana('PATCH', one, {
+			contents: ['formula'],
+			sources: { unit: 'ml', amounts: { other: 5 } }
+		})
+	).toMatchObject(invalid('contents'));
+	// Contents that no longer match the stored sources are refused; a volume clears them.
+	expect(await ana('PATCH', one, { contents: ['formula', 'other'] })).toMatchObject(
+		invalid('contents')
+	);
+	const cleared = await ana('PATCH', one, { volume: { unit: 'ml', amount: 100 } });
+	expect(cleared.body).toMatchObject({
+		contents: ['cow_milk'],
+		volume: { ml: 100 },
+		sources: []
+	});
+	expect((await ana('PATCH', one, { contents: ['formula', 'other'] })).body.contents).toEqual([
+		'formula',
+		'other'
+	]);
+
+	// Typed in ounces: the total is the exact sum, each source has its own columns.
+	const oz = await ana('POST', path, {
+		sources: { unit: 'floz', amounts: { breast_milk: 225, formula: 300 } }
+	});
+	expect(oz.body.volume).toMatchObject({ floz_hundredths: 525, typed_unit: 'floz' });
+	expect(oz.body.sources).toMatchObject([
+		{ volume: { ml: 67, floz_hundredths: 225, typed_unit: 'floz' } },
+		{ volume: { ml: 89, floz_hundredths: 300, typed_unit: 'floz' } }
+	]);
+
+	for (const bad of [
+		{ unit: 'ml', amounts: {} },
+		{ unit: 'ml', amounts: { juice: 5 } },
+		{ unit: 'ml', amounts: { formula: 0 } },
+		{ unit: 'ml', amounts: { formula: -3 } },
+		{ unit: 'ml', amounts: { formula: null } },
+		{ unit: 'cup', amounts: { formula: 5 } },
+		{ unit: null, amounts: { formula: 5 } },
+		{ amounts: { formula: 5 } },
+		{ unit: 'ml' }
+	]) {
+		expect(await ana('POST', path, { sources: bad })).toMatchObject(invalid('sources'));
+	}
+	expect(
+		await ana('POST', path, { sources: { unit: 'ml', amounts: { formula: 600, other: 401 } } })
+	).toMatchObject(invalid('volume'));
+	expect(await ana('POST', path, { sources, volume: { unit: 'ml', amount: 150 } })).toMatchObject(
+		invalid('sources')
+	);
+	expect(await ana('POST', path, { contents: ['formula'], sources })).toMatchObject(
+		invalid('contents')
+	);
+	expect(await ana('POST', path, { contents: ['formula', 'breast_milk'], sources })).toMatchObject({
+		status: 201
+	});
+	// Order: at, contents, volume or sources, note.
+	expect(
+		await ana('POST', path, { at: '2001-01-01T00:00:00Z', sources: { amounts: {} } })
+	).toMatchObject(invalid('at'));
+	expect(await ana('POST', path, { sources, note: 'n'.repeat(501) })).toMatchObject(
+		invalid('note')
+	);
+	expect(await ana('POST', path, { sources: { unit: 'ml', amounts: {}, extra: 1 } })).toMatchObject(
+		{
+			status: 422,
+			body: { error: 'unknown_field', field: 'extra' }
+		}
+	);
+	expect(await ana('POST', path, { sources: 5 })).toMatchObject({ status: 400 });
+	expect(
+		await ana('POST', path, { sources: { unit: 'ml', amounts: { formula: '5' } } })
+	).toMatchObject({ status: 400 });
+
+	const timeline = await ana('GET', `/v1/kids/${IVY.id}/timeline?types=bottle`);
+	expect(timeline.body.items.every((i: { sources: unknown[] }) => Array.isArray(i.sources))).toBe(
+		true
+	);
+});
+
+test('nursing weigh-ins: stored as typed, the estimate from grams, and refused as the API refuses', async () => {
+	const ana = await as(ANA);
+	const base = `/v1/kids/${IVY.id}/nursing`;
+	const finished = {
+		started_at: minutesAgo(40),
+		ended_at: minutesAgo(10),
+		left_seconds: 600,
+		right_seconds: 300
+	};
+	const kg = (amount: number) => ({ unit: 'kg', amount });
+
+	const plain = await ana('POST', base, { side: 'left', started_at: minutesAgo(5) });
+	expect(plain.body).toMatchObject({ weight_before: null, weight_after: null, milk: null });
+	await ana('DELETE', `${base}/${plain.body.id}`);
+
+	const made = await ana('POST', base, {
+		...finished,
+		weight_before: kg(3400),
+		weight_after: kg(3462)
+	});
+	expect(made.status).toBe(201);
+	expect(made.body).toMatchObject({
+		weight_before: { grams: 3400, oz_hundredths: 11993, typed_unit: 'kg' },
+		weight_after: { grams: 3462, oz_hundredths: 12212, typed_unit: 'kg' },
+		milk: { gain: { grams: 62, oz_hundredths: 219 }, volume: { ml: 60, floz_hundredths: 204 } }
+	});
+	const one = `${base}/${made.body.id}`;
+
+	// A note alone keeps the weights; the same typed value keeps the columns; null clears one.
+	expect((await ana('PATCH', one, { note: 'x' })).body).toMatchObject({
+		weight_before: made.body.weight_before,
+		milk: made.body.milk,
+		note: 'x'
+	});
+	expect((await ana('PATCH', one, { weight_before: kg(3400) })).body.weight_before).toEqual(
+		made.body.weight_before
+	);
+	const cleared = await ana('PATCH', one, { weight_after: null });
+	expect(cleared.body).toMatchObject({ weight_after: null, milk: null });
+	expect(cleared.body.weight_before).toEqual(made.body.weight_before);
+
+	// A lighter "after" is stored and answers 200 with no estimate; equal weights are a zero estimate.
+	expect((await ana('PATCH', one, { weight_after: kg(3300) })).body).toMatchObject({
+		weight_after: { grams: 3300 },
+		milk: null
+	});
+	expect((await ana('PATCH', one, { weight_after: kg(3400) })).body.milk).toEqual({
+		gain: { grams: 0, oz_hundredths: 0 },
+		volume: { ml: 0, floz_hundredths: 0 }
+	});
+	// Pounds and ounces are typed exactly in hundredths of an ounce; grams derive half-up.
+	const lb = await ana('PATCH', one, { weight_before: { unit: 'lb', amount: 12050 } });
+	expect(lb.body.weight_before).toEqual({ grams: 3416, oz_hundredths: 12050, typed_unit: 'lb' });
+	// 3416 g before against 3400 g after: lighter, so no estimate.
+	expect(lb.body.milk).toBeNull();
+
+	// A running session takes weights too, and shows them on the home.
+	const running = await ana('POST', base, {
+		side: 'right',
+		started_at: minutesAgo(5),
+		weight_before: kg(3400)
+	});
+	expect(running.body).toMatchObject({ side: 'right', weight_before: { grams: 3400 }, milk: null });
+	const after = await ana('PATCH', `${base}/${running.body.id}`, { weight_after: kg(3450) });
+	expect(after.body.milk).toMatchObject({ gain: { grams: 50 }, volume: { ml: 49 } });
+	const home = await ana('GET', `/v1/kids/${IVY.id}/home`);
+	expect(home.body.running.nursing).toMatchObject({ weight_before: { grams: 3400 } });
+	const item = (await ana('GET', `/v1/kids/${IVY.id}/timeline?types=nursing`)).body.items.find(
+		(i: { id: string }) => i.id === made.body.id
+	);
+	expect(item).toMatchObject({ type: 'nursing', weight_before: { grams: 3416 } });
+
+	// The range is 200 g to 250 kg, in grams; every refusal names the weight.
+	for (const bad of [
+		kg(199),
+		kg(250001),
+		kg(0),
+		kg(-5),
+		{ unit: 'st', amount: 5 },
+		{ unit: null, amount: 5 },
+		{ unit: 'kg', amount: null },
+		{ unit: 'lb', amount: 1 },
+		{},
+		5,
+		'5',
+		[3400],
+		{ unit: 'kg', amount: '3400' },
+		{ unit: 'kg', amount: 3400.5 },
+		{ unit: 5, amount: 3400 }
+	]) {
+		expect(await ana('PATCH', one, { weight_after: bad })).toMatchObject(invalid('weight_after'));
+		expect(await ana('POST', base, { ...finished, weight_before: bad })).toMatchObject(
+			invalid('weight_before')
+		);
+	}
+	expect(await ana('PATCH', one, { weight_after: kg(200) })).toMatchObject({ status: 200 });
+	expect(await ana('PATCH', one, { weight_after: kg(250000) })).toMatchObject({ status: 200 });
+	// A growth weight with the same mistake is a 400: each route keeps its own convention.
+	expect(await ana('POST', `/v1/kids/${IVY.id}/growth`, { weight: 5 })).toMatchObject({
+		status: 400
+	});
+	expect(await ana('PATCH', one, { weight_after: { unit: 'kg', extra: 1 } })).toMatchObject({
+		status: 422,
+		body: { error: 'unknown_field', field: 'extra' }
+	});
+
+	// Order: the seconds and side before the weights, weight_before before weight_after, then the note.
+	expect(
+		await ana('POST', base, {
+			started_at: finished.started_at,
+			ended_at: finished.ended_at,
+			weight_before: 5
+		})
+	).toMatchObject(invalid('left_seconds'));
+	expect(
+		await ana('POST', base, {
+			...finished,
+			weight_before: 5,
+			weight_after: 5,
+			note: 'n'.repeat(501)
+		})
+	).toMatchObject(invalid('weight_before'));
+	expect(
+		await ana('POST', base, { ...finished, weight_after: kg(3400), note: 'n'.repeat(501) })
+	).toMatchObject(invalid('note'));
+
+	// A weigh-in is not a growth row.
+	expect((await ana('GET', `/v1/kids/${IVY.id}/growth`)).body.growth).toEqual([]);
+});
+
 test('a kid never sees another kid’s entry, and an unknown or malformed id is the same 404', async () => {
 	const ana = await as(ANA);
 	const cleo = await as(CLEO);

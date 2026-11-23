@@ -26,6 +26,7 @@ import type {
 	AdministrationInput,
 	AdminParent,
 	Bottle,
+	BottleSource,
 	Curves,
 	CurvesQuery,
 	DaySummary,
@@ -43,6 +44,7 @@ import type {
 	KidInput,
 	ListQuery,
 	Meal,
+	Milk,
 	ModuleId,
 	ModuleState,
 	NewSession,
@@ -320,6 +322,11 @@ function toVolume(v: unknown): Volume {
 	};
 }
 
+function toBottleSource(v: unknown): BottleSource {
+	const o = object(v);
+	return { source: oneOf(o.source, BOTTLE_CONTENTS), volume: toVolume(o.volume) };
+}
+
 function toBottle(v: unknown): Bottle {
 	const o = object(v);
 	const contents = array(o.contents, (c) => oneOf(c, BOTTLE_CONTENTS));
@@ -329,6 +336,7 @@ function toBottle(v: unknown): Bottle {
 		at: string(o.at),
 		contents,
 		volume: toVolume(o.volume),
+		sources: array(o.sources, toBottleSource),
 		note: stringOrNull(o.note)
 	};
 }
@@ -376,6 +384,16 @@ function toSleep(v: unknown): Sleep {
 	};
 }
 
+function toMilk(v: unknown): Milk {
+	const o = object(v);
+	const gain = object(o.gain);
+	const volume = object(o.volume);
+	return {
+		gain: { grams: int(gain.grams), ozHundredths: int(gain.oz_hundredths) },
+		volume: { ml: int(volume.ml), flozHundredths: int(volume.floz_hundredths) }
+	};
+}
+
 function toNursing(v: unknown): Nursing {
 	const o = object(v);
 	return {
@@ -386,7 +404,10 @@ function toNursing(v: unknown): Nursing {
 		rightSeconds: int(o.right_seconds),
 		side: o.side === null ? null : oneOf(o.side, NURSING_SIDES),
 		sideSince: stringOrNull(o.side_since),
-		note: stringOrNull(o.note)
+		note: stringOrNull(o.note),
+		weightBefore: nullOr(o.weight_before, toGrowthWeight),
+		weightAfter: nullOr(o.weight_after, toGrowthWeight),
+		milk: nullOr(o.milk, toMilk)
 	};
 }
 

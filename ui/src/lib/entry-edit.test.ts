@@ -11,13 +11,42 @@ import {
 import type { Bottle, Diaper, Meal, Nursing, Pumping, Sleep } from './types';
 
 const MADRID = 'Europe/Madrid';
+const ML = { weight: 'kg', volume: 'ml' } as const;
+const FLOZ = { weight: 'lb', volume: 'floz' } as const;
 const HOUR_MS = 3_600_000;
+
+const NO_SOURCES = {
+	sources_breast_milk: '',
+	sources_formula: '',
+	sources_cow_milk: '',
+	sources_other: ''
+};
+const blankWeight = (name: string, unit: string, texts = { kg: '', lb: '', oz: '' }) => ({
+	[`${name}_unit`]: unit,
+	[`${name}_kg`]: texts.kg,
+	[`${name}_lb`]: texts.lb,
+	[`${name}_oz`]: texts.oz
+});
+const BLANK_WEIGHTS_KG = {
+	...blankWeight('weight_before', 'kg'),
+	...blankWeight('weight_after', 'kg')
+};
+
+// The same texts again under their _original names, as the edit page loads them.
+const originals = (texts: Record<string, string>) =>
+	Object.fromEntries(
+		Object.entries(texts).flatMap(([k, v]) => [
+			[k, v],
+			[`${k}_original`, v]
+		])
+	);
 
 const bottle = (over: Partial<Bottle> = {}): Bottle => ({
 	id: 'e1',
 	at: '2026-11-20T09:30:00Z',
 	contents: ['breast_milk', 'formula'],
 	volume: { ml: 120, floz_hundredths: 406, typed_unit: 'ml' },
+	sources: [],
 	note: null,
 	...over
 });
@@ -30,6 +59,9 @@ const nursing = (over: Partial<Nursing> = {}): Nursing => ({
 	side: null,
 	sideSince: null,
 	note: 'ok',
+	weightBefore: null,
+	weightAfter: null,
+	milk: null,
 	...over
 });
 const pumping = (over: Partial<Pumping> = {}): Pumping => ({
@@ -113,25 +145,26 @@ describe('createValues', () => {
 	const now = '2026-03-29T00:45:00Z';
 
 	it('prefills the time to now on the kid clock and the unit to the preference', () => {
-		expect(createValues('bottles', now, MADRID, 'floz')).toEqual({
+		expect(createValues('bottles', now, MADRID, FLOZ)).toEqual({
 			at: '2026-03-29T01:45',
 			contents: [],
 			volume: '',
 			volume_unit: 'floz',
+			...NO_SOURCES,
 			note: ''
 		});
-		expect(createValues('diapers', now, 'UTC', 'ml')).toEqual({
+		expect(createValues('diapers', now, 'UTC', ML)).toEqual({
 			at: '2026-03-29T00:45',
 			kind: '',
 			note: ''
 		});
-		expect(createValues('meals', now, 'UTC', 'ml')).toEqual({
+		expect(createValues('meals', now, 'UTC', ML)).toEqual({
 			at: '2026-03-29T00:45',
 			what: '',
 			reaction: '',
 			note: ''
 		});
-		expect(createValues('pumping', now, 'UTC', 'ml')).toEqual({
+		expect(createValues('pumping', now, 'UTC', ML)).toEqual({
 			started_at: '2026-03-29T00:45',
 			duration_minutes: '',
 			volume: '',
@@ -139,25 +172,33 @@ describe('createValues', () => {
 			side: '',
 			note: ''
 		});
-		expect(createValues('sleep', now, 'UTC', 'ml')).toEqual({
+		expect(createValues('sleep', now, 'UTC', ML)).toEqual({
 			started_at: '2026-03-29T00:45',
 			ended_at: '',
 			note: ''
 		});
-		expect(createValues('nursing', now, 'UTC', 'ml')).toEqual({
+		expect(createValues('nursing', now, 'UTC', ML)).toEqual({
 			started_at: '2026-03-29T00:45',
 			ended_at: '',
 			left_minutes: '',
 			right_minutes: '',
 			side: '',
+			...BLANK_WEIGHTS_KG,
 			note: ''
+		});
+	});
+
+	it('prefills the weight units to the weight preference', () => {
+		expect(createValues('nursing', now, 'UTC', FLOZ)).toMatchObject({
+			weight_before_unit: 'lb',
+			weight_after_unit: 'lb'
 		});
 	});
 
 	it('carries no stored originals', () => {
 		for (const kind of ['bottles', 'nursing', 'pumping', 'sleep', 'diapers', 'meals'] as const) {
 			expect(
-				Object.keys(createValues(kind, now, 'UTC', 'ml')).filter((k) => k.endsWith('_original'))
+				Object.keys(createValues(kind, now, 'UTC', ML)).filter((k) => k.endsWith('_original'))
 			).toEqual([]);
 		}
 	});
@@ -165,7 +206,7 @@ describe('createValues', () => {
 
 describe('editValues', () => {
 	it('shows a bottle in the preferred unit and keeps the stored values as originals', () => {
-		const v = editValues('bottles', bottle(), MADRID, 'floz');
+		const v = editValues('bottles', bottle(), MADRID, FLOZ);
 		expect(v).toEqual({
 			at: '2026-11-20T10:30',
 			at_original: '2026-11-20T10:30',
@@ -174,24 +215,26 @@ describe('editValues', () => {
 			volume_original: '4.06',
 			volume_unit: 'floz',
 			volume_unit_original: 'floz',
+			...originals(NO_SOURCES),
+			sources_original: '',
 			note: ''
 		});
 	});
 
 	it('shows the typed column when it matches the preference', () => {
 		const typed = bottle({ volume: { ml: 126, floz_hundredths: 425, typed_unit: 'floz' } });
-		expect(editValues('bottles', typed, 'UTC', 'floz')).toMatchObject({
+		expect(editValues('bottles', typed, 'UTC', FLOZ)).toMatchObject({
 			volume: '4.25',
 			volume_unit: 'floz'
 		});
-		expect(editValues('bottles', typed, 'UTC', 'ml')).toMatchObject({
+		expect(editValues('bottles', typed, 'UTC', ML)).toMatchObject({
 			volume: '126',
 			volume_unit: 'ml'
 		});
 	});
 
 	it('floors a finished nursing session to minutes and keeps the raw seconds', () => {
-		const v = editValues('nursing', nursing(), 'UTC', 'ml');
+		const v = editValues('nursing', nursing(), 'UTC', ML);
 		expect(v).toEqual({
 			started_at: '2026-11-20T10:00',
 			started_at_original: '2026-11-20T10:00',
@@ -201,6 +244,7 @@ describe('editValues', () => {
 			right_minutes: '1',
 			left_seconds_original: '723',
 			right_seconds_original: '61',
+			...originals(BLANK_WEIGHTS_KG),
 			note: 'ok'
 		});
 	});
@@ -210,19 +254,20 @@ describe('editValues', () => {
 			'nursing',
 			nursing({ endedAt: null, side: 'left', sideSince: '2026-11-20T10:00:00Z', leftSeconds: 0 }),
 			'UTC',
-			'ml'
+			ML
 		);
 		expect(v).toEqual({
 			started_at: '2026-11-20T10:00',
 			started_at_original: '2026-11-20T10:00',
 			ended_at: '',
 			ended_at_original: '',
+			...originals(BLANK_WEIGHTS_KG),
 			note: 'ok'
 		});
 	});
 
 	it('floors a pumping duration and keeps the raw seconds', () => {
-		expect(editValues('pumping', pumping(), 'UTC', 'ml')).toEqual({
+		expect(editValues('pumping', pumping(), 'UTC', ML)).toEqual({
 			started_at: '2026-11-20T10:00',
 			started_at_original: '2026-11-20T10:00',
 			duration_minutes: '20',
@@ -237,23 +282,23 @@ describe('editValues', () => {
 	});
 
 	it('shows a running sleep with a blank end and a finished one with its end', () => {
-		expect(editValues('sleep', sleep(), 'UTC', 'ml')).toMatchObject({
+		expect(editValues('sleep', sleep(), 'UTC', ML)).toMatchObject({
 			ended_at: '',
 			ended_at_original: ''
 		});
 		expect(
-			editValues('sleep', sleep({ endedAt: '2026-11-20T11:30:00Z' }), MADRID, 'ml')
+			editValues('sleep', sleep({ endedAt: '2026-11-20T11:30:00Z' }), MADRID, ML)
 		).toMatchObject({ started_at: '2026-11-20T11:00', ended_at: '2026-11-20T12:30' });
 	});
 
 	it('shows a diaper and a meal; a null reaction is blank', () => {
-		expect(editValues('diapers', diaper, 'UTC', 'ml')).toEqual({
+		expect(editValues('diapers', diaper, 'UTC', ML)).toEqual({
 			at: '2026-11-20T10:00',
 			at_original: '2026-11-20T10:00',
 			kind: 'both',
 			note: 'rash'
 		});
-		expect(editValues('meals', meal, 'UTC', 'ml')).toEqual({
+		expect(editValues('meals', meal, 'UTC', ML)).toEqual({
 			at: '2026-11-20T10:00',
 			at_original: '2026-11-20T10:00',
 			what: 'rice',
@@ -263,7 +308,90 @@ describe('editValues', () => {
 	});
 
 	it('reads the time on the kid clock across the spring change', () => {
-		const v = editValues('diapers', { ...diaper, at: '2026-03-29T01:30:00Z' }, MADRID, 'ml');
+		const v = editValues('diapers', { ...diaper, at: '2026-03-29T01:30:00Z' }, MADRID, ML);
 		expect(v.at).toBe('2026-03-29T03:30');
+	});
+
+	const SOURCES = [
+		{ source: 'breast_milk', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } },
+		{ source: 'formula', volume: { ml: 90, floz_hundredths: 304, typed_unit: 'ml' } }
+	] as const;
+	const advancedBottle = () =>
+		bottle({
+			volume: { ml: 150, floz_hundredths: 507, typed_unit: 'ml' },
+			sources: [...SOURCES]
+		});
+
+	it('shows each source of an advanced bottle in the preferred unit, with its original', () => {
+		expect(editValues('bottles', advancedBottle(), 'UTC', ML)).toMatchObject({
+			volume: '150',
+			volume_unit: 'ml',
+			sources_breast_milk: '60',
+			sources_breast_milk_original: '60',
+			sources_formula: '90',
+			sources_formula_original: '90',
+			sources_cow_milk: '',
+			sources_cow_milk_original: '',
+			sources_other: '',
+			sources_other_original: '',
+			sources_original: 'breast_milk,formula'
+		});
+		expect(editValues('bottles', advancedBottle(), 'UTC', FLOZ)).toMatchObject({
+			volume: '5.07',
+			volume_unit: 'floz',
+			sources_breast_milk: '2.03',
+			sources_breast_milk_original: '2.03',
+			sources_formula: '3.04',
+			sources_original: 'breast_milk,formula'
+		});
+	});
+
+	it('shows a simple bottle with no source text and an empty sources_original', () => {
+		expect(editValues('bottles', bottle(), 'UTC', ML)).toMatchObject({
+			sources_formula: '',
+			sources_formula_original: '',
+			sources_original: ''
+		});
+	});
+
+	it('shows a weight in its typed unit and pre-fills the other from its own column', () => {
+		const kg = { grams: 3400, ozHundredths: 11993, typedUnit: 'kg' } as const;
+		const lb = { grams: 3402, ozHundredths: 12000, typedUnit: 'lb' } as const;
+		const v = editValues('nursing', nursing({ weightBefore: kg, weightAfter: lb }), 'UTC', ML);
+		expect(v).toMatchObject({
+			weight_before_unit: 'kg',
+			weight_before_unit_original: 'kg',
+			weight_before_kg: '3.4',
+			weight_before_kg_original: '3.4',
+			weight_before_lb: '7',
+			weight_before_lb_original: '7',
+			weight_before_oz: '7.93',
+			weight_before_oz_original: '7.93',
+			weight_after_unit: 'lb',
+			weight_after_kg: '3.402',
+			weight_after_lb: '7',
+			weight_after_oz: '8'
+		});
+	});
+
+	it('shows a missing weight blank, in the preferred weight unit', () => {
+		const v = editValues('nursing', nursing(), 'UTC', FLOZ);
+		expect(v).toMatchObject({
+			weight_before_unit: 'lb',
+			weight_before_unit_original: 'lb',
+			weight_before_kg: '',
+			weight_before_kg_original: '',
+			weight_after_unit: 'lb',
+			weight_after_oz_original: ''
+		});
+	});
+
+	it('shows the weights of a running session too', () => {
+		const kg = { grams: 3400, ozHundredths: 11993, typedUnit: 'kg' } as const;
+		const running = nursing({ endedAt: null, side: 'left', weightBefore: kg });
+		expect(editValues('nursing', running, 'UTC', ML)).toMatchObject({
+			weight_before_kg: '3.4',
+			weight_after_kg: ''
+		});
 	});
 });

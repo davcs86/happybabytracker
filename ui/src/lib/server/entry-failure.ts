@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { MAX_SESSION_HOURS, MEAL_TEXT_MAX_LEN, VOLUME_ML_RANGE } from '../constants';
 import type { EntryValues } from '../entry-edit';
 import type { TimerKind } from '../types';
+import { GROWTH_FIELD_MESSAGES } from './growth-form';
 import { failAction, type ApiFailure } from './outcome';
 
 const TIME = 'Enter a time that is not in the future and not before the birth date';
@@ -13,6 +14,10 @@ export const ENTRY_FIELD_MESSAGES: Record<string, string> = {
 	ended_at: `Enter an end after the start, within ${MAX_SESSION_HOURS} hours of it and not in the future`,
 	contents: 'Choose at least one',
 	volume: 'Enter a volume: whole millilitres, or ounces with up to two decimals',
+	sources:
+		'Enter a volume for every ticked source: whole millilitres, or ounces with up to two decimals',
+	weight_before: GROWTH_FIELD_MESSAGES.weight,
+	weight_after: GROWTH_FIELD_MESSAGES.weight,
 	kind: 'Choose wet, dirty, both or dry',
 	what: `Enter what was eaten, up to ${MEAL_TEXT_MAX_LEN} characters`,
 	reaction: 'The reaction is too long',

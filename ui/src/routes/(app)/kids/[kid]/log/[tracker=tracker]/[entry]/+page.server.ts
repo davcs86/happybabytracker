@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import {
 	editValues,
 	entryInstant,
+	formUnits,
 	isRunning,
 	localDate,
 	ranOver,
@@ -40,7 +41,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		kind,
 		running,
 		overrun: running && ranOver(entryInstant(kind, entry), Date.now()),
-		values: editValues(kind, entry, kid.timeZone, session?.parent?.units.volume ?? 'ml')
+		values: editValues(kind, entry, kid.timeZone, formUnits(session))
 	};
 };
 
@@ -52,8 +53,8 @@ export const actions: Actions = {
 		const extra = { form: 'save' as const };
 		// Ended elsewhere since the page loaded: a finished read would find no stored seconds to compare.
 		if (!running && fromRunningPage(kind, form)) {
-			const unit = locals.session?.parent?.units.volume ?? 'ml';
-			return staleTimerFailure(editValues(kind, entry, kid.timeZone, unit), extra);
+			const units = formUnits(locals.session);
+			return staleTimerFailure(editValues(kind, entry, kid.timeZone, units), extra);
 		}
 		const { values, input, field, message } = readEntryForm(kind, form, kid.timeZone, {
 			kind: 'edit',

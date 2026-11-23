@@ -45,6 +45,14 @@ describe('sendOnlyChanged', () => {
 		expect(moved).not.toHaveProperty('volume');
 	});
 
+	it('keeps the volume of a simple form saved over a bottle that had sources', () => {
+		const over = { ...bottle, sources_original: 'breast_milk,formula' };
+		expect(sendOnlyChanged('bottles', form(over), input())).toHaveProperty('volume');
+		expect(
+			sendOnlyChanged('bottles', form({ ...over, sources_original: '' }), input())
+		).not.toHaveProperty('volume');
+	});
+
 	it('keeps everything when the originals are missing', () => {
 		const r = sendOnlyChanged('bottles', form({ at: bottle.at, volume: '4.25' }), input());
 		expect(r).toEqual(input());
