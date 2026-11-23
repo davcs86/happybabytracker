@@ -74,8 +74,8 @@ func replaceSources(ctx context.Context, tx *sql.Tx, bottleID string, sources []
 	return nil
 }
 
-// withSources sets Sources on each of bottles with one query for the whole page.
-func (s *Store) withSources(ctx context.Context, bottles []model.BottleFeed) ([]model.BottleFeed, error) {
+// withSources sets Sources on each of bottles, read through r, with one query for the whole page.
+func withSources(ctx context.Context, r queryer, bottles []model.BottleFeed) ([]model.BottleFeed, error) {
 	if len(bottles) == 0 {
 		return bottles, nil
 	}
@@ -84,7 +84,7 @@ func (s *Store) withSources(ctx context.Context, bottles []model.BottleFeed) ([]
 	for i, b := range bottles {
 		at[b.ID], args[i] = i, b.ID
 	}
-	rows, err := s.r.QueryContext(ctx,
+	rows, err := r.QueryContext(ctx,
 		`SELECT bottle_id, source, volume_ml, volume_floz_h, volume_typed FROM bottle_feed_sources WHERE bottle_id IN (?`+
 			strings.Repeat(`, ?`, len(args)-1)+`)`, args...)
 	if err != nil {
@@ -151,24 +151,33 @@ func (s *Store) CreateBottle(ctx context.Context, kidID, actorID string, b model
 
 // Bottle is ErrNotFound for an id that is absent or belongs to another kid.
 func (s *Store) Bottle(ctx context.Context, kidID, id string) (model.BottleFeed, error) {
-	b, err := scanBottle(s.r.QueryRowContext(ctx, `SELECT `+bottleColumns+` FROM bottle_feeds WHERE kid_id = ? AND id = ?`, kidID, id))
-	if err != nil {
-		return model.BottleFeed{}, err
-	}
-	one, err := s.withSources(ctx, []model.BottleFeed{b})
-	if err != nil {
-		return model.BottleFeed{}, err
-	}
-	return one[0], nil
+	var out model.BottleFeed
+	err := s.inReadTx(ctx, func(q queryer) error {
+		b, err := scanBottle(q.QueryRowContext(ctx, `SELECT `+bottleColumns+` FROM bottle_feeds WHERE kid_id = ? AND id = ?`, kidID, id))
+		if err != nil {
+			return err
+		}
+		one, err := withSources(ctx, q, []model.BottleFeed{b})
+		if err == nil {
+			out = one[0]
+		}
+		return err
+	})
+	return out, err
 }
 
 // ListBottles returns the kid's bottles within q, newest first by (at, id); never nil.
 func (s *Store) ListBottles(ctx context.Context, kidID string, q ListQuery) ([]model.BottleFeed, error) {
-	rows, err := listEntries(ctx, s.r, `SELECT `+bottleColumns+` FROM bottle_feeds`, "at", kidID, q, scanBottle)
-	if err != nil {
-		return nil, err
-	}
-	return s.withSources(ctx, rows)
+	var out []model.BottleFeed
+	err := s.inReadTx(ctx, func(r queryer) error {
+		rows, err := listEntries(ctx, r, `SELECT `+bottleColumns+` FROM bottle_feeds`, "at", kidID, q, scanBottle)
+		if err != nil {
+			return err
+		}
+		out, err = withSources(ctx, r, rows)
+		return err
+	})
+	return out, err
 }
 
 // UpdateBottle replaces every editable field of b.ID, which must belong to kidID, and its whole set of sources;

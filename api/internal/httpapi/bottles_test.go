@@ -596,6 +596,40 @@ func TestSwitchToSimpleAndBack(t *testing.T) {
 	}
 }
 
+func TestPatchSourcesWithFewerKeys(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil)))["id"].(string)
+	one := k.bottlePath(kid, id)
+
+	rec := k.do(http.MethodPatch, one, ana, map[string]any{"sources": sourcesBody("ml", map[string]int{model.ContentFormula: 90})})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d %q", rec.Code, rec.Body.String())
+	}
+	got := bodyMap(t, k.do(http.MethodGet, one, ana, nil))
+	if !equalJSON(got["contents"], []any{"formula"}) ||
+		!equalJSON(got["volume"], map[string]any{"ml": 90.0, "floz_hundredths": 304.0, "typed_unit": "ml"}) ||
+		!equalJSON(got["sources"], []any{srcView("formula", 90, 304, "ml")}) {
+		t.Errorf("stored after dropping a source = %v", got)
+	}
+}
+
+func TestSourcesBesideDifferingContentsOnPatch(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	id := bodyMap(t, k.do(http.MethodPost, k.bottlePath(kid), ana, advancedBody(nil)))["id"].(string)
+	one := k.bottlePath(kid, id)
+	before := k.do(http.MethodGet, one, ana, nil).Body.String()
+
+	wantInvalid2(t, "patch", k.do(http.MethodPatch, one, ana, map[string]any{
+		"sources":  sourcesBody("ml", map[string]int{model.ContentFormula: 10, model.ContentCowMilk: 20}),
+		"contents": []string{"formula"},
+	}), "contents")
+	if got := k.do(http.MethodGet, one, ana, nil).Body.String(); got != before {
+		t.Errorf("a refused patch changed the bottle: %s", got)
+	}
+}
+
 func TestBothVolumeAndSources(t *testing.T) {
 	k := newKit(t)
 	kid, ana, _ := k.trackerKid()
@@ -635,6 +669,8 @@ func TestSourcesValidation(t *testing.T) {
 		{"negative", map[string]any{"sources": two("ml", -5, 10)}, "sources"},
 		{"huge", map[string]any{"sources": two("ml", 1<<40, 10)}, "sources"},
 		{"unknown unit", map[string]any{"sources": two("cup", 10, 10)}, "sources"},
+		{"no unit and zero for a source not stored", map[string]any{"sources": map[string]any{"amounts": map[string]int{"other": 0}}}, "sources"},
+		{"no unit and zero beside a stored source", map[string]any{"sources": map[string]any{"amounts": map[string]int{"formula": 0, "other": 0}}}, "sources"},
 		{"ounces that round to 0 ml", map[string]any{"sources": two("floz", 1, 100)}, "sources"},
 		{"contents beside the sources differ", map[string]any{"contents": []string{"formula"}}, "contents"},
 		{"contents add a name", map[string]any{"contents": []string{"formula", "breast_milk", "other"}}, "contents"},

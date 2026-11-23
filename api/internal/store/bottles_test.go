@@ -437,6 +437,7 @@ func TestSourcesMustMatchContents(t *testing.T) {
 type countingDriver struct {
 	inner   driver.Driver
 	queries *atomic.Int64
+	before  func(n int64) // runs before the nth counted query reaches the driver; nil for none
 }
 
 func (d countingDriver) Open(name string) (driver.Conn, error) {
@@ -444,16 +445,19 @@ func (d countingDriver) Open(name string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &countingConn{Conn: c, queries: d.queries}, nil
+	return &countingConn{Conn: c, queries: d.queries, before: d.before}, nil
 }
 
 type countingConn struct {
 	driver.Conn
 	queries *atomic.Int64
+	before  func(n int64)
 }
 
 func (c *countingConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
-	c.queries.Add(1)
+	if n := c.queries.Add(1); c.before != nil {
+		c.before(n)
+	}
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
 }
 
@@ -477,12 +481,12 @@ type countingConnector struct {
 func (c countingConnector) Connect(context.Context) (driver.Conn, error) { return c.d.Open(c.dsn) }
 func (c countingConnector) Driver() driver.Driver                        { return c.d }
 
-// countReads makes s's read pool count its queries.
-func countReads(t *testing.T, s *Store) *atomic.Int64 {
+// countReads makes s's read pool count its queries, calling before (if not nil) ahead of each one.
+func countReads(t *testing.T, s *Store, before func(n int64)) *atomic.Int64 {
 	t.Helper()
 	n := new(atomic.Int64)
 	rdsn := "file:" + filepath.Join(s.cleanup, dbFile) + "?mode=ro&_pragma=foreign_keys(1)"
-	r := sql.OpenDB(countingConnector{rdsn, countingDriver{s.r.Driver(), n}})
+	r := sql.OpenDB(countingConnector{rdsn, countingDriver{s.r.Driver(), n, before}})
 	t.Cleanup(func() { r.Close() })
 	s.r = r
 	return n
@@ -496,7 +500,7 @@ func TestListLoadsSourcesWithOneExtraQuery(t *testing.T) {
 		amounts := map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}
 		mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0.Add(-time.Duration(i)*time.Minute), units.UnitML, amounts))
 	}
-	n := countReads(t, s)
+	n := countReads(t, s, nil)
 
 	if list, err := s.ListBottles(ctx, k.ID, wideQuery()); err != nil || len(list) != 100 || len(list[99].Sources) != 2 {
 		t.Fatalf("ListBottles = %d rows, %v", len(list), err)
@@ -530,5 +534,49 @@ func TestTimelineBottleCarriesSources(t *testing.T) {
 	}
 	if got := items[1].Entry.(model.BottleFeed); len(got.Sources) != 0 {
 		t.Errorf("simple item has sources %+v", got.Sources)
+	}
+}
+
+// A write that lands between the bottle read and the sources read must not show as a mixed pair.
+func TestBottleReadIsOneSnapshot(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	old := mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 90}))
+	next := advancedBottle(t, t0, units.UnitML, map[string]int64{model.ContentBreastMilk: 10, model.ContentFormula: 20})
+	next.ID = old.ID
+
+	for name, read := range map[string]func() (model.BottleFeed, error){
+		"Bottle": func() (model.BottleFeed, error) { return s.Bottle(ctx, k.ID, old.ID) },
+		"ListBottles": func() (model.BottleFeed, error) {
+			list, err := s.ListBottles(ctx, k.ID, wideQuery())
+			if err != nil || len(list) != 1 {
+				t.Fatalf("ListBottles = %v, %v", list, err)
+			}
+			return list[0], nil
+		},
+	} {
+		if err := s.UpdateBottle(ctx, k.ID, ana.ID, old, t0); err != nil {
+			t.Fatal(err)
+		}
+		var wrote atomic.Bool
+		countReads(t, s, func(n int64) {
+			if n == 2 && wrote.CompareAndSwap(false, true) {
+				if err := s.UpdateBottle(ctx, k.ID, ana.ID, next, t0); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+		got, err := read()
+		if err != nil || !wrote.Load() {
+			t.Fatalf("%s: %v, wrote between the reads: %v", name, err, wrote.Load())
+		}
+		var sum int64
+		for _, src := range got.Sources {
+			sum += src.Volume.ML
+		}
+		if sum != got.Volume.ML || (got.Volume.ML != old.Volume.ML && got.Volume.ML != next.Volume.ML) {
+			t.Errorf("%s: total %d ml with sources %+v, a mixed read", name, got.Volume.ML, got.Sources)
+		}
 	}
 }

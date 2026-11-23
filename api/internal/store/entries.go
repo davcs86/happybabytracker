@@ -96,7 +96,7 @@ func pageTail(timeCol, kidID string, q ListQuery) (string, []any) {
 }
 
 // listEntries runs selectFrom (a SELECT ... FROM <table> built from code constants) with pageTail and scans each row.
-func listEntries[T any](ctx context.Context, r *sql.DB, selectFrom, timeCol, kidID string, q ListQuery, scan func(rowScanner) (T, error)) ([]T, error) {
+func listEntries[T any](ctx context.Context, r queryer, selectFrom, timeCol, kidID string, q ListQuery, scan func(rowScanner) (T, error)) ([]T, error) {
 	tail, args := pageTail(timeCol, kidID, q)
 	rows, err := r.QueryContext(ctx, selectFrom+tail, args...)
 	if err != nil {

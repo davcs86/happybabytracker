@@ -63,11 +63,15 @@ func mergeSources(stored []model.BottleSource, storedTotal units.Volume, in *sou
 	out := make([]model.BottleSource, 0, len(names))
 	var sum int64
 	for _, name := range names {
-		var old units.Volume
+		var v units.Volume
+		var ok bool
 		if i := slices.IndexFunc(stored, func(s model.BottleSource) bool { return s.Source == name }); i >= 0 {
-			old = stored[i].Volume
+			v, ok = mergeVolume(stored[i].Volume, &volumeInput{Unit: in.Unit, Amount: in.Amounts[name]})
+		} else {
+			var err error
+			v, err = units.NewVolume(in.Unit, in.Amounts[name])
+			ok = err == nil
 		}
-		v, ok := mergeVolume(old, &volumeInput{Unit: in.Unit, Amount: in.Amounts[name]})
 		if !ok {
 			return nil, units.Volume{}, "sources"
 		}
