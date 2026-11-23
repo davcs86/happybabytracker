@@ -53,6 +53,8 @@ const (
 	GramsPerOzDenominator = 1000000000
 	MaxWeightAmount       = 1 << 24
 
+	MilkDensityHundredths = 103
+
 	MMPerInchNumerator   = 254
 	MMPerInchDenominator = 10
 	MaxLengthAmount      = 1 << 24

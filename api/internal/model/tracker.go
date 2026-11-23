@@ -15,12 +15,20 @@ type Entry struct {
 	Note                            *string
 }
 
+// BottleSource is one content's share of an advanced bottle.
+type BottleSource struct {
+	Source string
+	Volume units.Volume
+}
+
 // BottleFeed contents are a non-empty subset of the Content* names, stored in that order.
+// Sources is nil or empty for a simple bottle; otherwise one per Contents name, in that order.
 type BottleFeed struct {
 	Entry
 	At       time.Time
 	Contents []string
 	Volume   units.Volume
+	Sources  []BottleSource
 }
 
 type Diaper struct {
@@ -59,6 +67,7 @@ type NursingSession struct {
 	LeftSeconds, RightSeconds int
 	Side                      *string
 	SideSince                 *time.Time
+	WeightBefore, WeightAfter *units.Weight
 }
 
 // InvalidField names the field that breaks a sleep invariant, "" when none does.
