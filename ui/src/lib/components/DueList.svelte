@@ -11,7 +11,7 @@
 			{#each lines as line, i (i)}
 				<li>
 					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the path helpers keep an absolute path without JavaScript -->
-					<a href={line.href} class="underline">{line.text}</a>
+					<a href={line.href} class="[overflow-wrap:anywhere] underline">{line.text}</a>
 				</li>
 			{/each}
 		</ul>

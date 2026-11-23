@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { MEDICATION_TEXT_MAX_LEN } from '../src/lib/constants.js';
 import { formatAge, todayIn } from '../src/lib/format.js';
 import {
 	KID_COOKIE,
@@ -229,13 +230,13 @@ test('Due shows at most three visits and links the rest from the Vaccines page',
 	await expectAccessible(page);
 });
 
-// A due entry is listed only before the end of the kid-local day: UTC and Madrid midnights stay far off.
+// A due entry is listed only before the kid-local day ends: stay an hour clear of UTC and Madrid midnight.
 function skipNearDayEnd() {
-	const now = new Date();
-	test.skip(
-		now.getUTCHours() * 60 + now.getUTCMinutes() >= 22 * 60 + 30,
-		'entries would fall on tomorrow'
-	);
+	const left = (zone: string) => {
+		const [h, m] = clock(new Date().toISOString(), zone).split(':').map(Number);
+		return 24 * 60 - (h * 60 + m);
+	};
+	test.skip(Math.min(left('UTC'), left(LEO.timeZone)) < 60, 'entries would fall on tomorrow');
 }
 // A whole minute that many minutes from now, as the instant the API takes and the clock the page shows.
 const inMinutes = (n: number) =>
@@ -350,6 +351,28 @@ test('Due shows three entries and one more line for each hidden kind, linked to 
 	expect(await vaccines.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
 		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
 	);
+	await expectAccessible(page);
+});
+
+test('a long unbroken medication name does not overflow the page at phone width', async ({
+	page
+}, testInfo) => {
+	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+	skipNearDayEnd();
+	const ana = await stubAs(ANA);
+	const name = 'w'.repeat(MEDICATION_TEXT_MAX_LEN);
+	const at = inMinutes(10);
+	expect((await ana('POST', `/v1/kids/${IVY.id}/medications`, dailyCourse(name, at))).status).toBe(
+		201
+	);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([`${name} · ${hhmm(at)}`]);
+	expect(
+		await page.evaluate(
+			() => document.documentElement.scrollWidth > document.documentElement.clientWidth
+		)
+	).toBe(false);
 	await expectAccessible(page);
 });
 

@@ -77,8 +77,12 @@ describe('dueLines', () => {
 
 	it('has no more line for 0 and 2 medication entries with 0 or 3 vaccine groups when all fit', () => {
 		expect(lines(meds(2))).toHaveLength(2);
-		expect(lines([...meds(2)])).toHaveLength(2);
 		expect(lines([...meds(0), ...vaxes(3)])).toHaveLength(3);
+	});
+
+	it('says "1 more" for a single hidden entry of either kind', () => {
+		expect(lines(meds(4)).at(-1)?.text).toBe('1 more on the Medication page');
+		expect(lines(vaxes(4)).at(-1)?.text).toBe('1 more on the Vaccines page');
 	});
 
 	it('counts what is hidden per kind: 5 medication entries with no vaccine group', () => {
@@ -106,7 +110,7 @@ describe('dueLines', () => {
 		]);
 	});
 
-	it('hides only vaccines when the cap ends inside the medication entries of a smaller list', () => {
+	it('cuts inside the vaccine groups when the medication entries all fit: only a Vaccines line', () => {
 		expect(lines([...meds(2), ...vaxes(3)], 3).filter((l) => l.text.includes(' more '))).toEqual([
 			{ text: '2 more on the Vaccines page', href: `/kids/${KID}/vaccines` }
 		]);
