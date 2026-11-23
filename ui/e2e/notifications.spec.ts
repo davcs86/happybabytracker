@@ -45,6 +45,9 @@ async function fakePush(context: BrowserContext, n = 'browser'): Promise<Sub> {
 	await context.grantPermissions(['notifications']);
 	await context.addInitScript((sub: Sub) => {
 		if (typeof PushManager === 'undefined') return;
+		// The headless shell reports 'denied' whatever the context grants: report the grant made above.
+		Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+		Notification.requestPermission = async () => 'granted';
 		const read = () => {
 			const raw = localStorage.getItem('fake-push');
 			return raw ? (JSON.parse(raw) as FakeState) : null;
