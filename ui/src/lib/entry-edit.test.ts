@@ -73,6 +73,7 @@ const pumping = (over: Partial<Pumping> = {}): Pumping => ({
 	durationSeconds: 1203,
 	volume: { ml: 80, floz_hundredths: 270, typed_unit: 'floz' },
 	side: 'both',
+	sides: [],
 	note: null,
 	...over
 });
@@ -172,6 +173,8 @@ describe('createValues', () => {
 			duration_minutes: '',
 			volume: '',
 			volume_unit: 'ml',
+			sides_left: '',
+			sides_right: '',
 			side: '',
 			note: ''
 		});
@@ -279,8 +282,55 @@ describe('editValues', () => {
 			volume_original: '80',
 			volume_unit: 'ml',
 			volume_unit_original: 'ml',
+			sides_left: '',
+			sides_left_original: '',
+			sides_right: '',
+			sides_right_original: '',
+			sides_original: '',
 			side: 'both',
 			note: ''
+		});
+	});
+
+	describe('a pumping session with sides', () => {
+		const sides = pumping({
+			volume: { ml: 110, floz_hundredths: 372, typed_unit: 'ml' },
+			sides: [
+				{ side: 'left', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } },
+				{ side: 'right', volume: { ml: 50, floz_hundredths: 169, typed_unit: 'floz' } }
+			]
+		});
+
+		it('shows each side in the preferred unit, its original, and the stored total', () => {
+			expect(editValues('pumping', sides, 'UTC', ML)).toMatchObject({
+				volume_unit: 'ml',
+				volume_unit_original: 'ml',
+				sides_left: '60',
+				sides_left_original: '60',
+				sides_right: '50',
+				sides_right_original: '50',
+				sides_original: 'left,right',
+				sides_total: '110 ml'
+			});
+			expect(editValues('pumping', sides, 'UTC', FLOZ)).toMatchObject({
+				sides_left: '2.03',
+				sides_right: '1.69',
+				sides_total: '3.72 fl oz'
+			});
+		});
+
+		it('leaves an absent side blank and lists only the stored ones', () => {
+			const left = pumping({ side: 'left', sides: [sides.sides[0]] });
+			expect(editValues('pumping', left, 'UTC', ML)).toMatchObject({
+				sides_left: '60',
+				sides_right: '',
+				sides_right_original: '',
+				sides_original: 'left'
+			});
+		});
+
+		it('has no total for a simple session', () => {
+			expect(editValues('pumping', pumping(), 'UTC', ML)).not.toHaveProperty('sides_total');
 		});
 	});
 
@@ -431,13 +481,34 @@ describe('isAdvanced', () => {
 	it('reads no advanced data from an entry of a kind without a data check', () => {
 		expect(isAdvanced('diapers', null, diaper)).toBe(false);
 		expect(isAdvanced('meals', '0', meal)).toBe(false);
-		expect(isAdvanced('pumping', null, pumping())).toBe(false);
+		expect(isAdvanced('sleep', null, sleep())).toBe(false);
 	});
 
 	it('is never advanced for a tracker without an advanced form', () => {
-		for (const kind of ['diapers', 'meals', 'pumping', 'sleep'] as const) {
+		for (const kind of ['diapers', 'meals', 'sleep'] as const) {
 			expect(isAdvanced(kind, '1')).toBe(false);
 		}
+	});
+
+	describe('pumping', () => {
+		const sided = pumping({
+			sides: [{ side: 'left', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } }]
+		});
+
+		it('opens a new session advanced only on ?advanced=1', () => {
+			expect(isAdvanced('pumping', '1')).toBe(true);
+			for (const param of [null, '', '0', '2']) expect(isAdvanced('pumping', param)).toBe(false);
+		});
+
+		it('opens an edit advanced by itself when the session has sides', () => {
+			expect(isAdvanced('pumping', null, pumping())).toBe(false);
+			expect(isAdvanced('pumping', null, sided)).toBe(true);
+			expect(isAdvanced('pumping', '1', pumping())).toBe(true);
+		});
+
+		it('?advanced=0 opens the simple form over a session with sides', () => {
+			expect(isAdvanced('pumping', '0', sided)).toBe(false);
+		});
 	});
 
 	describe('nursing', () => {
@@ -484,9 +555,32 @@ describe('advancedToggle', () => {
 		});
 	});
 
+	it('offers a volume per side to pumping, with one total as the way back', () => {
+		expect(advancedToggle('pumping', false)).toEqual({
+			href: '?advanced=1',
+			label: 'Advanced: volume per side'
+		});
+		expect(advancedToggle('pumping', true)).toEqual({
+			href: '?advanced=0',
+			label: 'Use one total'
+		});
+	});
+
 	it('offers nothing for a tracker without an advanced form', () => {
-		expect(advancedToggle('diapers', false)).toBeNull();
-		expect(advancedToggle('pumping', false)).toBeNull();
+		for (const kind of ['diapers', 'meals', 'sleep'] as const) {
+			expect(advancedToggle(kind, false)).toBeNull();
+			expect(advancedToggle(kind, true)).toBeNull();
+		}
+	});
+
+	// One table decides both: a tracker that opens advanced always has its labels, never a crash.
+	it('has labels for exactly the trackers that open advanced', () => {
+		const kinds = ['bottles', 'nursing', 'pumping', 'sleep', 'diapers', 'meals'] as const;
+		for (const kind of kinds) {
+			expect(() => advancedToggle(kind, true)).not.toThrow();
+			expect(advancedToggle(kind, false) !== null).toBe(isAdvanced(kind, '1'));
+		}
+		expect(kinds.filter((k) => isAdvanced(k, '1'))).toEqual(['bottles', 'nursing', 'pumping']);
 	});
 });
 

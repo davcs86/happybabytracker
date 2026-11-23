@@ -18,6 +18,7 @@ import {
 	FINISHED_SIDE_MESSAGE,
 	REOPEN_MESSAGE,
 	sourcesTotalMessage,
+	totalRangeMessage,
 	volumeRangeMessage,
 	WHAT_MISSING_MESSAGE,
 	WHAT_TOO_LONG_MESSAGE,
@@ -30,12 +31,22 @@ export type EntryFormValues = Record<string, string | string[]>;
 const WEIGHT_PARTS = ['unit', 'kg', 'lb', 'oz'] as const;
 const WEIGHT_FIELDS = WEIGHT_NAMES.flatMap((n) => WEIGHT_PARTS.map((p) => `${n}_${p}`));
 const SOURCE_FIELDS = BOTTLE_CONTENTS.map((c) => `sources_${c}`);
+const SIDE_FIELDS = NURSING_SIDES.map((s) => `sides_${s}`);
 
 const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 	bottles: ['at', 'volume', 'volume_unit', 'advanced', ...SOURCE_FIELDS, 'note'],
 	diapers: ['at', 'kind', 'note'],
 	meals: ['at', 'what', 'reaction', 'note'],
-	pumping: ['started_at', 'duration_minutes', 'volume', 'volume_unit', 'side', 'note'],
+	pumping: [
+		'started_at',
+		'duration_minutes',
+		'volume',
+		'volume_unit',
+		'side',
+		'advanced',
+		...SIDE_FIELDS,
+		'note'
+	],
 	sleep: ['started_at', 'ended_at', 'note'],
 	nursing: [
 		'started_at',
@@ -54,6 +65,7 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 // What an edit of an advanced form compares against, as loaded; one that is missing is refused, never guessed.
 const ORIGINALS: Partial<Record<TrackerKind, string[]>> = {
 	bottles: ['volume_unit', 'sources', ...SOURCE_FIELDS].map((k) => `${k}_original`),
+	pumping: ['volume_unit', 'sides', ...SIDE_FIELDS].map((k) => `${k}_original`),
 	nursing: WEIGHT_FIELDS.map((k) => `${k}_original`)
 };
 
@@ -122,6 +134,7 @@ function volumeRange(kind: VolumeKind, vol: { unit: VolumeUnit; amount: number }
 }
 
 type Sources = { unit: VolumeUnit; amounts: Record<string, number> };
+type Sides = Sources;
 type Refusal = { field: string; message: string | null };
 
 // The advanced bottle: one amount per ticked source in one unit. A source typed for an unticked box is not read.
@@ -177,14 +190,61 @@ function readSources(
 	return same ? { send: null } : send();
 }
 
-// The sum of the ticked texts that read, as the form shows it; the API's total is the sum of what is sent.
-function typedTotal(v: EntryFormValues, ticked: readonly string[]): string {
+// The advanced pumping session: one amount per side typed, in one unit; a blank side is absent. An edit sends the
+// set only if a side's text, the set of sides or the unit differs from what was loaded.
+function readSides(v: EntryFormValues, edit: boolean): { send: Sides | null } | Refusal {
+	const text = (k: string) => v[k] as string | undefined;
+	const refuse = (field = 'sides', message: string | null = null): Refusal => ({
+		field,
+		message
+	});
+	const unit = text('volume_unit') ?? '';
+	if (!includes(VOLUME_UNITS, unit)) return refuse();
+	const amounts: Record<string, number> = {};
+	let sum = 0;
+	for (const name of NURSING_SIDES) {
+		if ((text(`sides_${name}`) ?? '').trim() === '') continue;
+		const n = amount(unit, text(`sides_${name}`) ?? '');
+		if (n === null || n < 1) return refuse();
+		amounts[name] = n;
+		sum += n;
+	}
+	const names = Object.keys(amounts);
+	if (names.length === 0 || !Number.isSafeInteger(sum)) return refuse();
+	// Millilitres only: an ounce total is left to the API's conversion.
+	const { min, max } = VOLUME_ML_RANGE.pumping;
+	const outside = unit === 'ml' && (sum < min || sum > max);
+	const send = (): { send: Sides } | Refusal =>
+		outside ? refuse('volume', totalRangeMessage('pumping')) : { send: { unit, amounts } };
+	if (!edit) return send();
+
+	const kept = text('sides_original');
+	const stored: string[] = kept === undefined || kept === '' ? [] : kept.split(',');
+	if (
+		kept === undefined ||
+		text('volume_unit_original') === undefined ||
+		stored.some((n) => !includes(NURSING_SIDES, n)) ||
+		NURSING_SIDES.some((n) => text(`sides_${n}_original`) === undefined)
+	) {
+		return refuse();
+	}
+	const same =
+		unit === text('volume_unit_original') &&
+		names.length === stored.length &&
+		names.every(
+			(n) =>
+				stored.includes(n) &&
+				(text(`sides_${n}`) ?? '').trim() === text(`sides_${n}_original`)?.trim()
+		);
+	// An untouched form is not range-checked: per-side columns shown in ml can sum past the range.
+	return same ? { send: null } : send();
+}
+
+// The sum of the texts that read, as the form shows it; the API's total is the sum of what is sent.
+function typedTotal(v: EntryFormValues, keys: readonly string[]): string {
 	const unit = v.volume_unit as string;
 	if (!includes(VOLUME_UNITS, unit)) return '';
-	const sum = BOTTLE_CONTENTS.filter((c) => ticked.includes(c)).reduce(
-		(total, c) => total + (amount(unit, v[`sources_${c}`] as string) ?? 0),
-		0
-	);
+	const sum = keys.reduce((total, k) => total + (amount(unit, v[k] as string) ?? 0), 0);
 	return formatVolume(
 		unit === 'ml' ? { ml: sum, floz_hundredths: 0 } : { ml: 0, floz_hundredths: sum },
 		unit
@@ -276,6 +336,13 @@ function build(
 		case 'pumping': {
 			const duration = seconds(s('duration_minutes'), false);
 			if (duration === null) return bad('duration_seconds');
+			if (s('advanced') === '1') {
+				const r = readSides(v, mode.kind === 'edit');
+				if ('field' in r) return r;
+				input.duration_seconds = duration;
+				if (r.send) input.sides = r.send;
+				break;
+			}
 			const vol = volume(s('volume_unit'), s('volume'));
 			if (!vol) return bad('volume');
 			const range = volumeRange(kind, vol);
@@ -340,8 +407,14 @@ export function readEntryForm(
 	);
 	if (kind === 'bottles') values.contents = form.getAll('contents').map(String);
 	if (kind === 'bottles' && values.advanced === '1') {
-		values.sources_total = typedTotal(values, values.contents as string[]);
+		const ticked = BOTTLE_CONTENTS.filter((c) => (values.contents as string[]).includes(c));
+		values.sources_total = typedTotal(
+			values,
+			ticked.map((c) => `sources_${c}`)
+		);
 	}
+	if (kind === 'pumping' && values.advanced === '1')
+		values.sides_total = typedTotal(values, SIDE_FIELDS);
 	if (mode.kind === 'edit') {
 		for (const k of ORIGINALS[kind] ?? []) {
 			const o = form.get(k);

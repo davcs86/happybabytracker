@@ -53,6 +53,33 @@ describe('sendOnlyChanged', () => {
 		).not.toHaveProperty('volume');
 	});
 
+	it('keeps the volume of a simple form saved over a pumping session that had sides', () => {
+		const pumping = {
+			started_at: '2026-11-20T10:30',
+			started_at_original: '2026-11-20T10:30',
+			duration_minutes: '15',
+			volume: '110',
+			volume_original: '110',
+			volume_unit: 'ml',
+			volume_unit_original: 'ml'
+		};
+		const body = (): EntryBody => ({
+			started_at: 'a',
+			duration_seconds: 900,
+			volume: { unit: 'ml', amount: 110 },
+			side: 'both',
+			note: null
+		});
+		const over = { ...pumping, sides_original: 'left,right' };
+		expect(sendOnlyChanged('pumping', form(over), body())).toMatchObject({
+			volume: { unit: 'ml', amount: 110 },
+			side: 'both'
+		});
+		for (const plain of [{ ...over, sides_original: '' }, pumping]) {
+			expect(sendOnlyChanged('pumping', form(plain), body())).not.toHaveProperty('volume');
+		}
+	});
+
 	it('keeps everything when the originals are missing', () => {
 		const r = sendOnlyChanged('bottles', form({ at: bottle.at, volume: '4.25' }), input());
 		expect(r).toEqual(input());

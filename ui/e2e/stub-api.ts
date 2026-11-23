@@ -1070,6 +1070,17 @@ function canonicalContents(names: string[]): string[] | null {
 	return canonical.length > 0 && canonical.length === names.length ? canonical : null;
 }
 
+type SideView = { side: string; volume: Vol };
+
+// CanonicalPumpingSides: left then right, none unknown, none twice, at least one.
+function canonicalSides(names: string[]): string[] | null {
+	const canonical = NURSING_SIDES.filter((n) => names.includes(n));
+	return canonical.length > 0 && canonical.length === names.length ? canonical : null;
+}
+
+// DerivedPumpingSide: both for two sides, else the one named.
+const derivedSide = (sides: SideView[]) => (sides.length === 2 ? 'both' : sides[0].side);
+
 const sameList = (a: string[], b: string[]) =>
 	a.length === b.length && a.every((n, i) => n === b[i]);
 
@@ -1288,21 +1299,47 @@ const SPECS: Record<TrackerKey, Spec> = {
 	pumping: {
 		timeKey: 'started_at',
 		timer: false,
+		// sides has the shape of sources: a unit and an amount per name.
 		fields: {
 			started_at: 'time',
 			duration_seconds: 'int',
 			volume: 'volume',
+			sides: 'sources',
 			side: 'string',
 			...NOTE_FIELD
 		},
+		// pumpingInput.mergeOnto: started_at, duration_seconds, volume or sides, side, note.
 		merge: (view, body, c) => {
 			if (!mergeTime(view, body, 'started_at', c)) return 'started_at';
 			if (typeof body.duration_seconds === 'number') view.duration_seconds = body.duration_seconds;
 			const d = view.duration_seconds as number;
 			if (d < 1 || d > MAX_SESSION_S) return 'duration_seconds';
-			if (!mergeVolume(view, body, PUMPING_ML)) return 'volume';
-			if (typeof body.side === 'string') view.side = body.side;
+			const sides = body.sides as SourcesBody | null | undefined;
+			if (body.volume != null && sides) return 'sides';
+			if (sides) {
+				const names = canonicalSides(Object.keys(sides.amounts ?? {}));
+				if (!names) return 'sides';
+				const stored = (view.sides as SideView[]).map((s) => ({
+					source: s.side,
+					volume: s.volume
+				}));
+				const merged = mergeSources(stored, view.volume as Vol, sides, names);
+				if (typeof merged === 'string') return merged === 'sources' ? 'sides' : merged;
+				view.sides = merged.sources.map((s) => ({ side: s.source, volume: s.volume }));
+				view.volume = merged.total;
+				if (merged.total.ml < PUMPING_ML.min || merged.total.ml > PUMPING_ML.max) return 'volume';
+			} else {
+				if (!mergeVolume(view, body, PUMPING_ML)) return 'volume';
+				if (body.volume != null) view.sides = [];
+			}
+			const advanced = (view.sides as SideView[]).length > 0;
+			const derived = advanced ? derivedSide(view.sides as SideView[]) : '';
+			if (sides) {
+				if (typeof body.side === 'string' && body.side !== derived) return 'side';
+				view.side = derived;
+			} else if (typeof body.side === 'string') view.side = body.side;
 			if (!PUMPING_SIDES.includes(view.side as string)) return 'side';
+			if (advanced && view.side !== derived) return 'side';
 			return mergeNote(view, body) ? '' : 'note';
 		},
 		blank: (c) => ({
@@ -1310,6 +1347,7 @@ const SPECS: Record<TrackerKey, Spec> = {
 			duration_seconds: 0,
 			volume: { ...BLANK_VOLUME },
 			side: '',
+			sides: [],
 			note: null
 		})
 	},

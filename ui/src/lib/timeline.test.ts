@@ -165,6 +165,7 @@ describe('timelineLine', () => {
 				durationSeconds: 1200,
 				volume: vol(90, 304),
 				side: 'both',
+				sides: [],
 				note: null
 			}
 		} as TimelineItem;
@@ -178,6 +179,48 @@ describe('timelineLine', () => {
 			}) as TimelineItem;
 		expect(timelineLine(meal(null), 'UTC', METRIC)).toBe('12:15 Solids: pear');
 		expect(timelineLine(meal('liked it'), 'UTC', METRIC)).toBe('12:15 Solids: pear · liked it');
+	});
+});
+
+describe('timelineLine pumping with sides', () => {
+	const sided = (side: string, sides: [string, number, number][]) =>
+		({
+			kind: 'pumping',
+			at: '2026-10-14T09:00:00Z',
+			entry: {
+				id: 'p1',
+				startedAt: '2026-10-14T09:00:00Z',
+				durationSeconds: 1200,
+				volume: vol(
+					sides.reduce((n, s) => n + s[1], 0),
+					sides.reduce((n, s) => n + s[2], 0)
+				),
+				side,
+				sides: sides.map(([s, ml, floz]) => ({ side: s, volume: vol(ml, floz) })),
+				note: null
+			}
+		}) as TimelineItem;
+
+	it('gives each side its own volume in the parent unit instead of the side name', () => {
+		const both = sided('both', [
+			['left', 60, 203],
+			['right', 50, 169]
+		]);
+		expect(timelineLine(both, 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 110 ml (L 60 ml · R 50 ml)'
+		);
+		expect(timelineLine(both, 'UTC', IMPERIAL)).toBe(
+			'09:00 Pumping 20 min, 3.72 fl oz (L 2.03 fl oz · R 1.69 fl oz)'
+		);
+	});
+
+	it('a single side shows that side alone', () => {
+		expect(timelineLine(sided('left', [['left', 60, 203]]), 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 60 ml (L 60 ml)'
+		);
+		expect(timelineLine(sided('right', [['right', 50, 169]]), 'UTC', METRIC)).toBe(
+			'09:00 Pumping 20 min, 50 ml (R 50 ml)'
+		);
 	});
 });
 

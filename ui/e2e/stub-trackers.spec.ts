@@ -223,6 +223,127 @@ test('advanced bottles: the sources sum into the total, switch modes and validat
 	);
 });
 
+test('advanced pumping: the sides sum into the total, derive the side, switch modes and validate as the API does', async () => {
+	const ana = await as(ANA);
+	const path = `/v1/kids/${IVY.id}/pumping`;
+	const base = { duration_seconds: 900 };
+	const sides = { unit: 'ml', amounts: { right: 50, left: 60 } };
+
+	const simple = await ana('POST', path, {
+		...base,
+		volume: { unit: 'ml', amount: 90 },
+		side: 'left'
+	});
+	expect(simple.body.sides).toEqual([]);
+
+	const made = await ana('POST', path, { ...base, sides });
+	expect(made.status).toBe(201);
+	expect(made.body).toMatchObject({
+		side: 'both',
+		volume: { ml: 110, floz_hundredths: 372, typed_unit: 'ml' },
+		sides: [
+			{ side: 'left', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } },
+			{ side: 'right', volume: { ml: 50, floz_hundredths: 169, typed_unit: 'ml' } }
+		]
+	});
+	const one = `${path}/${made.body.id}`;
+	expect((await ana('GET', one)).body).toEqual(made.body);
+	for (const [amounts, side] of [
+		[{ left: 60 }, 'left'],
+		[{ right: 50 }, 'right']
+	] as const) {
+		expect(
+			(await ana('POST', path, { ...base, sides: { unit: 'ml', amounts } })).body
+		).toMatchObject({ side, sides: [{ side }] });
+	}
+
+	// A note alone keeps every column; one changed side keeps the other and re-sums the total.
+	expect((await ana('PATCH', one, { note: 'x' })).body).toMatchObject({
+		volume: made.body.volume,
+		sides: made.body.sides,
+		side: 'both',
+		note: 'x'
+	});
+	const edited = await ana('PATCH', one, {
+		sides: { unit: 'ml', amounts: { left: 60, right: 55 } }
+	});
+	expect(edited.body.volume).toMatchObject({ ml: 115, typed_unit: 'ml' });
+	expect(edited.body.sides[0]).toEqual(made.body.sides[0]);
+	expect(edited.body.sides[1].volume).toMatchObject({ ml: 55 });
+	// Dropping a side re-derives the side; a side beside the set must be the derived one.
+	expect(
+		(await ana('PATCH', one, { sides: { unit: 'ml', amounts: { right: 55 } } })).body
+	).toMatchObject({ side: 'right', volume: { ml: 55 } });
+	expect(
+		await ana('PATCH', one, { sides: { unit: 'ml', amounts: { left: 5 } }, side: 'right' })
+	).toMatchObject(invalid('side'));
+	expect(
+		(await ana('PATCH', one, { sides: { unit: 'ml', amounts: { left: 5 } }, side: 'left' })).status
+	).toBe(200);
+	// A side alone must still fit the sides kept; a volume clears them and keeps the stored side.
+	expect(await ana('PATCH', one, { side: 'right' })).toMatchObject(invalid('side'));
+	expect((await ana('PATCH', one, { side: 'left' })).status).toBe(200);
+	const cleared = await ana('PATCH', one, { volume: { unit: 'ml', amount: 100 } });
+	expect(cleared.body).toMatchObject({ side: 'left', volume: { ml: 100 }, sides: [] });
+	expect(
+		(await ana('PATCH', one, { volume: { unit: 'ml', amount: 100 }, side: 'both' })).body.side
+	).toBe('both');
+
+	// Typed in ounces: the total is the exact sum, each side has its own columns.
+	const oz = await ana('POST', path, {
+		...base,
+		sides: { unit: 'floz', amounts: { left: 225, right: 300 } }
+	});
+	expect(oz.body.volume).toMatchObject({ floz_hundredths: 525, typed_unit: 'floz' });
+	expect(oz.body.sides).toMatchObject([
+		{ volume: { ml: 67, floz_hundredths: 225, typed_unit: 'floz' } },
+		{ volume: { ml: 89, floz_hundredths: 300, typed_unit: 'floz' } }
+	]);
+
+	for (const bad of [
+		{ unit: 'ml', amounts: {} },
+		{ unit: 'ml', amounts: { both: 5 } },
+		{ unit: 'ml', amounts: { middle: 5 } },
+		{ unit: 'ml', amounts: { left: 0 } },
+		{ unit: 'ml', amounts: { left: -3 } },
+		{ unit: 'ml', amounts: { left: null } },
+		{ unit: 'cup', amounts: { left: 5 } },
+		{ unit: null, amounts: { left: 5 } },
+		{ amounts: { left: 5 } },
+		{ unit: 'ml' }
+	]) {
+		expect(await ana('POST', path, { ...base, sides: bad })).toMatchObject(invalid('sides'));
+	}
+	expect(
+		await ana('POST', path, { ...base, sides: { unit: 'ml', amounts: { left: 1500, right: 501 } } })
+	).toMatchObject(invalid('volume'));
+	expect(
+		await ana('POST', path, { ...base, sides, volume: { unit: 'ml', amount: 110 } })
+	).toMatchObject(invalid('sides'));
+	expect(await ana('POST', path, { ...base, sides, side: 'left' })).toMatchObject(invalid('side'));
+	expect(await ana('POST', path, { ...base, sides, side: 'both' })).toMatchObject({ status: 201 });
+	// Order: started_at, duration_seconds, volume or sides, side, note.
+	expect(
+		await ana('POST', path, { started_at: '2001-01-01T00:00:00Z', sides: { amounts: {} } })
+	).toMatchObject(invalid('started_at'));
+	expect(await ana('POST', path, { duration_seconds: 0, sides: { amounts: {} } })).toMatchObject(
+		invalid('duration_seconds')
+	);
+	expect(await ana('POST', path, { ...base, sides, note: 'n'.repeat(501) })).toMatchObject(
+		invalid('note')
+	);
+	expect(
+		await ana('POST', path, { ...base, sides: { unit: 'ml', amounts: {}, extra: 1 } })
+	).toMatchObject({ status: 422, body: { error: 'unknown_field', field: 'extra' } });
+	expect(await ana('POST', path, { ...base, sides: 5 })).toMatchObject({ status: 400 });
+	expect(
+		await ana('POST', path, { ...base, sides: { unit: 'ml', amounts: { left: '5' } } })
+	).toMatchObject({ status: 400 });
+
+	const timeline = await ana('GET', `/v1/kids/${IVY.id}/timeline?types=pumping`);
+	expect(timeline.body.items.every((i: { sides: unknown[] }) => Array.isArray(i.sides))).toBe(true);
+});
+
 test('nursing weigh-ins: stored as typed, the estimate from grams, and refused as the API refuses', async () => {
 	const ana = await as(ANA);
 	const base = `/v1/kids/${IVY.id}/nursing`;

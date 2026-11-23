@@ -5,6 +5,7 @@ import {
 	HUNDREDTHS_PER_OZ,
 	MAX_SESSION_HOURS,
 	MILK_ESTIMATE_BASIS,
+	NURSING_SIDES,
 	OZ_PER_LB,
 	SECONDS_PER_HOUR,
 	SECONDS_PER_MINUTE
@@ -81,6 +82,7 @@ export const formUnits = (session: Session | null | undefined): FormUnits => ({
 export const WEIGHT_NAMES = ['weight_before', 'weight_after'] as const;
 
 const blankSources = () => Object.fromEntries(BOTTLE_CONTENTS.map((c) => [`sources_${c}`, '']));
+const blankSides = () => Object.fromEntries(NURSING_SIDES.map((s) => [`sides_${s}`, '']));
 const blankWeights = (unit: Units['weight']): EntryValues =>
 	Object.fromEntries(
 		WEIGHT_NAMES.flatMap((n) => [
@@ -119,6 +121,7 @@ export function createValues(
 				duration_minutes: '',
 				volume: '',
 				volume_unit: unit,
+				...blankSides(),
 				side: '',
 				note: ''
 			};
@@ -162,6 +165,18 @@ function sourceValues(e: TrackerEntries['bottles'], unit: VolumeUnit): EntryValu
 	};
 }
 
+// A side shown in the parent's unit; a side the session has no volume for is blank.
+function sideValues(e: TrackerEntries['pumping'], unit: VolumeUnit): EntryValues {
+	const shown = NURSING_SIDES.flatMap((name) => {
+		const side = e.sides.find((s) => s.side === name);
+		return Object.entries(withOriginal(`sides_${name}`, side ? volumeText(side.volume, unit) : ''));
+	});
+	return {
+		...Object.fromEntries(shown),
+		sides_original: e.sides.map((s) => s.side).join(',')
+	};
+}
+
 // Each weight in its typed unit; the other unit is pre-filled from its own column, so flipping resends the same weight.
 function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight']): EntryValues {
 	const ozPerLb = OZ_PER_LB * HUNDREDTHS_PER_OZ;
@@ -173,8 +188,19 @@ function weightValues(name: string, w: GrowthWeight | null, unit: Units['weight'
 	};
 }
 
-// The trackers that have an advanced form, opened by ?advanced=1; every form starts simple.
-const ADVANCED_KINDS: readonly TrackerKind[] = ['bottles', 'nursing'];
+type ToggleLabels = { advanced: string; simple: string };
+
+// The trackers that have an advanced form, opened by ?advanced=1, with the links that switch it; every form
+// starts simple.
+const TOGGLE_LABELS: Partial<Record<TrackerKind, ToggleLabels>> = {
+	bottles: { advanced: 'Advanced: volume per source', simple: 'Use one total' },
+	nursing: {
+		advanced: 'Advanced: weigh before and after',
+		// Hiding the weigh-ins never deletes one: a form without them sends no weight key.
+		simple: 'Hide weigh-ins'
+	},
+	pumping: { advanced: 'Advanced: volume per side', simple: 'Use one total' }
+};
 
 // Whether an entry already carries advanced data; a kind without a predicate never opens advanced by itself.
 const HAS_ADVANCED_DATA: Partial<Record<TrackerKind, (entry: Entry) => boolean>> = {
@@ -182,13 +208,14 @@ const HAS_ADVANCED_DATA: Partial<Record<TrackerKind, (entry: Entry) => boolean>>
 	nursing: (entry) => {
 		const e = entry as TrackerEntries['nursing'];
 		return e.weightBefore !== null || e.weightAfter !== null;
-	}
+	},
+	pumping: (entry) => (entry as TrackerEntries['pumping']).sides.length > 0
 };
 
 // A new form is advanced on ?advanced=1; an edit also when the entry already carries advanced data,
 // unless ?advanced=0 asks for the simple form.
 export function isAdvanced(kind: TrackerKind, param: string | null, entry?: Entry): boolean {
-	if (!ADVANCED_KINDS.includes(kind)) return false;
+	if (!TOGGLE_LABELS[kind]) return false;
 	if (param === '1') return true;
 	if (entry === undefined || param === '0') return false;
 	return HAS_ADVANCED_DATA[kind]?.(entry) ?? false;
@@ -199,18 +226,12 @@ export function advancedToggle(
 	kind: TrackerKind,
 	advanced: boolean
 ): { href: string; label: string } | null {
-	if (!ADVANCED_KINDS.includes(kind)) return null;
-	const label = TOGGLE_LABELS[kind as 'bottles' | 'nursing'];
+	const label = TOGGLE_LABELS[kind];
+	if (!label) return null;
 	return advanced
 		? { href: '?advanced=0', label: label.simple }
 		: { href: '?advanced=1', label: label.advanced };
 }
-
-// Hiding the weigh-ins never deletes one: a form without them sends no weight key.
-const TOGGLE_LABELS = {
-	bottles: { advanced: 'Advanced: volume per source', simple: 'Use one total' },
-	nursing: { advanced: 'Advanced: weigh before and after', simple: 'Hide weigh-ins' }
-} as const;
 
 // The edit page's paragraph under the weigh-ins: the API's estimate in the parent's units, "No estimate" when
 // both weights are set without one, nothing while a weight is missing.
@@ -269,6 +290,9 @@ export function editValues(
 				duration_minutes: String(floorMinutes(e.durationSeconds)),
 				duration_seconds_original: String(e.durationSeconds),
 				...volumeValues(e.volume, unit),
+				...sideValues(e, unit),
+				// The stored total, which the typed sides may differ from by rounding.
+				...(e.sides.length > 0 ? { sides_total: formatVolume(e.volume, unit) } : {}),
 				side: e.side,
 				...note
 			};

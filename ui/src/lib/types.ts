@@ -83,11 +83,14 @@ export type Bottle = Noted & {
 };
 export type Diaper = Noted & { at: string; kind: DiaperKind };
 export type Meal = Noted & { at: string; what: string; reaction: string | null };
+// One side of an advanced session; sides is empty for a simple one, else one per side pumped.
+export type PumpingSideVolume = { side: NursingSide; volume: Volume };
 export type Pumping = Noted & {
 	startedAt: string;
 	durationSeconds: number;
 	volume: Volume;
 	side: PumpingSide;
+	sides: PumpingSideVolume[];
 };
 // A timer runs while endedAt is null.
 export type Sleep = Noted & { startedAt: string; endedAt: string | null };

@@ -54,6 +54,7 @@ import type {
 	Parent,
 	ParentLink,
 	Pumping,
+	PumpingSideVolume,
 	Role,
 	Session,
 	SessionInfo,
@@ -362,6 +363,11 @@ function toMeal(v: unknown): Meal {
 	};
 }
 
+function toPumpingSideVolume(v: unknown): PumpingSideVolume {
+	const o = object(v);
+	return { side: oneOf(o.side, NURSING_SIDES), volume: toVolume(o.volume) };
+}
+
 function toPumping(v: unknown): Pumping {
 	const o = object(v);
 	return {
@@ -370,6 +376,7 @@ function toPumping(v: unknown): Pumping {
 		durationSeconds: int(o.duration_seconds),
 		volume: toVolume(o.volume),
 		side: oneOf(o.side, PUMPING_SIDES),
+		sides: array(o.sides, toPumpingSideVolume),
 		note: stringOrNull(o.note)
 	};
 }

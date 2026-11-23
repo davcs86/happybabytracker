@@ -55,8 +55,14 @@ export function timelineLine(
 			return `${clock} ${label}${sides.length > 0 ? ` ${sides.join(' · ')}` : ''}${running}${estimate}`;
 		}
 		case 'pumping': {
-			const { durationSeconds, volume, side } = item.entry;
-			return `${clock} ${label} ${formatDuration(durationSeconds)}, ${formatVolume(volume, units.volume)} (${side})`;
+			const { durationSeconds, volume, side, sides } = item.entry;
+			const where =
+				sides.length > 0
+					? sides
+							.map((s) => `${SIDE_INITIAL[s.side]} ${formatVolume(s.volume, units.volume)}`)
+							.join(' · ')
+					: side;
+			return `${clock} ${label} ${formatDuration(durationSeconds)}, ${formatVolume(volume, units.volume)} (${where})`;
 		}
 		case 'sleep': {
 			const { startedAt, endedAt } = item.entry;

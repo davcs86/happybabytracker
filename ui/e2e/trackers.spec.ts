@@ -1657,3 +1657,439 @@ test.describe('the nursing weigh-ins without JavaScript', () => {
 		await expect(page.getByRole('link', { name: WEIGH_LINK })).toBeVisible();
 	});
 });
+
+// The advanced pumping form: a volume per side. Every save waits for its response.
+const SIDES_LINK = 'Advanced: volume per side';
+const ONE_TOTAL = 'Use one total';
+const SIDES_HINT = 'Saving one total replaces the volumes per side';
+const SIDES_MESSAGE = 'Enter a volume for at least one side';
+type Side = { side: string; volume: Record<string, unknown> };
+const sidesOf = (row: Row) => row.sides as Side[];
+const PUMP_START = minute(-30);
+const pumped = (sides: Record<string, number>, unit = 'ml') => ({
+	started_at: PUMP_START,
+	duration_seconds: 900,
+	sides: { unit, amounts: sides }
+});
+
+async function logSides(page: Page, left: string, right: string) {
+	await page.goto(logUrl('pumping') + ADVANCED);
+	await field(page, 'Minutes').fill('15');
+	await field(page, 'Left volume').fill(left);
+	await field(page, 'Right volume').fill(right);
+	await saveAndWait(page);
+}
+
+test.describe('the advanced pumping form', () => {
+	test('the simple form is unchanged and offers the advanced one', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping'));
+		await expect(field(page, 'Volume')).toBeVisible();
+		await expect(field(page, 'Volume unit')).toHaveValue('ml');
+		await expect(page.getByRole('radio')).toHaveCount(3);
+		await expect(field(page, 'Left volume')).toHaveCount(0);
+		await expect(page.getByText(/^Total:/)).toHaveCount(0);
+		await expect(page.getByText(SIDES_HINT)).toHaveCount(0);
+		await expect(page.locator('input[name="advanced"]')).toHaveCount(0);
+		await expectAccessible(page);
+		await page.getByRole('link', { name: SIDES_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/log/pumping\\${ADVANCED}$`));
+		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
+	});
+
+	test('?advanced=1 shows one input per side, one unit and no side radio', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await expect(page.getByRole('heading', { name: 'Log pumping', level: 1 })).toBeVisible();
+		await expect(field(page, 'Volume unit')).toBeVisible();
+		await expect(field(page, 'Left volume')).toBeVisible();
+		await expect(field(page, 'Right volume')).toBeVisible();
+		await expect(field(page, 'Volume')).toHaveCount(0);
+		await expect(page.getByRole('radio')).toHaveCount(0);
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		await expect(page.locator('input[name="advanced"]')).toHaveValue('1');
+		await expectAccessible(page);
+	});
+
+	test('left 60 and right 50 is one 110 ml session with its sides', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logSides(page, '60', '50');
+		await onTimeline(page);
+		await expect(page.getByText(/Pumping 15 min, 110 ml \(L 60 ml · R 50 ml\)/)).toBeVisible();
+		const [created] = await rows(api, 'pumping');
+		expect(created).toMatchObject({ side: 'both', volume: { ml: 110, typed_unit: 'ml' } });
+		expect(sidesOf(created).map((s) => [s.side, s.volume.ml])).toEqual([
+			['left', 60],
+			['right', 50]
+		]);
+		const body = await written('POST', `/v1/kids/${MIA.id}/pumping`);
+		expect(body.sides).toEqual({ unit: 'ml', amounts: { left: 60, right: 50 } });
+		expect(body).not.toHaveProperty('volume');
+		expect(body).not.toHaveProperty('side');
+
+		await page.goto(entryUrl('pumping', created.id));
+		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
+		await expect(field(page, 'Left volume')).toHaveValue('60');
+		await expect(field(page, 'Right volume')).toHaveValue('50');
+		await expect(page.getByRole('radio')).toHaveCount(0);
+		await expect(page.getByText('Total: 110 ml')).toBeVisible();
+		await expectAccessible(page);
+
+		await field(page, 'Right volume').fill('55');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [edited] = await rows(api, 'pumping');
+		expect(sidesOf(edited).map((s) => [s.side, s.volume.ml])).toEqual([
+			['left', 60],
+			['right', 55]
+		]);
+		expect(edited.volume).toMatchObject({ ml: 115 });
+		expect(sidesOf(edited)[0]).toEqual(sidesOf(created)[0]);
+		await expect(page.getByText(/Pumping 15 min, 115 ml \(L 60 ml · R 55 ml\)/)).toBeVisible();
+	});
+
+	test('left only saves as left, and the other side stays blank on edit', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logSides(page, '60', '');
+		await onTimeline(page);
+		await expect(page.getByText(/Pumping 15 min, 60 ml \(L 60 ml\)/)).toBeVisible();
+		const [created] = await rows(api, 'pumping');
+		expect(created).toMatchObject({ side: 'left', volume: { ml: 60 } });
+		expect(sidesOf(created)).toHaveLength(1);
+		const body = await written('POST', `/v1/kids/${MIA.id}/pumping`);
+		expect(body.sides).toEqual({ unit: 'ml', amounts: { left: 60 } });
+
+		await page.goto(entryUrl('pumping', created.id));
+		await expect(field(page, 'Left volume')).toHaveValue('60');
+		await expect(field(page, 'Right volume')).toHaveValue('');
+		await expect(page.getByText('Total: 60 ml')).toBeVisible();
+		await field(page, 'Right volume').fill('40');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [both] = await rows(api, 'pumping');
+		expect(both).toMatchObject({ side: 'both', volume: { ml: 100 } });
+		expect(sidesOf(both)[0]).toEqual(sidesOf(created)[0]);
+	});
+
+	test('editing only the note of an advanced session sends neither sides nor volume', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id));
+		await field(page, 'Note').fill('only the note');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('PATCH', `/v1/kids/${MIA.id}/pumping/${session.id}`);
+		expect(body).toEqual({ note: 'only the note' });
+		const [kept] = await rows(api, 'pumping');
+		expect(kept.volume).toMatchObject({ ml: 110 });
+		expect(sidesOf(kept)).toHaveLength(2);
+	});
+
+	test('a parent with fl oz types fl oz per side and reads them back exactly', async ({ page }) => {
+		const api = await stubAs(ANA);
+		expect((await api('PATCH', '/v1/me', { units: { volume: 'floz' } })).status).toBe(200);
+		await signIn(page, ANA);
+		await logSides(page, '2,5', '3.25');
+		await onTimeline(page);
+		await expect(page.getByText(/\(L 2\.5 fl oz · R 3\.25 fl oz\)/)).toBeVisible();
+		const [created] = await rows(api, 'pumping');
+		expect(created.volume).toMatchObject({ floz_hundredths: 575, typed_unit: 'floz' });
+		expect(sidesOf(created).map((s) => [s.side, s.volume.floz_hundredths])).toEqual([
+			['left', 250],
+			['right', 325]
+		]);
+		await page.goto(entryUrl('pumping', created.id));
+		await expect(field(page, 'Volume unit')).toHaveValue('floz');
+		await expect(field(page, 'Left volume')).toHaveValue('2.5');
+		await expect(field(page, 'Right volume')).toHaveValue('3.25');
+		await expect(page.getByText('Total: 5.75 fl oz')).toBeVisible();
+	});
+
+	test('both sides blank shows the message and keeps what was typed', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await field(page, 'Minutes').fill('15');
+		await field(page, 'Note').fill('keep me');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
+		await expectFieldError(field(page, 'Right volume'), SIDES_MESSAGE);
+		await expect(page.getByRole('alert').filter({ hasText: SIDES_MESSAGE })).toHaveCount(1);
+		await expect(field(page, 'Minutes')).toHaveValue('15');
+		await expect(field(page, 'Note')).toHaveValue('keep me');
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
+		await expectAccessible(page);
+		expect(await rows(api, 'pumping')).toEqual([]);
+
+		await field(page, 'Right volume').fill('30');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await rows(api, 'pumping')).toHaveLength(1);
+	});
+
+	test('text that is not a volume is refused with the values kept', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await field(page, 'Minutes').fill('15');
+		await field(page, 'Left volume').fill('1e3');
+		await field(page, 'Right volume').fill('50');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
+		await expect(field(page, 'Left volume')).toHaveValue('1e3');
+		await expect(page.getByText('Total: 50 ml')).toBeVisible();
+		expect(await rows(api, 'pumping')).toEqual([]);
+	});
+
+	test('a total over the range is refused on the sides, keeping the values', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await logSides(page, '1500', '600');
+		await expectFieldError(field(page, 'Right volume'), 'The total must be from 1 to 2000 ml');
+		await expect(page.getByText('Total: 2100 ml')).toBeVisible();
+		await expect(field(page, 'Left volume')).toHaveValue('1500');
+		await expectAccessible(page);
+		expect(await rows(api, 'pumping')).toEqual([]);
+	});
+
+	test('a side typed and then blanked is not sent', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await field(page, 'Minutes').fill('15');
+		await field(page, 'Left volume').fill('60');
+		await field(page, 'Right volume').fill('50');
+		await field(page, 'Right volume').fill('');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('POST', `/v1/kids/${MIA.id}/pumping`);
+		expect(body.sides).toEqual({ unit: 'ml', amounts: { left: 60 } });
+		expect((await rows(api, 'pumping'))[0]).toMatchObject({ side: 'left' });
+	});
+
+	test('"Use one total" over an advanced session saves a plain session and the sides are gone', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
+		const path = `/v1/kids/${MIA.id}/pumping/${session.id}`;
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id));
+		await page.getByRole('link', { name: ONE_TOTAL }).click();
+		await expect(page).toHaveURL(new RegExp(`/${session.id}\\?advanced=0$`));
+		await expect(field(page, 'Volume')).toHaveValue('110');
+		await expect(field(page, 'Left volume')).toHaveCount(0);
+		await expect(page.getByRole('radio', { name: 'Both' })).toBeChecked();
+		await expect(page.getByText(SIDES_HINT)).toBeVisible();
+		// The hidden original is what makes an untouched total replace the sides.
+		await expect(page.locator('input[name="sides_original"]')).toHaveValue('left,right');
+		await expectAccessible(page);
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toMatchObject({
+			volume: { unit: 'ml', amount: 110 },
+			side: 'both'
+		});
+		const [plain] = await rows(api, 'pumping');
+		expect(sidesOf(plain)).toEqual([]);
+		expect(plain).toMatchObject({ side: 'both', volume: { ml: 110 } });
+		await expect(page.getByText(/Pumping 15 min, 110 ml \(both\)/)).toBeVisible();
+
+		await page.goto(entryUrl('pumping', session.id));
+		await expect(page.getByRole('link', { name: SIDES_LINK })).toBeVisible();
+		await expect(field(page, 'Volume')).toHaveValue('110');
+		await expect(page.getByText(SIDES_HINT)).toHaveCount(0);
+	});
+
+	test('the simple form over an advanced session sends the changed total and side', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id) + '?advanced=0');
+		await field(page, 'Volume').fill('90');
+		await page.getByRole('radio', { name: 'Left' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'pumping');
+		expect(sidesOf(plain)).toEqual([]);
+		expect(plain).toMatchObject({ side: 'left', volume: { ml: 90 } });
+	});
+
+	test('a failed save over a session with sides stays advanced and keeps the values', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id));
+		await field(page, 'Left volume').fill('abc');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
+		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
+		await expect(field(page, 'Left volume')).toHaveValue('abc');
+		await expect(field(page, 'Right volume')).toHaveValue('50');
+		await expect(field(page, 'Volume')).toHaveCount(0);
+		await expect(page.getByRole('radio')).toHaveCount(0);
+		expect(sidesOf((await rows(api, 'pumping'))[0])).toHaveLength(2);
+
+		await field(page, 'Left volume').fill('65');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'pumping'))[0].volume).toMatchObject({ ml: 115 });
+	});
+
+	test('a session created simple opens simple, and can be opened advanced', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', {
+			started_at: PUMP_START,
+			duration_seconds: 900,
+			volume: { unit: 'ml', amount: 120 },
+			side: 'right'
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id));
+		await expect(field(page, 'Volume')).toHaveValue('120');
+		await expect(page.getByRole('radio', { name: 'Right' })).toBeChecked();
+		await expect(field(page, 'Left volume')).toHaveCount(0);
+		await expect(page.getByText(SIDES_HINT)).toHaveCount(0);
+		await page.getByRole('link', { name: SIDES_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`/${session.id}\\${ADVANCED}$`));
+		await expect(field(page, 'Left volume')).toHaveValue('');
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		await field(page, 'Left volume').fill('50');
+		await field(page, 'Right volume').fill('70');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [advanced] = await rows(api, 'pumping');
+		expect(advanced).toMatchObject({ side: 'both', volume: { ml: 120 } });
+		expect(sidesOf(advanced).map((s) => [s.side, s.volume.ml])).toEqual([
+			['left', 50],
+			['right', 70]
+		]);
+	});
+
+	test('a caregiver can log an advanced session', async ({ page }) => {
+		const api = await stubAs(CLEO);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping', LEO.id) + ADVANCED);
+		await field(page, 'Minutes').fill('10');
+		await field(page, 'Right volume').fill('80');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [created] = await rows(api, 'pumping', LEO.id);
+		expect(created).toMatchObject({ side: 'right', volume: { ml: 80 } });
+	});
+
+	test('a long note does not overflow the page at phone width', async ({ page }, testInfo) => {
+		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', {
+			...pumped({ left: 60, right: 50 }),
+			note: 'n'.repeat(200)
+		});
+		const overflows = () =>
+			page.evaluate(
+				() => document.documentElement.scrollWidth > document.documentElement.clientWidth
+			);
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id));
+		await expect(page.getByText('Total: 110 ml')).toBeVisible();
+		expect(await overflows()).toBe(false);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await field(page, 'Note').fill('n'.repeat(200));
+		expect(await overflows()).toBe(false);
+	});
+});
+
+test.describe('the advanced pumping form without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create, fail on both sides blank, fix it, then edit and switch to one total', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping'));
+		await page.getByRole('link', { name: SIDES_LINK }).click();
+		await expect(page).toHaveURL(new RegExp(`${ADVANCED.replace('?', '\\?')}$`));
+		await field(page, 'Minutes').fill('15');
+		await field(page, 'Note').fill('no script');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
+		await expect(field(page, 'Minutes')).toHaveValue('15');
+		await expect(field(page, 'Note')).toHaveValue('no script');
+		await expect(page.getByText('Total: 0 ml')).toBeVisible();
+		expect(await rows(api, 'pumping')).toEqual([]);
+
+		await field(page, 'Left volume').fill('60');
+		await field(page, 'Right volume').fill('50');
+		await saveAndWait(page);
+		await onTimeline(page);
+		await expect(page.getByText(/Pumping 15 min, 110 ml \(L 60 ml · R 50 ml\)/)).toBeVisible();
+		const [created] = await rows(api, 'pumping');
+		expect(sidesOf(created)).toHaveLength(2);
+
+		await page.goto(entryUrl('pumping', created.id));
+		await expect(field(page, 'Right volume')).toHaveValue('50');
+		await expect(page.getByText('Total: 110 ml')).toBeVisible();
+		await field(page, 'Right volume').fill('');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'pumping'))[0]).toMatchObject({ side: 'left', volume: { ml: 60 } });
+
+		await page.goto(entryUrl('pumping', created.id));
+		await page.getByRole('link', { name: ONE_TOTAL }).click();
+		await expect(field(page, 'Volume')).toHaveValue('60');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'pumping');
+		expect(sidesOf(plain)).toEqual([]);
+		expect(plain).toMatchObject({ side: 'left', volume: { ml: 60 } });
+	});
+
+	test('a failed simple save over an advanced session stays simple and keeps the hint', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
+		await signIn(page, ANA);
+		await page.goto(entryUrl('pumping', session.id) + '?advanced=0');
+		await field(page, 'Volume').fill('');
+		await saveAndWait(page);
+		// The post went to ?/save: the query string is gone, the form must not turn advanced.
+		await expectFieldError(field(page, 'Volume'), 'Enter a volume');
+		await expect(field(page, 'Left volume')).toHaveCount(0);
+		await expect(page.getByText(SIDES_HINT)).toBeVisible();
+		await expect(page.getByRole('link', { name: SIDES_LINK })).toBeVisible();
+		expect(sidesOf((await rows(api, 'pumping'))[0])).toHaveLength(2);
+
+		await field(page, 'Volume').fill('90');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [plain] = await rows(api, 'pumping');
+		expect(sidesOf(plain)).toEqual([]);
+		expect(plain).toMatchObject({ side: 'both', volume: { ml: 90 } });
+	});
+
+	test('the link back to one total works from a failed post', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('pumping') + ADVANCED);
+		await field(page, 'Minutes').fill('15');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
+		await page.getByRole('link', { name: ONE_TOTAL }).click();
+		await expect(field(page, 'Volume')).toBeVisible();
+		await expect(field(page, 'Left volume')).toHaveCount(0);
+	});
+});

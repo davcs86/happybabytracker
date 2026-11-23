@@ -726,6 +726,7 @@ describe('createApi tracker calls', () => {
 				duration_seconds: 600,
 				volume: VOLUME_WIRE,
 				side: 'both',
+				sides: [],
 				note: null
 			},
 			entry: {
@@ -734,6 +735,7 @@ describe('createApi tracker calls', () => {
 				durationSeconds: 600,
 				volume: VOLUME,
 				side: 'both',
+				sides: [],
 				note: null
 			}
 		},
@@ -836,6 +838,66 @@ describe('createApi tracker calls', () => {
 		])('maps a bottle with %s to error', async (_name, body) => {
 			const f = respond(body);
 			expect(await api(f).tracker('bottles').get(KID, 'e1')).toEqual({
+				ok: false,
+				status: 200,
+				reason: 'error'
+			});
+		});
+	});
+
+	describe('advanced pumping', () => {
+		const SIDES_WIRE = [
+			{ side: 'left', volume: { ml: 60, floz_hundredths: 203, typed_unit: 'ml' } },
+			{ side: 'right', volume: { ml: 50, floz_hundredths: 169, typed_unit: 'floz' } }
+		];
+		const wire = { ...ENTRIES.pumping.wire, sides: SIDES_WIRE };
+
+		it('parses the sides of a session in the order the API sent them', async () => {
+			const f = respond({ pumping: [wire], next_cursor: null });
+			expect(await api(f).tracker('pumping').list(KID)).toEqual({
+				ok: true,
+				data: { items: [{ ...ENTRIES.pumping.entry, sides: SIDES_WIRE }], nextCursor: null }
+			});
+		});
+
+		it('creates and updates with a sides body as given and parses the answer', async () => {
+			const f = respond(wire, 201);
+			const body = { sides: { unit: 'ml', amounts: { left: 60, right: 50 } } };
+			const t = api(f).tracker('pumping');
+			expect(await t.create(KID, body)).toMatchObject({ ok: true, data: { sides: SIDES_WIRE } });
+			expect(await t.update(KID, 'e1', body)).toMatchObject({ ok: true });
+			expect([sent(f, 0).body, sent(f, 1).body]).toEqual([body, body]);
+		});
+
+		it('a refused sides body names the field', async () => {
+			const f = respond({ error: 'invalid', field: 'sides' }, 422);
+			expect(await api(f).tracker('pumping').create(KID, { sides: {} })).toMatchObject({
+				ok: false,
+				reason: 'invalid',
+				field: 'sides'
+			});
+		});
+
+		it.each([
+			['no sides key', without(wire, 'sides')],
+			['sides that is not an array', { ...wire, sides: 'none' }],
+			['sides null', { ...wire, sides: null }],
+			['a side that is not an object', { ...wire, sides: [3] }],
+			['a side named both', { ...wire, sides: [{ ...SIDES_WIRE[0], side: 'both' }] }],
+			['a side with an unknown name', { ...wire, sides: [{ ...SIDES_WIRE[0], side: 'middle' }] }],
+			['a side without a name', { ...wire, sides: [{ volume: VOLUME_WIRE }] }],
+			['a side without a volume', { ...wire, sides: [{ side: 'left' }] }],
+			[
+				'a side with a fractional volume',
+				{ ...wire, sides: [{ side: 'left', volume: { ...VOLUME_WIRE, ml: 1.5 } }] }
+			],
+			[
+				'a side with an unknown typed unit',
+				{ ...wire, sides: [{ side: 'left', volume: { ...VOLUME_WIRE, typed_unit: 'cup' } }] }
+			]
+		])('maps a pumping session with %s to error', async (_name, body) => {
+			const f = respond(body);
+			expect(await api(f).tracker('pumping').get(KID, 'e1')).toEqual({
 				ok: false,
 				status: 200,
 				reason: 'error'
