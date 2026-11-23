@@ -130,6 +130,9 @@ func TestAuthorization(t *testing.T) {
 	for endpoint, aud := range map[string]string{
 		"https://fcm.googleapis.com/fcm/send/abc":        "https://fcm.googleapis.com",
 		"https://push.example.org:8443/wpush/v2/xyz?q=1": "https://push.example.org:8443",
+		"https://h:443/x":               "https://h",
+		"https://H.Example.ORG/x":       "https://h.example.org",
+		"https://push.example.org:80/x": "https://push.example.org:80",
 	} {
 		h, err := s.Authorization(endpoint, now)
 		if err != nil {
@@ -169,7 +172,7 @@ func TestAuthorization(t *testing.T) {
 			t.Fatal("signature does not verify")
 		}
 	}
-	for _, bad := range []string{"http://push.example.org/x", "https:///x", "::", ""} {
+	for _, bad := range []string{"http://push.example.org/x", "https:///x", "https://:443/x", "::", ""} {
 		if _, err := s.Authorization(bad, now); err == nil {
 			t.Errorf("endpoint %q accepted", bad)
 		} else if bad != "" && strings.Contains(err.Error(), bad) {

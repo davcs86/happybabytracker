@@ -29,13 +29,16 @@ var (
 	errAuth     = errors.New("push auth is not 16 bytes")
 )
 
-// Encrypt builds the aes128gcm body; asPriv and salt are injected so tests can pin the RFC vector.
+// Encrypt builds the aes128gcm body; asPriv and salt are injected only for the RFC vector: senders use encryptFresh.
 func Encrypt(plaintext, uaPub, auth []byte, asPriv *ecdh.PrivateKey, salt []byte) ([]byte, error) {
 	if len(plaintext) > MaxPlaintext {
 		return nil, errTooLarge
 	}
 	if len(auth) != 16 || len(salt) != 16 {
 		return nil, errLengths
+	}
+	if asPriv == nil {
+		return nil, errNoEphemeral
 	}
 	uaKey, err := ecdh.P256().NewPublicKey(uaPub)
 	if err != nil {

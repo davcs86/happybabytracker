@@ -181,3 +181,57 @@ func TestParseKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestEncryptRefusesNilEphemeralKey(t *testing.T) {
+	f := newFixture(t)
+	if _, err := Encrypt([]byte("x"), f.ua.PublicKey().Bytes(), f.auth, nil, f.salt); err == nil {
+		t.Fatal("nil ephemeral key accepted")
+	}
+}
+
+// TestRFC8291VectorDecrypts opens vecBody with the RFC's receiver key, written out here, not through decrypt.
+func TestRFC8291VectorDecrypts(t *testing.T) {
+	ua, err := ecdh.P256().NewPrivateKey(mustDec(t, "q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(ua.PublicKey().Bytes(), mustDec(t, vecUAPub)) {
+		t.Fatal("ua_private does not match ua_public")
+	}
+	auth := mustDec(t, "BTBZMqHH6r4Tts7J_aSIgg")
+	body := mustDec(t, vecBody)
+	salt, keyid, ct := body[0:16], body[21:86], body[86:]
+	if binary.BigEndian.Uint32(body[16:20]) != 4096 || body[20] != 65 {
+		t.Fatalf("header rs/idlen %x", body[16:21])
+	}
+	asPub, err := ecdh.P256().NewPublicKey(keyid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared, err := ua.ECDH(asPub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := "WebPush: info\x00" + string(ua.PublicKey().Bytes()) + string(keyid)
+	ikm, err := hkdf.Key(sha256.New, shared, auth, info, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cek, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: aes128gcm\x00", 16)
+	nonce, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: nonce\x00", 12)
+	blk, err := aes.NewCipher(cek)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := cipher.NewGCM(blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt, err := g.Open(nil, nonce, ct, nil)
+	if err != nil {
+		t.Fatalf("vector does not open: %v", err)
+	}
+	if string(pt) != "When I grow up, I want to be a watermelon\x02" {
+		t.Fatalf("plaintext %q", pt)
+	}
+}

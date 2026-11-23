@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/big"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -83,11 +84,11 @@ func validSubject(s string) bool {
 // Authorization is the Authorization header value for one endpoint; errors never echo it.
 func (s *Signer) Authorization(endpoint string, now time.Time) (string, error) {
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || u.Host == "" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
 		return "", errEndpoint
 	}
 	claims, err := json.Marshal(map[string]any{
-		"aud": u.Scheme + "://" + u.Host,
+		"aud": origin(u),
 		"exp": now.Add(constants.PushJWTLifetime).Unix(),
 		"sub": s.subject,
 	})
@@ -105,6 +106,18 @@ func (s *Signer) Authorization(endpoint string, now time.Time) (string, error) {
 		return "", err
 	}
 	return "vapid t=" + signing + "." + b64.EncodeToString(sig) + ", k=" + s.pub, nil
+}
+
+// origin is the ASCII serialisation: lowercase host, the port only when it is not 443.
+func origin(u *url.URL) string {
+	host := strings.ToLower(u.Hostname())
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if p := u.Port(); p != "" && p != "443" {
+		host += ":" + p
+	}
+	return "https://" + host
 }
 
 // rawRS converts a DER ECDSA signature to the 64-byte r||s that JWS ES256 requires.
