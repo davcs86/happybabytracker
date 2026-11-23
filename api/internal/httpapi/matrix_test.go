@@ -132,6 +132,11 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/medications/{entry}":              Caregiver,
 	"PATCH /v1/kids/{kid}/medications/{entry}":            Caregiver,
 	"DELETE /v1/kids/{kid}/medications/{entry}":           Caregiver,
+	"GET /v1/kids/{kid}/medication-doses":                 Caregiver,
+	"POST /v1/kids/{kid}/medication-doses":                Caregiver,
+	"GET /v1/kids/{kid}/medication-doses/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/medication-doses/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/medication-doses/{entry}":      Caregiver,
 	"GET /v1/kids/{kid}/vaccines":                         Caregiver,
 	"GET /v1/kids/{kid}/vaccinations":                     Caregiver,
 	"POST /v1/kids/{kid}/vaccinations":                    Caregiver,
@@ -175,6 +180,7 @@ type fixture struct {
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
 	growth, administration, symptom, medication   string
+	dose                                          string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -216,6 +222,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.symptom
 		case strings.Contains(rt.Pattern, "/medications/"):
 			return f.medication
+		case strings.Contains(rt.Pattern, "/medication-doses/"):
+			return f.dose
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -330,6 +338,11 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.medication = medication.ID
+	given, err := k.Store.CreateDose(ctx, kid.ID, f.parent[aG].ID, model.MedicationDose{MedicationID: medication.ID, GivenAt: k.now}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.dose = given.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

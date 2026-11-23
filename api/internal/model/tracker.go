@@ -78,6 +78,14 @@ type LastDose struct {
 	Amount  *string
 }
 
+// MedicationDose is one dose given from the course MedicationID, which never changes after creation.
+type MedicationDose struct {
+	Entry
+	MedicationID string
+	GivenAt      time.Time
+	Amount       *string
+}
+
 // PumpingSide is one side's share of an advanced pumping session.
 type PumpingSide struct {
 	Side   string

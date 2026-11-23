@@ -130,6 +130,12 @@ func Routes(d Deps) []Route {
 		{http.MethodPatch, "/v1/kids/{kid}/medications/{entry}", Caregiver, d.updateMedication},
 		{http.MethodDelete, "/v1/kids/{kid}/medications/{entry}", Caregiver, d.deleteMedication},
 
+		{http.MethodGet, "/v1/kids/{kid}/medication-doses", Caregiver, d.listDoses},
+		{http.MethodPost, "/v1/kids/{kid}/medication-doses", Caregiver, d.createDose},
+		{http.MethodGet, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.getDose},
+		{http.MethodPatch, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.updateDose},
+		{http.MethodDelete, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.deleteDose},
+
 		{http.MethodGet, "/v1/kids/{kid}/vaccines", Caregiver, d.kidVaccines},
 		{http.MethodGet, "/v1/kids/{kid}/vaccinations", Caregiver, d.listVaccinations},
 		{http.MethodPost, "/v1/kids/{kid}/vaccinations", Caregiver, d.createVaccination},

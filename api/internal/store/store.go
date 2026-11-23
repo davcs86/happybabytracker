@@ -29,6 +29,8 @@ var (
 	ErrInvalidAntigens = errors.New("store: invalid antigens")
 	// ErrInvalidSchedule is a course whose schedule the engine refuses.
 	ErrInvalidSchedule = errors.New("store: invalid schedule")
+	// ErrInvalidMedication is a dose naming a course that is not the kid's.
+	ErrInvalidMedication = errors.New("store: invalid medication")
 	// ErrAlreadyRunning is a timer start while the kid already has one running in that table.
 	ErrAlreadyRunning = errors.New("store: already running")
 	// ErrNotRunning is an end or side switch on a finished session.
