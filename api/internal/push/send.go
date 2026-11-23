@@ -264,7 +264,7 @@ func newTransport(cd *checkedDialer) *http.Transport {
 		ExpectContinueTimeout:  cd.timeout,
 		IdleConnTimeout:        constants.PushIdleConnTimeout,
 		MaxIdleConnsPerHost:    1,
-		MaxConnsPerHost:        1,
+		MaxConnsPerHost:        constants.DeliveryConcurrency,
 		MaxResponseHeaderBytes: constants.PushResponseHeaderMaxBytes,
 	}
 }

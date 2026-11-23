@@ -457,7 +457,8 @@ func TestStalledHandshakeIsClosed(t *testing.T) {
 	tr.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, ln.Addr().String())
 	}
-	if tr.TLSHandshakeTimeout != d || tr.ResponseHeaderTimeout != d || tr.ExpectContinueTimeout != d || tr.MaxConnsPerHost != 1 {
+	if tr.TLSHandshakeTimeout != d || tr.ResponseHeaderTimeout != d || tr.ExpectContinueTimeout != d ||
+		tr.MaxConnsPerHost != constants.DeliveryConcurrency || tr.MaxIdleConnsPerHost != 1 {
 		t.Fatalf("transport timeouts %v %v %v, max conns %d", tr.TLSHandshakeTimeout, tr.ResponseHeaderTimeout,
 			tr.ExpectContinueTimeout, tr.MaxConnsPerHost)
 	}
@@ -474,6 +475,39 @@ func TestStalledHandshakeIsClosed(t *testing.T) {
 	case <-closed:
 	case <-time.After(10 * d):
 		t.Fatal("the stalled connection is still open: no handshake timeout")
+	}
+}
+
+// Eight sends to one HTTP/1.1 host run side by side, not behind one connection (Review Focus 2).
+func TestConcurrentSendsToOneHTTP1Host(t *testing.T) {
+	const hold = 200 * time.Millisecond
+	p := newPushServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor != 1 {
+			t.Errorf("proto %s, want HTTP/1.1", r.Proto)
+		}
+		time.Sleep(hold)
+		w.WriteHeader(201)
+	})
+	tr := newTransport(&checkedDialer{r: publicResolver(), d: newDialer(), timeout: constants.PushTimeout})
+	tr.TLSClientConfig = p.srv.Client().Transport.(*http.Transport).TLSClientConfig
+	tr.DialContext = p.transport().(*http.Transport).DialContext
+	sig, _ := newTestSigner(t)
+	s := NewSender(sig, time.Now, withTransport(tr))
+	var wg sync.WaitGroup
+	results := make([]Result, constants.DeliveryConcurrency)
+	start := time.Now()
+	for i := range results {
+		f := newSub(t, testEndpoint)
+		wg.Go(func() { results[i] = s.Send(context.Background(), f.sub, testMessage()) })
+	}
+	wg.Wait()
+	if e := time.Since(start); e >= 4*hold {
+		t.Fatalf("%d sends took %v, want < %v (serialised?)", len(results), e, 4*hold)
+	}
+	for i, r := range results {
+		if r != (Result{Outcome: Sent, Status: 201}) {
+			t.Errorf("send %d: %+v", i, r)
+		}
 	}
 }
 
