@@ -94,16 +94,26 @@ func (s *Store) Kid(ctx context.Context, kidID string) (model.Kid, error) {
 }
 
 // UpdateKid replaces every profile field of k.ID; the caller validates the merged record. by must be a guardian.
+// A changed time zone re-materialises the kid's courses in the same transaction.
 func (s *Store) UpdateKid(ctx context.Context, k model.Kid, by string, now time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		if err := actorIsGuardian(ctx, tx, k.ID, by); err != nil {
+			return err
+		}
+		var zone string
+		if err := tx.QueryRowContext(ctx, `SELECT time_zone FROM kids WHERE id = ?`, k.ID).Scan(&zone); errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
 			return err
 		}
 		res, err := tx.ExecContext(ctx,
 			`UPDATE kids SET name = ?, birth_date = ?, sex = ?, gestation_weeks = ?, gestation_days = ?, time_zone = ?, growth_source = ?, vaccine_schema = ?, reminder_overdue_minutes = ?, updated_by = ?, updated_at = ?
 			 WHERE id = ?`,
 			k.Name, k.BirthDate, k.Sex, k.GestationWeeks, k.GestationDays, k.TimeZone, k.GrowthSource, k.VaccineSchema, k.ReminderOverdueMinutes, by, now.Unix(), k.ID)
-		return oneRow(res, err)
+		if err := oneRow(res, err); err != nil || zone == k.TimeZone {
+			return err
+		}
+		return rematerialiseKid(ctx, tx, k.ID, k.TimeZone, now)
 	})
 }
 

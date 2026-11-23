@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -54,6 +55,27 @@ type Meal struct {
 	At       time.Time
 	What     string
 	Reaction *string
+}
+
+// Medication is a course. Its Schedule's Times are sorted; EndOn is a kid-local date (inclusive). LastDose, NextDue
+// and DoseCount are filled by the store's reads and ignored by its writes.
+type Medication struct {
+	Entry
+	schedule.Schedule
+	Name, Dose string
+	StartAt    time.Time
+	EndOn      *string
+	Active     bool
+	LastDose   *LastDose
+	NextDue    *time.Time
+	DoseCount  int
+}
+
+// LastDose is the course's most recent dose.
+type LastDose struct {
+	ID      string
+	GivenAt time.Time
+	Amount  *string
 }
 
 // PumpingSide is one side's share of an advanced pumping session.

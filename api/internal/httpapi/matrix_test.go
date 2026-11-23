@@ -13,6 +13,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -126,6 +127,11 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/symptoms/{entry}":                 Caregiver,
 	"PATCH /v1/kids/{kid}/symptoms/{entry}":               Caregiver,
 	"DELETE /v1/kids/{kid}/symptoms/{entry}":              Caregiver,
+	"GET /v1/kids/{kid}/medications":                      Caregiver,
+	"POST /v1/kids/{kid}/medications":                     Caregiver,
+	"GET /v1/kids/{kid}/medications/{entry}":              Caregiver,
+	"PATCH /v1/kids/{kid}/medications/{entry}":            Caregiver,
+	"DELETE /v1/kids/{kid}/medications/{entry}":           Caregiver,
 	"GET /v1/kids/{kid}/vaccines":                         Caregiver,
 	"GET /v1/kids/{kid}/vaccinations":                     Caregiver,
 	"POST /v1/kids/{kid}/vaccinations":                    Caregiver,
@@ -168,7 +174,7 @@ type fixture struct {
 	kit                                           *kit
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
-	growth, administration, symptom               string
+	growth, administration, symptom, medication   string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -208,6 +214,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.growth
 		case strings.Contains(rt.Pattern, "/symptoms/"):
 			return f.symptom
+		case strings.Contains(rt.Pattern, "/medications/"):
+			return f.medication
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -316,6 +324,12 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.symptom = symptom.ID
+	medication, err := k.Store.CreateMedication(ctx, kid.ID, f.parent[aG].ID, model.Medication{Name: "Amoxicillin", Dose: "2.5 ml", Active: true, StartAt: k.now,
+		Schedule: schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"08:00", "20:00"}}}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.medication = medication.ID
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {
