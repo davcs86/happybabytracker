@@ -55,6 +55,13 @@ const lastPatch = async (kid: string) => {
 };
 const storedSchedule = async (kid: string) =>
 	(await (await stubAs(ANA))('GET', `/v1/kids/${kid}`)).body.vaccine_schema;
+const overdue = (page: Page) => page.getByLabel('Show a missed dose as overdue for (minutes)');
+const OVERDUE_HINT =
+	'From 5 to 1440 (24 hours). A missed dose leaves the home list after this time, or when the next dose of that course is due, whichever comes first.';
+const patches = async (kid: string) =>
+	(await receivedRequests()).filter((r) => r.method === 'PATCH' && r.path === `/v1/kids/${kid}`);
+const storedOverdue = async (kid: string) =>
+	(await (await stubAs(ANA))('GET', `/v1/kids/${kid}`)).body.reminder_overdue_minutes;
 const NO_SCHEDULE = 'No vaccination schedule chosen yet.';
 const CAPTION = 'Schedule: Stub authority, Stub edition';
 
@@ -468,6 +475,63 @@ test('a retired stored schedule stays selected and kept on save until another is
 	expect(await optionValues(page)).toEqual(['', 'us', 'uk']);
 });
 
+test('settings change the overdue minutes from 60 to 15 and read 15 back', async ({ page }) => {
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/settings`);
+	await expect(overdue(page)).toHaveValue('60');
+	await expect(overdue(page)).toHaveAccessibleDescription(OVERDUE_HINT);
+	await expectAccessible(page);
+
+	await page.getByLabel('Name', { exact: true }).fill('Mia Rose');
+	await submit(page.getByRole('button', { name: 'Save' }));
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await lastPatch(MIA.id)).not.toHaveProperty('reminder_overdue_minutes');
+
+	await overdue(page).fill('15');
+	await submit(page.getByRole('button', { name: 'Save' }));
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await lastPatch(MIA.id)).toMatchObject({ reminder_overdue_minutes: 15 });
+	expect(await storedOverdue(MIA.id)).toBe(15);
+	await expectAccessible(page);
+
+	await page.reload();
+	await expect(overdue(page)).toHaveValue('15');
+	await page.getByLabel('Name', { exact: true }).fill('Mia');
+	await submit(page.getByRole('button', { name: 'Save' }));
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await lastPatch(MIA.id)).not.toHaveProperty('reminder_overdue_minutes');
+	expect(await storedOverdue(MIA.id)).toBe(15);
+});
+
+test('settings refuse overdue minutes outside the range on the field and keep what was typed', async ({
+	page
+}) => {
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/settings`);
+	const message = 'Enter minutes from 5 to 1440';
+	for (const text of ['4', '1441', '60.5', '']) {
+		await overdue(page).fill(text);
+		await submit(page.getByRole('button', { name: 'Save' }));
+		await expectFieldError(overdue(page), message);
+		await expect(overdue(page)).toHaveValue(text);
+		await expectAccessible(page);
+	}
+	expect(await patches(MIA.id)).toHaveLength(0);
+	expect(await storedOverdue(MIA.id)).toBe(60);
+
+	await overdue(page).fill('5');
+	await submit(page.getByRole('button', { name: 'Save' }));
+	await expect(page.getByRole('status')).toHaveText('Saved');
+	expect(await storedOverdue(MIA.id)).toBe(5);
+});
+
+test('a new child form does not offer the overdue minutes', async ({ page }) => {
+	await signIn(page, ANA);
+	await page.goto('/kids/new');
+	await expect(overdue(page)).toHaveCount(0);
+	await expect(page.getByText(OVERDUE_HINT)).toHaveCount(0);
+});
+
 test.describe('without JavaScript', () => {
 	// axe runs in the page, so these pages are checked by the JavaScript tests above.
 	test.use({ javaScriptEnabled: false, timezoneId: 'Asia/Tokyo' });
@@ -508,6 +572,24 @@ test.describe('without JavaScript', () => {
 		await page.goto(`/kids/${IVY.id}/vaccines`);
 		await expect(page.getByText(CAPTION)).toBeVisible();
 		expect(page.url()).toBe(`${UI_ORIGIN}/kids/${IVY.id}/vaccines`);
+	});
+
+	test('settings save the overdue minutes as a plain form post and refuse a bad one', async ({
+		page
+	}) => {
+		await signIn(page, ANA);
+		await page.goto(`/kids/${MIA.id}/settings`);
+		await overdue(page).fill('4');
+		await submit(page.getByRole('button', { name: 'Save' }));
+		await expectFieldError(overdue(page), 'Enter minutes from 5 to 1440');
+		await expect(overdue(page)).toHaveValue('4');
+		expect(await storedOverdue(MIA.id)).toBe(60);
+
+		await overdue(page).fill('15');
+		await submit(page.getByRole('button', { name: 'Save' }));
+		await expect(page.getByRole('status')).toHaveText('Saved');
+		expect(await storedOverdue(MIA.id)).toBe(15);
+		await expect(overdue(page)).toHaveValue('15');
 	});
 
 	test('a 422 lands on its field without JavaScript', async ({ page }) => {
