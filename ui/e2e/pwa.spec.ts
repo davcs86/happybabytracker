@@ -14,6 +14,14 @@ test('the manifest and its icon are public static files with the right types', a
 	expect(icon.headers()['content-type']).toBe('image/png');
 });
 
+test('the service worker is a public static JavaScript file served without a redirect', async ({
+	request
+}) => {
+	const worker = await request.get('/service-worker.js', { maxRedirects: 0 });
+	expect(worker.status()).toBe(200);
+	expect(worker.headers()['content-type']).toMatch(/javascript/);
+});
+
 test('the public login page links the manifest and the touch icon', async ({ page }) => {
 	await page.goto('/login');
 	await expect(page.locator('head link[rel="manifest"]')).toHaveAttribute(

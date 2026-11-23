@@ -27,7 +27,7 @@ export function subscriptionBody(
 }
 
 // One leading slash and no backslash or control character: a URL parser reads the rest as another origin.
-const isSameOriginPath = (p: string) =>
+export const isSameOriginPath = (p: string) =>
 	/^\/(?![/\\])/.test(p) && ![...p].some((c) => c === '\\' || c <= '\u001f' || c === '\u007f');
 
 export function parsePayload(data: unknown): { title: string; path: string; tag: string } | null {
