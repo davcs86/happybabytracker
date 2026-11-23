@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
+	"github.com/davcs86/happybabytracker/api/internal/store"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -162,7 +165,8 @@ func TestHomeCorrectedBirthDate(t *testing.T) {
 	}
 }
 
-// dueLines renders the home's due list as "<n><unit> <status> <count>" after checking each entry's shape.
+// dueLines renders the home's due list, a vaccine entry as "<n><unit> <status> <count>" and a medication entry as
+// "<name> <due_at> <state>", after checking each entry's shape.
 func dueLines(t *testing.T, h map[string]any) []string {
 	t.Helper()
 	list, ok := h["due"].([]any)
@@ -172,6 +176,13 @@ func dueLines(t *testing.T, h map[string]any) []string {
 	out := []string{}
 	for _, it := range list {
 		e := it.(map[string]any)
+		if e["kind"] == "medication" {
+			sameKeys(t, e, "kind", "medication", "due_at", "state")
+			m := e["medication"].(map[string]any)
+			sameKeys(t, m, "id", "name")
+			out = append(out, fmt.Sprintf("%v %v %v", m["name"], e["due_at"], e["state"]))
+			continue
+		}
 		sameKeys(t, e, "kind", "from", "status", "count")
 		sameKeys(t, e["from"].(map[string]any), "n", "unit")
 		if e["kind"] != "vaccine" {
@@ -310,4 +321,166 @@ func TestHomeDueFailedLoad(t *testing.T) {
 	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/home", ana, nil), http.StatusServiceUnavailable, "unavailable")
 	k.wantDue(ana, off, "module off")
 	k.wantDue(ana, none, "no schema")
+}
+
+// madridDue is the trackerKid's 20:00 dose on t0's day (Europe/Madrid, UTC+1).
+var madridDue = time.Date(2026, 11, 20, 19, 0, 0, 0, time.UTC)
+
+// eveningCourse is a 20:00 course started an hour before t0; its first reminder is madridDue.
+func (k *kit) eveningCourse(token, kid, name string) string {
+	k.t.Helper()
+	return k.createMedication(token, kid, medBody(map[string]any{"name": name, "schedule": timesSchedule("20:00")}))["id"].(string)
+}
+
+// tick moves the clock and runs the worker's store steps, with no channel, as the worker would at that time.
+func (k *kit) tick(now time.Time) {
+	k.t.Helper()
+	k.now = now
+	ctx := context.Background()
+	if err := k.Store.Materialise(ctx, now); err != nil {
+		k.t.Fatal(err)
+	}
+	if _, err := k.Store.OpenDue(ctx, now, store.Channels{}); err != nil {
+		k.t.Fatal(err)
+	}
+	if err := k.Store.Expire(ctx, now); err != nil {
+		k.t.Fatal(err)
+	}
+}
+
+func (k *kit) setOverdueMinutes(token, kid string, minutes int) {
+	k.t.Helper()
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid, token, map[string]any{"reminder_overdue_minutes": minutes}); rec.Code != http.StatusOK {
+		k.t.Fatalf("overdue minutes: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func medLine(name string, due time.Time, state string) string {
+	return name + " " + ts(due) + " " + state
+}
+
+func TestHomeDueMedicationShape(t *testing.T) {
+	k := newKit(t)
+	kid, _, bob := k.trackerKid()
+	course := k.eveningCourse(bob, kid, "Amoxicillin")
+	due := k.home(bob, kid)["due"].([]any)
+	if len(due) != 1 {
+		t.Fatalf("due = %v, want one medication entry", due)
+	}
+	e := due[0].(map[string]any)
+	sameKeys(t, e, "kind", "medication", "due_at", "state")
+	m := e["medication"].(map[string]any)
+	sameKeys(t, m, "id", "name")
+	if e["kind"] != "medication" || m["id"] != course || m["name"] != "Amoxicillin" || e["due_at"] != ts(madridDue) || e["state"] != "due" {
+		t.Errorf("entry = %v", e)
+	}
+}
+
+func TestHomeDueMedicationWindow(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	k.eveningCourse(bob, kid, "Amoxicillin")
+	k.wantDue(bob, kid, "before its time", medLine("Amoxicillin", madridDue, "due"))
+	k.tick(madridDue)
+	k.wantDue(bob, kid, "at its time", medLine("Amoxicillin", madridDue, "overdue"))
+	k.tick(madridDue.Add(59 * time.Minute))
+	k.wantDue(bob, kid, "default 60, due + 59 min", medLine("Amoxicillin", madridDue, "overdue"))
+	k.tick(madridDue.Add(60 * time.Minute))
+	k.wantDue(bob, kid, "default 60, due + 60 min")
+
+	k.setOverdueMinutes(ana, kid, 5)
+	k.tick(madridDue.Add(4 * time.Minute))
+	k.wantDue(bob, kid, "5, due + 4 min", medLine("Amoxicillin", madridDue, "overdue"))
+	k.tick(madridDue.Add(5 * time.Minute))
+	k.wantDue(bob, kid, "5, due + 5 min")
+}
+
+func TestHomeDueMedicationOneOverduePerCourse(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	k.setOverdueMinutes(ana, kid, constants.MaxReminderOverdueMinutes)
+	k.createMedication(bob, kid, medBody(map[string]any{"schedule": everySchedule(1), "start_at": ts(t0.Add(-10 * time.Minute))}))
+	first := t0.Add(50 * time.Minute)
+	k.tick(first.Add(30 * time.Minute))
+	k.wantDue(bob, kid, "the first missed", medLine("Amoxicillin", first, "overdue"), medLine("Amoxicillin", first.Add(time.Hour), "due"))
+	k.tick(first.Add(time.Hour))
+	k.wantDue(bob, kid, "the next one due", medLine("Amoxicillin", first.Add(time.Hour), "overdue"), medLine("Amoxicillin", first.Add(2*time.Hour), "due"))
+	k.tick(first.Add(3*time.Hour + 10*time.Minute))
+	k.wantDue(bob, kid, "hours later", medLine("Amoxicillin", first.Add(3*time.Hour), "overdue"), medLine("Amoxicillin", first.Add(4*time.Hour), "due"))
+}
+
+func TestHomeDueMedicationStates(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	course := k.eveningCourse(bob, kid, "Amoxicillin")
+	k.tick(madridDue.Add(40 * time.Minute)) // past ReminderExpiry: the unsent row is expired
+	k.wantDue(bob, kid, "expired, within its window", medLine("Amoxicillin", madridDue, "overdue"))
+	k.createDose(bob, kid, doseBody(course, map[string]any{"given_at": ts(k.now)}))
+	k.wantDue(bob, kid, "done")
+
+	other := k.eveningCourse(bob, kid, "Ibuprofen")
+	k.now = madridDue.Add(24*time.Hour - 30*time.Minute)
+	k.wantDue(bob, kid, "the next day, before its time", medLine("Amoxicillin", madridDue.Add(24*time.Hour), "due"),
+		medLine("Ibuprofen", madridDue.Add(24*time.Hour), "due"))
+	k.setModule(ana, kid, "medication", false)
+	k.tick(madridDue.Add(24*time.Hour + time.Minute)) // the worker cancels both while the module is off
+	k.wantDue(bob, kid, "module off")
+	k.setModule(ana, kid, "medication", true)
+	k.wantDue(bob, kid, "cancelled")
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid+"/medications/"+other, bob, map[string]any{"active": false}); rec.Code != http.StatusOK {
+		t.Fatalf("deactivate: %d %q", rec.Code, rec.Body.String())
+	}
+	k.tick(madridDue.Add(48*time.Hour - 30*time.Minute))
+	k.wantDue(bob, kid, "inactive course", medLine("Amoxicillin", madridDue.Add(48*time.Hour), "due"))
+}
+
+func TestHomeDueMedicationBeforeVaccines(t *testing.T) {
+	k := newKit(t)
+	kid, ana := k.dueKid("us")
+	vaccines := []string{"0d overdue 2", "1m overdue 1", "2m overdue 7", "4m due 7"}
+	evening := time.Date(2025, 5, 12, 18, 0, 0, 0, time.UTC)
+	late := k.createMedication(ana, kid, medBody(map[string]any{"name": "Late", "schedule": timesSchedule("19:00"), "start_at": ts(dueNow)}))["id"].(string)
+	var same []string
+	for _, name := range []string{"Same A", "Same B"} {
+		same = append(same, k.createMedication(ana, kid, medBody(map[string]any{"name": name, "schedule": timesSchedule("18:00"), "start_at": ts(dueNow)}))["id"].(string))
+	}
+	ids := map[string]string{same[0]: "Same A", same[1]: "Same B"}
+	slices.Sort(same)
+	want := append([]string{medLine(ids[same[0]], evening, "due"), medLine(ids[same[1]], evening, "due"), medLine("Late", evening.Add(time.Hour), "due")}, vaccines...)
+	k.wantDue(ana, kid, "by due_at then id, before vaccines", want...)
+	if due := k.home(ana, kid)["due"].([]any); len(due) < 3 || !equalJSON(due[2].(map[string]any)["medication"], map[string]any{"id": late, "name": "Late"}) {
+		t.Errorf("due = %v, want the late course third", due)
+	}
+
+	k.setModule(ana, kid, "medication", false)
+	k.wantDue(ana, kid, "medication off", vaccines...)
+	k.setModule(ana, kid, "medication", true)
+	k.setModule(ana, kid, "vaccination", false)
+	k.wantDue(ana, kid, "vaccination off", want[:3]...)
+}
+
+func TestHomeDueMedicationOfAnotherKid(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	sibling := k.createKid(ana, nil)
+	k.eveningCourse(ana, sibling, "Amoxicillin")
+	k.wantDue(ana, sibling, "control", medLine("Amoxicillin", madridDue, "due"))
+	k.wantDue(ana, kid, "the other kid")
+	k.wantDue(bob, kid, "the other kid's caregiver")
+}
+
+func TestHomeDueMedicationWithoutChannels(t *testing.T) {
+	lines := func(k *kit) []string {
+		kid, _, bob := k.trackerKid()
+		k.eveningCourse(bob, kid, "Amoxicillin")
+		k.tick(madridDue.Add(10 * time.Minute))
+		return dueLines(t, k.home(bob, kid))
+	}
+	off := newKitNoPush(t)
+	off.Cfg.Ntfy, off.Cfg.NtfyEnabled = ntfy.Config{}, false
+	off.Handler = NewHandler(off.deps())
+	got, want := lines(off), lines(newKit(t))
+	if !slices.Equal(got, want) || !slices.Equal(want, []string{medLine("Amoxicillin", madridDue, "overdue")}) {
+		t.Errorf("no channel: due = %q, with both channels %q", got, want)
+	}
 }

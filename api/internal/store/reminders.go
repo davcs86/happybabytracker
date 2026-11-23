@@ -8,6 +8,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 )
 
 // The channel column's values.
@@ -358,4 +359,58 @@ func (s *Store) RemindersHealthy(ctx context.Context, now time.Time) (bool, erro
 		return false, err
 	}
 	return !bad, nil
+}
+
+// DueEntry is a reminder on the home Due list; Next is its course's following occurrence, zero when there is none.
+type DueEntry struct {
+	model.Reminder
+	Name string
+	Next time.Time
+}
+
+// prependScanner scans its leading columns into head, the rest into the caller's destinations.
+type prependScanner struct {
+	row  rowScanner
+	head []any
+}
+
+func (p prependScanner) Scan(dest ...any) error { return p.row.Scan(append(p.head, dest...)...) }
+
+// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping a past one
+// only while now < min(due + overdue, Next), by due time then course id. The caller gates the medication module.
+func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Duration, now, dayEnd time.Time) ([]DueEntry, error) {
+	var out []DueEntry
+	err := s.inReadTx(ctx, func(q querier) error {
+		out = []DueEntry{}
+		loc, err := kidZone(ctx, q, kidID)
+		if err != nil {
+			return err
+		}
+		return eachRow(ctx, q, `SELECT r.id, r.due_at, r.state, `+prefixed("m.", medicationColumns)+`
+			FROM reminders r JOIN medications m ON m.id = r.medication_id
+			WHERE r.kid_id = ? AND m.active = 1 AND r.state IN ('pending', 'expired') AND r.due_at < ? AND r.due_at > ?
+			ORDER BY r.due_at, m.id`, []any{kidID, dayEnd.Unix(), now.Add(-overdue).Unix()}, func(row rowScanner) error {
+			var (
+				e   DueEntry
+				due int64
+			)
+			v, err := scanMedication(prependScanner{row, []any{&e.ID, &due, &e.State}})
+			if err != nil {
+				return err
+			}
+			e.KidID, e.MedicationID, e.DueAt, e.Name = v.KidID, v.ID, unixTime(due), v.Name
+			if next, ok := schedule.Next(timingOf(v).course(), loc, e.DueAt); ok {
+				e.Next = next
+			}
+			if !now.Before(e.DueAt) && !e.Next.IsZero() && !now.Before(e.Next) {
+				return nil
+			}
+			out = append(out, e)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
