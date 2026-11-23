@@ -3782,7 +3782,9 @@ routes.push(
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {
 	const method = req.method ?? 'GET';
 	const path = url.pathname;
-	if (method === 'GET' && path === '/healthz') return send(res, 200, { status: 'ok' });
+	if (method === 'GET' && (path === '/healthz' || path === '/healthz/reminders')) {
+		return send(res, 200, { status: 'ok' });
+	}
 	if (req.headers.authorization !== `Bearer ${STUB_TOKEN}`) return error(res, 401, 'unauthorized');
 	syncReminders(state);
 

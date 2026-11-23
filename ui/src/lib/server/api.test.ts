@@ -168,6 +168,17 @@ describe('createApi requests and shapes', () => {
 		await createApi(env, asFetch(f)).health();
 		expect(f.mock.calls[0][0]).toBe('http://api:9210/healthz');
 	});
+
+	it('reports the reminders health status without reading a body', async () => {
+		const f = mockFetch(async () => json({ status: 'ok' }));
+		expect(await createApi(env, asFetch(f)).remindersHealth()).toEqual({ ok: true, data: null });
+		expect(f.mock.calls[0][0]).toBe('http://api:9210/healthz/reminders');
+		const bad = createApi(
+			env,
+			asFetch(mockFetch(async () => json({ status: 'unavailable' }, 503)))
+		);
+		expect(await bad.remindersHealth()).toMatchObject({ ok: false, status: 503 });
+	});
 });
 
 describe('createApi failure mapping', () => {

@@ -15,6 +15,7 @@ import {
 	LEO,
 	MIA,
 	UI_ORIGIN,
+	moveStubClock,
 	receivedRequests,
 	resetStub,
 	setScenario,
@@ -225,6 +226,146 @@ test('Due shows at most three visits and links the rest from the Vaccines page',
 	expect(await more.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
 		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
 	);
+	await expectAccessible(page);
+});
+
+// A due entry is listed only before the end of the kid-local day: UTC and Madrid midnights stay far off.
+function skipNearDayEnd() {
+	const now = new Date();
+	test.skip(
+		now.getUTCHours() * 60 + now.getUTCMinutes() >= 22 * 60 + 30,
+		'entries would fall on tomorrow'
+	);
+}
+// A whole minute that many minutes from now, as the instant the API takes and the clock the page shows.
+const inMinutes = (n: number) =>
+	new Date(Math.floor(Date.now() / MS_PER_MINUTE) * MS_PER_MINUTE + n * MS_PER_MINUTE);
+const instant = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+const hhmm = (d: Date) => instant(d).slice(11, 16);
+const dailyCourse = (name: string, startAt: Date) => ({
+	name,
+	dose: '1 drop',
+	schedule: { kind: 'every', hours: 24 },
+	start_at: instant(startAt)
+});
+
+test('Due shows a medication entry with its time, then overdue as text, then drops it', async ({
+	page
+}) => {
+	skipNearDayEnd();
+	const ana = await stubAs(ANA);
+	const at = inMinutes(10);
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { reminder_overdue_minutes: 5 })).status).toBe(
+		200
+	);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/medications`, dailyCourse('Vitamin D', at))).status
+	).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([`Vitamin D · ${hhmm(at)}`]);
+	const link = due(page).getByRole('link');
+	expect(await link.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${IVY.id}/medication`
+	);
+	await expectAccessible(page);
+
+	// The stub clock is now two to three minutes past the due time, inside the kid's five.
+	await moveStubClock(12 * 60);
+	await page.reload();
+	await expect(due(page).getByRole('listitem')).toHaveText([`Vitamin D · ${hhmm(at)} · overdue`]);
+	await expectAccessible(page);
+
+	await moveStubClock(16 * 60);
+	await page.reload();
+	await expect(page.getByRole('heading', { name: IVY.name, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Due' })).toHaveCount(0);
+});
+
+test('medication entries come before vaccine groups and the module off hides only them', async ({
+	page
+}) => {
+	skipNearDayEnd();
+	const ana = await stubAs(ANA);
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	const at = inMinutes(10);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/medications`, dailyCourse('Vitamin D', at))).status
+	).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		`Vitamin D · ${hhmm(at)}`,
+		'8-week vaccines · Overdue',
+		'12-month vaccines · Due'
+	]);
+	const hrefs = await due(page)
+		.getByRole('link')
+		.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).href));
+	expect(hrefs).toEqual([
+		`${UI_ORIGIN}/kids/${IVY.id}/medication`,
+		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`,
+		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
+	]);
+	await expectAccessible(page);
+
+	expect(
+		(await ana('PUT', `/v1/kids/${IVY.id}/modules/medication`, { enabled: false })).status
+	).toBe(204);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		'8-week vaccines · Overdue',
+		'12-month vaccines · Due'
+	]);
+	await expectAccessible(page);
+});
+
+test('Due shows three entries and one more line for each hidden kind, linked to its page', async ({
+	page
+}) => {
+	skipNearDayEnd();
+	const ana = await stubAs(ANA);
+	const names = ['Alfa', 'Bravo', 'Charlie', 'Delta', 'Echo'];
+	const first = inMinutes(3);
+	const at = (i: number) => new Date(first.getTime() + i * MS_PER_MINUTE);
+	for (const [i, name] of names.entries()) {
+		const r = await ana('POST', `/v1/kids/${IVY.id}/medications`, dailyCourse(name, at(i)));
+		expect(r.status).toBe(201);
+	}
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		`Alfa · ${hhmm(at(0))}`,
+		`Bravo · ${hhmm(at(1))}`,
+		`Charlie · ${hhmm(at(2))}`,
+		'2 more on the Medication page',
+		'2 more on the Vaccines page'
+	]);
+	const medication = due(page).getByRole('link', { name: '2 more on the Medication page' });
+	expect(await medication.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${IVY.id}/medication`
+	);
+	const vaccines = due(page).getByRole('link', { name: '2 more on the Vaccines page' });
+	expect(await vaccines.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
+	);
+	await expectAccessible(page);
+});
+
+test("a caregiver sees the kid's medication entry at the kid's own clock time", async ({
+	page
+}) => {
+	skipNearDayEnd();
+	const cleo = await stubAs(CLEO);
+	const at = inMinutes(10);
+	expect(
+		(await cleo('POST', `/v1/kids/${LEO.id}/medications`, dailyCourse('Vitamin D', at))).status
+	).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${LEO.id}`);
+	const madrid = clock(instant(at), LEO.timeZone);
+	await expect(due(page).getByRole('listitem')).toHaveText([`Vitamin D · ${madrid}`]);
 	await expectAccessible(page);
 });
 

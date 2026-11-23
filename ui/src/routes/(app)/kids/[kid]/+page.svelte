@@ -3,14 +3,14 @@
 	import { resolve } from '$app/paths';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import DueList from '#lib/components/DueList.svelte';
 	import KidLinks from '#lib/components/KidLinks.svelte';
 	import KidSwitcher from '#lib/components/KidSwitcher.svelte';
 	import QuickLog from '#lib/components/QuickLog.svelte';
 	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
 	import TodaySummary from '#lib/components/TodaySummary.svelte';
 	import { HOME_DUE_MAX } from '#lib/constants.js';
-	import type { HomeDueVaccine } from '#lib/types.js';
-	import { dueLabel } from '#lib/vaccines.js';
+	import { dueLines } from '#lib/due.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -24,9 +24,9 @@
 		failed(...(kind === 'sleep' ? ['endSleep'] : ['endNursing', 'switchSide']))?.message ?? null;
 	const overrunFor = (kind: Timer['kind']) =>
 		!!failed(kind === 'sleep' ? 'endSleep' : 'endNursing')?.overrun;
-	// The API lists every due visit in order; the rest are on the Vaccines page.
-	const vaccineDue = $derived(data.due.filter((e): e is HomeDueVaccine => e.kind === 'vaccine'));
-	const moreDue = $derived(vaccineDue.length - HOME_DUE_MAX);
+	const dueList = $derived(
+		dueLines(data.due, HOME_DUE_MAX, data.kid.id, data.kid.timeZone, data.todayDate)
+	);
 </script>
 
 <svelte:head>
@@ -61,20 +61,7 @@
 				</ul>
 			</section>
 		{/if}
-		{#if vaccineDue.length > 0}
-			{@const vaccines = resolve('/(app)/kids/[kid]/vaccines', { kid: data.kid.id })}
-			<section aria-labelledby="due-heading">
-				<h2 id="due-heading" class="mb-2 font-semibold">Due</h2>
-				<ul class="flex flex-col gap-2">
-					{#each vaccineDue.slice(0, HOME_DUE_MAX) as entry, i (i)}
-						<li><a href={vaccines} class="underline">{dueLabel(entry)}</a></li>
-					{/each}
-					{#if moreDue > 0}
-						<li><a href={vaccines} class="underline">{moreDue} more on the Vaccines page</a></li>
-					{/if}
-				</ul>
-			</section>
-		{/if}
+		<DueList lines={dueList} />
 	</div>
 	<TodaySummary rows={data.today} />
 </div>

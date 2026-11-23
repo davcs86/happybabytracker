@@ -52,6 +52,20 @@ test('/healthz/api passes the API status through, and /healthz never calls it', 
 	expect(await ui.text()).toBe('ok');
 });
 
+test('/healthz/reminders passes the API status through, without a session and without a body', async ({
+	request
+}) => {
+	const ok = await request.get('/healthz/reminders');
+	expect(ok.status()).toBe(200);
+	expect(await ok.text()).toBe('ok');
+	await setScenario('unavailable');
+	const unavailable = await request.get('/healthz/reminders');
+	expect(unavailable.status()).toBe(503);
+	expect(await unavailable.text()).toBe('unavailable');
+	await setScenario('down');
+	expect((await request.get('/healthz/reminders')).status()).toBe(503);
+});
+
 test('a login while the API is down says so and sets no cookie', async ({ page, context }) => {
 	await page.goto('/login');
 	await setScenario('down');

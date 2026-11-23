@@ -108,6 +108,7 @@ export type ApiResult<T> =
 
 type Endpoint =
 	| 'health'
+	| 'reminders_health'
 	| 'login'
 	| 'session'
 	| 'logout'
@@ -986,6 +987,7 @@ export function createApi(
 
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
+		remindersHealth: () => call<null>('reminders_health', 'GET', '/healthz/reminders', null),
 		login: (username: string, password: string) =>
 			call('login', 'POST', '/v1/session', toNewSession, { username, password }),
 		session: () => call('session', 'GET', '/v1/session', toSession),
