@@ -663,10 +663,20 @@ func TestExpireNeverTouchesDoneOrCancelled(t *testing.T) {
 	done := k.reminder(t)
 	other := mustCourse(t, k.s, k.kid.ID, k.ana.ID, timesCourse(clock(0, 0), "14:00"), clock(10, 0))
 	cancelled := reminderAt(t, k.s, other.ID, clock(14, 0))
+	if n := mustOpenDue(t, k.s, clock(14, 0), allChannels); n != 8 {
+		t.Fatalf("opened %d deliveries, want 8", n)
+	}
 	mustDose(t, k.s, k.kid.ID, k.ana.ID, doseOf(k.course.ID, clock(14, 0)), clock(14, 0))
 	execOK(t, k.s, `UPDATE reminders SET state = 'cancelled' WHERE id = ?`, cancelled)
-	if err := k.s.Expire(ctx, clock(16, 0)); err != nil {
+	now := clock(14, 31)
+	if err := k.s.Expire(ctx, now); err != nil {
 		t.Fatal(err)
+	}
+	if n := scalar(t, k.s, `SELECT COUNT(*) FROM reminder_deliveries WHERE state = 'cancelled' AND settled_at = ?`, now.Unix()); n != 8 {
+		t.Fatalf("cancelled deliveries = %d, want 8", n)
+	}
+	if ok, err := k.s.RemindersHealthy(ctx, now); err != nil || !ok {
+		t.Fatalf("healthy = %v, %v", ok, err)
 	}
 	if st := reminderState(t, k.s, done); st != "done" {
 		t.Fatalf("done became %s", st)
@@ -889,5 +899,14 @@ func TestRemindersHealthy(t *testing.T) {
 				t.Fatalf("healthy = %v, %v; want %v", got, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestRemindersHealthyIgnoresAPendingDeliveryOfADoneReminder(t *testing.T) {
+	k := newRemKit(t)
+	seedDelivery(t, k.s, k.reminder(t), ChannelPush, k.anaDev.ID, k.ana.ID, "pending", clock(14, 0), nil)
+	mustDose(t, k.s, k.kid.ID, k.ana.ID, doseOf(k.course.ID, clock(14, 0)), clock(14, 0))
+	if ok, err := k.s.RemindersHealthy(ctx, clock(14, 16)); err != nil || !ok {
+		t.Fatalf("healthy = %v, %v", ok, err)
 	}
 }

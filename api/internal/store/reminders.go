@@ -281,11 +281,15 @@ func (s *Store) SettleDelivery(ctx context.Context, id string, o Settle, now tim
 	})
 }
 
-// Expire turns pending deliveries and pending reminders past due + ReminderExpiry into expired; done and cancelled
-// reminders keep their state.
+// Expire cancels pending deliveries of a reminder no longer pending, then expires pending deliveries and reminders
+// past due + ReminderExpiry; done and cancelled reminders keep their state.
 func (s *Store) Expire(ctx context.Context, now time.Time) error {
 	cutoff := now.Add(-constants.ReminderExpiry).Unix()
 	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE reminder_deliveries SET state = 'cancelled', settled_at = ?
+			WHERE state = 'pending' AND reminder_id IN (SELECT id FROM reminders WHERE state <> 'pending')`, now.Unix()); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `UPDATE reminder_deliveries SET state = 'expired', settled_at = ?
 			WHERE state = 'pending' AND reminder_id IN (SELECT id FROM reminders WHERE due_at < ?)`, now.Unix(), cutoff); err != nil {
 			return err
@@ -342,13 +346,13 @@ func (s *Store) DeliveryTarget(ctx context.Context, d Delivery, now time.Time) (
 	return tg, true, nil
 }
 
-// RemindersHealthy is Open value 30: false while a delivery is pending or sending more than ReminderHealthStale after
-// its reminder's due time, or was settled failed or expired within the last ReminderHealthStale.
+// RemindersHealthy is Open value 30: false while a delivery of a pending reminder is pending or sending more than
+// ReminderHealthStale after its due time, or one was settled failed or expired within the last ReminderHealthStale.
 func (s *Store) RemindersHealthy(ctx context.Context, now time.Time) (bool, error) {
 	stale := now.Add(-constants.ReminderHealthStale).Unix()
 	var bad bool
 	err := s.r.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM reminder_deliveries d JOIN reminders r ON r.id = d.reminder_id
-		WHERE (d.state IN ('pending', 'sending') AND r.due_at < ?) OR (d.state IN ('failed', 'expired') AND d.settled_at >= ?))`,
+		WHERE (d.state IN ('pending', 'sending') AND r.state = 'pending' AND r.due_at < ?) OR (d.state IN ('failed', 'expired') AND d.settled_at >= ?))`,
 		stale, stale).Scan(&bad)
 	if err != nil {
 		return false, err
