@@ -111,6 +111,9 @@ func Occurrences(c Course, loc *time.Location, from, to time.Time) []time.Time {
 		if t.After(to) {
 			return false
 		}
+		if t.Before(from) || t.Before(c.StartAt) {
+			return true
+		}
 		out = append(out, t)
 		return len(out) < constants.MaxScheduleOccurrences
 	})
@@ -148,10 +151,21 @@ func walk(c Course, loc *time.Location, from time.Time, yield func(time.Time) bo
 	}
 	switch c.Schedule.Kind {
 	case KindEvery:
-		step := time.Duration(c.Schedule.EveryHours) * time.Hour
-		k := (from.Sub(c.StartAt) + step - 1) / step
-		for i := 0; i < constants.MaxScheduleOccurrences; i++ {
-			t := c.StartAt.Add((k + time.Duration(i)) * step).UTC()
+		// Unix seconds, not time.Duration: a Duration saturates at about 292 years.
+		base, ns := c.StartAt.Unix(), int64(c.StartAt.Nanosecond())
+		step := int64(c.Schedule.EveryHours) * 3600
+		k := (from.Unix() - base) / step
+		prev := c.StartAt.Add(-time.Nanosecond)
+		for i := 0; i < constants.MaxScheduleOccurrences+2; i++ {
+			t := time.Unix(base+k*step, ns).UTC()
+			k++
+			if !t.After(prev) || t.Before(c.StartAt) {
+				return
+			}
+			prev = t
+			if t.Before(from) {
+				continue
+			}
 			if (!end.IsZero() && !t.Before(end)) || !yield(t) {
 				return
 			}

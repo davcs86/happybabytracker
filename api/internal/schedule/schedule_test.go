@@ -482,3 +482,81 @@ func hasClockAtOrJustAfter(hhmm []string, lv time.Time) bool {
 	}
 	return false
 }
+
+// A grid anchored centuries before from must not overflow time.Duration (it saturates at about 292 years).
+func TestEveryFarFromStart(t *testing.T) {
+	utc := time.UTC
+	now := at(t, "2026-11-23 10:17 +0000")
+	cases := []struct {
+		name  string
+		start time.Time
+		hours int
+	}{
+		{"year 1, every 6", time.Date(1, 1, 1, 0, 0, 0, 0, utc), 6},
+		{"year 1700, every 6", at(t, "1700-03-01 08:00 +0000"), 6},
+		{"year 1700, every 1", at(t, "1700-03-01 08:00 +0000"), constants.MinEveryHours},
+		{"year 1700, every 168", at(t, "1700-03-01 08:00 +0000"), constants.MaxEveryHours},
+		{"year 1, every 168", time.Date(1, 1, 1, 0, 0, 0, 0, utc), constants.MaxEveryHours},
+		{"292 years before, every 1", now.AddDate(-292, 0, 0).Add(-37 * time.Minute), constants.MinEveryHours},
+		{"293 years before, every 7", now.AddDate(-293, 0, 0).Add(13 * time.Minute), 7},
+		{"900 years before, every 168", now.AddDate(-900, 0, 0), constants.MaxEveryHours},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cr := course(every(c.hours), c.start, "")
+			step := time.Duration(c.hours) * time.Hour
+			onGrid := func(v time.Time) bool { return (v.Unix()-c.start.Unix())%int64(step/time.Second) == 0 }
+			n, ok := Next(cr, utc, now)
+			if !ok || !n.After(now) || n.Sub(now) > step || !onGrid(n) {
+				t.Fatalf("Next = %v %v, want the grid instant within %v after %v", n, ok, step, now)
+			}
+			from, to := now.Add(-30*time.Minute), now.Add(2*step)
+			got := Occurrences(cr, utc, from, to)
+			if len(got) < 2 || len(got) > 3 {
+				t.Fatalf("%d occurrences in a window of two steps and a half hour: %v", len(got), got)
+			}
+			for i, v := range got {
+				if v.Before(from) || v.After(to) || v.Before(c.start) || !onGrid(v) || (i > 0 && v.Sub(got[i-1]) != step) {
+					t.Fatalf("occurrence %d = %v outside [%v, %v] or off the grid", i, v, from, to)
+				}
+			}
+			{
+				after := now.AddDate(500, 0, 0)
+				n, ok := Next(cr, utc, after)
+				if !ok || !n.After(after) || n.Sub(after) > step || !onGrid(n) {
+					t.Fatalf("Next 500 years ahead = %v %v", n, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestEveryStartAfterFrom(t *testing.T) {
+	utc := time.UTC
+	now := at(t, "2026-11-23 10:00 +0000")
+	for _, h := range []int{constants.MinEveryHours, constants.MaxEveryHours} {
+		start := now.AddDate(300, 0, 0)
+		cr := course(every(h), start, "")
+		if got := Occurrences(cr, utc, now, now.AddDate(1, 0, 0)); len(got) != 0 {
+			t.Fatalf("every %d: occurrences before the start: %v", h, got)
+		}
+		if n, ok := Next(cr, utc, now); !ok || !n.Equal(start) {
+			t.Fatalf("every %d: Next = %v %v, want the start", h, n, ok)
+		}
+		got := Occurrences(cr, utc, now, start.Add(time.Duration(h)*time.Hour))
+		if len(got) != 2 || !got[0].Equal(start) {
+			t.Fatalf("every %d: %v", h, got)
+		}
+	}
+}
+
+// Samoa skipped 30 Dec 2011, so that day's times fire at 31 Dec 00:00, which is in from's day, not the day walked from.
+func TestTimesFromDayBeforeResolvesIntoFromsDay(t *testing.T) {
+	apia := mustLoc(t, "Pacific/Apia")
+	c := course(times("12:00"), at(t, "2011-12-28 00:00 -1000"), "")
+	wantLocal(t, apia, Occurrences(c, apia, at(t, "2011-12-31 00:00 +1400"), at(t, "2011-12-31 23:59 +1400")),
+		"2011-12-31 00:00 +1400", "2011-12-31 12:00 +1400")
+	if n, ok := Next(c, apia, at(t, "2011-12-29 12:00 -1000")); !ok || !n.Equal(at(t, "2011-12-31 00:00 +1400")) {
+		t.Fatalf("Next over the skipped day = %v %v", n, ok)
+	}
+}
