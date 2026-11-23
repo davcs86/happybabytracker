@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -26,9 +27,14 @@ func newDeviceView(d model.PushDevice) deviceView {
 	return deviceView{ID: d.ID, Label: d.Label, CreatedAt: formatTime(d.CreatedAt), Kids: d.Kids}
 }
 
+var errNoResolver = errors.New("web push registration has no resolver")
+
+// pushEnabled is the one test of "Web Push is on": a sender and the public key it serves.
+func (d Deps) pushEnabled() bool { return d.Push != nil && d.VAPIDPublicKey != "" }
+
 // pushOn answers 409 push_unavailable and is false while Web Push is off.
 func (d Deps) pushOn(w http.ResponseWriter) bool {
-	if d.Push == nil {
+	if !d.pushEnabled() {
 		respondError(w, http.StatusConflict, "push_unavailable")
 		return false
 	}
@@ -51,7 +57,7 @@ func respondDevice(w http.ResponseWriter, status int, dev model.PushDevice) {
 }
 
 func (d Deps) pushState(w http.ResponseWriter, _ *http.Request) {
-	if d.Push == nil {
+	if !d.pushEnabled() {
 		respondJSON(w, http.StatusOK, struct {
 			Enabled bool `json:"enabled"`
 		}{false})
@@ -99,9 +105,13 @@ func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var err error
-	if d.Cfg.AllowFakePush {
+	switch {
+	case d.Cfg.AllowFakePush:
 		err = push.ValidateEndpointSyntax(*in.Endpoint)
-	} else {
+	case d.Resolver == nil:
+		respondInternal(w, errNoResolver)
+		return
+	default:
 		err = push.ValidateEndpoint(r.Context(), d.Resolver, *in.Endpoint)
 	}
 	if err != nil {
@@ -123,7 +133,7 @@ func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	enc := base64.RawURLEncoding
-	dev, created, err := d.Store.UpsertDevice(r.Context(), PrincipalFrom(r.Context()).ParentID, *in.Endpoint,
+	dev, created, err := d.Store.UpsertDevice(r.Context(), PrincipalFrom(r.Context()).ParentID, canonicalEndpoint(*in.Endpoint),
 		enc.EncodeToString(p256dh), enc.EncodeToString(auth), label, d.Now())
 	switch {
 	case errors.Is(err, store.ErrConflict):
@@ -137,6 +147,25 @@ func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 	default:
 		respondDevice(w, http.StatusOK, dev)
 	}
+}
+
+// canonicalEndpoint lowercases the host, drops a trailing dot and an explicit :443, and keeps the rest byte for byte.
+// The endpoint must already have passed validation, which runs on the original input.
+func canonicalEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	start := strings.Index(endpoint, "://") + len("://")
+	end := len(endpoint)
+	if i := strings.IndexAny(endpoint[start:], "/?#"); i >= 0 {
+		end = start + i
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if p := u.Port(); p != "" && p != "443" {
+		host += ":" + p
+	}
+	return endpoint[:start] + host + endpoint[end:]
 }
 
 func (d Deps) renameDevice(w http.ResponseWriter, r *http.Request) {

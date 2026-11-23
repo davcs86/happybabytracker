@@ -15,8 +15,8 @@ type PushTarget struct {
 	ID, ParentID, Endpoint, P256dh, Auth string
 }
 
-// UpsertDevice stores the subscription for parentID, created reporting a new endpoint. An endpoint bound to another
-// parent moves to parentID and loses its opt-ins. ErrConflict at PushDevicesPerParent; ErrNotFound for a disabled parent.
+// UpsertDevice: created is false only for parentID's own endpoint; another parent's is deleted with its opt-ins and stored
+// under a new id. ErrConflict at PushDevicesPerParent; ErrNotFound for a disabled parent.
 func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, auth, label string, now time.Time) (d model.PushDevice, created bool, err error) {
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var enabled int
@@ -44,19 +44,15 @@ func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, au
 			if n >= constants.PushDevicesPerParent {
 				return ErrConflict
 			}
-			if id == "" {
-				id, created = model.NewID(), true
-				_, err = tx.ExecContext(ctx,
-					`INSERT INTO push_subscriptions(id, parent_id, endpoint, p256dh, auth, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-					id, parentID, endpoint, p256dh, auth, label, now.Unix(), now.Unix())
-			} else {
-				if _, err := tx.ExecContext(ctx, `DELETE FROM push_kid_optins WHERE subscription_id = ?`, id); err != nil {
+			if id != "" {
+				if _, err := tx.ExecContext(ctx, `DELETE FROM push_subscriptions WHERE id = ?`, id); err != nil {
 					return err
 				}
-				_, err = tx.ExecContext(ctx,
-					`UPDATE push_subscriptions SET parent_id = ?, p256dh = ?, auth = ?, label = ?, created_at = ?, updated_at = ? WHERE id = ?`,
-					parentID, p256dh, auth, label, now.Unix(), now.Unix(), id)
 			}
+			id, created = model.NewID(), true
+			_, err = tx.ExecContext(ctx,
+				`INSERT INTO push_subscriptions(id, parent_id, endpoint, p256dh, auth, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				id, parentID, endpoint, p256dh, auth, label, now.Unix(), now.Unix())
 			if err != nil {
 				return err
 			}

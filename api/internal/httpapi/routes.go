@@ -171,7 +171,11 @@ func Routes(d Deps) []Route {
 	return routes
 }
 
+// NewHandler panics when real Web Push is wired without the resolver registration needs: a boot error, not a request one.
 func NewHandler(d Deps) http.Handler {
+	if d.Push != nil && !d.Cfg.AllowFakePush && d.Resolver == nil {
+		panic("httpapi: Web Push needs a resolver")
+	}
 	return newMux(d, Routes(d))
 }
 

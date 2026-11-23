@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 )
 
@@ -154,22 +155,110 @@ func TestUpsertDevice(t *testing.T) {
 func TestDeviceMovesToTheParentWhoRegistersIt(t *testing.T) {
 	k := newKit(t)
 	kid, ana, bob := k.trackerKid()
-	id := k.mustDevice(ana, testEndpoint)
-	if rec := k.do(http.MethodPut, optinPath(kid, id), ana, nil); rec.Code != http.StatusNoContent {
+	old := k.mustDevice(ana, testEndpoint)
+	if rec := k.do(http.MethodPut, optinPath(kid, old), ana, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("opt in: %d %q", rec.Code, rec.Body.String())
 	}
+	fresh := k.putDevice(bob, deviceBody("https://push.example.com/fresh", "Bob's"))
 	rec := k.putDevice(bob, deviceBody(testEndpoint, "Bob's"))
 	moved := bodyMap(t, rec)["device"].(map[string]any)
-	if rec.Code != http.StatusOK || moved["id"] != id || len(moved["kids"].([]any)) != 0 {
-		t.Fatalf("move: %d %q", rec.Code, rec.Body.String())
+	freshID := bodyMap(t, fresh)["device"].(map[string]any)["id"].(string)
+	if rec.Code != http.StatusCreated || fresh.Code != http.StatusCreated || moved["id"] == old {
+		t.Fatalf("move: %d %q (old id %s)", rec.Code, rec.Body.String(), old)
+	}
+	if got, want := strings.ReplaceAll(rec.Body.String(), moved["id"].(string), "ID"), strings.ReplaceAll(fresh.Body.String(), freshID, "ID"); got != want {
+		t.Fatalf("a move answers %s, a fresh endpoint %s", got, want)
 	}
 	if list := k.deviceList(ana); len(list) != 0 {
 		t.Fatalf("old owner still lists %v", list)
 	}
-	if list := k.deviceList(bob); len(list) != 1 {
+	if list := k.deviceList(bob); len(list) != 2 {
 		t.Fatalf("new owner lists %v", list)
 	}
-	wantErr(t, k.do(http.MethodDelete, "/v1/me/push-devices/"+id, ana, nil), http.StatusNotFound, "not_found")
+	unknownKid := k.do(http.MethodPut, optinPath(model.NewID(), old), ana, nil)
+	sameResponse(t, "old owner's opt-in with the old id", k.do(http.MethodPut, optinPath(kid, old), ana, nil), unknownKid)
+	sameResponse(t, "old owner's opt-out with the old id", k.do(http.MethodDelete, optinPath(kid, old), ana, nil), unknownKid)
+	sameResponse(t, "new owner's opt-in with the old id", k.do(http.MethodPut, optinPath(kid, old), bob, nil), unknownKid)
+	wantErr(t, k.do(http.MethodDelete, "/v1/me/push-devices/"+old, ana, nil), http.StatusNotFound, "not_found")
+}
+
+func TestEndpointCanonicalised(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://H.Example.org.:443/x?A=B%2F": "https://h.example.org/x?A=B%2F",
+		"https://h.example.org/X/Y?q=Z#f":     "https://h.example.org/X/Y?q=Z#f",
+		"https://PUSH.example.org:443":        "https://push.example.org",
+		"https://push.example.org.?a":         "https://push.example.org?a",
+	} {
+		if got := canonicalEndpoint(in); got != want {
+			t.Errorf("%s: %s, want %s", in, got, want)
+		}
+	}
+	k, db := fileKit(t)
+	ana, ben := k.asParent("ana"), k.asParent("ben")
+	first := k.putDevice(ana, deviceBody("https://H.Example.org.:443/x?A=B%2F", "x"))
+	id := bodyMap(t, first)["device"].(map[string]any)["id"]
+	again := k.putDevice(ana, deviceBody("https://h.example.org/x?A=B%2F", "y"))
+	if first.Code != http.StatusCreated || again.Code != http.StatusOK || bodyMap(t, again)["device"].(map[string]any)["id"] != id {
+		t.Fatalf("same binding: %d %q / %d %q", first.Code, first.Body.String(), again.Code, again.Body.String())
+	}
+	var stored string
+	if err := db.QueryRow(`SELECT endpoint FROM push_subscriptions WHERE id = ?`, id).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != "https://h.example.org/x?A=B%2F" {
+		t.Fatalf("stored %q", stored)
+	}
+	if rec := k.putDevice(ana, deviceBody("https://h.example.org/X?A=B%2F", "z")); rec.Code != http.StatusCreated {
+		t.Fatalf("the path is case-sensitive: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := k.putDevice(ben, deviceBody("https://h.EXAMPLE.org.:443/x?A=B%2F", "b")); rec.Code != http.StatusCreated {
+		t.Fatalf("move by a variant: %d %q", rec.Code, rec.Body.String())
+	}
+	if list := k.deviceList(ana); len(list) != 1 {
+		t.Fatalf("a variant made a second binding: %v", list)
+	}
+	wantInvalid2(t, "empty port", k.putDevice(ana, deviceBody("https://h.example.org:/x", "x")), "endpoint")
+	wantInvalid2(t, "port 8443", k.putDevice(ana, deviceBody("https://h.example.org:8443/x", "x")), "endpoint")
+}
+
+func TestNewHandlerRefusesPushWithoutAResolver(t *testing.T) {
+	k := newKit(t)
+	d := k.deps()
+	d.Cfg.AllowFakePush = false
+	func() {
+		defer func() {
+			if r := recover(); r != "httpapi: Web Push needs a resolver" {
+				t.Fatalf("recovered %v", r)
+			}
+		}()
+		NewHandler(d)
+	}()
+	d.Resolver = fakeResolver{}
+	NewHandler(d)
+	d.Resolver, d.Cfg.AllowFakePush = nil, true
+	NewHandler(d)
+	d.Push, d.Cfg.AllowFakePush = nil, false
+	NewHandler(d)
+}
+
+func TestUpsertWithoutAResolverIsAClean500(t *testing.T) {
+	k := newKit(t)
+	k.Cfg.AllowFakePush = false
+	d := k.deps()
+	k.Handler = newMux(d, Routes(d))
+	wantErr(t, k.putDevice(k.asParent("ana"), deviceBody(testEndpoint, "x")), http.StatusInternalServerError, "internal")
+}
+
+func TestPushStateNeedsThePublicKey(t *testing.T) {
+	k := newKit(t)
+	k.Cfg.VAPIDKey = nil
+	k.Handler = NewHandler(k.deps())
+	ana := k.asParent("ana")
+	rec := k.do(http.MethodGet, "/v1/push", ana, nil)
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"enabled":false}` {
+		t.Fatalf("sender without a key: %d %q", rec.Code, rec.Body.String())
+	}
+	wantErr(t, k.putDevice(ana, deviceBody(testEndpoint, "x")), http.StatusConflict, "push_unavailable")
 }
 
 func TestDeviceCap(t *testing.T) {
@@ -228,8 +317,8 @@ func TestDeviceHostileEndpoints(t *testing.T) {
 	if rec := k.putDevice(ana, deviceBody("https://push.example.org/ok", "x")); rec.Code != http.StatusCreated {
 		t.Fatalf("public endpoint: %d %q", rec.Code, rec.Body.String())
 	}
-	if rec := k.putDevice(ana, deviceBody("https://push.example.org:443/ok", "x")); rec.Code != http.StatusCreated {
-		t.Fatalf("port 443: %d %q", rec.Code, rec.Body.String())
+	if rec := k.putDevice(ana, deviceBody("https://push.example.org:443/ok", "x")); rec.Code != http.StatusOK {
+		t.Fatalf("port 443 is the same binding: %d %q", rec.Code, rec.Body.String())
 	}
 }
 

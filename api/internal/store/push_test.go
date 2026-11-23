@@ -84,17 +84,23 @@ func TestUpsertDeviceMovesToTheNewParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	moved, created, err := s.UpsertDevice(ctx, ben.ID, "https://push.example.com/shared", testP256dh, testAuth, "Ben's", t0.Add(time.Hour))
-	if err != nil || created || moved.ID != d.ID || len(moved.Kids) != 0 {
+	if err != nil || !created || moved.ID == d.ID || len(moved.Kids) != 0 || !moved.CreatedAt.Equal(t0.Add(time.Hour)) {
 		t.Fatalf("move: %+v created=%v err=%v", moved, created, err)
 	}
 	if got, _ := s.Devices(ctx, ana.ID); len(got) != 0 {
 		t.Fatalf("old owner still sees %+v", got)
 	}
-	if got, _ := s.Devices(ctx, ben.ID); len(got) != 1 || got[0].ID != d.ID {
+	if got, _ := s.Devices(ctx, ben.ID); len(got) != 1 || got[0].ID != moved.ID {
 		t.Fatalf("new owner sees %+v", got)
 	}
 	if n := scalar(t, s, `SELECT COUNT(*) FROM push_kid_optins WHERE subscription_id = ?`, d.ID); n != 0 {
 		t.Fatalf("%d opt-ins survived the move", n)
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM push_subscriptions WHERE id = ?`, d.ID); n != 0 {
+		t.Fatalf("the old row survived the move")
+	}
+	if err := s.SetPushOptin(ctx, kid.ID, ben.ID, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("opt-in with the old id: %v", err)
 	}
 	if err := s.DeleteDevice(ctx, ana.ID, d.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("old owner delete: %v", err)
