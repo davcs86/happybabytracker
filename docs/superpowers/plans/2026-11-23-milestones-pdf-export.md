@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: draft, owner answers of 2026-11-23 applied.** Nothing here is built. Execution starts only after the owner answers the one question still open and approves the open values. Start implementation only when the owner asks for it.
+**Status: draft, owner answers of 2026-11-23 applied.** Nothing here is built. No question is open; execution starts only after the owner approves the open values. Start implementation only when the owner asks for it.
 
 ## Owner answers (2026-11-23, do not reopen)
 
@@ -11,19 +11,21 @@
 3. **Export range and module filter:** at most 93 days per export. The export is **filterable by module**: the form has one checkbox per module, the API takes a module list, refuses an unknown id or an empty selection with 422 `modules`, and prints only the chosen modules. The modules switched on for the kid are ticked by default. A switched-off module is offered unticked, and its data is exported when the requester ticks it (rule and cost: Open value 21).
 4. **Names in other scripts:** **embed a Unicode font** instead of substituting `?` for everything outside WinAnsi. The font is Noto Sans 2.015 (Regular and Bold), SIL Open Font License 1.1, embedded with `go:embed` under `api/internal/export/fonts/` with `LICENSE` and `NOTICE` (Task 8, Open value 6).
 
+5. **The 24-months-and-over band and how much of the catalog to show**, verbatim: "Keep the module default visibility as it is now. Display the full list of milestones until 5yo. It's the parent/guardian decision to keep it on after the default visibility." In this plan that means:
+   - The module default per band stays exactly as spec 7.2: on at 0–11 and 12–23 months, **off from 24 months**. `DefaultEnabled` is not changed.
+   - Whether the module stays on past 24 months is the guardian's decision, made on the existing Modules page. Plan 3's band rule (an entry in the 60-day lookback turns it on once as a stored row) may keep it on. No new setting is added.
+   - The Milestones page (reached from the quick-log tile while the module is on, and always from the kid links) shows **the full catalog, all twelve lists (2 months to 5 years), until the kid's 5th birthday**, ordered by list age. The kid's current list is marked in text and linked from the top of the page, and every item of every list can be marked reached with a date.
+   - From the 5th birthday, only reached, custom and retired-item rows are shown (Open value 3).
+
 ## Defaults accepted unless the owner vetoes
 
 - **Record sections:** growth, vaccination and milestones print the kid's whole record up to the range's end date. The daily trackers print only the range (Open value 5).
 - **Page size:** A4 pages whose margins, content and footer stay within the top 279.4 mm, so the same file prints at 100 % on US Letter (Open value 8).
 - **Sickness and medication:** added by Task 17 after plan 6 merges. Until then the API refuses those module ids (Open value 7).
 
-## Question still open for the owner
-
-1. **The 24-months-and-over band:** the default is that the module stays off by default from 24 months (spec 7.2, yours). If a guardian turns it on, the page shows the checklists around the kid's age up to the 5-year list, and from 6 years only the reached and custom milestones. If you would rather hide the catalog from 24 months, the page shows only reached and custom milestones there, and only one condition in Task 3 changes.
-
 ---
 
-**Goal:** Two parts. Milestones: a guardian or caregiver sees the CDC developmental milestones around the kid's (corrected) age, marks a milestone as reached with a date, adds custom free-text milestones, and can change or delete any of them. The app never says a kid is late, behind or anything else that compares or judges. PDF export: a guardian or caregiver exports one kid for a date range of at most 93 days and a chosen set of modules, as a PDF the API renders itself in the requester's units and the kid's time zone. Names and notes in Latin, Greek and Cyrillic scripts print correctly. The PDF is generated on demand and never stored.
+**Goal:** Two parts. Milestones: a guardian or caregiver sees the full CDC developmental milestone catalog (all twelve lists) until the kid's 5th birthday, with the list for the kid's (corrected) age marked, marks a milestone as reached with a date, adds custom free-text milestones, and can change or delete any of them. The app never says a kid is late, behind or anything else that compares or judges. PDF export: a guardian or caregiver exports one kid for a date range of at most 93 days and a chosen set of modules, as a PDF the API renders itself in the requester's units and the kid's time zone. Names and notes in Latin, Greek and Cyrillic scripts print correctly. The PDF is generated on demand and never stored.
 
 **Architecture:** A new package `api/internal/milestones` embeds one CSV (provenance header, stable item ids, as `api/internal/vaccines` does), loads it at start and computes each checklist's position against the kid's age basis. The next free migration adds `milestones_reached`. The routes follow the vaccination pattern: one kid read model and CRUD on reached rows.
 
@@ -110,14 +112,21 @@ Failure modes that no task's happy path exercises. Each has a test in the named 
 8. **DST days in the kid's zone:** a bottle at 01:30 on a fall-back day in `America/New_York` prints the right offset, and the daily summary counts it once. A spring-forward day sums 23 hours of sleep. Times are printed in the kid's zone, not the server's (Task 11).
 9. **Caregiver access:** a caregiver exports and reaches every milestone write. A no-grant parent and an unknown kid get byte-identical 404 bodies on all six new routes. The admin is refused, with a 403 at the API and a redirect at the UI (Tasks 5, 11, 14, 15).
 10. **Concurrency and memory:** a second export while one runs answers 503 `busy` and never queues. An export during the smoke's login burst keeps the API under 60 MiB with the fonts parsed (Tasks 11, 15).
-11. **Milestones** (Tasks 1, 3, 4, 5):
+11. **The catalog span** (owner 2026-11-23; Tasks 3, 5, 7, 15):
+    - A kid at 4 years 11 months gets all twelve lists, with the 4-year list current and the 5-year list next and reachable.
+    - On the day before the 5th birthday the full catalog is shown. On the 5th birthday itself (kid-local, civil date) only reached and custom rows are shown, and a reached 5-year item is still listed.
+    - A 29 February birth: the 5th birthday is 1 March.
+    - In Pacific/Auckland the boundary follows the kid's local date, not UTC.
+    - A preterm kid (32 weeks) at 3 months chronological still gets all twelve lists, with the 2-month list current by corrected age and both ages shown. At 2 years 1 month it is chronological again.
+    - A kid at 30 months whose module is switched off by default: the page is still reachable (by URL and kid links), shows the full catalog and accepts marks, while the quick-log tile is hidden. `DefaultEnabled` is unchanged (`modules_test.go` still pins off at 24+).
+12. **Milestones** (Tasks 1, 3, 4, 5):
     - A catalog item reached twice is a 409, never a second row.
     - A date after the kid-local today or before the birth date is a 422.
     - A custom text of 201 characters, or of spaces only, is a 422.
     - Deleting a reached item puts it back in its checklist.
     - A stored row whose catalog item was retired is still listed with its text.
     - A preterm kid at 3 months chronological and 1 month corrected sees the 2-month list as "next", and both ages are shown.
-12. **Band rule:** a kid crossing 24 months with a milestone recorded in the 60-day lookback keeps the module on as a stored override (Task 4).
+13. **Band rule:** a kid crossing 24 months with a milestone recorded in the 60-day lookback keeps the module on as a stored override (Task 4).
 
 ---
 
@@ -129,7 +138,7 @@ Rule 1 (never assume an owner value). A row marked "owner" or "accepted" cites a
 |---|---|---|---|---|
 | 1 | PDF library | `codeberg.org/go-pdf/fpdf` v0.12.0 (2026-05-18), pinned | **owner** 2026-11-23; research `pdf-libraries.md` | — |
 | 2 | Catalog edition and scope | CDC LTSAE checklists, all 12 ages (2 months to 5 years), from the HTML pages retrieved on the transcription day, verbatim | **owner** 2026-11-23; research `cdc-milestone-checklists.md` | — |
-| 3 | 24+ band | Default off (spec 7.2, **owner**). When a guardian turns it on: checklists up to 60 months; from 72 months only reached and custom rows | the open question; CDC's lists stop at 5 years | one condition in `Positions` |
+| 3 | 24+ band and catalog span | **Owner** 2026-11-23. The module default is unchanged (spec 7.2: off from 24 months; `DefaultEnabled` untouched). Keeping it on is the guardian's choice on the existing Modules page; plan 3's 60-day band rule may keep it on, and there is no new setting. The page shows **all twelve lists while today < the 5th birthday**. The 5th birthday is `kidtime.AddAge(birth_date, 5, 'y')`: civil-date arithmetic, compared with the kid-local today as `YYYY-MM-DD` strings, chronological age (never corrected), and a 29 February birth gives 1 March (Go's `AddDate` normalisation). On and after that date, `catalog_shown` is false: no lists are shown, only reached, custom and retired-item rows. The API still accepts a catalog `item` after the 5th birthday (no extra rule), but the page no longer offers unreached items. `MilestoneCatalogUntilYears = 5` | owner; CDC's lists stop at 5 years | — |
 | 4 | Range cap | `ExportMaxDays = 93`, inclusive kid-local dates | **owner** 2026-11-23; equal to `SummaryMaxDays` | — |
 | 5 | Record sections | growth, vaccination, milestones: everything up to `to`; trackers: `[from, to]` | **accepted** default | three filters |
 | 6 | Characters and font | Noto Sans **2.015**, unhinted static TTF: `NotoSans-Regular.ttf` (431,364 B, SHA-256 `f3961a9cde016d41a4879aecda1474d3a36d6bf54fa0e4643de029cc2248b0e8`) and `NotoSans-Bold.ttf` (432,376 B, SHA-256 `87cb2d84472a7d66da659ee47b6cdb9552326e8c128245231f191b6ac72529d9`), from `notofonts/notofonts.github.io` `fonts/NotoSans/unhinted/ttf/`; licence `api/internal/export/fonts/LICENSE` = the OFL 1.1 text of `notofonts/latin-greek-cyrillic` `OFL.txt` (SHA-256 `cee9892f…c061a`), with no Reserved Font Name; `NOTICE` beside it. Coverage: Basic Latin, Latin-1, Latin Extended-A/B and Additional, Greek, Cyrillic (2,965 code points). CJK, Arabic, Hebrew, Indic and emoji are **not** covered. Each rune the fonts lack (or above U+FFFF) prints as `?`, and the profile block adds "Some characters cannot be shown in this PDF and appear as ?" once. The owner can extend coverage later by adding another OFL font family as a fallback (CJK fonts are many MB per weight; not measured) | **owner** 2026-11-23 (embed a Unicode font); research `noto-sans-font.md` (licence text, coverage, measurements) | — |
@@ -140,7 +149,7 @@ Rule 1 (never assume an owner value). A row marked "owner" or "accepted" cites a
 | 11 | Verbatim text | The HTML pages' wording, pronouns included ("by herself", "his spoon"). The review document lists where the 2021-named PDF differs | CDC: "You may not change the substantive content" | a neutral-pronoun edit needs an owner reading of CDC's terms |
 | 12 | What is shown with the catalog | Under the list: CDC's sentence "This milestone checklist is not a substitute for a standardized, validated developmental screening tool." and the attribution "Source: CDC, Learn the Signs. Act Early. milestone checklists. CDC does not endorse this application or its use of the material. The material is available free of charge at https://www.cdc.gov/act-early/milestones/index.html." **Not** transcribed: CDC's "what most children (75% or more) can do" sentence, the doctor questions, the "act early" box, the screening call-outs, the tips and all images | CDC's conditions (attribution, no endorsement, free availability); spec non-goal "advice of any kind"; the images are third-party (research §1.5) | — |
 | 13 | Age basis | `basis_months = AgeMonths(CorrectedBirthDate or BirthDate, today)`. The corrected birth date is used only while `CorrectedBirthDate` applies today, that is, before the second birthday | spec 7.1; plan 4's rule; CDC's ">3 weeks" equals the app's `PretermBelowDays` | — |
-| 14 | "Around the age" | A checklist age A is `current` when it is the largest A ≤ basis (CDC: "If your child's age falls between 2 checklist ages, use the checklist for the younger age"). `next` is the smallest A > basis, `earlier` is below current, `later` is above next. The page shows current and next open, earlier inside a closed `<details>` "Earlier ages", and later not at all. Before 2 months nothing is current and 2 months is next | CDC wording; calendar months from `kidtime` | — |
+| 14 | The current list | A list age A is `current` when it is the largest A ≤ basis. CDC: "If your child's age falls between 2 checklist ages, use the checklist for the younger age". The basis is the corrected age until the second birthday and chronological after (Open value 13). `next` is the smallest A > basis, `earlier` is below current, `later` is above next. The page shows **every list**, in age order, each a `<details>` section with its title; all twelve are reachable on the same page. The current list is open and its title carries the text "Current list for this age" (text, never colour alone), and a "Go to the current list" link at the top jumps to it (an anchor, works without JavaScript). Before 2 months nothing is current: the 2-month list is open, with the text "Next list". Other lists start closed | owner 2026-11-23 (full list until 5 years); CDC wording; calendar months from `kidtime` | — |
 | 15 | Reached | One row per catalog item (unique), with a date (`reached_on`: kid-local, not after today, not before the birth date) and an optional note (≤ `MaxNoteLen`). "Undo" is a hard delete. The date and the note can be edited. Only the date is shown, never the age at the time of reaching (an age beside a checklist age invites comparison) | spec 10.1, 6.1 | a computed field later |
 | 16 | Custom milestones | A custom milestone is a reached row with text (1–200 characters after trimming, `MilestoneTextMaxLen = 200`) and a date. There are no unreached custom items | spec 10.1: "free-text custom milestones … marks one as reached with a date" | a second table |
 | 17 | Caps | `MaxMilestonesPerKid = 1000` reached rows, catalog and custom together (the catalog has about 159) → 409 `limit` | the cap pattern of plans 4 and 5 | — |
@@ -230,8 +239,10 @@ func Ages() []int                         // distinct age_months of active items
 type Position string // PositionEarlier, PositionCurrent, PositionNext, PositionLater
 type AgeBasis struct{ ChronologicalMonths int; CorrectedMonths *int; BasisMonths int }
 func AgeBasisFor(birthDate string, gestWeeks, gestDays *int, today string, loc *time.Location) (AgeBasis, error) // Open value 13
-func Positions(ages []int, basisMonths int) map[int]Position                                                    // Open values 3, 14; ages ≥ 72 months: every age is earlier
+func Positions(ages []int, basisMonths int) map[int]Position                                                    // Open value 14; every age gets a position
+func CatalogShown(birthDate, today string) (bool, error)                                                          // Open value 3: today < AddAge(birthDate, MilestoneCatalogUntilYears, 'y'); chronological
 ```
+Constant: `MilestoneCatalogUntilYears = 5`.
 - [ ] **Step 1: Failing tests:**
   - `TestAgeBasis`:
     - a term kid;
@@ -245,14 +256,19 @@ func Positions(ages []int, basisMonths int) map[int]Position                    
     - basis 2: current 2, next 4;
     - basis 3: current 2, next 4 (CDC's "younger age");
     - basis 14: current 12, next 15;
+    - basis 59: current 48, next 60;
     - basis 60: current 60, no next;
-    - basis 71: current 60;
-    - basis 72: all earlier;
     - only the ages passed in appear.
+  - `TestCatalogShown`:
+    - a kid at 4 years 11 months → true;
+    - the day before the 5th birthday → true; the 5th birthday → false; the day after → false;
+    - born 2020-02-29: 2025-02-28 → true, 2025-03-01 → false;
+    - a preterm kid's 5th birthday is chronological (correction plays no part);
+    - a malformed date → `kidtime.ErrBadDate`.
 - [ ] **Step 2:** `go test ./internal/milestones/ ./internal/kidtime/ -race` → FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** PASS.
-- [ ] **Step 5: Commit** `feat(api): milestone age basis and checklist positions`.
+- [ ] **Step 5: Commit** `feat(api): milestone age basis, checklist positions and the 5-year span`.
 
 ## Task 4: Migration and store
 
@@ -314,9 +330,9 @@ CREATE INDEX milestones_reached_kid_date ON milestones_reached (kid_id, reached_
 
 `GET …/milestones` answers:
 ```json
-{"catalog":{id,name,authority,edition,retrieved,origin_url,licence,attribution},"age":{"chronological_months","corrected_months"|null,"basis_months"},"checklists":[{"age_months","position","items":[{"id","domain","text","reached":{"id","reached_on","note"}|null}]}],"custom":[{"id","text","reached_on","note"}],"retired":[{"id","item","text","reached_on","note"}]}
+{"catalog":{id,name,authority,edition,retrieved,origin_url,licence,attribution},"age":{"chronological_months","corrected_months"|null,"basis_months"},"catalog_shown":true,"checklists":[{"age_months","position","items":[{"id","domain","text","reached":{"id","reached_on","note"}|null}]}],"custom":[{"id","text","reached_on","note"}],"retired":[{"id","item","text","reached_on","note"}],"reached":[…only when catalog_shown is false, else []…]}
 ```
-- Checklists come in age order and items in file order. `later` checklists are included, for the UI to hide.
+- When `catalog_shown` is true (before the 5th birthday), `checklists` holds **all twelve lists** in age order, each with its `position`, and items in file order. When it is false, `checklists` is `[]`, while `custom` and `retired` are unchanged and a new `reached` array lists the reached catalog rows (`{id, item, age_months, domain, text, reached_on, note}`). The API answers the same way whether the module is on or off.
 - Entry view: `{id, item|null, text, reached_on, note}`; `text` is the catalog text for an item row.
 - Input: `{item}` or `{text}`, plus `reached_on` and `note`. Validation order: `item`/`text`, `reached_on`, `note`.
 - PATCH may change `reached_on`, `note` and, for custom rows only, `text`. `item` cannot change (→ 422 `item`).
@@ -330,7 +346,9 @@ CREATE INDEX milestones_reached_kid_date ON milestones_reached (kid_id, reached_
 
 - [ ] **Step 1: Failing tests:**
   - `TestMilestonesShape`: `sameKeys` on every object, using a small test catalog.
-  - `TestMilestonesPositionsThroughAPI`: a preterm kid shows both ages and the corrected-basis positions.
+  - `TestMilestonesPositionsThroughAPI`: a preterm kid shows both ages and the corrected-basis positions, with all twelve lists present.
+  - `TestCatalogSpanThroughAPI`: the kid at 4 years 11 months gets 12 lists; on the 5th birthday `catalog_shown` is false, `checklists` is `[]`, and a reached 5-year item appears in `reached`; the kid's zone decides the day (Pacific/Auckland).
+  - `TestMilestonesWithModuleOff`: a 30-month kid with the module off by default still gets 200 and the full catalog, and `GET …/modules` still reports milestones off (no default changed).
   - `TestRolesAndNotFound`: guardian and caregiver can do everything; the no-grant, unknown-kid and other-kid-entry 404 bodies are byte-identical; the admin gets 403.
   - `TestMilestoneValidation`: every refusal above, plus unknown fields, `null` on required fields, a text of 201 runes, a whitespace-only text, a note over `MaxNoteLen`.
   - `TestUndoReturnsItemToChecklist`.
@@ -375,15 +393,16 @@ CREATE INDEX milestones_reached_kid_date ON milestones_reached (kid_id, reached_
 
 **Interfaces:**
 - The page header shows the age as the home does (`ageHeader`: both ages when corrected).
-- Then come the `current` and `next` checklists, each grouped by domain. Every item shows its text, and either:
+- At the top, a "Go to the current list" link (an anchor; Open value 14).
+- Before the 5th birthday, the page shows **all twelve lists** in age order, each a `<details>` section titled `checklistTitle` and grouped by domain. The current list is open, and its title carries "Current list for this age". Before 2 months, the 2-month list is open and carries "Next list". Every item of every list shows its text, and either:
   - a "Reached" form: one tap submits and records today, and "Choose a date" links to `new?item=<id>`; or
   - when reached, "Reached on <date>" with an edit link.
-- A `<details>` "Earlier ages" holds the earlier checklists.
+- From the 5th birthday (`catalog_shown` false), there are no lists. A "Reached" section lists the reached catalog rows (date, list title, domain, text), followed by the custom rows.
 - "Your milestones" lists the custom rows, with "Add a milestone".
 - Rows whose item was retired are listed with their text.
 - The CDC sentence and attribution (Open value 12) sit under the lists.
 - There is no colour, icon, count, progress bar or "not yet" text. Nothing distinguishes an unreached item except the absence of a date.
-- The page is reachable with the module off.
+- The page is reachable with the module off, and shows the same content. The module's default and the guardian's switch live only on the existing Modules page; this page adds no setting and no prompt to turn the module on.
 - Create and edit follow the plan-5 pattern:
   - `failAction` and `fail(422, {form, values, field, message})`;
   - no-JS, with delete behind `<details>`;
@@ -392,8 +411,12 @@ CREATE INDEX milestones_reached_kid_date ON milestones_reached (kid_id, reached_
   - 409 `already_reached` → "Already marked as reached", and 409 `limit` → "This child has the maximum number of recorded milestones".
 
 - [ ] **Step 1: Failing tests (Playwright, both projects, axe):**
-  - a stub kid at 9 months shows "By 9 months" and "By 1 year" open and "Earlier ages" closed;
-  - a preterm stub kid shows both ages and the corrected checklist;
+  - a stub kid at 9 months shows all twelve list titles in age order: "By 9 months" is open and carries "Current list for this age", the others are closed but open on click (and without JavaScript, as native `<details>`), and "Go to the current list" jumps to it;
+  - an item in a later list ("By 3 years") and one in an earlier list ("By 2 months") can each be marked reached;
+  - a stub kid at 4 years 11 months: the 4-year list is current and the 5-year list is reachable;
+  - a stub kid on its 5th birthday: no list titles, the "Reached" section lists a reached 5-year item, the custom rows are shown;
+  - a preterm stub kid shows both ages, and the list current by corrected age;
+  - a 30-month stub kid with the module off: the page loads from the kid links with the full catalog, the quick-log tile is absent, and the Modules page still shows milestones off;
   - one-tap reached records today and shows the date (`submit()` waits for the response);
   - choose a past date, read it back and edit it;
   - a future date shows the field message, with the values kept;
@@ -629,7 +652,12 @@ Every error happens before the first byte, and nothing about the request is logg
 
 - [ ] **Step 1: Extend `scripts/smoke.sh`**, failing first against the images from `main`. The PDF text is checked with `tr -d '\000' < "$pdf" | grep -a -F …` (Open value 19).
   - **Step 4k, milestones:**
-    - As the guardian, open the smoke kid's Milestones page. Assert the CDC attribution text and a checklist title for the kid's age, and that the page contains none of the denylist words outside item text.
+    - As the guardian, open the smoke kid's Milestones page. Assert:
+      - the CDC attribution text;
+      - **all twelve list titles** ("By 2 months" … "By 5 years") in age order;
+      - "Current list for this age" next to the title for the kid's age;
+      - none of the denylist words outside item text.
+    - Mark one item reached in a later list (e.g. "By 3 years").
     - Mark one item reached today through the real one-tap form, and one with an earlier date through the new form.
     - Add a custom milestone with a distinctive text, and give it a name-like word in Cyrillic, to exercise the font in 4l.
     - Edit its date and delete one through the real forms (scrape the hidden originals as 4h does).
@@ -690,7 +718,7 @@ Every error happens before the first byte, and nothing about the request is logg
 
 - API and UI pipelines and `scripts/smoke.sh` pass on the branch head, and CI is green.
 - The access matrix covers all six new routes and fails if one is missing.
-- A guardian and a caregiver see the milestones around the kid's corrected age, mark and unmark them, and add custom ones, and no screen or PDF text judges. The owner has reviewed `docs/milestones/cdc.md` in the PR.
+- A guardian and a caregiver see all twelve CDC lists until the kid's 5th birthday, with the list for the kid's corrected age marked, mark any item reached and unmark it, and add custom ones, and no screen or PDF text judges. The owner has reviewed `docs/milestones/cdc.md` in the PR.
 - A caregiver downloads a PDF of one kid for a range of at most 93 days and the chosen modules. It contains exactly those modules, in their own units and the kid's time zone, with every source's attribution where its data is shown. Latin, Greek and Cyrillic names print correctly. Smoke reads its text without a PDF viewer, including the module filter.
 - The final report states:
   - which image content changed: `api/` sources, embedded catalog data, **a new Go module** `codeberg.org/go-pdf/fpdf`, **two embedded font files** (~0.86 MB), Dockerfile `COPY` lines and the licence label; `ui/` sources; no npm change;
