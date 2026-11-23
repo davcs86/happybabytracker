@@ -1,5 +1,9 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { MEDICATION_TEXT_MAX_LEN } from '../src/lib/constants.js';
+import {
+	MAX_EVERY_HOURS,
+	MAX_SCHEDULE_TIMES,
+	MEDICATION_TEXT_MAX_LEN
+} from '../src/lib/constants.js';
 import { whenLabel } from '../src/lib/medication.js';
 import { instantToLocalInput, todayInOrUtc } from '../src/lib/time-zone.js';
 import {
@@ -21,8 +25,8 @@ import {
 	stubAs
 } from './stub-api.js';
 
-// The medication page, the one-tap dose and the dose edit page. Courses are made through the stub API: the form
-// that creates them is a later part. Every save waits for its response with submit().
+// The medication page, the one-tap dose, the dose edit page and the course create, edit and delete pages. Courses are
+// mostly made through the stub API; every save waits for its response with submit().
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -653,5 +657,662 @@ test.describe('without JavaScript', () => {
 		await expect(card(page, 'Paused')).toBeHidden();
 		await page.getByText('Ended and inactive courses (1)').click();
 		await expect(card(page, 'Paused')).toBeVisible();
+	});
+});
+
+// Course create, edit and delete.
+const newUrl = (kid: string = MIA.id) => `${pageUrl(kid)}/new`;
+const courseUrl = (id: unknown, kid: string = MIA.id) => `${pageUrl(kid)}/${id}`;
+const courses = async (api: Api, kid: string = MIA.id) =>
+	((await api('GET', COURSES(kid))).body.medications ?? []) as Row[];
+const saveCourse = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+const kindRadio = (page: Page, label: string) => page.getByRole('radio', { name: label });
+const deleteCourse = (page: Page) =>
+	submit(page.getByRole('button', { name: 'Yes, delete this course' }));
+const openDelete = (page: Page) => page.getByText('Delete this course', { exact: true }).click();
+const hoursInput = (page: Page) => field(page, 'Hours between doses');
+const time = (page: Page, n: number) => field(page, `Time ${n}`);
+const AS_NEEDED = 'As needed';
+const FIXED = 'At fixed times';
+const EVERY = 'Every few hours';
+
+test('a fixed-times course is created through the form and listed with its times in order', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await page.getByRole('link', { name: 'Add a course' }).click();
+	await expect(page).toHaveURL(newUrl());
+	await expect(page.getByRole('heading', { name: 'Add a course', level: 1 })).toBeVisible();
+	await expect(page.getByText('Times are in UTC')).toBeVisible();
+	await expect(kindRadio(page, AS_NEEDED)).toBeChecked();
+	await expect(field(page, 'Active')).toBeChecked();
+	await expectAccessible(page);
+
+	await field(page, 'Name').fill('  Calpol ');
+	await field(page, 'Dose').fill('2.5 ml');
+	await kindRadio(page, FIXED).check();
+	await expect(time(page, 1)).toBeVisible();
+	await expect(time(page, MAX_SCHEDULE_TIMES)).toBeVisible();
+	await expect(hoursInput(page)).toBeHidden();
+	await time(page, 1).fill('20:00');
+	await time(page, 2).fill('08:00');
+	await time(page, 3).fill('12:30');
+	await expectAccessible(page);
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('POST', COURSES())).toEqual({
+		name: 'Calpol',
+		dose: '2.5 ml',
+		schedule: { kind: 'times', times: ['08:00', '12:30', '20:00'] }
+	});
+	expect(await courses(api)).toHaveLength(1);
+	await expect(card(page, 'Calpol')).toContainText('08:00, 12:30, 20:00');
+	await expect(card(page, 'Calpol')).toContainText('No dose logged yet');
+	await expect(card(page, 'Calpol')).toContainText(/Next due/);
+});
+
+test('an every-N-hours course is created with a start on the kid clock, a last day, a note and unticked', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	const start = minute(-90);
+	const last = ymd(realNow() + 3 * 24 * H);
+	await field(page, 'Name').fill('Amoxil');
+	await field(page, 'Dose').fill('5 ml');
+	await kindRadio(page, EVERY).check();
+	await expect(hoursInput(page)).toBeVisible();
+	await expect(time(page, 1)).toBeHidden();
+	await hoursInput(page).fill('6');
+	await field(page, 'Start').fill(instantToLocalInput(start, 'UTC'));
+	await field(page, 'Last day (optional)').fill(last);
+	await field(page, 'Note').fill('finish the bottle');
+	await field(page, 'Active').uncheck();
+	await expectAccessible(page);
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('POST', COURSES())).toEqual({
+		name: 'Amoxil',
+		dose: '5 ml',
+		schedule: { kind: 'every', hours: 6 },
+		start_at: start,
+		end_on: last,
+		active: false,
+		note: 'finish the bottle'
+	});
+	// Inactive: behind the details, with no next due.
+	await expect(card(page, 'Amoxil')).toBeHidden();
+	await page.getByText('Ended and inactive courses (1)').click();
+	await expect(card(page, 'Amoxil')).toContainText(
+		`Every 6 hours from ${instantToLocalInput(start, 'UTC').slice(-5)}`
+	);
+	await expect(card(page, 'Amoxil').getByText(/Next due/)).toHaveCount(0);
+	expect((await courses(api))[0]).toMatchObject({ active: false, end_on: last });
+
+	await page.goto(newUrl());
+	await field(page, 'Name').fill('Vitamin D');
+	await field(page, 'Dose').fill('1 drop');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('POST', COURSES())).toEqual({
+		name: 'Vitamin D',
+		dose: '1 drop',
+		schedule: { kind: 'none' }
+	});
+	await expect(card(page, 'Vitamin D')).toContainText('As needed');
+});
+
+test('the schedule fields follow the chosen kind and keep what was typed in the other', async ({
+	page
+}) => {
+	await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await expect(time(page, 1)).toBeHidden();
+	await expect(hoursInput(page)).toBeHidden();
+	await kindRadio(page, FIXED).check();
+	await time(page, 1).fill('09:00');
+	await kindRadio(page, EVERY).check();
+	await expect(time(page, 1)).toBeHidden();
+	await hoursInput(page).fill('4');
+	await kindRadio(page, FIXED).check();
+	await expect(time(page, 1)).toHaveValue('09:00');
+	await kindRadio(page, AS_NEEDED).check();
+	await expect(time(page, 1)).toBeHidden();
+	await expect(hoursInput(page)).toBeHidden();
+});
+
+test('a refused new course keeps every typed value and marks the field', async ({ page }) => {
+	const api = await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await field(page, 'Name').fill('Calpol');
+	await field(page, 'Dose').fill('');
+	await kindRadio(page, FIXED).check();
+	await time(page, 1).fill('08:00');
+	await field(page, 'Note').fill('typed note');
+	await saveCourse(page);
+	await expectFieldError(
+		field(page, 'Dose'),
+		`Enter a dose of up to ${MEDICATION_TEXT_MAX_LEN} characters`
+	);
+	await expect(field(page, 'Name')).toHaveValue('Calpol');
+	await expect(kindRadio(page, FIXED)).toBeChecked();
+	await expect(time(page, 1)).toHaveValue('08:00');
+	await expect(field(page, 'Note')).toHaveValue('typed note');
+	await expect(page.getByRole('alert')).toHaveCount(1);
+	await expectAccessible(page);
+	expect(await courses(api)).toEqual([]);
+
+	await field(page, 'Dose').fill('2.5 ml');
+	await time(page, 2).fill('08:00');
+	await saveCourse(page);
+	await expect(page.getByRole('alert')).toContainText('Choose as needed');
+	await expect(page.getByRole('radiogroup')).toHaveAttribute('aria-invalid', 'true');
+	await expect(time(page, 2)).toHaveValue('08:00');
+	await expectAccessible(page);
+	expect(await courses(api)).toEqual([]);
+
+	await kindRadio(page, EVERY).check();
+	await hoursInput(page).fill(String(MAX_EVERY_HOURS + 1));
+	await saveCourse(page);
+	await expectFieldError(hoursInput(page), 'Choose as needed');
+	await expect(hoursInput(page)).toHaveValue(String(MAX_EVERY_HOURS + 1));
+	await hoursInput(page).fill('8');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('POST', COURSES())).toEqual({
+		name: 'Calpol',
+		dose: '2.5 ml',
+		schedule: { kind: 'every', hours: 8 },
+		note: 'typed note'
+	});
+});
+
+test('the API refusals of the start and the last day land on their inputs, values kept', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await field(page, 'Name').fill('Calpol');
+	await field(page, 'Dose').fill('2.5 ml');
+	await field(page, 'Start').fill('2026-07-01T10:00');
+	await saveCourse(page);
+	await expectFieldError(field(page, 'Start'), 'Enter a start that is not before the birth date');
+	await expect(field(page, 'Start')).toHaveValue('2026-07-01T10:00');
+	await expect(field(page, 'Name')).toHaveValue('Calpol');
+
+	await field(page, 'Start').fill(instantToLocalInput(minute(-60), 'UTC'));
+	await field(page, 'Last day (optional)').fill(ymd(realNow() - 3 * 24 * H));
+	await saveCourse(page);
+	await expectFieldError(
+		field(page, 'Last day (optional)'),
+		'Enter a last day that is a real date'
+	);
+	await expect(field(page, 'Last day (optional)')).toHaveValue(ymd(realNow() - 3 * 24 * H));
+	await expectAccessible(page);
+	expect(await courses(api)).toEqual([]);
+
+	await field(page, 'Last day (optional)').fill('');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await courses(api)).toHaveLength(1);
+});
+
+test('the course cap is said on the form, values kept', async ({ page }) => {
+	const api = await stubAs(ANA);
+	for (let i = 0; i < 200; i++) {
+		const r = await api('POST', COURSES(), {
+			name: `C${i}`,
+			dose: '1',
+			schedule: { kind: 'none' }
+		});
+		if (r.status === 409) break;
+		expect(r.status).toBe(201);
+	}
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await field(page, 'Name').fill('One too many');
+	await field(page, 'Dose').fill('1 ml');
+	await saveCourse(page);
+	await expect(page.getByRole('alert')).toHaveText(
+		'This child has the maximum number of medication courses'
+	);
+	await expect(field(page, 'Name')).toHaveValue('One too many');
+	await expectAccessible(page);
+});
+
+test('the edit page shows the stored course and an edit of the note alone sends only the note', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	// Off the minute on purpose: an untouched start must not be re-sent truncated.
+	const start = rfc(Math.floor(Date.now() / 1000) * 1000 - 3_600_000 - 7000);
+	const last = ymd(realNow() + 5 * 24 * H);
+	const calpol = await seedCourse(api, {
+		name: 'Calpol',
+		dose: '2.5 ml',
+		schedule: { kind: 'times', times: ['20:00', '08:00'] },
+		start_at: start,
+		end_on: last,
+		note: 'first'
+	});
+	const path = `${COURSES()}/${calpol.id}`;
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+	await expect(page).toHaveURL(courseUrl(calpol.id));
+	await expect(page.getByRole('heading', { name: 'Edit course', level: 1 })).toBeVisible();
+	await expect(field(page, 'Name')).toHaveValue('Calpol');
+	await expect(field(page, 'Dose')).toHaveValue('2.5 ml');
+	await expect(kindRadio(page, FIXED)).toBeChecked();
+	await expect(time(page, 1)).toHaveValue('08:00');
+	await expect(time(page, 2)).toHaveValue('20:00');
+	await expect(time(page, 3)).toHaveValue('');
+	await expect(field(page, 'Start')).toHaveValue(instantToLocalInput(start, 'UTC'));
+	await expect(field(page, 'Last day (optional)')).toHaveValue(last);
+	await expect(field(page, 'Active')).toBeChecked();
+	await expect(field(page, 'Note')).toHaveValue('first');
+	await expectAccessible(page);
+
+	await field(page, 'Note').fill('after lunch');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({ note: 'after lunch' });
+	expect((await courses(api))[0]).toMatchObject({
+		start_at: start,
+		end_on: last,
+		note: 'after lunch',
+		schedule: { kind: 'times', times: ['08:00', '20:00'] }
+	});
+
+	// Saving the form untouched sends nothing but still succeeds.
+	await page.goto(courseUrl(calpol.id));
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({});
+});
+
+test('an edit sends the whole schedule when it changed, null for a cleared last day and the flag when toggled', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, {
+		name: 'Calpol',
+		schedule: { kind: 'times', times: ['08:00', '20:00'] },
+		end_on: ymd(realNow() + 5 * 24 * H)
+	});
+	const path = `${COURSES()}/${calpol.id}`;
+	await signIn(page, ANA);
+	await page.goto(courseUrl(calpol.id));
+
+	await time(page, 3).fill('13:00');
+	await field(page, 'Name').fill('Calpol Plus');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({
+		name: 'Calpol Plus',
+		schedule: { kind: 'times', times: ['08:00', '13:00', '20:00'] }
+	});
+
+	await page.goto(courseUrl(calpol.id));
+	await kindRadio(page, EVERY).check();
+	await hoursInput(page).fill('8');
+	await field(page, 'Last day (optional)').fill('');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({
+		schedule: { kind: 'every', hours: 8 },
+		end_on: null
+	});
+	expect((await courses(api))[0]).toMatchObject({
+		schedule: { kind: 'every', hours: 8 },
+		end_on: null
+	});
+	await expect(card(page, 'Calpol Plus')).toContainText('Every 8 hours from');
+
+	await page.goto(courseUrl(calpol.id));
+	await expect(kindRadio(page, EVERY)).toBeChecked();
+	await expect(hoursInput(page)).toHaveValue('8');
+	await field(page, 'Active').uncheck();
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({ active: false });
+	await expect(card(page, 'Calpol Plus')).toBeHidden();
+
+	await page.goto(courseUrl(calpol.id));
+	await expect(field(page, 'Active')).not.toBeChecked();
+	await kindRadio(page, AS_NEEDED).check();
+	await field(page, 'Active').check();
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({ schedule: { kind: 'none' }, active: true });
+	await expect(card(page, 'Calpol Plus')).toContainText('As needed');
+});
+
+test('a refused edit keeps what was typed and the originals stay the loaded ones', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, { name: 'Calpol', note: 'first' });
+	const path = `${COURSES()}/${calpol.id}`;
+	await signIn(page, ANA);
+	await page.goto(courseUrl(calpol.id));
+
+	await field(page, 'Name').fill('');
+	await field(page, 'Note').fill('typed note');
+	await saveCourse(page);
+	await expectFieldError(
+		field(page, 'Name'),
+		`Enter a name of up to ${MEDICATION_TEXT_MAX_LEN} characters`
+	);
+	await expect(field(page, 'Note')).toHaveValue('typed note');
+	await expect(page.getByRole('alert')).toHaveCount(1);
+	await expectAccessible(page);
+	expect(await writes('PATCH', path)).toEqual([]);
+
+	// The reader accepts it; the API refuses a last day before the start.
+	await field(page, 'Name').fill('Calpol');
+	await field(page, 'Last day (optional)').fill('2026-07-10');
+	await saveCourse(page);
+	await expectFieldError(
+		field(page, 'Last day (optional)'),
+		'Enter a last day that is a real date'
+	);
+	await expect(field(page, 'Note')).toHaveValue('typed note');
+	expect((await courses(api))[0].note).toBe('first');
+	// Fixing only the last day still sends only what differs from the load.
+	await field(page, 'Last day (optional)').fill('');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await written('PATCH', path)).toEqual({ note: 'typed note' });
+});
+
+test('the delete confirm names how many doses go with the course, and they go', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const doomed = await seedCourse(api, { name: 'Doomed' });
+	const kept = await seedCourse(api, { name: 'Kept' });
+	for (let i = 0; i < 12; i++) await seedDose(api, doomed.id, { given_at: minute(-60 - i) });
+	await seedDose(api, kept.id);
+	await signIn(page, ANA);
+	await page.goto(courseUrl(doomed.id));
+	await expect(page.getByRole('button', { name: 'Yes, delete this course' })).toBeHidden();
+	await openDelete(page);
+	await expect(
+		page.getByText('This also deletes the 12 doses logged for this course')
+	).toBeVisible();
+	await expectAccessible(page);
+	await deleteCourse(page);
+	await onMedication(page);
+	expect(await writes('DELETE', `${COURSES()}/${doomed.id}`)).toHaveLength(1);
+	expect((await courses(api)).map((c) => c.id)).toEqual([kept.id]);
+	expect((await doses(api)).map((d) => d.medication)).toEqual([kept.id]);
+	await expect(card(page, 'Doomed')).toHaveCount(0);
+	await expect(card(page, 'Kept')).toBeVisible();
+	await expect(
+		page.getByRole('region', { name: 'Recent doses' }).getByRole('listitem')
+	).toHaveCount(1);
+});
+
+test('the delete confirm says one dose and no doses correctly', async ({ page }) => {
+	const api = await stubAs(ANA);
+	const one = await seedCourse(api, { name: 'One' });
+	const none = await seedCourse(api, { name: 'None' });
+	await seedDose(api, one.id);
+	await signIn(page, ANA);
+	await page.goto(courseUrl(one.id));
+	await openDelete(page);
+	await expect(page.getByText('This also deletes the 1 dose logged for this course')).toBeVisible();
+	await page.goto(courseUrl(none.id));
+	await openDelete(page);
+	await expect(
+		page.getByText('This also deletes the 0 doses logged for this course')
+	).toBeVisible();
+	await deleteCourse(page);
+	await onMedication(page);
+	expect((await courses(api)).map((c) => c.id)).toEqual([one.id]);
+});
+
+for (const [who, role] of [
+	[ANA, 'caregiver'],
+	[CLEO, 'guardian']
+] as const) {
+	test(`a ${role} creates, edits and deletes a course on the kid clock`, async ({ page }) => {
+		const api = await stubAs(who);
+		await signIn(page, who);
+		await page.goto(newUrl(LEO.id));
+		await expect(page.getByText('Times are in Europe/Madrid')).toBeVisible();
+		const start = minute(-120);
+		await field(page, 'Name').fill('Calpol');
+		await field(page, 'Dose').fill('2.5 ml');
+		await kindRadio(page, EVERY).check();
+		await hoursInput(page).fill('6');
+		await field(page, 'Start').fill(instantToLocalInput(start, 'Europe/Madrid'));
+		await saveCourse(page);
+		await onMedication(page, LEO.id);
+		expect(await written('POST', COURSES(LEO.id))).toMatchObject({ start_at: start });
+		const [made] = await courses(api, LEO.id);
+		await expect(card(page, 'Calpol')).toContainText(
+			`Every 6 hours from ${instantToLocalInput(start, 'Europe/Madrid').slice(-5)}`
+		);
+
+		await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+		await expect(field(page, 'Start')).toHaveValue(instantToLocalInput(start, 'Europe/Madrid'));
+		await field(page, 'Note').fill('by the book');
+		await saveCourse(page);
+		await onMedication(page, LEO.id);
+		expect(await written('PATCH', `${COURSES(LEO.id)}/${made.id}`)).toEqual({
+			note: 'by the book'
+		});
+
+		await page.goto(courseUrl(made.id, LEO.id));
+		await openDelete(page);
+		await deleteCourse(page);
+		await onMedication(page, LEO.id);
+		expect(await courses(api, LEO.id)).toEqual([]);
+	});
+}
+
+test('the course pages answer the same 404 page for no grant, an unknown kid and a course that is not theirs', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const mine = await seedCourse(api, { name: 'Calpol' });
+	const other = await seedCourse(await stubAs(CLEO), { name: 'Elsewhere' }, LEO.id);
+	await signIn(page, DAN);
+	const unknown = await expectNotFoundPage(page, pageUrl('k-unknown'));
+	expect(await expectNotFoundPage(page, newUrl())).toBe(unknown);
+	expect(await expectNotFoundPage(page, newUrl('k-unknown'))).toBe(unknown);
+	expect(await expectNotFoundPage(page, courseUrl(mine.id))).toBe(unknown);
+	expect(await expectNotFoundPage(page, courseUrl(mine.id, 'k-unknown'))).toBe(unknown);
+
+	await page.context().clearCookies();
+	await signIn(page, ANA);
+	expect(await expectNotFoundPage(page, courseUrl('m-000000009999'))).toBe(unknown);
+	expect(await expectNotFoundPage(page, courseUrl(other.id))).toBe(unknown);
+	expect(await expectNotFoundPage(page, courseUrl('a b'))).toBe(unknown);
+	expect(await expectNotFoundPage(page, newUrl('k-unknown'))).toBe(unknown);
+});
+
+test('a course gone under an open edit form or an open delete confirm is the 404 page', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const first = await seedCourse(api, { name: 'First' });
+	const second = await seedCourse(api, { name: 'Second' });
+	await signIn(page, ANA);
+	await page.goto(courseUrl(first.id));
+	expect((await api('DELETE', `${COURSES()}/${first.id}`)).status).toBe(204);
+	await field(page, 'Note').fill('too late');
+	await page.getByRole('button', { name: 'Save', exact: true }).click();
+	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+
+	await page.goto(courseUrl(second.id));
+	await openDelete(page);
+	expect((await api('DELETE', `${COURSES()}/${second.id}`)).status).toBe(204);
+	await page.getByRole('button', { name: 'Yes, delete this course' }).click();
+	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
+});
+
+test('the course pages work with the medication module off', async ({ page }) => {
+	const api = await stubAs(ANA);
+	const calpol = await seedCourse(api, { name: 'Calpol' });
+	const off = await api('PUT', `/v1/kids/${MIA.id}/modules/medication`, { enabled: false });
+	expect(off.status).toBeLessThan(300);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await field(page, 'Name').fill('Amoxil');
+	await field(page, 'Dose').fill('5 ml');
+	await saveCourse(page);
+	await onMedication(page);
+	expect(await courses(api)).toHaveLength(2);
+	await page.goto(courseUrl(calpol.id));
+	await expect(field(page, 'Name')).toHaveValue('Calpol');
+});
+
+test('long unbroken texts and twelve time fields do not overflow the course pages at phone width', async ({
+	page
+}, testInfo) => {
+	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+	const api = await stubAs(ANA);
+	const name = 'w'.repeat(MEDICATION_TEXT_MAX_LEN);
+	const text = 'd'.repeat(MEDICATION_TEXT_MAX_LEN);
+	const note = 'n'.repeat(200);
+	await signIn(page, ANA);
+	await page.goto(newUrl());
+	await field(page, 'Name').fill(name);
+	await field(page, 'Dose').fill(text);
+	await field(page, 'Note').fill(note);
+	expect(await overflows(page)).toBe(false);
+	await kindRadio(page, FIXED).check();
+	await expect(time(page, MAX_SCHEDULE_TIMES)).toBeVisible();
+	expect(await overflows(page)).toBe(false);
+	await kindRadio(page, EVERY).check();
+	await hoursInput(page).fill('999');
+	await saveCourse(page);
+	await expect(field(page, 'Name')).toHaveValue(name);
+	expect(await overflows(page)).toBe(false);
+	await expectAccessible(page);
+
+	const course = await seedCourse(api, {
+		name,
+		dose: text,
+		note,
+		schedule: { kind: 'times', times: ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00'] }
+	});
+	await page.goto(courseUrl(course.id));
+	await expect(field(page, 'Name')).toHaveValue(name);
+	expect(await overflows(page)).toBe(false);
+	await openDelete(page);
+	expect(await overflows(page)).toBe(false);
+	await expectAccessible(page);
+});
+
+test.describe('the course pages without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create a fixed-times course: the radio shows its fields, a refusal keeps them', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(newUrl());
+		await expect(time(page, 1)).toBeHidden();
+		await kindRadio(page, FIXED).check();
+		await expect(time(page, 1)).toBeVisible();
+		await field(page, 'Name').fill('Calpol');
+		await time(page, 1).fill('20:00');
+		await time(page, 2).fill('08:00');
+		await saveCourse(page);
+		await expectFieldError(
+			field(page, 'Dose'),
+			`Enter a dose of up to ${MEDICATION_TEXT_MAX_LEN} characters`
+		);
+		await expect(field(page, 'Name')).toHaveValue('Calpol');
+		await expect(kindRadio(page, FIXED)).toBeChecked();
+		await expect(time(page, 1)).toHaveValue('20:00');
+		await field(page, 'Dose').fill('2.5 ml');
+		await saveCourse(page);
+		await onMedication(page);
+		expect(await written('POST', COURSES())).toEqual({
+			name: 'Calpol',
+			dose: '2.5 ml',
+			schedule: { kind: 'times', times: ['08:00', '20:00'] }
+		});
+		expect(await courses(api)).toHaveLength(1);
+	});
+
+	test('create an every-N-hours course and leave the box unticked', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(newUrl());
+		await field(page, 'Name').fill('Amoxil');
+		await field(page, 'Dose').fill('5 ml');
+		await kindRadio(page, EVERY).check();
+		await hoursInput(page).fill('12');
+		await field(page, 'Active').uncheck();
+		await saveCourse(page);
+		await onMedication(page);
+		expect(await written('POST', COURSES())).toEqual({
+			name: 'Amoxil',
+			dose: '5 ml',
+			schedule: { kind: 'every', hours: 12 },
+			active: false
+		});
+		expect((await courses(api))[0]).toMatchObject({ active: false });
+	});
+
+	test('edit the note alone, then change the schedule and clear the last day', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const calpol = await seedCourse(api, {
+			name: 'Calpol',
+			schedule: { kind: 'times', times: ['08:00'] },
+			end_on: ymd(realNow() + 4 * 24 * H)
+		});
+		const path = `${COURSES()}/${calpol.id}`;
+		await signIn(page, ANA);
+		await page.goto(pageUrl());
+		await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+		await expect(page).toHaveURL(courseUrl(calpol.id));
+		await field(page, 'Note').fill('no script');
+		await saveCourse(page);
+		await onMedication(page);
+		expect(await written('PATCH', path)).toEqual({ note: 'no script' });
+
+		await page.goto(courseUrl(calpol.id));
+		await time(page, 2).fill('20:00');
+		await field(page, 'Last day (optional)').fill('');
+		await saveCourse(page);
+		await onMedication(page);
+		expect(await written('PATCH', path)).toEqual({
+			schedule: { kind: 'times', times: ['08:00', '20:00'] },
+			end_on: null
+		});
+	});
+
+	test('delete a course in two steps: the button exists only inside the opened details', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const calpol = await seedCourse(api, { name: 'Calpol' });
+		await seedDose(api, calpol.id);
+		await seedDose(api, calpol.id);
+		await signIn(page, ANA);
+		await page.goto(courseUrl(calpol.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this course' })).toBeHidden();
+		await openDelete(page);
+		await expect(
+			page.getByText('This also deletes the 2 doses logged for this course')
+		).toBeVisible();
+		await deleteCourse(page);
+		await onMedication(page);
+		expect(await courses(api)).toEqual([]);
+		expect(await doses(api)).toEqual([]);
 	});
 });

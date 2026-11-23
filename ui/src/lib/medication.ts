@@ -24,3 +24,5 @@ export function whenLabel(instant: string, zone: string, today: string): string 
 // end_on is the course's last day, inclusive.
 export const courseEnded = (endOn: string | null, today: string): boolean =>
 	endOn !== null && endOn < today;
+
+export const doseCountLabel = (n: number): string => `${n} ${n === 1 ? 'dose' : 'doses'}`;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courseEnded, scheduleLabel, whenLabel } from './medication';
+import { courseEnded, doseCountLabel, scheduleLabel, whenLabel } from './medication';
 
 describe('scheduleLabel', () => {
 	const START = '2026-11-20T08:00:00Z';
@@ -88,5 +88,14 @@ describe('courseEnded', () => {
 		expect(courseEnded('2026-11-24', '2026-11-23')).toBe(false);
 		expect(courseEnded('2026-11-22', '2026-11-23')).toBe(true);
 		expect(courseEnded('2025-12-31', '2026-01-01')).toBe(true);
+	});
+});
+
+describe('doseCountLabel', () => {
+	it('counts doses with the right number', () => {
+		expect(doseCountLabel(12)).toBe('12 doses');
+		expect(doseCountLabel(2)).toBe('2 doses');
+		expect(doseCountLabel(1)).toBe('1 dose');
+		expect(doseCountLabel(0)).toBe('0 doses');
 	});
 });
