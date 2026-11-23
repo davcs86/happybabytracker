@@ -32,9 +32,16 @@ self.addEventListener('push', (event) => {
 });
 
 async function focusOrOpen(path: string) {
-	const url = new URL(path, self.location.origin).href;
+	const target = new URL(path, self.location.origin);
 	const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-	const shown = windows.find((w) => w.url === url);
+	const shown = windows.find((w) => {
+		const url = new URL(w.url);
+		return (
+			url.origin === target.origin &&
+			url.pathname === target.pathname &&
+			url.search === target.search
+		);
+	});
 	if (shown) await shown.focus();
 	else await self.clients.openWindow(path);
 }

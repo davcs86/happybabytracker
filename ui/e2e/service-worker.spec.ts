@@ -1,23 +1,25 @@
 import { expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 
 // The worker's own scope has no DOM-lib types here: describe just what the callbacks touch.
+// Notifications are observed at the registration, not displayed: headless Chromium refuses to
+// show any, whatever the context grants, so a displayed notification cannot be the check.
 type Pending = Promise<unknown>[];
 type Dispatchable = Event & { waitUntil: (p: Promise<unknown>) => void };
+type Shown = { title: string; options: object | undefined };
 type WorkerGlobals = {
 	PushEvent: new (type: string, init: { data?: string }) => Dispatchable;
-	NotificationEvent: new (type: string, init: { notification: unknown }) => Dispatchable;
-	registration: {
-		showNotification(title: string, options?: object): Promise<void>;
-		getNotifications(filter?: {
-			tag?: string;
-		}): Promise<{ title: string; body: string; tag: string; icon: string; data: unknown }[]>;
+	ExtendableEvent: new (type: string) => Dispatchable;
+	registration: { showNotification(title: string, options?: object): Promise<void> };
+	clients: {
+		openWindow(url: string): Promise<unknown>;
+		matchAll(options: object): Promise<{ url: string }[]>;
 	};
-	clients: { openWindow(url: string): Promise<unknown> };
 	WindowClient: { prototype: { focus(): Promise<unknown>; url: string } };
 	caches: { keys(): Promise<string[]> };
 };
 
 const TITLE = 'Medication due for Mia';
+const ICON = '/icons/icon-192.png';
 const PAYLOAD = JSON.stringify({
 	v: 1,
 	category: 'medication',
@@ -28,7 +30,6 @@ const PAYLOAD = JSON.stringify({
 });
 
 async function controlledWorker(context: BrowserContext, page: Page): Promise<Worker> {
-	await context.grantPermissions(['notifications']);
 	await page.goto('/login');
 	await page.evaluate(async () => {
 		await navigator.serviceWorker.ready;
@@ -41,22 +42,21 @@ async function controlledWorker(context: BrowserContext, page: Page): Promise<Wo
 }
 
 // A real push event cannot be fired from here: dispatch one and wait on what the worker passes to waitUntil.
-function deliverPush(worker: Worker, data: string | undefined) {
+function deliverPush(worker: Worker, data: string | undefined): Promise<Shown[]> {
 	return worker.evaluate(async (data) => {
 		const g = globalThis as unknown as WorkerGlobals;
+		const shown: Shown[] = [];
+		g.registration.showNotification = (title, options) => {
+			shown.push({ title, options });
+			return Promise.resolve();
+		};
 		const pending: Pending = [];
 		const event = new g.PushEvent('push', data === undefined ? {} : { data });
 		event.waitUntil = (p) => void pending.push(p);
 		globalThis.dispatchEvent(event);
 		await Promise.all(pending);
+		return shown;
 	}, data);
-}
-
-function shown(worker: Worker) {
-	return worker.evaluate(async () => {
-		const list = await (globalThis as unknown as WorkerGlobals).registration.getNotifications();
-		return list.map((n) => ({ title: n.title, body: n.body, tag: n.tag, data: n.data }));
-	});
 }
 
 test('a push with a valid payload shows its title with the reminder tag and path', async ({
@@ -64,15 +64,12 @@ test('a push with a valid payload shows its title with the reminder tag and path
 	page
 }) => {
 	const worker = await controlledWorker(context, page);
-	await deliverPush(worker, PAYLOAD);
-	expect(await shown(worker)).toEqual([
-		{ title: TITLE, body: '', tag: 'reminder-r1', data: { path: '/kids/k1/medication' } }
+	expect(await deliverPush(worker, PAYLOAD)).toEqual([
+		{
+			title: TITLE,
+			options: { body: '', tag: 'reminder-r1', icon: ICON, data: { path: '/kids/k1/medication' } }
+		}
 	]);
-	const icon = await worker.evaluate(
-		async () =>
-			(await (globalThis as unknown as WorkerGlobals).registration.getNotifications())[0].icon
-	);
-	expect(new URL(icon).pathname).toBe('/icons/icon-192.png');
 });
 
 for (const [name, data] of [
@@ -87,15 +84,15 @@ for (const [name, data] of [
 		page
 	}) => {
 		const worker = await controlledWorker(context, page);
-		await deliverPush(worker, data);
-		const list = await shown(worker);
-		expect(list).toHaveLength(1);
-		expect(list[0].title).toBe('Reminder due');
-		expect(list[0].body).toBe('');
+		// No tag key, and a click goes to the home page.
+		expect(await deliverPush(worker, data)).toEqual([
+			{ title: 'Reminder due', options: { body: '', icon: ICON, data: { path: '/' } } }
+		]);
 	});
 }
 
 // The window calls are recorded, not performed: Chrome allows them only for a real click.
+// The event carries a stand-in notification: only close() and data are read.
 function click(worker: Worker, datas: unknown[]) {
 	return worker.evaluate(async (datas) => {
 		const g = globalThis as unknown as WorkerGlobals;
@@ -109,16 +106,15 @@ function click(worker: Worker, datas: unknown[]) {
 			return Promise.resolve(this);
 		};
 		let closed = 0;
-		for (const [i, data] of datas.entries()) {
-			const tag = `click-${i}`;
-			await g.registration.showNotification('t', { tag, data });
-			const [notification] = await g.registration.getNotifications({ tag });
+		for (const data of datas) {
 			const pending: Pending = [];
-			const event = new g.NotificationEvent('notificationclick', { notification });
+			const event = new g.ExtendableEvent('notificationclick');
+			Object.defineProperty(event, 'notification', {
+				value: { data, close: () => void closed++ }
+			});
 			event.waitUntil = (p) => void pending.push(p);
 			globalThis.dispatchEvent(event);
 			await Promise.all(pending);
-			if ((await g.registration.getNotifications({ tag })).length === 0) closed++;
 		}
 		return { calls, closed };
 	}, datas);
@@ -157,6 +153,16 @@ test('a click opens the path when no window shows it, and focuses the window tha
 	expect(focused.calls).toEqual(['focus /login']);
 });
 
+test('a window on the same path with a fragment is focused, not duplicated', async ({
+	context,
+	page
+}) => {
+	const worker = await controlledWorker(context, page);
+	await page.evaluate(() => (location.hash = 'top'));
+	expect(page.url()).toMatch(/\/login#top$/);
+	expect((await click(worker, [{ path: '/login' }])).calls).toEqual(['focus /login']);
+});
+
 test('installing the worker leaves the Cache API empty', async ({ context, page }) => {
 	const worker = await controlledWorker(context, page);
 	expect(
@@ -171,7 +177,8 @@ test('the worker answers no fetch: an offline navigation fails in the browser', 
 }) => {
 	await controlledWorker(context, page);
 	const source = await (await request.get('/service-worker.js')).text();
-	expect(source).not.toMatch(/["'`]fetch["'`]/);
+	expect(source).not.toMatch(/onfetch|["'`]fetch["'`]/);
+	expect((await page.goto('/login'))?.fromServiceWorker()).toBe(false);
 	await context.setOffline(true);
 	await expect(page.goto('/login')).rejects.toThrow(/ERR_INTERNET_DISCONNECTED/);
 	await context.setOffline(false);
