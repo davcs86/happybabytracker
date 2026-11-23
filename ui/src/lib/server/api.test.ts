@@ -2455,3 +2455,384 @@ describe('createApi medication and dose calls', () => {
 		expect(logged()).not.toContain('99 ml');
 	});
 });
+
+describe('createApi push device and ntfy calls', () => {
+	const KID = 'k-1';
+	const DEVICE = 'dev-1';
+	const ENDPOINT = 'https://push.example/secret-endpoint-token';
+	const P256DH = 'BP-secret-p256dh-key';
+	const AUTH = 'secret-auth-key';
+	const TOPIC = 'hbt-SecretTopic0123456789ab';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const URL_ = 'http://api:9210';
+
+	const DEVICE_WIRE = {
+		id: DEVICE,
+		label: 'Ana phone',
+		created_at: '2026-11-23T10:00:00Z',
+		kids: [KID]
+	};
+	const DEVICE_VIEW = {
+		id: DEVICE,
+		label: 'Ana phone',
+		createdAt: '2026-11-23T10:00:00Z',
+		kids: [KID]
+	};
+	const INPUT = { endpoint: ENDPOINT, keys: { p256dh: P256DH, auth: AUTH }, label: 'Ana phone' };
+
+	describe('Web Push state', () => {
+		it('reads {enabled:false} as off', async () => {
+			const f = respond({ enabled: false });
+			expect(await api(f).push.state()).toEqual({ ok: true, data: { enabled: false } });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/push`, method: 'GET', body: undefined });
+		});
+
+		it('reads the public key when on', async () => {
+			expect(await api(respond({ enabled: true, public_key: 'BKey-_09' })).push.state()).toEqual({
+				ok: true,
+				data: { enabled: true, publicKey: 'BKey-_09' }
+			});
+		});
+
+		it.each([
+			['no enabled', {}],
+			['a string enabled', { enabled: 'yes' }],
+			['on without a key', { enabled: true }],
+			['on with an empty key', { enabled: true, public_key: '' }],
+			['on with a numeric key', { enabled: true, public_key: 5 }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).push.state()).toMatchObject({ ok: false, reason: 'error' });
+		});
+
+		it('maps a 503 to unavailable', async () => {
+			expect(await api(respond({ error: 'unavailable' }, 503)).push.state()).toMatchObject({
+				ok: false,
+				status: 503,
+				reason: 'unavailable'
+			});
+		});
+	});
+
+	describe('devices', () => {
+		it('lists the parent devices with their kids', async () => {
+			const f = respond({ devices: [DEVICE_WIRE, { ...DEVICE_WIRE, id: 'dev-2', kids: [] }] });
+			expect(await api(f).push.devices()).toEqual({
+				ok: true,
+				data: [DEVICE_VIEW, { ...DEVICE_VIEW, id: 'dev-2', kids: [] }]
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices`,
+				method: 'GET',
+				body: undefined
+			});
+		});
+
+		it.each([
+			['no devices key', { items: [] }],
+			['a device without kids', { devices: [{ ...DEVICE_WIRE, kids: undefined }] }],
+			['a device with a numeric kid', { devices: [{ ...DEVICE_WIRE, kids: [5] }] }],
+			['a device without a label', { devices: [{ ...DEVICE_WIRE, label: undefined }] }],
+			['a device without a time', { devices: [{ ...DEVICE_WIRE, created_at: 5 }] }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).push.devices()).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		});
+
+		it('never returns an endpoint or a key the API should not have sent', async () => {
+			const wire = { ...DEVICE_WIRE, endpoint: ENDPOINT, keys: { p256dh: P256DH, auth: AUTH } };
+			const r = await api(respond({ devices: [wire] })).push.devices();
+			expect(r).toEqual({ ok: true, data: [DEVICE_VIEW] });
+			expect(JSON.stringify(r)).not.toContain('secret');
+		});
+
+		it('upserts with exactly the endpoint, the keys and the label in the body', async () => {
+			const f = respond({ device: DEVICE_WIRE }, 201);
+			const extra = { ...INPUT, expirationTime: 5, keys: { ...INPUT.keys, other: 'x' } };
+			expect(await api(f).push.upsertDevice(extra)).toEqual({ ok: true, data: DEVICE_VIEW });
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices`,
+				method: 'PUT',
+				body: INPUT
+			});
+			expect(Object.keys(sent(f).body)).toEqual(['endpoint', 'keys', 'label']);
+			expect(Object.keys(sent(f).body.keys)).toEqual(['p256dh', 'auth']);
+		});
+
+		it('reads the id of a device that moved (201) and of an existing one (200) alike', async () => {
+			const moved = { ...DEVICE_WIRE, id: 'dev-new', kids: [] };
+			expect(await api(respond({ device: moved }, 201)).push.upsertDevice(INPUT)).toEqual({
+				ok: true,
+				data: { ...DEVICE_VIEW, id: 'dev-new', kids: [] }
+			});
+			expect(await api(respond({ device: DEVICE_WIRE }, 200)).push.upsertDevice(INPUT)).toEqual({
+				ok: true,
+				data: DEVICE_VIEW
+			});
+		});
+
+		it('maps an upsert response without its device to error', async () => {
+			expect(await api(respond(DEVICE_WIRE, 201)).push.upsertDevice(INPUT)).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		});
+
+		it.each(['endpoint', 'keys', 'label'])('names the refused %s field', async (field) => {
+			const f = respond({ error: 'invalid', field }, 422);
+			expect(await api(f).push.upsertDevice(INPUT)).toEqual({
+				ok: false,
+				status: 422,
+				reason: 'invalid',
+				code: 'invalid',
+				field
+			});
+		});
+
+		it('maps 409 push_unavailable to a conflict that carries the code', async () => {
+			const f = respond({ error: 'push_unavailable' }, 409);
+			expect(await api(f).push.upsertDevice(INPUT)).toEqual({
+				ok: false,
+				status: 409,
+				reason: 'conflict',
+				code: 'push_unavailable'
+			});
+		});
+
+		it('maps 409 limit to a conflict that carries the code', async () => {
+			expect(await api(respond({ error: 'limit' }, 409)).push.upsertDevice(INPUT)).toMatchObject({
+				ok: false,
+				reason: 'conflict',
+				code: 'limit'
+			});
+		});
+
+		it('renames a device with only the label', async () => {
+			const f = respond({ device: { ...DEVICE_WIRE, label: 'Kitchen' } });
+			expect(await api(f).push.renameDevice(DEVICE, 'Kitchen')).toEqual({
+				ok: true,
+				data: { ...DEVICE_VIEW, label: 'Kitchen' }
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices/${DEVICE}`,
+				method: 'PATCH',
+				body: { label: 'Kitchen' }
+			});
+			expect(
+				await api(respond({ error: 'push_unavailable' }, 409)).push.renameDevice(DEVICE, 'x')
+			).toMatchObject({ ok: false, reason: 'conflict', code: 'push_unavailable' });
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.renameDevice(DEVICE, 'x')
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+
+		it('removes a device, which still works with Web Push off', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).push.removeDevice(DEVICE)).toEqual({ ok: true, data: null });
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices/${DEVICE}`,
+				method: 'DELETE',
+				body: undefined
+			});
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.removeDevice(DEVICE)
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+
+		it('opts a device in and out for a kid', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).push.optIn(KID, DEVICE)).toEqual({ ok: true, data: null });
+			expect(await api(f).push.optOut(KID, DEVICE)).toEqual({ ok: true, data: null });
+			expect([0, 1].map((i) => sent(f, i))).toEqual([
+				{
+					url: `${URL_}/v1/kids/${KID}/push-devices/${DEVICE}`,
+					method: 'PUT',
+					body: undefined
+				},
+				{
+					url: `${URL_}/v1/kids/${KID}/push-devices/${DEVICE}`,
+					method: 'DELETE',
+					body: undefined
+				}
+			]);
+		});
+
+		it('maps an opt-in refused for Web Push off, and a device or kid that is not theirs', async () => {
+			expect(
+				await api(respond({ error: 'push_unavailable' }, 409)).push.optIn(KID, DEVICE)
+			).toMatchObject({ ok: false, status: 409, reason: 'conflict', code: 'push_unavailable' });
+			expect(await api(respond({ error: 'not_found' }, 404)).push.optIn(KID, DEVICE)).toMatchObject(
+				{ ok: false, status: 404, reason: 'not_found' }
+			);
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.optOut(KID, DEVICE)
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+	});
+
+	describe('ntfy', () => {
+		const NTFY_WIRE = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
+		const NTFY_VIEW = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
+
+		it('reads {enabled:false} as off', async () => {
+			const f = respond({ enabled: false });
+			expect(await api(f).ntfy.state()).toEqual({ ok: true, data: { enabled: false } });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'GET', body: undefined });
+		});
+
+		it('reads the server, the topic and the kids when on', async () => {
+			expect(await api(respond(NTFY_WIRE)).ntfy.state()).toEqual({ ok: true, data: NTFY_VIEW });
+		});
+
+		it('reads a null topic as turned off for this parent', async () => {
+			expect(await api(respond({ ...NTFY_WIRE, topic: null, kids: [] })).ntfy.state()).toEqual({
+				ok: true,
+				data: { ...NTFY_VIEW, topic: null, kids: [] }
+			});
+		});
+
+		it.each([
+			['no enabled', {}],
+			['on without a server', { ...NTFY_WIRE, server: undefined }],
+			['on without a topic key', { ...NTFY_WIRE, topic: undefined }],
+			['a numeric topic', { ...NTFY_WIRE, topic: 5 }],
+			['on without kids', { ...NTFY_WIRE, kids: undefined }],
+			['a numeric kid', { ...NTFY_WIRE, kids: [5] }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).ntfy.state()).toMatchObject({ ok: false, reason: 'error' });
+		});
+
+		it('turns on with PUT, whether the topic is new (201) or kept (200)', async () => {
+			const created = respond(NTFY_WIRE, 201);
+			expect(await api(created).ntfy.enable()).toEqual({ ok: true, data: NTFY_VIEW });
+			expect(sent(created)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'PUT', body: undefined });
+			expect(await api(respond(NTFY_WIRE, 200)).ntfy.enable()).toEqual({
+				ok: true,
+				data: NTFY_VIEW
+			});
+		});
+
+		it('regenerates with POST', async () => {
+			const f = respond({ ...NTFY_WIRE, topic: 'hbt-New' });
+			expect(await api(f).ntfy.regenerate()).toEqual({
+				ok: true,
+				data: { ...NTFY_VIEW, topic: 'hbt-New' }
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/ntfy/regenerate`,
+				method: 'POST',
+				body: undefined
+			});
+			expect(await api(respond({ error: 'not_found' }, 404)).ntfy.regenerate()).toMatchObject({
+				ok: false,
+				status: 404,
+				reason: 'not_found'
+			});
+		});
+
+		it('turns off with DELETE', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).ntfy.disable()).toEqual({ ok: true, data: null });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'DELETE', body: undefined });
+		});
+
+		it('opts a kid in and out', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).ntfy.optIn(KID)).toEqual({ ok: true, data: null });
+			expect(await api(f).ntfy.optOut(KID)).toEqual({ ok: true, data: null });
+			expect([0, 1].map((i) => sent(f, i))).toEqual([
+				{ url: `${URL_}/v1/kids/${KID}/ntfy`, method: 'PUT', body: undefined },
+				{ url: `${URL_}/v1/kids/${KID}/ntfy`, method: 'DELETE', body: undefined }
+			]);
+		});
+
+		it('maps 409 ntfy_unavailable to a conflict that carries the code on every write', async () => {
+			const refused = () => respond({ error: 'ntfy_unavailable' }, 409);
+			for (const r of [
+				await api(refused()).ntfy.enable(),
+				await api(refused()).ntfy.regenerate(),
+				await api(refused()).ntfy.optIn(KID)
+			]) {
+				expect(r).toEqual({
+					ok: false,
+					status: 409,
+					reason: 'conflict',
+					code: 'ntfy_unavailable'
+				});
+			}
+		});
+
+		it('maps a kid or topic that is not theirs to not_found', async () => {
+			const f = () => respond({ error: 'not_found' }, 404);
+			expect(await api(f()).ntfy.optIn(KID)).toMatchObject({ ok: false, reason: 'not_found' });
+			expect(await api(f()).ntfy.optOut(KID)).toMatchObject({ ok: false, reason: 'not_found' });
+			expect(await api(f()).ntfy.disable()).toMatchObject({ ok: false, reason: 'not_found' });
+		});
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond({});
+		const { push, ntfy } = api(f);
+		for (const r of [
+			await push.renameDevice('a/b', 'x'),
+			await push.removeDevice('..?x'),
+			await push.optIn('a/b', DEVICE),
+			await push.optIn(KID, '..?x'),
+			await push.optOut('', DEVICE),
+			await push.optOut(KID, 'a b'),
+			await ntfy.optIn('a/b'),
+			await ntfy.optOut('')
+		]) {
+			expect(r).toEqual({ ok: false, status: 404, reason: 'not_found' });
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a call by its endpoint name only: never an endpoint, key, topic or label', async () => {
+		await api(respond({ error: 'invalid', field: 'keys' }, 422)).push.upsertDevice({
+			...INPUT,
+			label: 'Secret label'
+		});
+		await api(respond({ error: 'push_unavailable' }, 409)).push.optIn(KID, DEVICE);
+		await api(respond({ error: 'ntfy_unavailable' }, 409)).ntfy.enable();
+		await api(respond({ ...{ enabled: true, server: 's', topic: TOPIC }, kids: 5 })).ntfy.state();
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'upsert_push_device', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'set_push_optin', status: 409 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'enable_ntfy', status: 409 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'ntfy_state', status: 200 }
+		]);
+		for (const secret of [ENDPOINT, P256DH, AUTH, TOPIC, 'Secret label', 'secret']) {
+			expect(logged()).not.toContain(secret);
+		}
+	});
+
+	it('a failed upsert returns no endpoint, key or label', async () => {
+		for (const f of [
+			respond({ error: 'invalid', field: 'endpoint' }, 422),
+			respond({ error: 'push_unavailable' }, 409),
+			respond('not json', 500),
+			mockFetch(async () => {
+				throw new Error(`boom ${ENDPOINT} ${P256DH} ${AUTH}`);
+			})
+		]) {
+			const r = await api(f).push.upsertDevice(INPUT);
+			expect(r.ok).toBe(false);
+			for (const secret of [ENDPOINT, P256DH, AUTH]) {
+				expect(JSON.stringify(r)).not.toContain(secret);
+				expect(logged()).not.toContain(secret);
+			}
+		}
+	});
+});

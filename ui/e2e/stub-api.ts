@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createECDH, ECDH, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 
@@ -50,7 +50,11 @@ export const SCENARIOS = [
 	'leave_rate_limited',
 	'leave_forbidden',
 	'patch_unavailable',
-	'home_due_many'
+	'home_due_many',
+	// Web Push or ntfy not configured on the server (the edge's default): writes answer 409.
+	'push_off',
+	'ntfy_off',
+	'channels_off'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -126,6 +130,17 @@ type TrackerKey = 'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'mea
 // view is the entry as the API answers it; every merge works on it directly.
 type Row = { kidId: string; view: Body & { id: string } };
 
+// A device keeps no keys: nothing of the subscription but its endpoint is ever read back.
+type PushDeviceStub = {
+	id: string;
+	parentId: string;
+	endpoint: string;
+	label: string;
+	createdAt: number;
+	kids: string[];
+};
+type NtfyTopicStub = { parentId: string; topic: string; kids: string[] };
+
 type State = {
 	scenario: Scenario;
 	requests: LoggedRequest[];
@@ -144,6 +159,9 @@ type State = {
 	medications: CourseStub[];
 	doses: DoseStub[];
 	reminders: ReminderStub[];
+	pushDevices: PushDeviceStub[];
+	// By parent id.
+	ntfyTopics: Map<string, NtfyTopicStub>;
 	// The stub clock when the simulated reminder worker last ran.
 	syncedAt: number;
 	nextId: number;
@@ -245,6 +263,8 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		medications: [],
 		doses: [],
 		reminders: [],
+		pushDevices: [],
+		ntfyTopics: new Map(),
 		syncedAt: now(),
 		nextId: 1
 	};
@@ -291,6 +311,7 @@ type FieldKind =
 	| 'sources'
 	| 'weighin'
 	| 'schedule'
+	| 'pushkeys'
 	// Left to the handler, which answers 422 rather than decodeJSON's 400.
 	| 'raw';
 type Body = Record<string, unknown>;
@@ -331,6 +352,8 @@ function typedAs(kind: FieldKind, v: unknown): boolean {
 						Object.values(amounts as Body).every((a) => a === null || Number.isInteger(a))))
 			);
 		}
+		case 'pushkeys':
+			return isObject(v) && Object.values(v as Body).every(nullOr('string'));
 		case 'schedule': {
 			const times = isObject(v) ? (v as Body).times : null;
 			return (
@@ -354,7 +377,8 @@ const NESTED_KEYS: Partial<Record<FieldKind, readonly string[]>> = {
 	measure: ['unit', 'amount'],
 	sources: ['unit', 'amounts'],
 	weighin: ['unit', 'amount'],
-	schedule: ['kind', 'times', 'hours']
+	schedule: ['kind', 'times', 'hours'],
+	pushkeys: ['p256dh', 'auth']
 };
 
 // decodeJSON in respond.go: unknown key (also nested) -> 422 unknown_field, a wrong type or bad JSON -> 400.
@@ -700,6 +724,8 @@ const routes: RouteDef[] = [
 				return send(res, 409, { error: 'sole_guardian' });
 			}
 			for (const [t, s] of state.sessions) if (s.parentId === id) state.sessions.delete(t);
+			state.pushDevices = state.pushDevices.filter((d) => d.parentId !== id);
+			state.ntfyTopics.delete(id);
 			send(res, 204);
 		}
 	},
@@ -877,6 +903,7 @@ const routes: RouteDef[] = [
 			state.medications = state.medications.filter((m) => m.kidId !== id);
 			state.doses = state.doses.filter((d) => d.kidId !== id);
 			state.reminders = state.reminders.filter((r) => r.kidId !== id);
+			for (const o of [...state.pushDevices, ...state.ntfyTopics.values()]) dropKid(o, id);
 			send(res, 204);
 		}
 	},
@@ -944,6 +971,13 @@ const routes: RouteDef[] = [
 			if (activeGuardians(state, id) === 0) {
 				state.grants = before;
 				return error(res, 409, 'last_guardian');
+			}
+			// Revoking or leaving ends that parent's opt-ins for the kid, never the device or topic.
+			for (const o of [
+				...state.pushDevices.filter((d) => d.parentId === target),
+				...[state.ntfyTopics.get(target)].filter((t) => t !== undefined)
+			]) {
+				dropKid(o, id);
 			}
 			send(res, 204);
 		}
@@ -3429,12 +3463,320 @@ const medicationRoutes: RouteDef[] = [
 	})
 ];
 
+// Push devices and ntfy (push.go, ntfy.go and their stores): both channels are on unless the scenario says off.
+const PUSH_LIMITS = { devices: 10, label: 40, endpoint: 2048 };
+const NTFY_SERVER = 'https://ntfy.stub.example';
+const NTFY_TOPIC_PREFIX = 'hbt';
+const NTFY_TOPIC_RANDOM = 22;
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const pushOn = (state: State) => state.scenario !== 'push_off' && state.scenario !== 'channels_off';
+const ntfyOn = (state: State) => state.scenario !== 'ntfy_off' && state.scenario !== 'channels_off';
+
+// A valid P-256 point and a 16-byte secret, as a browser subscription holds them.
+export function fakePushKeys() {
+	const ecdh = createECDH('prime256v1');
+	ecdh.generateKeys();
+	return {
+		p256dh: ecdh.getPublicKey().toString('base64url'),
+		auth: randomBytes(16).toString('base64url')
+	};
+}
+const SERVER_ECDH = createECDH('prime256v1');
+SERVER_ECDH.setPrivateKey(Buffer.alloc(32, 7));
+const PUSH_PUBLIC_KEY = SERVER_ECDH.getPublicKey().toString('base64url');
+
+const dropKid = (o: { kids: string[] }, kidId: string) => {
+	o.kids = o.kids.filter((k) => k !== kidId);
+};
+
+// push.ValidateEndpointSyntax: https, no userinfo, port 443 or none, a name rather than an address.
+function endpointOK(endpoint: string): boolean {
+	if (endpoint.length > PUSH_LIMITS.endpoint) return false;
+	const m = /^https:\/\/([^/?#]*)/i.exec(endpoint);
+	if (!m || m[1].includes('@')) return false;
+	const port = /:(\d*)$/.exec(m[1])?.[1];
+	if (m[1].startsWith('[') || (port !== undefined && port !== '443')) return false;
+	const name = m[1].replace(/:\d*$/, '').replace(/\.$/, '').toLowerCase();
+	const last = name.slice(name.lastIndexOf('.') + 1);
+	return (
+		name !== '' &&
+		name !== 'localhost' &&
+		!name.endsWith('.localhost') &&
+		!last.startsWith('0x') &&
+		!/^\d*$/.test(last)
+	);
+}
+
+// canonicalEndpoint: lowercase scheme and host, no trailing dot, no :443; the rest as sent.
+function canonicalEndpoint(endpoint: string): string {
+	const m = /^https:\/\/([^/?#]*)(.*)$/is.exec(endpoint) as RegExpExecArray;
+	const host = m[1].replace(/:443$/, '').replace(/\.$/, '').toLowerCase();
+	return `https://${host}${m[2]}`;
+}
+
+// push.ParseKeys: either base64 alphabet, padded or not; p256dh a point on P-256, auth 16 bytes.
+function decodeKey(text: string): Buffer | null {
+	const s = text.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+	return /^[A-Za-z0-9_-]*$/.test(s) && s.length % 4 !== 1 ? Buffer.from(s, 'base64url') : null;
+}
+
+function keysOK(p256dh: string, auth: string): boolean {
+	const point = decodeKey(p256dh);
+	if (!point || point.length !== 65 || point[0] !== 4) return false;
+	try {
+		ECDH.convertKey(point, 'prime256v1');
+	} catch {
+		return false;
+	}
+	return decodeKey(auth)?.length === 16;
+}
+
+const cleanLabel = (v: unknown) => {
+	const label = typeof v === 'string' ? v.trim() : '';
+	return codePoints(label) >= 1 && codePoints(label) <= PUSH_LIMITS.label ? label : null;
+};
+
+// kids are the opted-in kids that the parent still holds a grant on, by id.
+const grantedKids = (state: State, parentId: string, kids: string[]) =>
+	kids.filter((k) => roleFor(state, k, parentId)).sort();
+
+const deviceView = (state: State, d: PushDeviceStub) => ({
+	id: d.id,
+	label: d.label,
+	created_at: iso(d.createdAt),
+	kids: grantedKids(state, d.parentId, d.kids)
+});
+
+function ntfyView(state: State, t: NtfyTopicStub | undefined) {
+	return {
+		enabled: true,
+		server: NTFY_SERVER,
+		topic: t?.topic ?? null,
+		kids: t ? grantedKids(state, t.parentId, t.kids) : []
+	};
+}
+
+function newNtfyTopic(): string {
+	const bytes = randomBytes(NTFY_TOPIC_RANDOM);
+	return `${NTFY_TOPIC_PREFIX}-${Array.from(bytes, (b) => BASE62[b % BASE62.length]).join('')}`;
+}
+
+const pushUnavailable = (res: ServerResponse) => error(res, 409, 'push_unavailable');
+const ntfyUnavailable = (res: ServerResponse) => error(res, 409, 'ntfy_unavailable');
+
+const ownDevice = (state: State, parentId: string, id: string) =>
+	state.pushDevices.find((d) => d.id === id && d.parentId === parentId);
+
+const pushRoutes: RouteDef[] = [
+	{
+		method: 'GET',
+		pattern: /^\/v1\/push$/,
+		access: 'parent',
+		run: (state, _req, res) =>
+			send(
+				res,
+				200,
+				pushOn(state) ? { enabled: true, public_key: PUSH_PUBLIC_KEY } : { enabled: false }
+			)
+	},
+	{
+		method: 'GET',
+		pattern: /^\/v1\/me\/push-devices$/,
+		access: 'parent',
+		run: (state, _req, res, p) => {
+			const rows = state.pushDevices
+				.filter((d) => d.parentId === p.parentId)
+				.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+			send(res, 200, { devices: rows.map((d) => deviceView(state, d)) });
+		}
+	},
+	// upsertDevice: pushOn, then the body, then endpoint, keys, label; the cap counts only a new device.
+	{
+		method: 'PUT',
+		pattern: /^\/v1\/me\/push-devices$/,
+		access: 'parent',
+		run: async (state, req, res, p) => {
+			if (!pushOn(state)) return pushUnavailable(res);
+			const body = await decodeBody(req, res, {
+				endpoint: 'string',
+				keys: 'pushkeys',
+				label: 'string'
+			});
+			if (!body) return;
+			if (typeof body.endpoint !== 'string' || !endpointOK(body.endpoint)) {
+				return error(res, 422, 'invalid', 'endpoint');
+			}
+			const keys = body.keys as { p256dh?: string | null; auth?: string | null } | null | undefined;
+			if (!keys || typeof keys.p256dh !== 'string' || typeof keys.auth !== 'string') {
+				return error(res, 422, 'invalid', 'keys');
+			}
+			if (!keysOK(keys.p256dh, keys.auth)) return error(res, 422, 'invalid', 'keys');
+			const label = cleanLabel(body.label);
+			if (label === null) return error(res, 422, 'invalid', 'label');
+			const endpoint = canonicalEndpoint(body.endpoint);
+			const held = state.pushDevices.find((d) => d.endpoint === endpoint);
+			if (held?.parentId === p.parentId) {
+				held.label = label;
+				return send(res, 200, { device: deviceView(state, held) });
+			}
+			if (
+				state.pushDevices.filter((d) => d.parentId === p.parentId).length >= PUSH_LIMITS.devices
+			) {
+				return error(res, 409, 'limit');
+			}
+			// Another parent's registration of this browser moves here with a new id and no opt-ins.
+			state.pushDevices = state.pushDevices.filter((d) => d !== held);
+			const device: PushDeviceStub = {
+				id: nextId(state, 'pd'),
+				parentId: p.parentId,
+				endpoint,
+				label,
+				createdAt: now(),
+				kids: []
+			};
+			state.pushDevices.push(device);
+			send(res, 201, { device: deviceView(state, device) });
+		}
+	},
+	// renameDevice: pushOn, the body, the label, then ownership.
+	{
+		method: 'PATCH',
+		pattern: /^\/v1\/me\/push-devices\/([^/]+)$/,
+		access: 'parent',
+		run: async (state, req, res, p, [id]) => {
+			if (!pushOn(state)) return pushUnavailable(res);
+			const body = await decodeBody(req, res, { label: 'string' });
+			if (!body) return;
+			const label = cleanLabel(body.label);
+			if (label === null) return error(res, 422, 'invalid', 'label');
+			const device = ownDevice(state, p.parentId, id);
+			if (!device) return error(res, 404, 'not_found');
+			device.label = label;
+			send(res, 200, { device: deviceView(state, device) });
+		}
+	},
+	{
+		method: 'DELETE',
+		pattern: /^\/v1\/me\/push-devices\/([^/]+)$/,
+		access: 'parent',
+		run: (state, _req, res, p, [id]) => {
+			const device = ownDevice(state, p.parentId, id);
+			if (!device) return error(res, 404, 'not_found');
+			state.pushDevices = state.pushDevices.filter((d) => d !== device);
+			send(res, 204);
+		}
+	},
+	// setOptin and clearOptin: a device that is not the caller's answers the unknown-kid 404.
+	{
+		method: 'PUT',
+		pattern: /^\/v1\/kids\/([^/]+)\/push-devices\/([^/]+)$/,
+		access: 'caregiver',
+		kidParam: true,
+		run: (state, _req, res, p, [kid, id]) => {
+			if (!pushOn(state)) return pushUnavailable(res);
+			const device = ownDevice(state, p.parentId, id);
+			if (!device) return noKid(res);
+			if (!device.kids.includes(kid)) device.kids.push(kid);
+			send(res, 204);
+		}
+	},
+	{
+		method: 'DELETE',
+		pattern: /^\/v1\/kids\/([^/]+)\/push-devices\/([^/]+)$/,
+		access: 'caregiver',
+		kidParam: true,
+		run: (state, _req, res, p, [kid, id]) => {
+			const device = ownDevice(state, p.parentId, id);
+			if (!device) return noKid(res);
+			dropKid(device, kid);
+			send(res, 204);
+		}
+	}
+];
+
+const ntfyRoutes: RouteDef[] = [
+	{
+		method: 'GET',
+		pattern: /^\/v1\/me\/ntfy$/,
+		access: 'parent',
+		run: (state, _req, res, p) =>
+			send(
+				res,
+				200,
+				ntfyOn(state) ? ntfyView(state, state.ntfyTopics.get(p.parentId)) : { enabled: false }
+			)
+	},
+	// setNtfyTopic: PUT keeps an existing topic (200), POST regenerate needs one (404) and keeps the opt-ins.
+	{
+		method: 'PUT',
+		pattern: /^\/v1\/me\/ntfy$/,
+		access: 'parent',
+		run: (state, _req, res, p) => {
+			if (!ntfyOn(state)) return ntfyUnavailable(res);
+			const held = state.ntfyTopics.get(p.parentId);
+			if (held) return send(res, 200, ntfyView(state, held));
+			const topic: NtfyTopicStub = { parentId: p.parentId, topic: newNtfyTopic(), kids: [] };
+			state.ntfyTopics.set(p.parentId, topic);
+			send(res, 201, ntfyView(state, topic));
+		}
+	},
+	{
+		method: 'POST',
+		pattern: /^\/v1\/me\/ntfy\/regenerate$/,
+		access: 'parent',
+		run: (state, _req, res, p) => {
+			if (!ntfyOn(state)) return ntfyUnavailable(res);
+			const held = state.ntfyTopics.get(p.parentId);
+			if (!held) return error(res, 404, 'not_found');
+			held.topic = newNtfyTopic();
+			send(res, 200, ntfyView(state, held));
+		}
+	},
+	{
+		method: 'DELETE',
+		pattern: /^\/v1\/me\/ntfy$/,
+		access: 'parent',
+		run: (state, _req, res, p) => {
+			if (!state.ntfyTopics.delete(p.parentId)) return error(res, 404, 'not_found');
+			send(res, 204);
+		}
+	},
+	// setNtfyOptin and clearNtfyOptin: a caller without a topic answers the unknown-kid 404.
+	{
+		method: 'PUT',
+		pattern: /^\/v1\/kids\/([^/]+)\/ntfy$/,
+		access: 'caregiver',
+		kidParam: true,
+		run: (state, _req, res, p, [kid]) => {
+			if (!ntfyOn(state)) return ntfyUnavailable(res);
+			const topic = state.ntfyTopics.get(p.parentId);
+			if (!topic) return noKid(res);
+			if (!topic.kids.includes(kid)) topic.kids.push(kid);
+			send(res, 204);
+		}
+	},
+	{
+		method: 'DELETE',
+		pattern: /^\/v1\/kids\/([^/]+)\/ntfy$/,
+		access: 'caregiver',
+		kidParam: true,
+		run: (state, _req, res, p, [kid]) => {
+			const topic = state.ntfyTopics.get(p.parentId);
+			if (!topic) return noKid(res);
+			dropKid(topic, kid);
+			send(res, 204);
+		}
+	}
+];
+
 routes.push(
 	...TRACKER_KEYS.flatMap(trackerRoutes),
 	...overviewRoutes,
 	...growthRoutes,
 	...vaccineRoutes,
-	...medicationRoutes
+	...medicationRoutes,
+	...pushRoutes,
+	...ntfyRoutes
 );
 
 async function route(state: State, req: IncomingMessage, res: ServerResponse, url: URL) {

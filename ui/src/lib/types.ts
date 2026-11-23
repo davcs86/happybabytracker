@@ -167,6 +167,19 @@ export type MedicationDose = Noted & {
 };
 export type DoseQuery = ListQuery & { medication?: string };
 
+// A browser's subscription is a secret of the device: it travels only in the body of an upsert.
+export type PushState = { enabled: false } | { enabled: true; publicKey: string };
+// kids are the kids this device is opted in for, filtered to the parent's current grants.
+export type PushDevice = { id: string; label: string; createdAt: string; kids: string[] };
+export type PushSubscriptionInput = {
+	endpoint: string;
+	keys: { p256dh: string; auth: string };
+	label: string;
+};
+// topic is null until the parent turns ntfy on; it is a capability, shown only to its owner.
+export type NtfyState =
+	{ enabled: false } | { enabled: true; server: string; topic: string | null; kids: string[] };
+
 export type TrackerEntries = {
 	bottles: Bottle;
 	nursing: Nursing;

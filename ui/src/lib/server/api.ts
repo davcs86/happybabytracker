@@ -54,6 +54,7 @@ import type {
 	ModuleId,
 	ModuleState,
 	NewSession,
+	NtfyState,
 	Nursing,
 	NursingSide,
 	Page,
@@ -61,6 +62,9 @@ import type {
 	ParentLink,
 	Pumping,
 	PumpingSideVolume,
+	PushDevice,
+	PushState,
+	PushSubscriptionInput,
 	Role,
 	Schedule,
 	Session,
@@ -126,6 +130,19 @@ type Endpoint =
 	| 'set_access'
 	| 'remove_access'
 	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose'}`
+	| 'push_state'
+	| 'list_push_devices'
+	| 'upsert_push_device'
+	| 'rename_push_device'
+	| 'delete_push_device'
+	| 'set_push_optin'
+	| 'clear_push_optin'
+	| 'ntfy_state'
+	| 'enable_ntfy'
+	| 'regenerate_ntfy'
+	| 'disable_ntfy'
+	| 'set_ntfy_optin'
+	| 'clear_ntfy_optin'
 	| 'growth_curves'
 	| 'growth_sources'
 	| 'end_timer'
@@ -704,6 +721,36 @@ function toMedicationDose(v: unknown): MedicationDose {
 	};
 }
 
+function toPushState(v: unknown): PushState {
+	const o = object(v);
+	if (!boolean(o.enabled)) return { enabled: false };
+	const publicKey = string(o.public_key);
+	if (publicKey === '') throw new ShapeError();
+	return { enabled: true, publicKey };
+}
+
+// Only these four fields are read: an endpoint or key in a reply is never copied out.
+function toPushDevice(v: unknown): PushDevice {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		label: string(o.label),
+		createdAt: string(o.created_at),
+		kids: array(o.kids, string)
+	};
+}
+
+function toNtfyState(v: unknown): NtfyState {
+	const o = object(v);
+	if (!boolean(o.enabled)) return { enabled: false };
+	return {
+		enabled: true,
+		server: string(o.server),
+		topic: stringOrNull(o.topic),
+		kids: array(o.kids, string)
+	};
+}
+
 function toGrowthWeight(v: unknown): GrowthWeight {
 	const o = object(v);
 	return {
@@ -1111,6 +1158,60 @@ export function createApi(
 				withKidEntry(kidId, id, (k, i) =>
 					call<null>('delete_dose', 'DELETE', `/v1/kids/${k}/medication-doses/${i}`, null)
 				)
+		},
+		// A write answers 409 with code push_unavailable while Web Push is off; list and removal still work.
+		push: {
+			state: () => call('push_state', 'GET', '/v1/push', toPushState),
+			devices: () =>
+				call('list_push_devices', 'GET', '/v1/me/push-devices', (b) =>
+					list(b, 'devices', toPushDevice)
+				),
+			// The only call that carries the endpoint and keys, and only in its body.
+			upsertDevice: (input: PushSubscriptionInput) =>
+				call(
+					'upsert_push_device',
+					'PUT',
+					'/v1/me/push-devices',
+					(b) => toPushDevice(object(b).device),
+					{
+						endpoint: input.endpoint,
+						keys: { p256dh: input.keys.p256dh, auth: input.keys.auth },
+						label: input.label
+					}
+				),
+			renameDevice: (id: string, label: string) =>
+				withId(id, (i) =>
+					call(
+						'rename_push_device',
+						'PATCH',
+						`/v1/me/push-devices/${i}`,
+						(b) => toPushDevice(object(b).device),
+						{ label }
+					)
+				),
+			removeDevice: (id: string) =>
+				withId(id, (i) =>
+					call<null>('delete_push_device', 'DELETE', `/v1/me/push-devices/${i}`, null)
+				),
+			optIn: (kidId: string, deviceId: string) =>
+				withKidEntry(kidId, deviceId, (k, d) =>
+					call<null>('set_push_optin', 'PUT', `/v1/kids/${k}/push-devices/${d}`, null)
+				),
+			optOut: (kidId: string, deviceId: string) =>
+				withKidEntry(kidId, deviceId, (k, d) =>
+					call<null>('clear_push_optin', 'DELETE', `/v1/kids/${k}/push-devices/${d}`, null)
+				)
+		},
+		// A write answers 409 with code ntfy_unavailable while ntfy is off; the topic never reaches a log.
+		ntfy: {
+			state: () => call('ntfy_state', 'GET', '/v1/me/ntfy', toNtfyState),
+			enable: () => call('enable_ntfy', 'PUT', '/v1/me/ntfy', toNtfyState),
+			regenerate: () => call('regenerate_ntfy', 'POST', '/v1/me/ntfy/regenerate', toNtfyState),
+			disable: () => call<null>('disable_ntfy', 'DELETE', '/v1/me/ntfy', null),
+			optIn: (kidId: string) =>
+				withId(kidId, (k) => call<null>('set_ntfy_optin', 'PUT', `/v1/kids/${k}/ntfy`, null)),
+			optOut: (kidId: string) =>
+				withId(kidId, (k) => call<null>('clear_ntfy_optin', 'DELETE', `/v1/kids/${k}/ntfy`, null))
 		},
 		// at is an RFC 3339 instant; left out it is now.
 		endTimer: <K extends TimerKind>(kind: K, kidId: string, id: string, at?: string) =>
