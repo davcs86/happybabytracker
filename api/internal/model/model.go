@@ -85,3 +85,10 @@ type Grant struct {
 	ParentID, Username, DisplayName string
 	Role                            Role
 }
+
+// PushDevice is a parent's Web Push subscription as the API shows it: never the endpoint or the keys.
+type PushDevice struct {
+	ID, Label string
+	CreatedAt time.Time
+	Kids      []string // kids the device is opted in for that the parent still holds a grant on
+}

@@ -3,6 +3,9 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -18,6 +21,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -40,14 +44,26 @@ var testHash = sync.OnceValue(func() string {
 })
 
 type kit struct {
-	t       *testing.T
-	Store   *store.Store
-	Cfg     config.Config
-	Limiter *auth.Limiter
-	Log     *bytes.Buffer
-	Handler http.Handler
-	now     time.Time
+	t        *testing.T
+	Store    *store.Store
+	Cfg      config.Config
+	Limiter  *auth.Limiter
+	Log      *bytes.Buffer
+	Handler  http.Handler
+	now      time.Time
+	Push     push.Sender
+	Recorder *push.Recorder
+	Resolver push.Resolver
 }
+
+// testVAPID is one P-256 pair per test binary; the kit runs with Web Push on and the fake sender.
+var testVAPID = sync.OnceValue(func() *ecdsa.PrivateKey {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return k
+})
 
 func newKit(t *testing.T) *kit {
 	t.Helper()
@@ -71,7 +87,20 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 		Log: &bytes.Buffer{},
 		now: t0,
 	}
+	k.Cfg.VAPIDKey, k.Cfg.VAPIDSubject, k.Cfg.AllowFakePush = testVAPID(), "https://example.test", true
+	k.Recorder = &push.Recorder{}
+	k.Push = k.Recorder
 	k.Limiter = auth.NewLimiter(constants.LoginAttemptsPerMinute, k.clock)
+	k.Handler = NewHandler(k.deps())
+	return k
+}
+
+// newKitNoPush is the kit with neither VAPID variable set: Web Push off, no fake, no test route.
+func newKitNoPush(t *testing.T) *kit {
+	t.Helper()
+	k := newKit(t)
+	k.Cfg.VAPIDKey, k.Cfg.VAPIDSubject, k.Cfg.AllowFakePush = nil, "", false
+	k.Recorder, k.Push = nil, nil
 	k.Handler = NewHandler(k.deps())
 	return k
 }
@@ -79,10 +108,15 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 func (k *kit) clock() time.Time { return k.now }
 
 func (k *kit) deps() Deps {
-	return Deps{
+	d := Deps{
 		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock,
-		Log: slog.New(slog.NewJSONHandler(k.Log, nil)),
+		Log:  slog.New(slog.NewJSONHandler(k.Log, nil)),
+		Push: k.Push, Resolver: k.Resolver, PushRecorder: k.Recorder,
 	}
+	if k.Cfg.VAPIDKey != nil {
+		d.VAPIDPublicKey = push.PublicKey(k.Cfg.VAPIDKey)
+	}
+	return d
 }
 
 // addParent creates a parent with the shared test password; the username must already be normalised.

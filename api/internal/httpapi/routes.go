@@ -7,6 +7,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/config"
+	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -30,16 +31,20 @@ type Route struct {
 }
 
 type Deps struct {
-	Store   *store.Store
-	Cfg     config.Config
-	Limiter *auth.Limiter
-	Now     func() time.Time
-	Log     *slog.Logger
+	Store          *store.Store
+	Cfg            config.Config
+	Limiter        *auth.Limiter
+	Now            func() time.Time
+	Log            *slog.Logger
+	Push           push.Sender    // nil when Web Push is off
+	Resolver       push.Resolver  // registration's DNS check; unused under HBT_ALLOW_FAKE_PUSH
+	VAPIDPublicKey string         // empty when Web Push is off
+	PushRecorder   *push.Recorder // nil unless HBT_ALLOW_FAKE_PUSH=1
 }
 
 // Routes is the only place routes are declared.
 func Routes(d Deps) []Route {
-	return []Route{
+	routes := []Route{
 		{http.MethodGet, "/healthz", Open, Health(d.Store)},
 		{http.MethodPost, "/v1/session", Internal, d.login},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
@@ -58,6 +63,12 @@ func Routes(d Deps) []Route {
 		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},
 		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
+
+		{http.MethodGet, "/v1/push", Parent, d.pushState},
+		{http.MethodGet, "/v1/me/push-devices", Parent, d.listDevices},
+		{http.MethodPut, "/v1/me/push-devices", Parent, d.upsertDevice},
+		{http.MethodPatch, "/v1/me/push-devices/{device}", Parent, d.renameDevice},
+		{http.MethodDelete, "/v1/me/push-devices/{device}", Parent, d.deleteDevice},
 
 		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
 		{http.MethodGet, "/v1/vaccine-schemas", Parent, d.vaccineSchemas},
@@ -151,7 +162,13 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/modules", Caregiver, d.listModules},
 		{http.MethodPut, "/v1/kids/{kid}/modules/{module}", Guardian, d.setModule},
 		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},
+		{http.MethodPut, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.setOptin},
+		{http.MethodDelete, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.clearOptin},
 	}
+	if d.PushRecorder != nil {
+		routes = append(routes, Route{http.MethodGet, "/v1/_test/pushes", Internal, d.testPushes})
+	}
+	return routes
 }
 
 func NewHandler(d Deps) http.Handler {

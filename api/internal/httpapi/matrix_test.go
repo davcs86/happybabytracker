@@ -72,6 +72,14 @@ var routeClasses = map[string]Access{
 	"POST /v1/me/password":                                Parent,
 	"GET /v1/me/sessions":                                 Parent,
 	"DELETE /v1/me/sessions/{session}":                    Parent,
+	"GET /v1/push":                                        Parent,
+	"GET /v1/me/push-devices":                             Parent,
+	"PUT /v1/me/push-devices":                             Parent,
+	"PATCH /v1/me/push-devices/{device}":                  Parent,
+	"DELETE /v1/me/push-devices/{device}":                 Parent,
+	"PUT /v1/kids/{kid}/push-devices/{device}":            Caregiver,
+	"DELETE /v1/kids/{kid}/push-devices/{device}":         Caregiver,
+	"GET /v1/_test/pushes":                                Internal,
 	"GET /v1/growth-sources":                              Parent,
 	"GET /v1/vaccine-schemas":                             Parent,
 	"GET /v1/vaccine-catalogue":                           Parent,
@@ -185,6 +193,7 @@ type fixture struct {
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
 	sid                                           [actorCount]string
+	device                                        [actorCount]string // x, c and g only
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -196,6 +205,12 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 	"module":         func(*fixture, Route, actor) string { return "bottles" },
 	"administration": func(f *fixture, _ Route, _ actor) string { return f.administration },
 	"line":           func(*fixture, Route, actor) string { return "hepatitis_b-1" },
+	"device": func(f *fixture, _ Route, a actor) string {
+		if f.device[a] == "" {
+			return f.device[aG]
+		}
+		return f.device[a]
+	},
 	"parent": func(f *fixture, rt Route, a actor) string {
 		if rt.Access == Caregiver && (a == aC || a == aG) {
 			return f.parent[aC].ID
@@ -343,6 +358,19 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.dose = given.ID
+	p256dh, authKey := testSubscriptionKeys()
+	for _, a := range []actor{aX, aC, aG} {
+		dev, _, err := k.Store.UpsertDevice(ctx, f.parent[a].ID, "https://push.example.com/"+a.String(), p256dh, authKey, "Phone", k.now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.device[a] = dev.ID
+		if a != aX {
+			if err := k.Store.SetPushOptin(ctx, kid.ID, f.parent[a].ID, dev.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {
