@@ -129,6 +129,19 @@ describe('sendOnlyChanged', () => {
 		).toHaveProperty('duration_seconds');
 	});
 
+	it('drops the time of a symptom that was not touched and keeps the rest', () => {
+		const symptom = { at: '2026-11-20T10:30', at_original: '2026-11-20T10:30' };
+		const body = { at: 'a', severity: 'mild', note: null };
+		expect(sendOnlyChanged('symptoms', form(symptom), body)).toEqual({
+			severity: 'mild',
+			note: null
+		});
+		expect(
+			sendOnlyChanged('symptoms', form({ ...symptom, at: '2026-11-20T10:31' }), body)
+		).toHaveProperty('at');
+		expect(sendOnlyChanged('symptoms', form({ at: symptom.at }), body)).toHaveProperty('at');
+	});
+
 	it('leaves the other kinds alone', () => {
 		const body = { kind: 'wet', note: null };
 		expect(sendOnlyChanged('diapers', form({ kind: 'wet' }), body)).toEqual(body);

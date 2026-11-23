@@ -1,7 +1,10 @@
-import { localDate } from './entry-edit';
+import { localDate, temperatureText } from './entry-edit';
 import {
 	BOTTLE_CONTENT_LABEL,
 	SUMMARY_MAX_DAYS,
+	SYMPTOM_LABEL,
+	TEMP_METHOD_LABEL,
+	TEMP_UNIT_LABEL,
 	TIMELINE_TYPE,
 	TRACKER_KINDS,
 	TRACKER_LABEL,
@@ -32,7 +35,7 @@ const LONG_RANGE = `Pick at most ${SUMMARY_MAX_DAYS} days`;
 export function timelineLine(
 	item: TimelineItem,
 	zone: string,
-	units: Pick<Units, 'weight' | 'volume'>
+	units: Pick<Units, 'weight' | 'volume' | 'temp'>
 ): string {
 	const clock = formatClock(item.at, zone);
 	const label = TRACKER_LABEL[item.kind];
@@ -80,8 +83,18 @@ export function timelineLine(
 			const { what, reaction } = item.entry;
 			return `${clock} ${label}: ${what}${reaction ? ` · ${reaction}` : ''}`;
 		}
-		case 'symptoms':
-			return `${clock} ${label}`;
+		case 'symptoms': {
+			const { symptom, severity, otherText, temperature, method } = item.entry;
+			const name =
+				symptom === 'other' && otherText
+					? `${SYMPTOM_LABEL.other}: ${otherText}`
+					: SYMPTOM_LABEL[symptom];
+			const how = method ? ` (${TEMP_METHOD_LABEL[method].toLowerCase()})` : '';
+			const reading = temperature
+				? ` ${temperatureText(temperature, units.temp)} ${TEMP_UNIT_LABEL[units.temp]}${how}`
+				: '';
+			return `${clock} ${name}${reading}${severity ? `, ${severity}` : ''}`;
+		}
 	}
 }
 

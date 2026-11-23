@@ -1,11 +1,17 @@
 import {
 	BOTTLE_CONTENTS,
 	DIAPER_KINDS,
+	HUNDREDTHS_PER_DEGREE,
 	HUNDREDTHS_PER_FLOZ,
 	MEAL_TEXT_MAX_LEN,
 	NURSING_SIDES,
 	PUMPING_SIDES,
 	SECONDS_PER_MINUTE,
+	SEVERITIES,
+	SYMPTOM_OTHER_MAX_LEN,
+	SYMPTOMS,
+	TEMP_METHODS,
+	TEMP_UNITS,
 	VOLUME_ML_RANGE,
 	VOLUME_UNITS,
 	WEIGHT_UNITS
@@ -32,12 +38,21 @@ const WEIGHT_PARTS = ['unit', 'kg', 'lb', 'oz'] as const;
 const WEIGHT_FIELDS = WEIGHT_NAMES.flatMap((n) => WEIGHT_PARTS.map((p) => `${n}_${p}`));
 const SOURCE_FIELDS = BOTTLE_CONTENTS.map((c) => `sources_${c}`);
 const SIDE_FIELDS = NURSING_SIDES.map((s) => `sides_${s}`);
+// The symptom form's texts that an edit compares with what was loaded.
+const SYMPTOM_PARTS = [
+	'symptom',
+	'severity',
+	'other_text',
+	'temperature',
+	'temperature_unit',
+	'method'
+] as const;
 
 const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 	bottles: ['at', 'volume', 'volume_unit', 'advanced', ...SOURCE_FIELDS, 'note'],
 	diapers: ['at', 'kind', 'note'],
 	meals: ['at', 'what', 'reaction', 'note'],
-	symptoms: ['at', 'note'],
+	symptoms: ['at', ...SYMPTOM_PARTS, 'note'],
 	pumping: [
 		'started_at',
 		'duration_minutes',
@@ -67,7 +82,8 @@ const TEXT_FIELDS: Record<TrackerKind, string[]> = {
 const ORIGINALS: Partial<Record<TrackerKind, string[]>> = {
 	bottles: ['volume_unit', 'sources', ...SOURCE_FIELDS].map((k) => `${k}_original`),
 	pumping: ['volume_unit', 'sides', ...SIDE_FIELDS].map((k) => `${k}_original`),
-	nursing: WEIGHT_FIELDS.map((k) => `${k}_original`)
+	nursing: WEIGHT_FIELDS.map((k) => `${k}_original`),
+	symptoms: SYMPTOM_PARTS.map((k) => `${k}_original`)
 };
 
 // create, or an edit of a running (running: true) or finished nursing session.
@@ -106,6 +122,14 @@ function volume(unit: string, text: string): { unit: VolumeUnit; amount: number 
 	if (!includes(VOLUME_UNITS, unit)) return null;
 	const n = amount(unit, text);
 	return n === null ? null : { unit, amount: n };
+}
+
+// Hundredths of a degree from up to two decimals (point or comma); a sign, an exponent or hex is not one.
+function degrees(text: string): number | null {
+	const m = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(text);
+	if (!m) return null;
+	const n = Number(m[1]) * HUNDREDTHS_PER_DEGREE + Number((m[2] ?? '').padEnd(2, '0'));
+	return Number.isSafeInteger(n) ? n : null;
 }
 
 // A blank count is 0 when the field is optional, else not a count.
@@ -287,6 +311,60 @@ function readWeighIn(
 	return { send: r.body };
 }
 
+// Only what the chosen symptom uses is read; an edit sends a field only if it changed, and leaving fever or other
+// sends null for what the new symptom has no place for. A missing original is refused, never guessed.
+function readSymptom(v: EntryFormValues, edit: boolean): { send: EntryBody } | Refusal {
+	const text = (k: string) => (v[k] as string).trim();
+	const kept = (k: string) => (v[`${k}_original`] as string | undefined)?.trim();
+	const refuse = (field: string): Refusal => ({ field, message: null });
+	const symptom = text('symptom');
+	if (!includes(SYMPTOMS, symptom)) return refuse('symptom');
+	const was = kept('symptom');
+	if (
+		edit &&
+		(SYMPTOM_PARTS.some((k) => kept(k) === undefined) || !includes(SYMPTOMS, was ?? ''))
+	) {
+		return refuse('symptom');
+	}
+	const wasFever = edit && was === 'fever';
+	const wasOther = edit && was === 'other';
+	const send: EntryBody = {};
+	if (!edit || symptom !== was) send.symptom = symptom;
+
+	const severity = text('severity');
+	if (severity !== '' && !includes(SEVERITIES, severity)) return refuse('severity');
+	if (edit ? severity !== kept('severity') : severity !== '') {
+		send.severity = severity === '' ? null : severity;
+	}
+
+	if (symptom === 'other') {
+		const other = text('other_text');
+		if (other === '' || [...other].length > SYMPTOM_OTHER_MAX_LEN) return refuse('other_text');
+		if (!wasOther || other !== kept('other_text')) send.other_text = other;
+	} else if (wasOther) {
+		send.other_text = null;
+	}
+
+	if (symptom === 'fever') {
+		const unit = text('temperature_unit');
+		if (!includes(TEMP_UNITS, unit)) return refuse('temperature');
+		const same =
+			wasFever && text('temperature') === kept('temperature') && unit === kept('temperature_unit');
+		if (!same) {
+			const amount = degrees(text('temperature'));
+			if (amount === null) return refuse('temperature');
+			send.temperature = { unit, amount };
+		}
+		const method = text('method');
+		if (!includes(TEMP_METHODS, method)) return refuse('method');
+		if (!wasFever || method !== kept('method')) send.method = method;
+	} else if (wasFever) {
+		send.temperature = null;
+		send.method = null;
+	}
+	return { send };
+}
+
 // Fields are checked in the API's order, so the one named is the one the API would name. endShown is true when
 // the form was loaded with an end time, which a blank one would silently keep.
 function build(
@@ -336,8 +414,12 @@ function build(
 			Object.assign(input, { what, reaction: orNull(s('reaction')) });
 			break;
 		}
-		case 'symptoms':
+		case 'symptoms': {
+			const r = readSymptom(v, mode.kind === 'edit');
+			if ('field' in r) return r;
+			Object.assign(input, r.send);
 			break;
+		}
 		case 'pumping': {
 			const duration = seconds(s('duration_minutes'), false);
 			if (duration === null) return bad('duration_seconds');

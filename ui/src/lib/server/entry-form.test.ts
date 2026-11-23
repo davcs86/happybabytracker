@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MEAL_TEXT_MAX_LEN } from '../constants';
+import { MEAL_TEXT_MAX_LEN, SYMPTOM_OTHER_MAX_LEN } from '../constants';
 import {
 	ENTRY_FIELD_MESSAGES,
 	FINISHED_SIDE_MESSAGE,
@@ -1431,6 +1431,361 @@ describe('readEntryForm advanced pumping', () => {
 				volume: { unit: 'ml', amount: 90 },
 				side: 'left',
 				note: null
+			});
+		});
+	});
+});
+
+describe('readEntryForm symptoms', () => {
+	const cough = {
+		at: '2026-11-20T10:30',
+		symptom: 'cough',
+		severity: 'moderate',
+		other_text: '',
+		temperature: '',
+		temperature_unit: 'c',
+		method: '',
+		note: ' night '
+	};
+	const fever = { ...cough, symptom: 'fever', severity: '', temperature: '38.4', method: 'ear' };
+	const sent = (over: Record<string, string>) =>
+		readEntryForm('symptoms', form({ ...cough, ...over }), MADRID, CREATE);
+
+	it('reads a cough with its severity, the time in the kid zone under at', () => {
+		const r = sent({});
+		expect(r.field).toBeNull();
+		expect(r.input).toEqual({
+			at: '2026-11-20T09:30:00Z',
+			symptom: 'cough',
+			severity: 'moderate',
+			note: 'night'
+		});
+	});
+
+	it('leaves the severity out when none is chosen, and a blank time to the API', () => {
+		expect(sent({ severity: '', at: '' }).input).toEqual({ symptom: 'cough', note: 'night' });
+	});
+
+	it('reads a fever with its temperature and method', () => {
+		const r = sent({ ...fever });
+		expect(r.input).toEqual({
+			at: '2026-11-20T09:30:00Z',
+			symptom: 'fever',
+			temperature: { unit: 'c', amount: 3840 },
+			method: 'ear',
+			note: 'night'
+		});
+	});
+
+	it('turns up to two decimals, with a point or a comma, into hundredths of the typed unit', () => {
+		for (const [typed, unit, amount] of [
+			['38', 'c', 3800],
+			['38.4', 'c', 3840],
+			['38,4', 'c', 3840],
+			['38.45', 'c', 3845],
+			['38,05', 'c', 3805],
+			['101', 'f', 10100],
+			['101.3', 'f', 10130],
+			['101,12', 'f', 10112],
+			[' 101.3 ', 'f', 10130],
+			['0.5', 'c', 50]
+		] as const) {
+			const r = sent({ ...fever, temperature: typed, temperature_unit: unit });
+			expect(r.input).toMatchObject({ temperature: { unit, amount } });
+		}
+	});
+
+	it('refuses text that is not a temperature, naming the field and carrying no value', () => {
+		for (const typed of [
+			'',
+			'  ',
+			'1e3',
+			'0x10',
+			'--1',
+			'-38',
+			'+38',
+			'38.456',
+			'38.',
+			'.5',
+			'38,4,1',
+			'38 4',
+			'abc',
+			'Infinity',
+			'99999999999999999999'
+		]) {
+			const r = sent({ ...fever, temperature: typed });
+			expect(r, typed).toMatchObject({ input: null, field: 'temperature', message: null });
+			expect(r.values.temperature).toBe(typed);
+		}
+	});
+
+	it('refuses a unit that is neither Celsius nor Fahrenheit', () => {
+		expect(sent({ ...fever, temperature_unit: 'k' })).toMatchObject({
+			input: null,
+			field: 'temperature'
+		});
+		expect(sent({ ...fever, temperature_unit: '' })).toMatchObject({ field: 'temperature' });
+	});
+
+	it('requires a method with a fever, from the list', () => {
+		expect(sent({ ...fever, method: '' })).toMatchObject({ input: null, field: 'method' });
+		expect(sent({ ...fever, method: 'telepathy' })).toMatchObject({ field: 'method' });
+		for (const method of ['oral', 'rectal', 'axillary', 'ear', 'forehead', 'other']) {
+			expect(sent({ ...fever, method }).input).toMatchObject({ method });
+		}
+	});
+
+	it('refuses a symptom that is not chosen or not on the list', () => {
+		expect(sent({ symptom: '' })).toMatchObject({ input: null, field: 'symptom' });
+		expect(sent({ symptom: 'teething' })).toMatchObject({ field: 'symptom' });
+		expect(sent({ symptom: 'toString' })).toMatchObject({ field: 'symptom' });
+	});
+
+	it('refuses a severity that is not on the list', () => {
+		expect(sent({ severity: 'dire' })).toMatchObject({ input: null, field: 'severity' });
+	});
+
+	it('names the first refused field in the API order: at, symptom, severity, other_text, temperature, method', () => {
+		const bad = {
+			...fever,
+			at: 'x',
+			symptom: 'teething',
+			severity: 'x',
+			temperature: 'x',
+			method: ''
+		};
+		expect(sent(bad).field).toBe('at');
+		expect(sent({ ...bad, at: '' }).field).toBe('symptom');
+		expect(sent({ ...bad, at: '', symptom: 'fever' }).field).toBe('severity');
+		expect(sent({ ...bad, at: '', symptom: 'fever', severity: '' }).field).toBe('temperature');
+		expect(sent({ ...bad, at: '', symptom: 'fever', severity: '', temperature: '38' }).field).toBe(
+			'method'
+		);
+		expect(sent({ ...bad, at: '', symptom: 'other', severity: '', other_text: ' ' }).field).toBe(
+			'other_text'
+		);
+	});
+
+	it('does not read a temperature, a method or a text that the symptom does not use', () => {
+		const r = sent({
+			temperature: '1e3',
+			method: 'ear',
+			temperature_unit: 'f',
+			other_text: 'left over'
+		});
+		expect(r.input).toEqual({
+			at: '2026-11-20T09:30:00Z',
+			symptom: 'cough',
+			severity: 'moderate',
+			note: 'night'
+		});
+		expect(sent({ ...fever, other_text: 'left over' }).input).not.toHaveProperty('other_text');
+	});
+
+	describe('other', () => {
+		const other = (text: string, over: Record<string, string> = {}) =>
+			sent({ symptom: 'other', severity: '', other_text: text, ...over });
+
+		it('requires its text, trimmed', () => {
+			expect(other('  hiccups ').input).toEqual({
+				at: '2026-11-20T09:30:00Z',
+				symptom: 'other',
+				other_text: 'hiccups',
+				note: 'night'
+			});
+			expect(other('')).toMatchObject({ input: null, field: 'other_text' });
+			expect(other('   ')).toMatchObject({ input: null, field: 'other_text' });
+		});
+
+		it('allows the limit in characters, not in bytes, and refuses one more', () => {
+			expect(other('x'.repeat(SYMPTOM_OTHER_MAX_LEN)).input).toMatchObject({
+				other_text: 'x'.repeat(SYMPTOM_OTHER_MAX_LEN)
+			});
+			expect(other('😀'.repeat(SYMPTOM_OTHER_MAX_LEN)).field).toBeNull();
+			expect(other('x'.repeat(SYMPTOM_OTHER_MAX_LEN + 1))).toMatchObject({
+				input: null,
+				field: 'other_text'
+			});
+		});
+
+		it('does not read a temperature typed for another symptom', () => {
+			expect(other('hiccups', { temperature: '1e3', method: 'ear' }).input).not.toHaveProperty(
+				'temperature'
+			);
+		});
+	});
+
+	describe('an edit', () => {
+		const EDIT: EntryMode = { kind: 'edit', running: false };
+		const loaded = (over: Record<string, string> = {}) => ({
+			at: '2026-11-20T10:30',
+			symptom: 'cough',
+			severity: 'moderate',
+			other_text: '',
+			temperature: '',
+			temperature_unit: 'c',
+			method: '',
+			note: '',
+			symptom_original: 'cough',
+			severity_original: 'moderate',
+			other_text_original: '',
+			temperature_original: '',
+			temperature_unit_original: 'c',
+			method_original: '',
+			...over
+		});
+		const loadedFever = (over: Record<string, string> = {}) =>
+			loaded({
+				symptom: 'fever',
+				symptom_original: 'fever',
+				severity: '',
+				severity_original: '',
+				temperature: '38.4',
+				temperature_original: '38.4',
+				method: 'ear',
+				method_original: 'ear',
+				...over
+			});
+		const edited = (fields: Record<string, string>) =>
+			readEntryForm('symptoms', form(fields), 'UTC', EDIT);
+
+		it('sends only the note when only the note changed', () => {
+			expect(edited(loaded({ note: 'better' })).input).toEqual({
+				at: '2026-11-20T10:30:00Z',
+				note: 'better'
+			});
+			expect(edited(loadedFever({ note: 'better' })).input).toEqual({
+				at: '2026-11-20T10:30:00Z',
+				note: 'better'
+			});
+		});
+
+		it('sends a changed severity, and null for a cleared one', () => {
+			expect(edited(loaded({ severity: 'severe' })).input).toMatchObject({ severity: 'severe' });
+			expect(edited(loaded({ severity: '' })).input).toMatchObject({ severity: null });
+			expect(edited(loaded({ severity: '' })).input).not.toHaveProperty('symptom');
+			expect(edited(loaded({ severity: 'dire' }))).toMatchObject({ field: 'severity' });
+		});
+
+		it('sends a changed temperature alone, with its unit, and keeps the stored one when untouched', () => {
+			const r = edited(loadedFever({ temperature: '39' })).input;
+			expect(r).toMatchObject({ temperature: { unit: 'c', amount: 3900 } });
+			expect(r).not.toHaveProperty('method');
+			expect(r).not.toHaveProperty('symptom');
+			expect(edited(loadedFever({ temperature: '38.40' })).input).toMatchObject({
+				temperature: { unit: 'c', amount: 3840 }
+			});
+			expect(edited(loadedFever({ temperature_unit: 'f' })).input).toMatchObject({
+				temperature: { unit: 'f', amount: 3840 }
+			});
+			expect(edited(loadedFever({ temperature: '38.4' })).input).not.toHaveProperty('temperature');
+		});
+
+		it('refuses a changed temperature that is not one, keeping the typed text', () => {
+			const r = edited(loadedFever({ temperature: '1e3' }));
+			expect(r).toMatchObject({ input: null, field: 'temperature' });
+			expect(r.values.temperature).toBe('1e3');
+			expect(edited(loadedFever({ temperature: '' }))).toMatchObject({ field: 'temperature' });
+		});
+
+		it('sends a changed method alone', () => {
+			const r = edited(loadedFever({ method: 'oral' })).input;
+			expect(r).toMatchObject({ method: 'oral' });
+			expect(r).not.toHaveProperty('temperature');
+		});
+
+		it('leaving fever sends the symptom with a null temperature and a null method', () => {
+			expect(edited(loadedFever({ symptom: 'cough' })).input).toEqual({
+				at: '2026-11-20T10:30:00Z',
+				symptom: 'cough',
+				temperature: null,
+				method: null,
+				note: null
+			});
+		});
+
+		it('leaving fever for other sends the text as well', () => {
+			expect(edited(loadedFever({ symptom: 'other', other_text: 'hiccups' })).input).toMatchObject({
+				symptom: 'other',
+				other_text: 'hiccups',
+				temperature: null,
+				method: null
+			});
+		});
+
+		it('becoming a fever sends the symptom with its temperature and method', () => {
+			expect(
+				edited(
+					loaded({ symptom: 'fever', temperature: '101.3', temperature_unit: 'f', method: 'oral' })
+				).input
+			).toMatchObject({
+				symptom: 'fever',
+				temperature: { unit: 'f', amount: 10130 },
+				method: 'oral'
+			});
+			expect(edited(loaded({ symptom: 'fever', temperature: '', method: 'oral' }))).toMatchObject({
+				field: 'temperature'
+			});
+			expect(edited(loaded({ symptom: 'fever', temperature: '38', method: '' }))).toMatchObject({
+				field: 'method'
+			});
+		});
+
+		it('leaving other sends the symptom with a null text', () => {
+			const was = {
+				symptom_original: 'other',
+				other_text: 'hiccups',
+				other_text_original: 'hiccups'
+			};
+			expect(edited(loaded({ ...was, symptom: 'cough' })).input).toMatchObject({
+				symptom: 'cough',
+				other_text: null
+			});
+			expect(edited(loaded({ ...was, symptom: 'cough' })).input).not.toHaveProperty('temperature');
+		});
+
+		it('keeps an unchanged other text, sends a changed one, and refuses a blank one', () => {
+			const was = {
+				symptom: 'other',
+				symptom_original: 'other',
+				other_text: 'hiccups',
+				other_text_original: 'hiccups'
+			};
+			expect(edited(loaded(was)).input).not.toHaveProperty('other_text');
+			expect(edited(loaded({ ...was, other_text: ' sneezing ' })).input).toMatchObject({
+				other_text: 'sneezing'
+			});
+			expect(edited(loaded({ ...was, other_text: ' ' }))).toMatchObject({ field: 'other_text' });
+		});
+
+		it('becoming other sends the text', () => {
+			expect(edited(loaded({ symptom: 'other', other_text: 'hiccups' })).input).toMatchObject({
+				symptom: 'other',
+				other_text: 'hiccups'
+			});
+		});
+
+		it('refuses a form that lost any original, never guessing', () => {
+			for (const name of [
+				'symptom_original',
+				'severity_original',
+				'other_text_original',
+				'temperature_original',
+				'temperature_unit_original',
+				'method_original'
+			]) {
+				const fields: Record<string, string> = loadedFever();
+				delete fields[name];
+				expect(edited(fields), name).toMatchObject({ input: null });
+			}
+			expect(edited(loaded({ symptom_original: 'teething' }))).toMatchObject({ input: null });
+		});
+
+		it('keeps the originals it was loaded with in the values it gives back', () => {
+			expect(edited(loadedFever({ temperature: '1e3' })).values).toMatchObject({
+				temperature_original: '38.4',
+				temperature_unit_original: 'c',
+				symptom_original: 'fever'
 			});
 		});
 	});

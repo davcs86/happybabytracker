@@ -15,6 +15,7 @@ import type {
 	TimelineType,
 	TimerKind,
 	TrackerKind,
+	Units,
 	VaccineAgeUnit,
 	VaccineDismissReason,
 	VaccineKind,
@@ -47,6 +48,9 @@ export const MEAL_TEXT_MAX_LEN = 200;
 export const MEDICATION_TEXT_MAX_LEN = 80;
 // SymptomOtherMaxLen.
 export const SYMPTOM_OTHER_MAX_LEN = 80;
+// MinTempCHundredths and MaxTempCHundredths: what the API accepts, whichever unit was typed.
+export const MIN_TEMP_C_HUNDREDTHS = 3000;
+export const MAX_TEMP_C_HUNDREDTHS = 4500;
 // PushLabelMaxLen.
 export const PUSH_LABEL_MAX_LEN = 40;
 // MaxScheduleTimes.
@@ -84,6 +88,8 @@ export const Z_SCORE_DECIMALS = 2;
 export const CHART_VALUE_DECIMALS = 1;
 export const WEIGHT_UNITS = ['kg', 'lb'] as const satisfies readonly WeightUnit[];
 export const LENGTH_UNITS = ['cm', 'in'] as const satisfies readonly LengthUnit[];
+export const TEMP_UNITS = ['c', 'f'] as const satisfies readonly Units['temp'][];
+export const TEMP_UNIT_LABEL: Record<Units['temp'], string> = { c: '°C', f: '°F' };
 export const GROWTH_SCORE_REASONS = [
 	'not_covered',
 	'before_term'
@@ -290,3 +296,4 @@ export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly Ag
 export const SECONDS_PER_MINUTE = 60;
 export const SECONDS_PER_HOUR = 3600;
 export const HUNDREDTHS_PER_FLOZ = 100;
+export const HUNDREDTHS_PER_DEGREE = 100;

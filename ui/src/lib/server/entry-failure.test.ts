@@ -10,7 +10,7 @@ import {
 	totalRangeMessage,
 	volumeRefusedMessage
 } from './entry-failure';
-import { MEAL_TEXT_MAX_LEN } from '../constants';
+import { MEAL_TEXT_MAX_LEN, SYMPTOM_OTHER_MAX_LEN } from '../constants';
 import type { ApiFailure } from './outcome';
 
 const values = { at: '2026-11-20T10:30', note: 'kept' };
@@ -52,7 +52,12 @@ describe('entryApiFailure', () => {
 			'duration_seconds',
 			'side',
 			'left_seconds',
-			'right_seconds'
+			'right_seconds',
+			'symptom',
+			'severity',
+			'other_text',
+			'temperature',
+			'method'
 		]) {
 			expect(ENTRY_FIELD_MESSAGES[field]).toBeTruthy();
 		}
@@ -190,5 +195,24 @@ describe('final-wave messages', () => {
 
 	it('an API what refusal states both rules', () => {
 		expect(ENTRY_FIELD_MESSAGES.what).toContain(`${MEAL_TEXT_MAX_LEN} characters`);
+	});
+
+	it('a refused temperature states the range in both units and the decimals, with no value', () => {
+		expect(ENTRY_FIELD_MESSAGES.temperature).toBe(
+			'Enter a temperature from 30 to 45 °C (86 to 113 °F), with up to two decimals'
+		);
+		const r = entryApiFailure('symptoms', values, refused({ field: 'temperature' }), extra);
+		expect(r.status).toBe(422);
+		expect(r.data).toMatchObject({
+			field: 'temperature',
+			message: ENTRY_FIELD_MESSAGES.temperature
+		});
+	});
+
+	it('the other symptom text names its limit, the others name no value', () => {
+		expect(ENTRY_FIELD_MESSAGES.other_text).toContain(`${SYMPTOM_OTHER_MAX_LEN} characters`);
+		for (const field of ['symptom', 'severity', 'method']) {
+			expect(ENTRY_FIELD_MESSAGES[field]).not.toMatch(/\d/);
+		}
 	});
 });

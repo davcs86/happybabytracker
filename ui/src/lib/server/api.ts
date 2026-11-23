@@ -14,6 +14,7 @@ import {
 	SEVERITIES,
 	SYMPTOMS,
 	TEMP_METHODS,
+	TEMP_UNITS,
 	TIMELINE_TYPE,
 	TIMER_KINDS,
 	TRACKER_KINDS,
@@ -395,7 +396,7 @@ function toTemperature(v: unknown): Temperature {
 	return {
 		cHundredths: int(o.c_hundredths),
 		fHundredths: int(o.f_hundredths),
-		typedUnit: oneOf(o.typed_unit, ['c', 'f'])
+		typedUnit: oneOf(o.typed_unit, TEMP_UNITS)
 	};
 }
 

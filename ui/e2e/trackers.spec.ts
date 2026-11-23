@@ -2093,3 +2093,500 @@ test.describe('the advanced pumping form without JavaScript', () => {
 		await expect(field(page, 'Left volume')).toHaveCount(0);
 	});
 });
+
+// The sickness tracker: a symptom, and for a fever its temperature and method. Every save waits for its response.
+const SYMPTOM_PATH = `/v1/kids/${MIA.id}/symptoms`;
+const TEMP_MESSAGE = 'Enter a temperature from 30 to 45 °C (86 to 113 °F), with up to two decimals';
+const pick = (page: Page, symptom: string) => field(page, 'Symptom').selectOption(symptom);
+const fever = (over: Row = {}): Row => ({
+	at: minute(-10),
+	symptom: 'fever',
+	temperature: { unit: 'c', amount: 3840 },
+	method: 'ear',
+	...over
+});
+const setUnits = async (api: Api, temp: 'c' | 'f') =>
+	expect((await api('PATCH', '/v1/me', { units: { temp } })).status).toBe(200);
+const symptomOverflows = (page: Page) =>
+	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+
+test.describe('the sickness tracker', () => {
+	test('a fever is logged with its temperature and method, and read back in °F by an imperial parent', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await setUnits(api, 'f');
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Left minutes')).toHaveCount(0);
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await expect(field(page, 'Method')).toBeHidden();
+		await expect(field(page, 'Other symptom')).toBeHidden();
+		await expect(page.getByRole('radio', { name: 'Not set' })).toBeChecked();
+		await expectAccessible(page);
+
+		await pick(page, 'fever');
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await expect(field(page, 'Other symptom')).toBeHidden();
+		await expectAccessible(page);
+		await field(page, 'Temperature').fill('101,3');
+		await field(page, 'Method').selectOption('ear');
+		await field(page, 'Note').fill('fussy');
+		await saveAndWait(page);
+		await onTimeline(page);
+
+		expect(await written('POST', SYMPTOM_PATH)).toMatchObject({
+			symptom: 'fever',
+			temperature: { unit: 'f', amount: 10130 },
+			method: 'ear',
+			note: 'fussy'
+		});
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({
+			symptom: 'fever',
+			method: 'ear',
+			temperature: { f_hundredths: 10130, typed_unit: 'f' }
+		});
+		await expect(
+			page.getByRole('link', { name: /^\d\d:\d\d Fever 101\.3 °F \(ear\)/ })
+		).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toHaveValue('101.3');
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await expect(field(page, 'Method')).toHaveValue('ear');
+		await expectAccessible(page);
+
+		await setUnits(api, 'c');
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Temperature')).toHaveValue('38.5');
+		await expect(field(page, 'Temperature unit')).toHaveValue('c');
+	});
+
+	test('a Celsius fever reads back in °F, and editing only the note keeps what was typed', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await setUnits(api, 'f');
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Temperature')).toHaveValue('101.12');
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await field(page, 'Note').fill('warm');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({ note: 'warm' });
+		const [kept] = await rows(api, 'symptoms');
+		expect(kept.temperature).toEqual({ c_hundredths: 3840, f_hundredths: 10112, typed_unit: 'c' });
+		expect(kept.at).toBe(made.at);
+		await expect(page.getByRole('link', { name: /Fever 101\.12 °F \(ear\)/ })).toBeVisible();
+	});
+
+	test('a changed temperature is sent alone, with its unit', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await field(page, 'Temperature').fill('39');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			temperature: { unit: 'c', amount: 3900 },
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			method: 'ear',
+			temperature: { c_hundredths: 3900 }
+		});
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await field(page, 'Method').selectOption('oral');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			method: 'oral',
+			note: null
+		});
+	});
+
+	test('a cough with a severity is logged with no temperature, and the severity can be cleared', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'cough');
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await page.getByRole('radio', { name: 'Moderate' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('POST', SYMPTOM_PATH);
+		expect(body).toMatchObject({ symptom: 'cough', severity: 'moderate' });
+		for (const key of ['temperature', 'method', 'other_text']) expect(body).not.toHaveProperty(key);
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({ symptom: 'cough', severity: 'moderate', temperature: null });
+		await expect(page.getByRole('link', { name: /^\d\d:\d\d Cough, moderate/ })).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('radio', { name: 'Moderate' })).toBeChecked();
+		await expectAccessible(page);
+		await page.getByRole('radio', { name: 'Not set' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			severity: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0].severity).toBeNull();
+	});
+
+	test('other requires its text, and keeps what was typed until it has it', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'other');
+		await expect(field(page, 'Other symptom')).toBeVisible();
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await field(page, 'Note').fill('kept');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Other symptom'), 'Enter what the symptom is');
+		await expect(field(page, 'Symptom')).toHaveValue('other');
+		await expect(field(page, 'Note')).toHaveValue('kept');
+		await expectAccessible(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Other symptom').fill('hiccups');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'other',
+			other_text: 'hiccups',
+			note: 'kept'
+		});
+		await expect(page.getByRole('link', { name: /^\d\d:\d\d Other: hiccups/ })).toBeVisible();
+	});
+
+	test('a temperature out of range keeps every typed value, on the amount and its unit', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('50');
+		await field(page, 'Method').selectOption('rectal');
+		await field(page, 'Note').fill('keep me');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
+		await expect(field(page, 'Temperature unit')).toHaveAttribute('aria-invalid', 'true');
+		await expect(page.getByRole('alert')).toHaveText(TEMP_MESSAGE);
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toHaveValue('50');
+		await expect(field(page, 'Method')).toHaveValue('rectal');
+		await expect(field(page, 'Note')).toHaveValue('keep me');
+		await expectAccessible(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Temperature').fill('38,5');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0].temperature).toMatchObject({
+			c_hundredths: 3850,
+			typed_unit: 'c'
+		});
+	});
+
+	test('text that is not a temperature is refused by the form, never sent', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'fever');
+		await field(page, 'Method').selectOption('oral');
+		for (const typed of ['1e3', '0x10', '--1', '38.456', '']) {
+			await field(page, 'Temperature').fill(typed);
+			await saveAndWait(page);
+			await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
+			await expect(field(page, 'Temperature')).toHaveValue(typed);
+			if (typed !== '') await expect(page.getByRole('alert')).not.toContainText(typed);
+		}
+		expect(await rows(api, 'symptoms')).toEqual([]);
+		const posts = (await receivedRequests()).filter(
+			(r) => r.method === 'POST' && r.path === SYMPTOM_PATH
+		);
+		expect(posts).toEqual([]);
+	});
+
+	test('a fever without a method is refused on the method', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('38');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Method'), 'Choose how the temperature was taken');
+		await expect(field(page, 'Temperature')).toHaveValue('38');
+		await expectAccessible(page);
+	});
+
+	test('no symptom chosen is refused on the symptom', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Symptom'), 'Choose a symptom');
+		await expectAccessible(page);
+	});
+
+	test('a fever edited into a cough, then a fever, then other, then a cough sends the nulls each time', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		const path = `${SYMPTOM_PATH}/${made.id}`;
+		const edit = async () => {
+			await page.goto(entryUrl('symptoms', made.id));
+			await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+		};
+		await signIn(page, ANA);
+
+		await edit();
+		await pick(page, 'cough');
+		await page.getByRole('radio', { name: 'Mild' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'cough',
+			severity: 'mild',
+			temperature: null,
+			method: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			severity: 'mild',
+			temperature: null,
+			method: null
+		});
+
+		await edit();
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('39');
+		await field(page, 'Method').selectOption('oral');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'fever',
+			temperature: { unit: 'c', amount: 3900 },
+			method: 'oral',
+			note: null
+		});
+
+		await edit();
+		await pick(page, 'other');
+		await field(page, 'Other symptom').fill('hiccups');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'other',
+			other_text: 'hiccups',
+			temperature: null,
+			method: null,
+			note: null
+		});
+
+		await edit();
+		await expect(field(page, 'Other symptom')).toHaveValue('hiccups');
+		await pick(page, 'cough');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'cough',
+			other_text: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			other_text: null,
+			temperature: null
+		});
+	});
+
+	test('a symptom is deleted behind the confirm', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
+		await page.getByText('Delete this entry', { exact: true }).click();
+		await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+		await onTimeline(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+	});
+
+	for (const [who, role] of [
+		[ANA, 'caregiver'],
+		[CLEO, 'guardian']
+	] as const) {
+		test(`a ${role} can log, edit and delete a fever`, async ({ page }) => {
+			const api = await stubAs(CLEO);
+			await signIn(page, who);
+			await page.goto(logUrl('symptoms', LEO.id));
+			await pick(page, 'fever');
+			await field(page, 'Temperature').fill('38.2');
+			await field(page, 'Method').selectOption('forehead');
+			await saveAndWait(page);
+			await onTimeline(page);
+			const [made] = await rows(api, 'symptoms', LEO.id);
+			expect(made).toMatchObject({ symptom: 'fever', method: 'forehead' });
+			expect(made.temperature).toMatchObject({ c_hundredths: 3820 });
+
+			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await field(page, 'Temperature').fill('38.6');
+			await saveAndWait(page);
+			await onTimeline(page);
+			expect(((await rows(api, 'symptoms', LEO.id))[0].temperature as Row).c_hundredths).toBe(3860);
+
+			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await page.getByText('Delete this entry', { exact: true }).click();
+			await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+			await onTimeline(page);
+			expect(await rows(api, 'symptoms', LEO.id)).toEqual([]);
+		});
+	}
+
+	test('a parent without a grant, an unknown kid, an unknown entry and another kid’s entry get the same 404 page', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const mine = await seed(api, 'symptoms', fever());
+		const others = await seed(await stubAs(CLEO), 'symptoms', fever(), LEO.id);
+		await signIn(page, DAN);
+		const unknown = await expectNotFoundPage(page, logUrl('symptoms', 'k-unknown'));
+		expect(await expectNotFoundPage(page, logUrl('symptoms'))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', mine.id))).toBe(unknown);
+
+		await page.context().clearCookies();
+		await signIn(page, ANA);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', 'e-000000009999'))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', others.id))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('diapers', mine.id))).toBe(unknown);
+	});
+
+	test('the Sickness tile of a kid over 24 months opens the symptom form, not another', async ({
+		page
+	}) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(`/kids/${LEO.id}`);
+		await page.getByRole('link', { name: 'Sickness', exact: true }).click();
+		await expect(page).toHaveURL(`/kids/${LEO.id}/log/symptoms`);
+		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Symptom')).toBeVisible();
+		await expect(field(page, 'Left minutes')).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('a long other text and a long note do not overflow the page at phone width', async ({
+		page
+	}, testInfo) => {
+		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+		const api = await stubAs(ANA);
+		const longText = 'w'.repeat(80);
+		const made = await seed(api, 'symptoms', {
+			at: minute(-10),
+			symptom: 'other',
+			other_text: longText,
+			note: 'n'.repeat(200)
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Other symptom')).toHaveValue(longText);
+		expect(await symptomOverflows(page)).toBe(false);
+
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'other');
+		await field(page, 'Other symptom').fill(longText);
+		await field(page, 'Note').fill('n'.repeat(200));
+		expect(await symptomOverflows(page)).toBe(false);
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('101.12');
+		await field(page, 'Temperature unit').selectOption('f');
+		expect(await symptomOverflows(page)).toBe(false);
+
+		const date = day(String(made.at));
+		await page.goto(`/kids/${MIA.id}/timeline?from=${date}&to=${date}`);
+		await expect(page.getByRole('link', { name: new RegExp(`Other: ${longText}`) })).toBeVisible();
+		expect(await symptomOverflows(page)).toBe(false);
+	});
+});
+
+test.describe('the sickness tracker without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create a fever, fail on the method, fix it, edit it into a cough and delete it', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('38,4');
+		await field(page, 'Note').fill('no script');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Method'), 'Choose how the temperature was taken');
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature')).toHaveValue('38,4');
+		await expect(field(page, 'Note')).toHaveValue('no script');
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Method').selectOption('ear');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({ symptom: 'fever', method: 'ear', note: 'no script' });
+		expect(made.temperature).toMatchObject({ c_hundredths: 3840, typed_unit: 'c' });
+		await expect(page.getByText(/Fever 38\.4 °C \(ear\)/)).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature')).toHaveValue('38.4');
+		await field(page, 'Note').fill('edited');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({ note: 'edited' });
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await pick(page, 'cough');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			temperature: null,
+			method: null
+		});
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
+		await page.getByText('Delete this entry', { exact: true }).click();
+		await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+		await onTimeline(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+	});
+
+	test('other shows its text field and requires it', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'other');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Other symptom'), 'Enter what the symptom is');
+		await expect(field(page, 'Other symptom')).toBeVisible();
+	});
+});

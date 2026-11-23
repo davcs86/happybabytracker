@@ -4,18 +4,20 @@ import {
 	createValues,
 	editValues,
 	entryInstant,
+	formUnits,
 	isAdvanced,
 	isRunning,
 	localDate,
 	milkStatus,
 	ranOver,
+	temperatureText,
 	volumeText
 } from './entry-edit';
-import type { Bottle, Diaper, Meal, Nursing, Pumping, Sleep } from './types';
+import type { Bottle, Diaper, Meal, Nursing, Pumping, Session, Sleep, Symptom } from './types';
 
 const MADRID = 'Europe/Madrid';
-const ML = { weight: 'kg', volume: 'ml' } as const;
-const FLOZ = { weight: 'lb', volume: 'floz' } as const;
+const ML = { weight: 'kg', volume: 'ml', temp: 'c' } as const;
+const FLOZ = { weight: 'lb', volume: 'floz', temp: 'f' } as const;
 const HOUR_MS = 3_600_000;
 
 const NO_SOURCES = {
@@ -93,11 +95,27 @@ const meal: Meal = {
 	note: null
 };
 
+const symptom = (over: Partial<Symptom> = {}): Symptom => ({
+	id: 'e7',
+	at: '2026-11-20T10:00:00Z',
+	symptom: 'cough',
+	severity: null,
+	otherText: null,
+	temperature: null,
+	method: null,
+	note: null,
+	...over
+});
+// 38.40 C is 101.12 F: the API converts the typed value, so both columns are always there.
+const FEVER_C = { cHundredths: 3840, fHundredths: 10112, typedUnit: 'c' } as const;
+const FEVER_F = { cHundredths: 3850, fHundredths: 10130, typedUnit: 'f' } as const;
+
 describe('entryInstant and isRunning', () => {
 	it('takes the time of an entry from its own field', () => {
 		expect(entryInstant('bottles', bottle())).toBe('2026-11-20T09:30:00Z');
 		expect(entryInstant('diapers', diaper)).toBe(diaper.at);
 		expect(entryInstant('meals', meal)).toBe(meal.at);
+		expect(entryInstant('symptoms', symptom())).toBe('2026-11-20T10:00:00Z');
 		expect(entryInstant('pumping', pumping())).toBe('2026-11-20T10:00:00Z');
 		expect(entryInstant('sleep', sleep())).toBe('2026-11-20T10:00:00Z');
 		expect(entryInstant('nursing', nursing())).toBe('2026-11-20T10:00:00Z');
@@ -168,6 +186,17 @@ describe('createValues', () => {
 			reaction: '',
 			note: ''
 		});
+		expect(createValues('symptoms', now, 'UTC', ML)).toEqual({
+			at: '2026-03-29T00:45',
+			symptom: '',
+			severity: '',
+			other_text: '',
+			temperature: '',
+			temperature_unit: 'c',
+			method: '',
+			note: ''
+		});
+		expect(createValues('symptoms', now, 'UTC', FLOZ)).toMatchObject({ temperature_unit: 'f' });
 		expect(createValues('pumping', now, 'UTC', ML)).toEqual({
 			started_at: '2026-03-29T00:45',
 			duration_minutes: '',
@@ -202,7 +231,15 @@ describe('createValues', () => {
 	});
 
 	it('carries no stored originals', () => {
-		for (const kind of ['bottles', 'nursing', 'pumping', 'sleep', 'diapers', 'meals'] as const) {
+		for (const kind of [
+			'bottles',
+			'nursing',
+			'pumping',
+			'sleep',
+			'diapers',
+			'meals',
+			'symptoms'
+		] as const) {
 			expect(
 				Object.keys(createValues(kind, now, 'UTC', ML)).filter((k) => k.endsWith('_original'))
 			).toEqual([]);
@@ -357,6 +394,57 @@ describe('editValues', () => {
 			what: 'rice',
 			reaction: '',
 			note: ''
+		});
+	});
+
+	it('shows a cough with its severity, and no temperature, in the preferred unit', () => {
+		expect(
+			editValues('symptoms', symptom({ severity: 'moderate', note: 'night' }), 'UTC', ML)
+		).toEqual({
+			at: '2026-11-20T10:00',
+			at_original: '2026-11-20T10:00',
+			symptom: 'cough',
+			symptom_original: 'cough',
+			severity: 'moderate',
+			severity_original: 'moderate',
+			other_text: '',
+			other_text_original: '',
+			temperature: '',
+			temperature_original: '',
+			temperature_unit: 'c',
+			temperature_unit_original: 'c',
+			method: '',
+			method_original: '',
+			note: 'night'
+		});
+	});
+
+	it('shows a fever in the parent unit from the API column, whichever unit it was typed in', () => {
+		const typedC = symptom({ symptom: 'fever', temperature: FEVER_C, method: 'ear' });
+		expect(editValues('symptoms', typedC, 'UTC', ML)).toMatchObject({
+			temperature: '38.4',
+			temperature_original: '38.4',
+			temperature_unit: 'c',
+			temperature_unit_original: 'c',
+			method: 'ear',
+			method_original: 'ear'
+		});
+		expect(editValues('symptoms', typedC, 'UTC', FLOZ)).toMatchObject({
+			temperature: '101.12',
+			temperature_original: '101.12',
+			temperature_unit: 'f'
+		});
+		const typedF = symptom({ symptom: 'fever', temperature: FEVER_F, method: 'oral' });
+		expect(editValues('symptoms', typedF, 'UTC', FLOZ)).toMatchObject({ temperature: '101.3' });
+		expect(editValues('symptoms', typedF, 'UTC', ML)).toMatchObject({ temperature: '38.5' });
+	});
+
+	it('shows the text of an other symptom', () => {
+		const other = symptom({ symptom: 'other', otherText: 'hiccups' });
+		expect(editValues('symptoms', other, 'UTC', ML)).toMatchObject({
+			symptom: 'other',
+			other_text: 'hiccups',
+			other_text_original: 'hiccups'
 		});
 	});
 
@@ -618,5 +706,33 @@ describe('milkStatus', () => {
 		for (const text of [milkStatus('nursing', weighed, ML), 'No estimate']) {
 			expect(text).not.toMatch(/good|low|enough|concern|normal/i);
 		}
+	});
+});
+
+describe('formUnits', () => {
+	const signedIn = (temp: 'c' | 'f'): Session => ({
+		kind: 'parent',
+		parent: {
+			id: 'p1',
+			username: 'ana',
+			displayName: 'Ana',
+			units: { weight: 'lb', length: 'in', volume: 'floz', temp }
+		}
+	});
+
+	it('carries the temperature unit of the parent, Celsius for a page without one', () => {
+		expect(formUnits(signedIn('f'))).toEqual({ weight: 'lb', volume: 'floz', temp: 'f' });
+		expect(formUnits(signedIn('c')).temp).toBe('c');
+		expect(formUnits(null)).toEqual({ weight: 'kg', volume: 'ml', temp: 'c' });
+	});
+});
+
+describe('temperatureText', () => {
+	it('shows the column of the unit, without trailing zeros and without float maths', () => {
+		expect(temperatureText(FEVER_C, 'c')).toBe('38.4');
+		expect(temperatureText(FEVER_C, 'f')).toBe('101.12');
+		expect(temperatureText(FEVER_F, 'f')).toBe('101.3');
+		expect(temperatureText({ ...FEVER_C, cHundredths: 3800 }, 'c')).toBe('38');
+		expect(temperatureText({ ...FEVER_C, cHundredths: 3805 }, 'c')).toBe('38.05');
 	});
 });

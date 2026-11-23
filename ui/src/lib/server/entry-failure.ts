@@ -1,11 +1,24 @@
 import { fail } from '@sveltejs/kit';
-import { MAX_SESSION_HOURS, MEAL_TEXT_MAX_LEN, VOLUME_ML_RANGE } from '../constants';
+import {
+	HUNDREDTHS_PER_DEGREE,
+	MAX_SESSION_HOURS,
+	MAX_TEMP_C_HUNDREDTHS,
+	MEAL_TEXT_MAX_LEN,
+	MIN_TEMP_C_HUNDREDTHS,
+	SYMPTOM_OTHER_MAX_LEN,
+	VOLUME_ML_RANGE
+} from '../constants';
 import type { EntryValues } from '../entry-edit';
 import type { TimerKind } from '../types';
 import { GROWTH_FIELD_MESSAGES } from './growth-form';
 import { failAction, type ApiFailure } from './outcome';
 
 const TIME = 'Enter a time that is not in the future and not before the birth date';
+
+const F_PER_C = { numerator: 9, denominator: 5, freezing: 32 } as const;
+const celsius = (hundredths: number) => hundredths / HUNDREDTHS_PER_DEGREE;
+const fahrenheit = (hundredths: number) =>
+	(celsius(hundredths) * F_PER_C.numerator) / F_PER_C.denominator + F_PER_C.freezing;
 
 // Keyed by the API's field names, which the form's inputs share.
 export const ENTRY_FIELD_MESSAGES: Record<string, string> = {
@@ -27,7 +40,12 @@ export const ENTRY_FIELD_MESSAGES: Record<string, string> = {
 	duration_seconds: `Enter whole minutes, up to ${MAX_SESSION_HOURS} hours`,
 	side: 'Choose a side',
 	left_seconds: 'Enter whole minutes that fit within the session',
-	right_seconds: 'Enter whole minutes that fit within the session'
+	right_seconds: 'Enter whole minutes that fit within the session',
+	symptom: 'Choose a symptom',
+	severity: 'Choose mild, moderate or severe, or leave it unset',
+	other_text: `Enter what the symptom is, up to ${SYMPTOM_OTHER_MAX_LEN} characters`,
+	temperature: `Enter a temperature from ${celsius(MIN_TEMP_C_HUNDREDTHS)} to ${celsius(MAX_TEMP_C_HUNDREDTHS)} °C (${fahrenheit(MIN_TEMP_C_HUNDREDTHS)} to ${fahrenheit(MAX_TEMP_C_HUNDREDTHS)} °F), with up to two decimals`,
+	method: 'Choose how the temperature was taken'
 };
 
 // The form's own reader can tell these apart from the field's message above.
