@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +23,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
+	"github.com/davcs86/happybabytracker/api/internal/testlog"
 )
 
 const (
@@ -261,29 +261,9 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 
 var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
 
-// logLeaks names each field of a JSON log line outside allowedLogFields, and each string field carrying a banned
-// value; request_id, time and duration_ms are random or measured, so they are never matched.
+// logLeaks is testlog.Leaks with this package's allowlist.
 func logLeaks(line string, banned ...string) []string {
-	var fields map[string]any
-	if err := json.Unmarshal([]byte(line), &fields); err != nil {
-		return []string{"not JSON: " + err.Error()}
-	}
-	var out []string
-	for key, v := range fields {
-		if !slices.Contains(allowedLogFields, key) {
-			out = append(out, "unexpected field "+key)
-		}
-		text, isText := v.(string)
-		if !isText || key == "request_id" || key == "time" || key == "duration_ms" {
-			continue
-		}
-		for _, b := range banned {
-			if strings.Contains(text, b) {
-				out = append(out, key+" carries "+b)
-			}
-		}
-	}
-	return out
+	return testlog.Leaks(line, allowedLogFields, banned...)
 }
 
 // wantCleanLog checks that log holds want lines and that none of them leaks.

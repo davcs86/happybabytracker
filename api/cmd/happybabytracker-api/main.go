@@ -20,6 +20,9 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
+	"github.com/davcs86/happybabytracker/api/internal/push"
+	"github.com/davcs86/happybabytracker/api/internal/reminders"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 	"github.com/davcs86/happybabytracker/api/internal/vaccines"
 )
@@ -39,12 +42,13 @@ func main() {
 	}
 }
 
-// app is what start prepares; the caller closes store.
+// app is what start prepares; the caller runs worker and closes store.
 type app struct {
 	cfg     config.Config
 	log     *slog.Logger
 	store   *store.Store
 	handler http.Handler
+	worker  *reminders.Worker
 }
 
 // start does everything before listening, so tests can call it without binding cfg.Addr.
@@ -71,10 +75,42 @@ func start(ctx context.Context, getenv func(string) string, stdout io.Writer) (*
 	}
 	log.Info("channels", "push", pushState, "ntfy", ntfyState)
 
-	handler := httpapi.NewHandler(httpapi.Deps{
+	deps := httpapi.Deps{
 		Store: st, Cfg: cfg, Limiter: auth.NewLimiter(constants.LoginAttemptsPerMinute, time.Now), Now: time.Now, Log: log,
-	})
-	return &app{cfg: cfg, log: log, store: st, handler: handler}, nil
+		Resolver: net.DefaultResolver,
+	}
+	if err := wirePush(&deps, cfg); err != nil {
+		return nil, errors.Join(err, st.Close())
+	}
+	var publisher ntfy.Publisher
+	if cfg.NtfyEnabled {
+		publisher = ntfy.NewPublisher(cfg.Ntfy)
+	}
+	// Before the first tick: a row left sending may have been delivered, so it is never resent.
+	if err := st.MarkUnconfirmed(ctx); err != nil {
+		return nil, errors.Join(err, st.Close())
+	}
+	worker := reminders.New(reminders.Deps{Store: st, Push: deps.Push, Ntfy: publisher, Origin: cfg.PublicOrigin, Now: time.Now, Log: log})
+	return &app{cfg: cfg, log: log, store: st, handler: httpapi.NewHandler(deps), worker: worker}, nil
+}
+
+// wirePush sets the sender and the public key from the one VAPID key, so the key is served only with a sender.
+func wirePush(d *httpapi.Deps, cfg config.Config) error {
+	if cfg.VAPIDKey == nil {
+		return nil
+	}
+	if cfg.AllowFakePush {
+		d.PushRecorder = &push.Recorder{}
+		d.Push = d.PushRecorder
+	} else {
+		sig, err := push.NewSigner(cfg.VAPIDKey, cfg.VAPIDSubject)
+		if err != nil {
+			return err
+		}
+		d.Push = push.NewSender(sig, time.Now)
+	}
+	d.VAPIDPublicKey = push.PublicKey(cfg.VAPIDKey)
+	return nil
 }
 
 func prepare(ctx context.Context, st *store.Store, cfg config.Config) error {
@@ -109,6 +145,12 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 		WriteTimeout:      constants.WriteTimeout,
 	}
 	log.Info("listening", "addr", ln.Addr().String())
+
+	wctx, stopWorker := context.WithCancel(ctx)
+	workerDone := make(chan struct{})
+	go func() { a.worker.Run(wctx); close(workerDone) }()
+	// The store closes after the worker has stopped.
+	defer func() { stopWorker(); <-workerDone }()
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
