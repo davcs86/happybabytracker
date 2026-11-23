@@ -323,6 +323,35 @@ func TestMedicationKeepsAnOldStartAfterABirthCorrection(t *testing.T) {
 	}
 }
 
+// A stored end_on that a kid-zone change left before the start's local date is refused only when start_at or end_on changes.
+func TestMedicationEndOnIsCheckedOnlyWhenChanged(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	start := "2026-11-20T21:00:00Z" // 22:00 in Madrid on the 20th, 06:00 in Tokyo on the 21st
+	one := "/v1/kids/" + kid + "/medications/" + k.createMedication(ana, kid, medBody(map[string]any{"start_at": start, "end_on": "2026-11-20"}))["id"].(string)
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"time_zone": "Asia/Tokyo"}); rec.Code != http.StatusOK {
+		t.Fatalf("kid patch: %d %q", rec.Code, rec.Body.String())
+	}
+	for name, body := range map[string]map[string]any{
+		"a note only":                {"note": "x"},
+		"the stored end_on re-sent":  {"end_on": "2026-11-20", "note": "y"},
+		"the stored start re-sent":   {"start_at": start},
+		"both stored values re-sent": {"start_at": start, "end_on": "2026-11-20"},
+	} {
+		if rec := k.do(http.MethodPatch, one, ana, body); rec.Code != http.StatusOK {
+			t.Errorf("%s: %d %q, want 200 (nothing the check covers changed)", name, rec.Code, rec.Body.String())
+		}
+	}
+	wantInvalid2(t, "a changed start_at", k.do(http.MethodPatch, one, ana, map[string]any{"start_at": "2026-11-20T21:00:01Z"}), "end_on")
+	wantInvalid2(t, "a changed end_on still before the start", k.do(http.MethodPatch, one, ana, map[string]any{"end_on": "2026-11-19"}), "end_on")
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"end_on": "2026-11-21"}); rec.Code != http.StatusOK {
+		t.Errorf("a changed end_on on the start's local date: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := k.do(http.MethodPatch, one, ana, map[string]any{"end_on": nil}); rec.Code != http.StatusOK {
+		t.Errorf("clearing end_on: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMedicationNextDue(t *testing.T) {
 	k := newKit(t)
 	kid, ana, _ := k.trackerKid()
@@ -348,14 +377,18 @@ func TestMedicationNextDue(t *testing.T) {
 	if m := k.createMedication(ana, kid, ended); at(m) != nil {
 		t.Errorf("a course ended today has next due %v after its last occurrence", at(m))
 	}
+	older := medBody(map[string]any{"start_at": ts(t0.Add(-10 * 24 * time.Hour)), "end_on": "2026-11-19"})
+	if m := k.createMedication(ana, kid, older); at(m) != nil || m["end_on"] != "2026-11-19" {
+		t.Errorf("an older course ended before today: next due %v, end_on %v; want null and kept", at(m), m["end_on"])
+	}
 	future := ts(t0.Add(3 * 24 * time.Hour))
 	m := k.createMedication(ana, kid, medBody(map[string]any{"schedule": everySchedule(12), "start_at": future}))
 	if at(m) != future {
 		t.Errorf("a course starting later has next due %v, want its start %v", at(m), future)
 	}
 	list := bodyMap(t, k.do(http.MethodGet, base, ana, nil))["medications"].([]any)
-	if len(list) != 5 {
-		t.Errorf("list holds %d courses, want 5", len(list))
+	if len(list) != 6 {
+		t.Errorf("list holds %d courses, want 6", len(list))
 	}
 }
 

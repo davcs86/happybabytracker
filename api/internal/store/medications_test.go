@@ -660,3 +660,116 @@ func TestCourseReadIsOneSnapshot(t *testing.T) {
 		}
 	}
 }
+
+func TestEditDropsAnUndeliveredOldRowInTheLookback(t *testing.T) {
+	at0810 := time.Date(2026, 11, 20, 8, 10, 0, 0, time.UTC)
+	start := time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC)
+	eight := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+	hm := func(h, m int) time.Time { return time.Date(2026, 11, 20, h, m, 0, 0, time.UTC) }
+	for name, c := range map[string]struct {
+		prepare func(t *testing.T, s *Store, medicationID, parentID string)
+		times   string
+		want    []reminderRow
+	}{
+		"undelivered": {nil, "09:00", []reminderRow{pending(hm(9, 0))}},
+		"delivered": {func(t *testing.T, s *Store, medicationID, parentID string) {
+			var rid string
+			if err := s.w.QueryRow(`SELECT id FROM reminders WHERE medication_id = ? AND due_at = ?`, medicationID, eight.Unix()).Scan(&rid); err != nil {
+				t.Fatal(err)
+			}
+			execOK(t, s, `INSERT INTO reminder_deliveries(id, reminder_id, channel, target_id, parent_id, state, attempts, next_attempt_at) VALUES (?, ?, 'push', 'dev', ?, 'sent', 1, 0)`,
+				model.NewID(), rid, parentID)
+		}, "09:00", []reminderRow{pending(eight), pending(hm(9, 0))}},
+		"done": {func(t *testing.T, s *Store, medicationID, _ string) {
+			execOK(t, s, `UPDATE reminders SET state = 'done' WHERE medication_id = ? AND due_at = ?`, medicationID, eight.Unix())
+		}, "09:00", []reminderRow{{eight.Unix(), "done"}, pending(hm(9, 0))}},
+		"the new timing's own late row is created": {nil, "08:05", []reminderRow{pending(hm(8, 5)), pending(hm(8, 5).Add(24 * time.Hour))}},
+		"an occurrence of the new timing stays":    {nil, "08:00", []reminderRow{pending(eight), pending(eight.Add(24 * time.Hour))}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := openMem(t)
+			ana := mustParent(t, s, "ana")
+			k := mustKidIn(t, s, ana.ID, "Lía", "UTC")
+			v := mustCourse(t, s, k.ID, ana.ID, timesCourse(start, "08:00"), at0810)
+			if len(reminderRows(t, s, v.ID)) != 2 {
+				t.Fatalf("seed rows = %v", reminderRows(t, s, v.ID))
+			}
+			if c.prepare != nil {
+				c.prepare(t, s, v.ID, ana.ID)
+			}
+			ids := func() string {
+				var out sql.NullString
+				if err := s.w.QueryRow(`SELECT group_concat(id) FROM reminders WHERE medication_id = ? AND due_at <= ?`, v.ID, at0810.Unix()).Scan(&out); err != nil {
+					t.Fatal(err)
+				}
+				return out.String
+			}
+			before := ids()
+			edit := v
+			edit.Times = []string{c.times}
+			if _, err := s.UpdateMedication(ctx, k.ID, ana.ID, edit, at0810); err != nil {
+				t.Fatal(err)
+			}
+			if got := reminderRows(t, s, v.ID); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("rows = %v, want %v", got, c.want)
+			}
+			if name == "an occurrence of the new timing stays" || name == "delivered" || name == "done" {
+				if after := ids(); after != before {
+					t.Errorf("the kept row was rewritten: %q -> %q", before, after)
+				}
+			}
+		})
+	}
+}
+
+func TestZoneChangeDropsAnUndeliveredOldRowInTheLookback(t *testing.T) {
+	at0810 := time.Date(2026, 11, 20, 8, 10, 0, 0, time.UTC)
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKidIn(t, s, ana.ID, "Lía", "UTC")
+	v := mustCourse(t, s, k.ID, ana.ID, timesCourse(time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC), "08:00"), at0810)
+	e := mustCourse(t, s, k.ID, ana.ID, everyCourse(time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC), 4), at0810)
+	idOf := func(medicationID string, due time.Time) string {
+		var id string
+		if err := s.w.QueryRow(`SELECT id FROM reminders WHERE medication_id = ? AND due_at = ?`, medicationID, due.Unix()).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	everyRow := idOf(e.ID, time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC))
+
+	k.TimeZone = "America/New_York"
+	if err := s.UpdateKid(ctx, k, ana.ID, at0810); err != nil {
+		t.Fatal(err)
+	}
+	if want := []reminderRow{pending(time.Date(2026, 11, 20, 13, 0, 0, 0, time.UTC))}; !reflect.DeepEqual(reminderRows(t, s, v.ID), want) {
+		t.Errorf("times rows = %v, want %v (the 08:00Z one was never sent and is no longer an occurrence)", reminderRows(t, s, v.ID), want)
+	}
+	if got := idOf(e.ID, time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)); got != everyRow {
+		t.Errorf("an every course's due row was rewritten by a zone change: %q -> %q", everyRow, got)
+	}
+}
+
+func TestNoopEditRewritesNoRowInTheLookback(t *testing.T) {
+	at0810 := time.Date(2026, 11, 20, 8, 10, 0, 0, time.UTC)
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKidIn(t, s, ana.ID, "Lía", "UTC")
+	v := mustCourse(t, s, k.ID, ana.ID, timesCourse(time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC), "08:00"), at0810)
+	rows := func() string {
+		var out string
+		if err := s.w.QueryRow(`SELECT group_concat(id || ':' || due_at || ':' || state) FROM reminders WHERE medication_id = ?`, v.ID).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	before := rows()
+	edit := v
+	edit.Name, edit.Note = "Renamed", strp("n")
+	if _, err := s.UpdateMedication(ctx, k.ID, ana.ID, edit, at0810); err != nil {
+		t.Fatal(err)
+	}
+	if after := rows(); after != before {
+		t.Errorf("a no-op edit rewrote rows: %q -> %q", before, after)
+	}
+}

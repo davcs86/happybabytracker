@@ -154,12 +154,30 @@ func materialiseCourse(ctx context.Context, tx *sql.Tx, medicationID string, loc
 	return nil
 }
 
-// rematerialise drops the course's future pending rows that have no delivery, then materialises it again.
+// rematerialise drops the course's undelivered pending rows that are due after now, or in the lookback window and no
+// longer an occurrence, then materialises it again.
 func rematerialise(ctx context.Context, tx *sql.Tx, kidID, medicationID string, loc *time.Location, now time.Time) error {
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM reminders WHERE kid_id = ? AND medication_id = ? AND state = 'pending' AND due_at > ?
-		   AND NOT EXISTS (SELECT 1 FROM reminder_deliveries d WHERE d.reminder_id = reminders.id)`,
+	if loc == nil {
+		return errKidZone
+	}
+	v, err := scanMedication(tx.QueryRowContext(ctx, `SELECT `+medicationColumns+` FROM medications WHERE id = ?`, medicationID))
+	if err != nil {
+		return err
+	}
+	const undelivered = ` AND state = 'pending' AND NOT EXISTS (SELECT 1 FROM reminder_deliveries d WHERE d.reminder_id = reminders.id)`
+	if _, err := tx.ExecContext(ctx, `DELETE FROM reminders WHERE kid_id = ? AND medication_id = ? AND due_at > ?`+undelivered,
 		kidID, medicationID, now.Unix()); err != nil {
+		return err
+	}
+	query, args := `DELETE FROM reminders WHERE kid_id = ? AND medication_id = ? AND due_at >= ? AND due_at <= ?`+undelivered,
+		[]any{kidID, medicationID, now.Add(-constants.ReminderExpiry).Unix(), now.Unix()}
+	if kept := schedule.Occurrences(timingOf(v).course(), loc, now.Add(-constants.ReminderExpiry), now); len(kept) > 0 {
+		query += ` AND due_at NOT IN (?` + strings.Repeat(`, ?`, len(kept)-1) + `)`
+		for _, due := range kept {
+			args = append(args, due.Unix())
+		}
+	}
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
 	return materialiseCourse(ctx, tx, medicationID, loc, now)

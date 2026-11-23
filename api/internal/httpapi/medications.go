@@ -79,6 +79,8 @@ func medicationTextOK(s string) bool {
 	return n >= 1 && n <= constants.MedicationTextMaxLen
 }
 
+func sameText(a, b *string) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
+
 // endOnOK is true for a real YYYY-MM-DD that is not before the kid-local date of start.
 func endOnOK(endOn string, start time.Time, loc *time.Location) bool {
 	d, err := time.Parse(time.DateOnly, endOn)
@@ -117,10 +119,12 @@ func (in medicationInput) mergeOnto(v model.Medication, loc *time.Location, birt
 	if startChanged && v.StartAt.Before(birth) {
 		return v, "start_at"
 	}
+	storedEnd := v.EndOn
 	if in.EndOn.Set {
 		v.EndOn = in.EndOn.V
 	}
-	if v.EndOn != nil && (in.EndOn.Set || startChanged) && !endOnOK(*v.EndOn, v.StartAt, loc) {
+	endChanged := in.EndOn.Set && !sameText(v.EndOn, storedEnd)
+	if v.EndOn != nil && (endChanged || startChanged) && !endOnOK(*v.EndOn, v.StartAt, loc) {
 		return v, "end_on"
 	}
 	if in.Active != nil {
