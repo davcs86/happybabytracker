@@ -13,25 +13,27 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
+	"github.com/davcs86/happybabytracker/api/internal/vaccines"
 )
 
 type kidView struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	BirthDate      string `json:"birth_date"`
-	Sex            string `json:"sex"`
-	GestationWeeks *int   `json:"gestation_weeks"`
-	GestationDays  *int   `json:"gestation_days"`
-	TimeZone       string `json:"time_zone"`
-	GrowthSource   string `json:"growth_source"`
-	Role           string `json:"role"`
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	BirthDate      string  `json:"birth_date"`
+	Sex            string  `json:"sex"`
+	GestationWeeks *int    `json:"gestation_weeks"`
+	GestationDays  *int    `json:"gestation_days"`
+	TimeZone       string  `json:"time_zone"`
+	GrowthSource   string  `json:"growth_source"`
+	VaccineSchema  *string `json:"vaccine_schema"`
+	Role           string  `json:"role"`
 }
 
 func newKidView(k model.Kid, role model.Role) kidView {
 	return kidView{
 		ID: k.ID, Name: k.Name, BirthDate: k.BirthDate, Sex: k.Sex,
 		GestationWeeks: k.GestationWeeks, GestationDays: k.GestationDays, TimeZone: k.TimeZone,
-		GrowthSource: k.GrowthSource, Role: string(role),
+		GrowthSource: k.GrowthSource, VaccineSchema: k.VaccineSchema, Role: string(role),
 	}
 }
 
@@ -48,13 +50,14 @@ func (o *optionalInt) UnmarshalJSON(b []byte) error {
 
 // kidInput is the body of POST and PATCH; on PATCH an absent key keeps the stored value.
 type kidInput struct {
-	Name           *string     `json:"name"`
-	BirthDate      *string     `json:"birth_date"`
-	Sex            *string     `json:"sex"`
-	GestationWeeks optionalInt `json:"gestation_weeks"`
-	GestationDays  optionalInt `json:"gestation_days"`
-	TimeZone       *string     `json:"time_zone"`
-	GrowthSource   *string     `json:"growth_source"`
+	Name           *string        `json:"name"`
+	BirthDate      *string        `json:"birth_date"`
+	Sex            *string        `json:"sex"`
+	GestationWeeks optionalInt    `json:"gestation_weeks"`
+	GestationDays  optionalInt    `json:"gestation_days"`
+	TimeZone       *string        `json:"time_zone"`
+	GrowthSource   *string        `json:"growth_source"`
+	VaccineSchema  optionalString `json:"vaccine_schema"`
 }
 
 func (in kidInput) mergeOnto(k model.Kid) model.Kid {
@@ -72,6 +75,9 @@ func (in kidInput) mergeOnto(k model.Kid) model.Kid {
 	if in.GestationDays.Set {
 		k.GestationDays = in.GestationDays.V
 	}
+	if in.VaccineSchema.Set {
+		k.VaccineSchema = in.VaccineSchema.V
+	}
 	k.Name = strings.TrimSpace(k.Name)
 	return k
 }
@@ -87,7 +93,8 @@ func kidLocation(name string) (*time.Location, bool) {
 	return loc, err == nil
 }
 
-// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source; "" when valid.
+// invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source;
+// "" when valid. vaccine_schema follows it (newSchemaOK).
 func invalidKidField(k model.Kid, now time.Time) string {
 	if n := utf8.RuneCountInString(k.Name); n < constants.KidNameMinLen || n > constants.KidNameMaxLen {
 		return "name"
@@ -117,6 +124,23 @@ func invalidKidField(k model.Kid, now time.Time) string {
 	return ""
 }
 
+// newSchemaOK checks a vaccine_schema the body sets to an id other than stored; a stored id stays valid even once
+// no longer shipped. It answers 503 or 422 itself and is false then.
+func newSchemaOK(w http.ResponseWriter, in kidInput, stored *string) bool {
+	id := in.VaccineSchema.V
+	if id == nil || (stored != nil && *id == *stored) {
+		return true
+	}
+	if !schedulesLoaded(w) {
+		return false
+	}
+	if _, ok := vaccines.GetSchema(*id); !ok {
+		respondInvalid(w, "vaccine_schema")
+		return false
+	}
+	return true
+}
+
 func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 	var in kidInput
 	if !decodeJSON(w, r, &in) {
@@ -126,6 +150,9 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 	kid := in.mergeOnto(model.Kid{GrowthSource: string(growth.SourceWHO)})
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
+		return
+	}
+	if !newSchemaOK(w, in, nil) {
 		return
 	}
 	kid, err := d.Store.CreateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
@@ -191,6 +218,9 @@ func (d Deps) updateKid(w http.ResponseWriter, r *http.Request) {
 	kid := in.mergeOnto(stored)
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
+		return
+	}
+	if !newSchemaOK(w, in, stored.VaccineSchema) {
 		return
 	}
 	err := d.Store.UpdateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)

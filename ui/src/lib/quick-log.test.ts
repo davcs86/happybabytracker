@@ -23,7 +23,8 @@ describe('quickLog', () => {
 			'Sleep',
 			'Pumping',
 			'Feeding',
-			'Growth'
+			'Growth',
+			'Vaccination'
 		]);
 	});
 
@@ -35,14 +36,23 @@ describe('quickLog', () => {
 			'Diaper',
 			'Nursing',
 			'Pumping',
-			'Growth'
+			'Growth',
+			'Vaccination'
 		]);
 	});
 
-	it('24+ months: of sickness, medication, growth and vaccination only growth is built', () => {
-		expect(labels('24+', ['sickness', 'medication', 'growth', 'vaccination'])).toEqual(['Growth']);
-		expect(labels('24+', ['growth', 'sleep', 'bottles'])).toEqual(['Growth', 'Bottle', 'Sleep']);
-		expect(labels('24+', ['sickness', 'medication', 'vaccination'])).toEqual([]);
+	it('24+ months: of sickness, medication, growth and vaccination, growth and vaccination are built', () => {
+		expect(labels('24+', ['sickness', 'medication', 'growth', 'vaccination'])).toEqual([
+			'Growth',
+			'Vaccination'
+		]);
+		expect(labels('24+', ['vaccination', 'growth', 'sleep', 'bottles'])).toEqual([
+			'Growth',
+			'Vaccination',
+			'Bottle',
+			'Sleep'
+		]);
+		expect(labels('24+', ['sickness', 'medication'])).toEqual([]);
 	});
 
 	it('leaves out a disabled module and keeps the order of the rest', () => {
@@ -58,7 +68,8 @@ describe('quickLog', () => {
 			['diapers', 'diapers'],
 			['nursing', 'nursing'],
 			['pumping', 'pumping'],
-			['growth', null]
+			['growth', null],
+			['vaccination', null]
 		]);
 	});
 
@@ -67,9 +78,14 @@ describe('quickLog', () => {
 		expect(PAGE_ROUTE.growth?.('k-1')).toBe('/kids/k-1/growth/new');
 	});
 
+	it('vaccination opens the Vaccines page, never a tracker route', () => {
+		expect(TRACKER_ROUTE.vaccination).toBeUndefined();
+		expect(PAGE_ROUTE.vaccination?.('k-1')).toBe('/kids/k-1/vaccines');
+	});
+
 	it('never lists a module without a tracker or a page in this build', () => {
 		const kinds = new Set<string>(quickLog('0-11', states(), none).map((e) => e.module));
-		for (const m of ['milestones', 'vaccination', 'sickness', 'medication']) {
+		for (const m of ['milestones', 'sickness', 'medication']) {
 			expect(kinds.has(m)).toBe(false);
 		}
 	});
@@ -82,7 +98,8 @@ describe('quickLog', () => {
 			'Diaper',
 			'Pumping',
 			'Feeding',
-			'Growth'
+			'Growth',
+			'Vaccination'
 		]);
 	});
 });

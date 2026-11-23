@@ -17,6 +17,7 @@ import {
 	UI_ORIGIN,
 	receivedRequests,
 	resetStub,
+	setScenario,
 	stubAs
 } from './stub-api.js';
 
@@ -28,6 +29,7 @@ const quickLog = (page: Page) => page.getByRole('region', { name: 'Quick log' })
 const mainNav = (page: Page) => page.getByRole('navigation', { name: 'Main' });
 const running = (page: Page) => page.getByRole('region', { name: 'Running now' });
 const today = (page: Page) => page.getByRole('region', { name: 'Today' });
+const due = (page: Page) => page.getByRole('region', { name: 'Due' });
 const MS_PER_MINUTE = 60_000;
 const minutesAgo = (m: number) =>
 	new Date(Date.now() - m * MS_PER_MINUTE).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -59,7 +61,8 @@ test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; link
 		'Sleep',
 		'Pumping',
 		'Feeding',
-		'Growth'
+		'Growth',
+		'Vaccination'
 	]);
 	const log = (name: string) => quickLog(page).getByRole('link', { name, exact: true });
 	await expect(log('Bottle')).toHaveAttribute('href', `/kids/${MIA.id}/log/bottles`);
@@ -84,7 +87,8 @@ test('a 13-month kid starts with Feeding', async ({ page }) => {
 		'Diaper',
 		'Nursing',
 		'Pumping',
-		'Growth'
+		'Growth',
+		'Vaccination'
 	]);
 	await expectAccessible(page);
 });
@@ -95,10 +99,121 @@ test('a kid over 24 months has no timer trackers and no empty headings', async (
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByRole('button', { name: /Sleep|Nursing/ })).toHaveCount(0);
 	await expect(page.getByRole('link', { name: /Sleep|Nursing/ })).toHaveCount(0);
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth', 'Vaccination']);
 	for (const heading of ['Due', 'Running now', 'Today']) {
 		await expect(page.getByRole('heading', { name: heading })).toHaveCount(0);
 	}
+	await expectAccessible(page);
+});
+
+test('the Vaccination tile opens the Vaccines page in every band and hides with the module off', async ({
+	page
+}) => {
+	await signIn(page, ANA);
+	for (const kid of [MIA, IVY, LEO]) {
+		await page.goto(`/kids/${kid.id}`);
+		await expect(page.getByRole('heading', { name: kid.name, level: 1 })).toBeVisible();
+		await expect(
+			quickLog(page).getByRole('link', { name: 'Vaccination', exact: true })
+		).toHaveAttribute('href', `/kids/${kid.id}/vaccines`);
+	}
+	await expectAccessible(page);
+	await quickLog(page).getByRole('link', { name: 'Vaccination', exact: true }).click();
+	await expect(
+		page.getByRole('heading', { name: `Vaccines for ${LEO.name}`, level: 1 })
+	).toBeVisible();
+
+	const ana = await stubAs(ANA);
+	expect(
+		(await ana('PUT', `/v1/kids/${MIA.id}/modules/vaccination`, { enabled: false })).status
+	).toBe(204);
+	await page.goto(`/kids/${MIA.id}`);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Bottle',
+		'Nursing',
+		'Diaper',
+		'Sleep',
+		'Pumping',
+		'Feeding',
+		'Growth'
+	]);
+});
+
+test('Due lists each visit with its status as text, linked to the Vaccines page', async ({
+	page
+}) => {
+	skipNearMidnight(5);
+	const ana = await stubAs(ANA);
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	expect((await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' })).status).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(page.getByRole('heading', { name: 'Due', level: 2 })).toBeVisible();
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		'8-week vaccines · Overdue',
+		'12-month vaccines · Due'
+	]);
+	const links = due(page).getByRole('link');
+	await expect(links).toHaveCount(2);
+	for (const link of await links.all()) {
+		expect(await link.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+			`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
+		);
+	}
+	// After Running now (the left column) and before Today.
+	await expect(today(page)).toBeVisible();
+	const headings = await page.getByRole('heading', { level: 2 }).allTextContents();
+	expect(headings.indexOf('Due')).toBeGreaterThan(headings.indexOf('Quick log'));
+	expect(headings.indexOf('Due')).toBeLessThan(headings.indexOf('Today'));
+	await expectAccessible(page);
+	await links.first().click();
+	await expect(
+		page.getByRole('heading', { name: `Vaccines for ${IVY.name}`, level: 1 })
+	).toBeVisible();
+
+	expect(
+		(await ana('PUT', `/v1/kids/${IVY.id}/modules/vaccination`, { enabled: false })).status
+	).toBe(204);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(page.getByRole('heading', { name: IVY.name, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Due' })).toHaveCount(0);
+	await expect(quickLog(page).getByRole('link', { name: 'Vaccination' })).toHaveCount(0);
+});
+
+test('with a timer running, Due sits between Running now and Today', async ({ page }) => {
+	skipNearMidnight(5);
+	const ana = await stubAs(ANA);
+	expect((await ana('PATCH', `/v1/kids/${IVY.id}`, { vaccine_schema: 'us' })).status).toBe(200);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/sleep`, { started_at: minutesAgo(5) })).status
+	).toBe(201);
+	expect((await ana('POST', `/v1/kids/${IVY.id}/diapers`, { kind: 'wet' })).status).toBe(201);
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(running(page)).toBeVisible();
+	await expect(today(page)).toBeVisible();
+	const headings = await page.getByRole('heading', { level: 2 }).allTextContents();
+	expect(headings.indexOf('Running now')).toBeGreaterThan(-1);
+	expect(headings.indexOf('Running now')).toBeLessThan(headings.indexOf('Due'));
+	expect(headings.indexOf('Due')).toBeLessThan(headings.indexOf('Today'));
+});
+
+test('Due shows at most three visits and links the rest from the Vaccines page', async ({
+	page
+}) => {
+	await setScenario('home_due_many');
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		'1-year vaccines · Overdue',
+		'2-year vaccines · Due',
+		'3-year vaccines · Due',
+		'2 more on the Vaccines page'
+	]);
+	const more = due(page).getByRole('link', { name: '2 more on the Vaccines page' });
+	expect(await more.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${IVY.id}/vaccines`
+	);
 	await expectAccessible(page);
 });
 
@@ -114,7 +229,8 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Diaper',
 		'Pumping',
 		'Feeding',
-		'Growth'
+		'Growth',
+		'Vaccination'
 	]);
 	await expectAccessible(page);
 	const posts = (await receivedRequests()).filter(
@@ -131,7 +247,8 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Sleep',
 		'Pumping',
 		'Feeding',
-		'Growth'
+		'Growth',
+		'Vaccination'
 	]);
 	await expect(today(page).getByRole('term')).toHaveText([
 		'Bottles',
@@ -301,7 +418,8 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		'Sleep',
 		'Pumping',
 		'Feeding',
-		'Growth'
+		'Growth',
+		'Vaccination'
 	]);
 	// The entry stays in the data: only the default timeline view follows the modules.
 	const kept = await ana('GET', `/v1/kids/${MIA.id}/timeline?types=bottle`);

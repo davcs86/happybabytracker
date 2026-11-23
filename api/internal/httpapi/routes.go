@@ -60,6 +60,8 @@ func Routes(d Deps) []Route {
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
 
 		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
+		{http.MethodGet, "/v1/vaccine-schemas", Parent, d.vaccineSchemas},
+		{http.MethodGet, "/v1/vaccine-catalogue", Parent, d.vaccineCatalogue},
 
 		{http.MethodGet, "/v1/kids", Parent, d.listKids},
 		{http.MethodPost, "/v1/kids", Parent, d.createKid},
@@ -115,6 +117,16 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.getGrowth},
 		{http.MethodPatch, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.updateGrowth},
 		{http.MethodDelete, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.deleteGrowth},
+
+		{http.MethodGet, "/v1/kids/{kid}/vaccines", Caregiver, d.kidVaccines},
+		{http.MethodGet, "/v1/kids/{kid}/vaccinations", Caregiver, d.listVaccinations},
+		{http.MethodPost, "/v1/kids/{kid}/vaccinations", Caregiver, d.createVaccination},
+		{http.MethodGet, "/v1/kids/{kid}/vaccinations/{administration}", Caregiver, d.getVaccination},
+		{http.MethodPatch, "/v1/kids/{kid}/vaccinations/{administration}", Caregiver, d.updateVaccination},
+		{http.MethodDelete, "/v1/kids/{kid}/vaccinations/{administration}", Caregiver, d.deleteVaccination},
+		{http.MethodPut, "/v1/kids/{kid}/vaccine-dismissals/{line}", Guardian, d.setDismissal},
+		{http.MethodDelete, "/v1/kids/{kid}/vaccine-dismissals/{line}", Guardian, d.clearDismissal},
+		{http.MethodPost, "/v1/kids/{kid}/vaccine-dismissals", Guardian, d.dismissBefore},
 
 		{http.MethodGet, "/v1/kids/{kid}/timeline", Caregiver, d.timeline},
 		{http.MethodGet, "/v1/kids/{kid}/summary", Caregiver, d.summary},

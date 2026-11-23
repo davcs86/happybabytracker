@@ -80,10 +80,10 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 		t.Fatalf("create: %d %q", rec.Code, rec.Body.String())
 	}
 	got := bodyMap(t, rec)
-	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "role")
+	sameKeys(t, got, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "role")
 	id, _ := got["id"].(string)
 	want := map[string]any{"id": id, "name": testKidName, "birth_date": "2026-03-04", "sex": "female",
-		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "growth_source": "who", "role": "guardian"}
+		"gestation_weeks": float64(36), "gestation_days": float64(4), "time_zone": "Europe/Madrid", "growth_source": "who", "vaccine_schema": nil, "role": "guardian"}
 	if id == "" || !reflect.DeepEqual(got, want) {
 		t.Fatalf("created = %v", got)
 	}
@@ -98,7 +98,7 @@ func TestCreateKidMakesGuardian(t *testing.T) {
 
 	plain := k.createKid(ana, nil)
 	rec = k.do(http.MethodGet, "/v1/kids/"+plain, ana, nil)
-	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 9 {
+	if b := bodyMap(t, rec); b["gestation_weeks"] != nil || b["gestation_days"] != nil || len(b) != 10 {
 		t.Errorf("without gestation = %v", b)
 	}
 }
@@ -120,7 +120,7 @@ func TestKidsForListsOnlyGranted(t *testing.T) {
 	}
 	for i, want := range []struct{ id, role string }{{first, "guardian"}, {shared, "caregiver"}, {last, "guardian"}} {
 		row := rows[i].(map[string]any)
-		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "role")
+		sameKeys(t, row, "id", "name", "birth_date", "sex", "gestation_weeks", "gestation_days", "time_zone", "growth_source", "vaccine_schema", "role")
 		if row["id"] != want.id || row["role"] != want.role {
 			t.Errorf("row %d = %v, want %s %s", i, row, want.id, want.role)
 		}
@@ -230,7 +230,7 @@ func TestPatchKid(t *testing.T) {
 		t.Fatalf("patch name: %d %q", rec.Code, rec.Body.String())
 	}
 	want := map[string]any{"id": kid, "name": "Nova", "birth_date": "2026-11-20", "sex": "female",
-		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "growth_source": "who", "role": "guardian"}
+		"gestation_weeks": float64(35), "gestation_days": float64(2), "time_zone": "UTC", "growth_source": "who", "vaccine_schema": nil, "role": "guardian"}
 	if got := bodyMap(t, rec); !reflect.DeepEqual(got, want) {
 		t.Errorf("patch response = %v", got)
 	}

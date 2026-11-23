@@ -21,7 +21,7 @@ export type Sex = 'female' | 'male';
 
 export type GrowthSourceId = 'who' | 'cdc';
 
-// growthSource left out keeps the stored source (the API's default on create).
+// growthSource or vaccineSchema left out keeps the stored value (on create: the API's default, no schedule).
 export type KidInput = {
 	name: string;
 	birthDate: string;
@@ -30,12 +30,15 @@ export type KidInput = {
 	gestationDays: number | null;
 	timeZone: string;
 	growthSource?: string;
+	vaccineSchema?: string | null;
 };
 
-export type Kid = Omit<KidInput, 'sex' | 'growthSource'> & {
+export type Kid = Omit<KidInput, 'sex' | 'growthSource' | 'vaccineSchema'> & {
 	id: string;
 	sex: Sex;
 	growthSource: GrowthSourceId;
+	// An id the API no longer ships counts as no schedule (schemaChosen).
+	vaccineSchema: string | null;
 	role: Role;
 };
 
@@ -151,6 +154,7 @@ export type Home = {
 	modules: ModuleState[];
 	running: { sleep: Sleep | null; nursing: Nursing | null };
 	today: DaySummary;
+	due: HomeDue[];
 };
 
 export type Measure = 'weight' | 'length' | 'head' | 'bmi';
@@ -208,4 +212,86 @@ export type GrowthSourceInfo = {
 	originUrl: string;
 	retrieved: string;
 	coverage: { measure: Measure; fromMonths: number; toMonths: number }[];
+};
+
+export type VaccineStatus = 'given' | 'due' | 'upcoming' | 'overdue' | 'dismissed' | 'available';
+export type VaccineKind = 'routine' | 'may_not_be_needed' | 'supplementary' | 'recurring';
+export type VaccineAgeUnit = 'd' | 'w' | 'm' | 'y';
+export type VaccineAge = { n: number; unit: VaccineAgeUnit };
+export type VaccineDismissReason = 'not_needed' | 'given_unknown';
+export type VaccineSchemaInfo = {
+	id: string;
+	name: string;
+	authority: string;
+	edition: string;
+	retrieved: string;
+	originUrl: string;
+	licence: string;
+	attribution: string;
+};
+// Dates are YYYY-MM-DD in the kid's zone; untilDate is the first day after the window.
+export type VaccineLine = {
+	id: string;
+	group: string;
+	antigen: string;
+	series: number;
+	kind: VaccineKind;
+	status: VaccineStatus;
+	fromDate: string;
+	untilDate: string;
+	givenOn: string | null;
+	administration: string | null;
+	dismissal: { reason: VaccineDismissReason } | null;
+	note: string;
+};
+export type VaccineGroup = {
+	from: VaccineAge;
+	fromDate: string;
+	status: VaccineStatus;
+	lines: VaccineLine[];
+};
+export type VaccineRecurring = {
+	antigen: string;
+	lineId: string;
+	doses: { administration: string; givenOn: string }[];
+};
+export type VaccineOther = {
+	administration: string;
+	antigen: string;
+	givenOn: string;
+	product: string | null;
+};
+export type Vaccines = {
+	schema: (VaccineSchemaInfo & { omitted: string[] }) | null;
+	today: string;
+	groups: VaccineGroup[];
+	also: VaccineLine[];
+	recurring: VaccineRecurring[];
+	other: VaccineOther[];
+};
+export type VaccineCatalogue = {
+	antigens: { id: string; name: string }[];
+	products: { id: string; name: string; antigens: string[] }[];
+};
+export type Administration = {
+	id: string;
+	givenOn: string;
+	antigens: string[];
+	lot: string | null;
+	product: string | null;
+	note: string | null;
+};
+// The JSON body of a create or update, in the API's names; on update null clears lot, product or note.
+export type AdministrationInput = {
+	given_on?: string;
+	antigens?: string[];
+	lot?: string | null;
+	product?: string | null;
+	note?: string | null;
+};
+export type HomeDue = {
+	kind: 'vaccine';
+	from: VaccineAge;
+	status: 'due' | 'overdue';
+	count: number;
 };

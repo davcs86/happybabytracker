@@ -54,7 +54,25 @@ type SessionInfo struct {
 type Kid struct {
 	ID, Name, BirthDate, Sex, TimeZone string
 	GestationWeeks, GestationDays      *int
-	GrowthSource                       string // a growth.Source: "who" or "cdc"
+	GrowthSource                       string  // a growth.Source: "who" or "cdc"
+	VaccineSchema                      *string // a vaccines schedule id; nil until a guardian chooses one
+}
+
+// Administration is one vaccination visit's dose: one stored row per antigen, sharing ID; Antigens are sorted.
+type Administration struct {
+	ID, KidID, GivenOn   string
+	Antigens             []string
+	Lot, Product, Note   *string
+	CreatedBy, UpdatedBy string
+	CreatedAt, UpdatedAt time.Time
+}
+
+// VaccineDose is one stored row: one antigen of the administration it belongs to.
+type VaccineDose struct {
+	ID, KidID, Administration, Antigen, GivenOn string
+	Lot, Product, Note                          *string
+	CreatedBy, UpdatedBy                        string
+	CreatedAt, UpdatedAt                        time.Time
 }
 
 type KidWithRole struct {

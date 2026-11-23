@@ -23,6 +23,7 @@
 		days: string;
 		timeZone: string;
 		growthSource: string;
+		vaccineSchema: string;
 	};
 
 	let {
@@ -31,6 +32,7 @@
 		message = null,
 		zones,
 		sources,
+		schedules,
 		detectZone = false,
 		submitLabel,
 		action
@@ -40,6 +42,7 @@
 		message?: string | null;
 		zones: string[];
 		sources: { id: string; name: string; hint: string }[];
+		schedules: { id: string; label: string }[];
 		detectZone?: boolean;
 		submitLabel: string;
 		action?: string;
@@ -49,6 +52,10 @@
 	let deviceZone = $state<string | null>(null);
 	const options = $derived(deviceZone ? withZone(zones, deviceZone) : zones);
 	let touched = false;
+	// A stored id the API no longer ships stays selected, so a save does not change it silently.
+	const retired = $derived(
+		values.vaccineSchema !== '' && !schedules.some((s) => s.id === values.vaccineSchema)
+	);
 
 	const err = (f: string) => (field === f ? message : null);
 	const describedBy = (f: string) => (err(f) ? `kid-${f}-error` : undefined);
@@ -220,6 +227,30 @@
 		</ul>
 		{#if err('growth_source')}
 			<p id="kid-growth_source-error" class={ERROR_CLASS} role="alert">{err('growth_source')}</p>
+		{/if}
+	</div>
+	<div class="flex flex-col gap-2">
+		<Label for="kid-vaccine_schema">Vaccination schedule</Label>
+		<select
+			id="kid-vaccine_schema"
+			name="vaccine_schema"
+			class={SELECT_CLASS}
+			value={values.vaccineSchema}
+			aria-invalid={invalid('vaccine_schema')}
+			aria-describedby={describedBy('vaccine_schema')}
+		>
+			{#if retired}
+				<option value={values.vaccineSchema}>Unavailable schedule ({values.vaccineSchema})</option>
+			{/if}
+			<option value="">None yet</option>
+			{#each schedules as schedule (schedule.id)}
+				<option value={schedule.id}>{schedule.label}</option>
+			{/each}
+		</select>
+		{#if err('vaccine_schema')}
+			<p id="kid-vaccine_schema-error" class={ERROR_CLASS} role="alert">
+				{err('vaccine_schema')}
+			</p>
 		{/if}
 	</div>
 	<Button type="submit" class="self-start">{submitLabel}</Button>

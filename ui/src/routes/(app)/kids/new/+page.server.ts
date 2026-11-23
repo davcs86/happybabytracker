@@ -4,6 +4,7 @@ import {
 	kidFieldFailure,
 	kidValues,
 	readKidForm,
+	scheduleOptions,
 	sourceOptions
 } from '#lib/server/kid-form.js';
 import { failPage } from '#lib/server/outcome.js';
@@ -11,9 +12,18 @@ import { timeZoneOptions } from '#lib/server/time-zones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const sources = await locals.api.growthSources();
+	const [sources, schemas] = await Promise.all([
+		locals.api.growthSources(),
+		locals.api.vaccineSchemas()
+	]);
 	if (!sources.ok) failPage(sources);
-	return { zones: timeZoneOptions(), values: kidValues(), sources: sourceOptions(sources.data) };
+	if (!schemas.ok) failPage(schemas);
+	return {
+		zones: timeZoneOptions(),
+		values: kidValues(),
+		sources: sourceOptions(sources.data),
+		schedules: scheduleOptions(schemas.data)
+	};
 };
 
 export const actions: Actions = {

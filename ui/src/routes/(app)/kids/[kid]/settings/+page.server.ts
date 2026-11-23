@@ -6,6 +6,7 @@ import {
 	kidFieldFailure,
 	kidValues,
 	readKidForm,
+	scheduleOptions,
 	sourceOptions
 } from '#lib/server/kid-form.js';
 import { failAction, failPage } from '#lib/server/outcome.js';
@@ -13,19 +14,22 @@ import { timeZoneOptions } from '#lib/server/time-zones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies }) => {
-	const [r, sources] = await Promise.all([
+	const [r, sources, schemas] = await Promise.all([
 		locals.api.getKid(params.kid),
-		locals.api.growthSources()
+		locals.api.growthSources(),
+		locals.api.vaccineSchemas()
 	]);
 	if (!r.ok) failPage(r);
 	if (r.data.role !== 'guardian') failPage({ ok: false, status: 403, reason: 'forbidden' });
 	if (!sources.ok) failPage(sources);
+	if (!schemas.ok) failPage(schemas);
 	setKidCookie(cookies, r.data.id);
 	return {
 		kid: r.data,
 		values: kidValues(r.data),
 		zones: timeZoneOptions(r.data.timeZone),
-		sources: sourceOptions(sources.data)
+		sources: sourceOptions(sources.data),
+		schedules: scheduleOptions(schemas.data)
 	};
 };
 

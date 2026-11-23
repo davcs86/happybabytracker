@@ -12,7 +12,8 @@ import (
 )
 
 var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time_tokens", "kids", "kid_access",
-	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements"}
+	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
+	"vaccine_doses", "vaccine_dismissals"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -29,8 +30,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "3" {
-		t.Fatalf("schema_version = %q, want 3", v)
+	if v := version(t, s); v != "4" {
+		t.Fatalf("schema_version = %q, want 4", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -47,8 +48,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "3" {
-			t.Fatalf("open %d: schema_version = %q, want 3", i, v)
+		if v := version(t, s); v != "4" {
+			t.Fatalf("open %d: schema_version = %q, want 4", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -393,8 +394,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "3" {
-		t.Fatalf("schema_version = %q, want 3", v)
+	if v := version(t, s); v != "4" {
+		t.Fatalf("schema_version = %q, want 4", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -417,5 +418,151 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		if err := s.w.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != 0 {
 			t.Errorf("%s: %d rows survive DeleteKid after 0003 (err %v)", table, n, err)
 		}
+	}
+}
+
+const insertDose = `INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, created_by, updated_by, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, 100, 100)`
+
+func TestVaccineTableChecks(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	const full = `INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, lot, product, note, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'dtap', ?, ?, ?, ?, ?, 100, 100)`
+	n := any(nil)
+	for name, v := range map[string][]any{
+		"given_on with a time":   {"2026-03-01T10:00", n, n, n},
+		"given_on not a date":    {"2026-02-30", n, n, n},
+		"given_on short":         {"2026-3-01", n, n, n},
+		"given_on words":         {"yesterday", n, n, n},
+		"given_on empty":         {"", n, n, n},
+		"empty lot":              {"2026-03-01", "", n, n},
+		"empty product":          {"2026-03-01", n, "", n},
+		"empty note":             {"2026-03-01", n, n, ""},
+		"given_on as an integer": {20260301, n, n, n},
+	} {
+		if _, err := s.w.Exec(full, append(append([]any{"bad-" + name, k.ID, "adm-" + name}, v...), ana.ID, ana.ID)...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := s.w.Exec(full, "ok", k.ID, "a1", "2028-02-29", "L1", "P", "N", ana.ID, ana.ID); err != nil {
+		t.Errorf("a full row was refused: %v", err)
+	}
+	if _, err := s.w.Exec(insertDose, "twin", k.ID, "a1", "2028-02-29", "dtap", ana.ID, ana.ID); err == nil {
+		t.Error("an antigen twice in one administration was accepted")
+	}
+	if _, err := s.w.Exec(insertDose, "orphan", "no-such-kid", "a2", "2026-03-01", "dtap", ana.ID, ana.ID); err == nil {
+		t.Error("a dose for a missing kid was accepted")
+	}
+	const dismissal = `INSERT INTO vaccine_dismissals(kid_id, schema, line, reason, created_by, created_at) VALUES (?, 'us', ?, ?, ?, 100)`
+	if _, err := s.w.Exec(dismissal, k.ID, "hepb-1", "forgot", ana.ID); err == nil {
+		t.Error("dismissal reason: unknown value accepted")
+	}
+	if _, err := s.w.Exec(dismissal, "no-such-kid", "hepb-1", "not_needed", ana.ID); err == nil {
+		t.Error("a dismissal for a missing kid was accepted")
+	}
+	if _, err := s.w.Exec(dismissal, k.ID, "hepb-1", "not_needed", ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.w.Exec(dismissal, k.ID, "hepb-1", "given_unknown", ana.ID); err == nil {
+		t.Error("a second dismissal of the same line was accepted")
+	}
+}
+
+func TestVaccineTablesCascadeWithKid(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k1, k2 := mustKid(t, s, ana.ID, "Lía"), mustKid(t, s, ana.ID, "Noa")
+	for _, kid := range []string{k1.ID, k1.ID, k2.ID} {
+		if _, err := s.CreateAdministration(ctx, kid, ana.ID, model.Administration{GivenOn: "2026-03-01", Antigens: []string{"dtap", "hib"}}, t0); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetDismissal(ctx, kid, ana.ID, "us", model.NewID(), "not_needed", t0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.DeleteKid(ctx, k1.ID, ana.ID); err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]int{"vaccine_doses": 2, "vaccine_dismissals": 1} {
+		var gone, kept int
+		if err := s.w.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE kid_id = ?`, k1.ID).Scan(&gone); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.w.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE kid_id = ?`, k2.ID).Scan(&kept); err != nil {
+			t.Fatal(err)
+		}
+		if gone != 0 || kept != want {
+			t.Errorf("%s after DeleteKid: %d rows of the deleted kid, %d of the other (want 0, %d)", table, gone, kept, want)
+		}
+	}
+}
+
+func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:3] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO kids(id, name, birth_date, sex, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'cdc', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES ('k1', 'p1', 'guardian', 100)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := &Store{w: old, r: old}
+	for table := range trackerInserts {
+		if err := insertTracker(before, table, "k1", "p1"); err != nil {
+			t.Fatalf("insert into %s: %v", table, err)
+		}
+	}
+	if _, err := old.Exec(insertGrowth, "g1", "k1", 3400, 120, "kg", nil, nil, nil, nil, nil, nil, "p1", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "4" {
+		t.Fatalf("schema_version = %q, want 4", v)
+	}
+	k, err := s.Kid(ctx, "k1")
+	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
+		t.Fatalf("kid after 0004 = %+v, %v", k, err)
+	}
+	for table := range trackerInserts {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE kid_id = 'k1'`).Scan(&n); err != nil || n != 1 {
+			t.Errorf("%s: %d rows for the kid after 0004 (err %v)", table, n, err)
+		}
+	}
+	if g, err := s.ListGrowth(ctx, "k1"); err != nil || len(g) != 1 || g[0].ID != "g1" {
+		t.Errorf("growth after 0004 = %+v, %v", g, err)
+	}
+	if role, err := s.RoleFor(ctx, "k1", "p1"); err != nil || role != model.RoleGuardian {
+		t.Errorf("grant after 0004 = %q, %v", role, err)
+	}
+	if _, err := s.CreateAdministration(ctx, "k1", "p1", model.Administration{GivenOn: "2026-03-01", Antigens: []string{"dtap"}}, t0); err != nil {
+		t.Errorf("a dose for an upgraded kid: %v", err)
 	}
 }

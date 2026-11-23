@@ -23,6 +23,8 @@ var (
 	ErrForbidden    = errors.New("store: forbidden")
 	// ErrInvalidContents is a bottle whose contents are empty, repeat a name or name an unknown one.
 	ErrInvalidContents = errors.New("store: invalid bottle contents")
+	// ErrInvalidAntigens is an administration whose antigen list is empty or repeats one.
+	ErrInvalidAntigens = errors.New("store: invalid antigens")
 	// ErrAlreadyRunning is a timer start while the kid already has one running in that table.
 	ErrAlreadyRunning = errors.New("store: already running")
 	// ErrNotRunning is an end or side switch on a finished session.

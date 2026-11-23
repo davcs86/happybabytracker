@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,7 +27,10 @@ func TestHomeShape(t *testing.T) {
 	kid, _, bob := k.trackerKid() // born 2026-03-04: 8 months at t0
 	k.createBottle(bob, kid, nil)
 	h := k.home(bob, kid)
-	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today")
+	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today", "due")
+	if due, ok := h["due"].([]any); !ok || len(due) != 0 {
+		t.Errorf("due of a kid with no schedule = %#v, want []", h["due"])
+	}
 	if h["corrected_birth_date"] != nil {
 		t.Errorf("term kid corrected_birth_date = %v, want null", h["corrected_birth_date"])
 	}
@@ -154,4 +160,154 @@ func TestHomeCorrectedBirthDate(t *testing.T) {
 			t.Errorf("%s: corrected_birth_date = %v, want %v", c.name, got, c.want)
 		}
 	}
+}
+
+// dueLines renders the home's due list as "<n><unit> <status> <count>" after checking each entry's shape.
+func dueLines(t *testing.T, h map[string]any) []string {
+	t.Helper()
+	list, ok := h["due"].([]any)
+	if !ok {
+		t.Fatalf("due = %#v, want a list", h["due"])
+	}
+	out := []string{}
+	for _, it := range list {
+		e := it.(map[string]any)
+		sameKeys(t, e, "kind", "from", "status", "count")
+		sameKeys(t, e["from"].(map[string]any), "n", "unit")
+		if e["kind"] != "vaccine" {
+			t.Errorf("kind = %v, want vaccine", e["kind"])
+		}
+		from := e["from"].(map[string]any)
+		out = append(out, fmt.Sprintf("%v%v %v %v", from["n"], from["unit"], e["status"], e["count"]))
+	}
+	return out
+}
+
+func (k *kit) wantDue(token, kid, name string, want ...string) {
+	k.t.Helper()
+	if want == nil {
+		want = []string{}
+	}
+	if got := dueLines(k.t, k.home(token, kid)); !slices.Equal(got, want) {
+		k.t.Errorf("%s: due = %q, want %q", name, got, want)
+	}
+}
+
+// dueKid creates a kid born 2025-01-10 in UTC on schema (nil: none) with the clock at dueNow, and a token for its guardian.
+func (k *kit) dueKid(schema any) (kid, ana string) {
+	k.t.Helper()
+	k.now = dueNow
+	ana = k.asParent("ana")
+	return k.createKid(ana, map[string]any{"birth_date": "2025-01-10", "time_zone": "UTC", "vaccine_schema": schema}), ana
+}
+
+// dueNow is 2025-05-12 at noon UTC: a kid born 2025-01-10 is four months and two days old.
+var dueNow = time.Date(2025, 5, 12, 12, 0, 0, 0, time.UTC)
+
+func TestHomeDue(t *testing.T) {
+	k := newKit(t)
+	kid, ana := k.dueKid("us")
+	// us.csv at 4 months 2 days: 0d hepatitis_b-1 overdue, rsv-1 due (until 8m); 1m hepatitis_b-2 overdue; 2m seven
+	// overdue, 4m seven due (default windows). Supplementary rsv-2 and covid19-1 are never listed.
+	k.wantDue(ana, kid, "nothing given", "0d overdue 2", "1m overdue 1", "2m overdue 7", "4m due 7")
+
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-01-10", "antigens": []string{"hepatitis_b", "rsv"}})
+	k.wantDue(ana, kid, "the birth visit given", "1m overdue 1", "2m overdue 7", "4m due 7")
+
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-03-12", "antigens": []string{"hepatitis_b"}})
+	k.wantDue(ana, kid, "hepatitis B dose 2 given", "2m overdue 7", "4m due 7")
+
+	visit2 := []string{"rotavirus", "diphtheria", "tetanus", "pertussis", "hib", "pneumococcus"}
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-03-12", "antigens": visit2})
+	k.wantDue(ana, kid, "the 2-month visit but polio given", "2m overdue 1", "4m due 7")
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-03-13", "antigens": []string{"polio"}})
+	k.wantDue(ana, kid, "the 2-month visit given", "4m due 7")
+
+	if rec := k.do(http.MethodPut, "/v1/kids/"+kid+"/vaccine-dismissals/rotavirus-2", ana, map[string]any{"reason": "not_needed"}); rec.Code != http.StatusOK {
+		t.Fatalf("dismiss: %d %q", rec.Code, rec.Body.String())
+	}
+	k.wantDue(ana, kid, "rotavirus-2 dismissed", "4m due 6")
+	k.recordDose(ana, kid, map[string]any{"given_on": "2025-05-11", "antigens": []string{"diphtheria", "tetanus", "pertussis", "hib", "pneumococcus", "polio"}})
+	k.wantDue(ana, kid, "the rest of the 4-month visit given")
+}
+
+func TestHomeDueIsEmptyWithoutAWorkingSchedule(t *testing.T) {
+	k := newKit(t)
+	kid, ana := k.dueKid("us")
+	if got := dueLines(t, k.home(ana, kid)); len(got) != 4 {
+		t.Fatalf("control: due = %q, want 4 groups", got)
+	}
+	k.setModule(ana, kid, "vaccination", false)
+	k.wantDue(ana, kid, "module off")
+
+	none, _ := k.dueKid(nil)
+	k.recordDose(ana, none, map[string]any{"given_on": "2025-02-01", "antigens": []string{"polio"}})
+	k.wantDue(ana, none, "no schema")
+
+	stale, _ := k.dueKid("us")
+	stored, err := k.Store.Kid(context.Background(), stale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retired := "ch"
+	stored.VaccineSchema = &retired
+	if err := k.Store.UpdateKid(context.Background(), stored, k.parentID("ana"), k.now); err != nil {
+		t.Fatal(err)
+	}
+	k.wantDue(ana, stale, "a stored id no longer shipped")
+}
+
+func TestHomeDueNeverListsAvailableLines(t *testing.T) {
+	k := newKit(t)
+	k.now = dueNow
+	ana := k.asParent("ana")
+	kid := k.createKid(ana, map[string]any{"birth_date": "2010-01-10", "time_zone": "UTC", "vaccine_schema": "us"}) // 15 years
+	if got := dueLines(t, k.home(ana, kid)); len(got) == 0 {
+		t.Fatal("control: a 15-year-old with nothing given has overdue routine lines")
+	}
+	rec := k.do(http.MethodPost, "/v1/kids/"+kid+"/vaccine-dismissals", ana, map[string]any{"before": "2025-05-13", "reason": "given_unknown"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bulk: %d %q", rec.Code, rec.Body.String())
+	}
+	v := k.vaccines(ana, kid)
+	lines := allLines(v)
+	for _, id := range []string{"rsv-1", "rotavirus-3", "rsv-2", "covid19-1"} {
+		if lines[id]["status"] != "available" {
+			t.Fatalf("%s = %v, want available", id, lines[id])
+		}
+	}
+	k.wantDue(ana, kid, "only available lines left")
+}
+
+func TestHomeDueUsesKidZone(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	kid := k.createKid(ana, map[string]any{"birth_date": "2025-01-10", "time_zone": "Pacific/Auckland", "vaccine_schema": "us"})
+	for _, c := range []struct {
+		name string
+		now  time.Time
+		want []string
+	}{
+		// hepatitis_b-2 (1m, until 3m) and the 2-month lines (until 3m) turn overdue on 2025-04-10 in Auckland (UTC+12).
+		{"Auckland 2025-04-09 23:00", time.Date(2025, 4, 9, 11, 0, 0, 0, time.UTC), []string{"0d overdue 2", "1m due 1", "2m due 7"}},
+		{"Auckland 2025-04-10 00:00, still the 9th in UTC", time.Date(2025, 4, 9, 12, 0, 0, 0, time.UTC), []string{"0d overdue 2", "1m overdue 1", "2m overdue 7"}},
+	} {
+		k.now = c.now
+		k.wantDue(k.asParent("ana"), kid, c.name, c.want...)
+	}
+}
+
+func TestHomeDueFailedLoad(t *testing.T) {
+	k := newKit(t)
+	kid, ana := k.dueKid("us")
+	off, _ := k.dueKid("us")
+	k.setModule(ana, off, "vaccination", false)
+	none, _ := k.dueKid(nil)
+	saved := loadVaccines
+	loadVaccines = func() error { return errors.New("vaccines: schedules unavailable") }
+	t.Cleanup(func() { loadVaccines = saved })
+
+	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/home", ana, nil), http.StatusServiceUnavailable, "unavailable")
+	k.wantDue(ana, off, "module off")
+	k.wantDue(ana, none, "no schema")
 }

@@ -13,3 +13,7 @@ export const growthMeasurePath = (kidId: string, measure: Measure) =>
 	`${growthPath(kidId)}?measure=${measure}`;
 export const growthNewPath = (kidId: string) => `${growthPath(kidId)}/new`;
 export const growthEntryPath = (kidId: string, id: string) => `${growthPath(kidId)}/${id}`;
+export const vaccinesPath = (kidId: string) => `/kids/${kidId}/vaccines`;
+// antigens are catalogue ids, which need no escaping in a query.
+export const vaccineNewPath = (kidId: string, antigens: string[] = []) =>
+	`${vaccinesPath(kidId)}/new${antigens.length ? `?antigens=${antigens.join(',')}` : ''}`;

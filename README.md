@@ -19,6 +19,8 @@ What a parent can do so far:
 - Modules: a guardian switches any module off or on per kid; its entries stay.
 - Growth: measurements of weight, length/height and head circumference, each scored as a z-score and a
   percentile against the kid's growth source and drawn on charts (see "Growth" below).
+- Vaccination: recorded doses shown against a national schedule a guardian chooses for the kid, with a
+  soft "Due" list on the home (see "Vaccination" below).
 - Installable from the browser (a web app manifest and icons); online only, no service worker.
 
 Modules and their defaults by age (whole months from the birth date, in the kid's zone):
@@ -28,7 +30,8 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding` (solids) | built | on | on | off |
 | `milestones` | later plan | on | on | off |
 | `growth` | built | on | on | on |
-| `vaccination`, `sickness`, `medication` | later plans | on | on | on |
+| `vaccination` | built | on | on | on |
+| `sickness`, `medication` | later plans | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -77,6 +80,65 @@ expected term", unscored and not plotted.
 
 The app records and displays; it never interprets a percentile and says nothing like "normal" or "low".
 The tables and their licences are under "Third-party data" below.
+
+## Vaccination
+
+A guardian chooses the kid's schedule in the kid's settings; a new kid has none, and the Vaccines page
+asks for one. Shipped schedules:
+
+| Id | Authority and edition |
+|---|---|
+| `us` | Centers for Disease Control and Prevention (CDC), Child and Adolescent Immunization Schedule by Age, 2025 (revised 2025-07-02) |
+| `uk` | UK Health Security Agency (UKHSA), Complete routine immunisation schedule from 1 September 2026 (updated 2026-09-24), England only |
+| `mx` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal 2026 |
+
+Switzerland is left out: the BAG requires written consent in advance to reproduce its schedule, and none
+has been asked for. Each schedule is a partial, simplified transcription; what is left out is listed under
+"Not transcribed from the source" in its review document, `docs/vaccine-schedules/<id>.md`.
+
+Any parent with access records a dose: the date it was given (in the kid's zone, not in the future and not
+before the birth date), the vaccines it covered (a product shortcut such as "6-in-1" ticks them, with
+JavaScript on), and an optional lot number, product name and note; a kid holds at most 500. One dose of a
+combination vaccine counts once for each vaccine it covers. Doses are kept per kid and never depend on the schedule:
+switching the schedule changes only what is shown.
+
+The Vaccines page (`/kids/{kid}/vaccines`, reached from the home's Due list, the kid's links and the
+quick-log tile) shows "Schedule: <authority>, <edition>" with the retrieval date, the licence and
+attribution, what is not included, then the schedule by age, each line as given, due, upcoming,
+overdue, dismissed or available. The kid's Nth recorded dose of a vaccine fills its Nth line, whenever it
+was given. **The app never judges validity:** it does not say whether a dose was too early, too late or
+too close to another. Doses that the schedule has no line for are listed under "Other recorded
+vaccinations".
+
+The window rule, in plain words: a line is upcoming before the age the schedule names and due from that
+age. A range such as "12–15 months" runs through the last month named: the line is due until the kid
+turns 16 months and overdue from that day. A line with a single age ("8 weeks", "2 months") is due for
+one calendar month and overdue after it. Some lines exist only for kids born in a given range of dates (UK
+and Mexico cohorts). **Overdue is a soft flag:** a label and a place in the home's Due list, never a push
+or a block. It never applies to these lines:
+
+- lines that depend on the product used or on the kid's history ("may not be needed": due inside their
+  window, then listed as available);
+- lines for risk groups or shared decisions (listed under "Also available");
+- seasonal lines (influenza, COVID-19), listed with the doses given.
+
+A guardian can dismiss a line ("not needed" or "given, date unknown") and undo it. For a kid added
+part-way through a schedule, "Dismiss older lines" dismisses in one go every line whose window starts
+before a date and that is not given or dismissed yet. A dismissal belongs to the schedule it was made in.
+The home's Due section lists the ages with a due or overdue line, three at most, linking to the Vaccines
+page; it hides when the module is off.
+
+Licences, per schedule (the full text is under "Third-party data" below):
+
+- `us`: public domain, on CDC's four conditions. These are: credit CDC; imply no endorsement; do not
+  change the substance; say the material is free on the CDC website.
+- `uk`: Open Government Licence v3.0, citing UKHSA. No brand names or logos are included.
+- `mx`: no open licence was found. Only facts are transcribed (vaccine, dose number, age), with the
+  citation the gob.mx terms ask for: the document's URL and the date it was consulted. Those terms also
+  limit downloads to personal, non-commercial use. Shipping a facts-only transcription is the owner's
+  decision, not legal advice. It is not endorsed by, or a copy of, the Secretaría de Salud's publication.
+
+Updating a schedule: `docs/runbooks/updating-vaccine-schedules.md`.
 
 ## Configuration
 
@@ -175,6 +237,12 @@ docker build -t hbt-api:dev api && docker build -t hbt-ui:dev ui && \
 runs the real API and the real UI together and prints one `PASS:` line per assertion. CI
 (`.github/workflows/ci.yml`) runs all three on every pull request and on `main`.
 
+Memory readings: the smoke's step 10 reads each container's cgroup high-water mark
+(`memory.max_usage_in_bytes`), which includes page cache, so it varies between runs. Three runs on
+2026-11-23 with all three vaccination schedules loaded read API 46, 46 and 48 MiB for the first process
+(9–10 MiB after the restart, 46 MiB after the login burst) and UI 120, 55 and 55 MiB, against ceilings of
+60 and 140 MiB; an earlier run read API 58 MiB.
+
 ## Release
 
 Merging to `main` deploys nothing. CI builds both images, smoke-tests them together, pushes
@@ -193,6 +261,18 @@ licence in `LICENSE`; the tables are not covered by it.
 |---|---|---|
 | `api/internal/growth/data/who/` | WHO Child Growth Standards (2006; head circumference 2007) and WHO Growth Reference 2007 for 5–19 years, from who.int | **CC BY-NC-SA 3.0 IGO, not MIT**: non-commercial use only, share-alike, attribution. See its `LICENSE` and `NOTICE` |
 | `api/internal/growth/data/cdc/` | CDC, National Center for Health Statistics, 2000 CDC Growth Charts, free at https://www.cdc.gov/growthcharts/cdc-data-files.htm | Public domain, on CDC's conditions, which its `NOTICE` meets: attribution "Source: CDC"; no implication that CDC, ATSDR, HHS or the United States Government endorses this project or its use of the data; no change to the substance of the content (only the percentile columns were dropped and each file split by sex); and a note that the data are available free of charge on the CDC website |
+
+The API also embeds national vaccination schedules, transcribed by hand from each authority's
+published schedule: one CSV per schedule under `api/internal/vaccines/data/`, each with its own
+provenance header, and a generated review table per schedule in `docs/vaccine-schedules/`. They are
+not covered by the MIT licence. Switzerland's schedule (BAG) is not included: reproducing it needs the
+BAG's written consent, which has not been asked for.
+
+| File | Authority and edition | Licence | Attribution |
+|---|---|---|---|
+| `api/internal/vaccines/data/us.csv` | Centers for Disease Control and Prevention (CDC), Child and Adolescent Immunization Schedule by Age, 2025 (addendum updated July 2, 2025), retrieved 2026-11-22 | Public domain, on CDC's conditions (https://www.cdc.gov/other/agencymaterials.html): attribution; no implied endorsement; no change to the substantive content; a note that the material is free on the CDC website. This is a partial, simplified transcription: risk-group, travel, pregnancy, catch-up and shared-decision dose rules and the items listed in the review document (`docs/vaccine-schedules/us.md`) are not transcribed; see the CDC schedule for the full text | "Source: CDC, Recommended Child and Adolescent Immunization Schedule for Ages 18 Years or Younger, United States, 2025 (revised 07/02/2025). CDC does not endorse this application or its use of the material. The material is available free of charge on the CDC website at https://www.cdc.gov/vaccines/hcp/imz-schedules/child-adolescent-age.html. This is a partial, simplified transcription and must not be read as CDC's own text: risk-group, travel, pregnancy, catch-up and shared-decision dose rules and the items listed in the review document are not transcribed; see the CDC schedule for the full text. Trade names are CDC's: “The use of trade names is for identification purposes only and does not imply endorsement by the ACIP or CDC.”" |
+| `api/internal/vaccines/data/uk.csv` | UK Health Security Agency (UKHSA), Complete routine immunisation schedule from 1 September 2026 (updated 24 September 2026), England only, with the birth-date cohorts from UKHSA's MMRV and childhood schedule changes guidance (both updated 25 August 2026), retrieved 2026-11-22 | Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), © Crown copyright 2026: attribution; no logos, trade marks or third-party rights (the file names no trade names); no implied endorsement. This is a partial, simplified transcription and adaptation with dose numbers derived by counting: selective, risk-group, pregnancy and catch-up programmes and the items listed in the review document (`docs/vaccine-schedules/uk.md`) are not transcribed; see the UKHSA schedule for the full text | "Source: UKHSA, “Complete routine immunisation schedule from 1 September 2026” (updated 24 September 2026), https://www.gov.uk/government/publications/the-complete-routine-immunisation-schedule, with the birth-date cohorts from UKHSA's “MMRV vaccination: information for healthcare professionals” and “Childhood schedule changes 2025 and 2026: information for healthcare practitioners” (both updated 25 August 2026). Contains public sector information licensed under the Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). This is a partial, simplified transcription and adaptation for England, with dose numbers derived by counting and without trade names: selective, risk-group, pregnancy and catch-up programmes and the items listed in the review document are not transcribed. It is not endorsed by UKHSA; see the UKHSA schedule for the full text." |
+| `api/internal/vaccines/data/mx.csv` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal 2026 (published 31 December 2025; measles amendment 18 February 2026), cross-checked with the PRONAM “Vacunación a lo largo de la vida”, 2a ed. (30 July 2026), consulted 2026-11-22 | No open licence: gob.mx publishes none on these documents. The gob.mx terms (https://www.gob.mx/terminos) say the portal's information is public unless indicated otherwise and require citing its URL and the date it was consulted (the same page also limits downloads to personal, non-commercial use). Only facts are transcribed (antigen, dose number, age), which the Ley Federal del Derecho de Autor, art. 14, excludes from protection together with administrative texts; no logos or prose are reproduced. This is a partial, simplified transcription: risk-group, pregnancy and catch-up lines, adolescent and adult lines other than HPV (Td included) and the items listed in the review document (`docs/vaccine-schedules/mx.md`) are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails. This is not legal advice | "Fuente: Secretaría de Salud, CeNSIA, “Lineamientos Generales del Programa de Vacunación Universal 2026” (31 de diciembre de 2025; enmienda del 18 de febrero de 2026), https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf (page: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026), consultado el 22 de noviembre de 2026 (2026-11-22). This is a partial, simplified transcription of facts only (antigen, dose number and age), with dose numbers derived by counting and without brand names: selective, risk-group, pregnancy and catch-up lines, adolescent and adult lines other than HPV (Td included) and the items listed in the review document are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails." |
 
 The published API image, `ghcr.io/davcs86/happybabytracker-api`, contains the WHO tables, which are
 licensed CC BY-NC-SA 3.0 IGO: non-commercial use only, share-alike, attribution. Bundling them is the
