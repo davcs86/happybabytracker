@@ -10,10 +10,11 @@ import (
 
 // ntfyView is served only on the owner's /v1/me routes: the topic is a capability.
 type ntfyView struct {
-	Enabled bool     `json:"enabled"`
-	Server  string   `json:"server"`
-	Topic   *string  `json:"topic"`
-	Kids    []string `json:"kids"`
+	Enabled  bool     `json:"enabled"`
+	HasTopic bool     `json:"has_topic"`
+	Server   string   `json:"server"`
+	Topic    *string  `json:"topic"`
+	Kids     []string `json:"kids"`
 }
 
 // ntfyOn answers 409 ntfy_unavailable and is false while ntfy is off.
@@ -31,19 +32,21 @@ func (d Deps) respondNtfy(w http.ResponseWriter, status int, t *model.NtfyTopic)
 		v.Server = d.Cfg.Ntfy.URL
 	}
 	if t != nil {
-		v.Topic, v.Kids = &t.Topic, t.Kids
+		v.HasTopic, v.Topic, v.Kids = true, &t.Topic, t.Kids
 	}
 	respondJSON(w, status, v)
 }
 
+// ntfyState while off says only whether a topic is still stored, never the topic.
 func (d Deps) ntfyState(w http.ResponseWriter, r *http.Request) {
-	if !d.Cfg.NtfyEnabled {
+	t, err := d.Store.NtfyTopic(r.Context(), PrincipalFrom(r.Context()).ParentID)
+	if !d.Cfg.NtfyEnabled && (err == nil || errors.Is(err, store.ErrNotFound)) {
 		respondJSON(w, http.StatusOK, struct {
-			Enabled bool `json:"enabled"`
-		}{false})
+			Enabled  bool `json:"enabled"`
+			HasTopic bool `json:"has_topic"`
+		}{false, err == nil})
 		return
 	}
-	t, err := d.Store.NtfyTopic(r.Context(), PrincipalFrom(r.Context()).ParentID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		d.respondNtfy(w, http.StatusOK, nil)

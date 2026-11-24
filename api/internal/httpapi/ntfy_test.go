@@ -45,8 +45,8 @@ func TestNtfyStateAndTurnOn(t *testing.T) {
 	k := newKit(t)
 	ana := k.asParent("ana")
 	got := k.ntfyState(ana)
-	sameKeys(t, got, "enabled", "server", "topic", "kids")
-	if got["enabled"] != true || got["server"] != testNtfyURL || got["topic"] != nil || len(got["kids"].([]any)) != 0 {
+	sameKeys(t, got, "enabled", "has_topic", "server", "topic", "kids")
+	if got["enabled"] != true || got["has_topic"] != false || got["server"] != testNtfyURL || got["topic"] != nil || len(got["kids"].([]any)) != 0 {
 		t.Fatalf("before on: %v", got)
 	}
 	rec := k.do(http.MethodPut, "/v1/me/ntfy", ana, nil)
@@ -54,8 +54,11 @@ func TestNtfyStateAndTurnOn(t *testing.T) {
 		t.Fatalf("on: %d %q", rec.Code, rec.Body.String())
 	}
 	on := bodyMap(t, rec)
-	sameKeys(t, on, "enabled", "server", "topic", "kids")
+	sameKeys(t, on, "enabled", "has_topic", "server", "topic", "kids")
 	topic, _ := on["topic"].(string)
+	if on["has_topic"] != true {
+		t.Fatalf("on: has_topic %v", on["has_topic"])
+	}
 	if !kitTopicRE.MatchString(topic) {
 		t.Fatalf("topic %q is not <prefix>-<22 base62>", topic)
 	}
@@ -63,7 +66,7 @@ func TestNtfyStateAndTurnOn(t *testing.T) {
 	if again.Code != http.StatusOK || bodyMap(t, again)["topic"] != topic {
 		t.Fatalf("on again: %d %q", again.Code, again.Body.String())
 	}
-	if got := k.ntfyState(ana); got["topic"] != topic {
+	if got := k.ntfyState(ana); got["topic"] != topic || got["has_topic"] != true {
 		t.Fatalf("state after on: %v", got)
 	}
 }
@@ -259,6 +262,10 @@ func TestNtfyRoutesRefuseTheAdmin(t *testing.T) {
 func TestNtfyOff(t *testing.T) {
 	k := newKitNoNtfy(t)
 	kid, ana, _ := k.trackerKid()
+	if rec := k.do(http.MethodGet, "/v1/me/ntfy", ana, nil); rec.Code != http.StatusOK ||
+		strings.TrimSpace(rec.Body.String()) != `{"enabled":false,"has_topic":false}` {
+		t.Fatalf("state while off without a topic: %d %q", rec.Code, rec.Body.String())
+	}
 	if _, _, err := k.Store.SetNtfyTopic(context.Background(), k.parentID("ana"), "hbt-old", false, k.now); err != nil {
 		t.Fatal(err)
 	}
@@ -266,8 +273,8 @@ func TestNtfyOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := k.do(http.MethodGet, "/v1/me/ntfy", ana, nil)
-	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"enabled":false}` {
-		t.Fatalf("state while off: %d %q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"enabled":false,"has_topic":true}` {
+		t.Fatalf("state while off with a topic: %d %q", rec.Code, rec.Body.String())
 	}
 	wantErr(t, k.do(http.MethodPut, "/v1/me/ntfy", ana, nil), http.StatusConflict, "ntfy_unavailable")
 	wantErr(t, k.do(http.MethodPost, "/v1/me/ntfy/regenerate", ana, nil), http.StatusConflict, "ntfy_unavailable")
@@ -280,6 +287,9 @@ func TestNtfyOff(t *testing.T) {
 	}
 	if _, err := k.Store.NtfyTopic(context.Background(), k.parentID("ana")); err == nil {
 		t.Fatal("topic survived the delete")
+	}
+	if rec := k.do(http.MethodGet, "/v1/me/ntfy", ana, nil); strings.TrimSpace(rec.Body.String()) != `{"enabled":false,"has_topic":false}` {
+		t.Fatalf("state while off after the delete: %d %q", rec.Code, rec.Body.String())
 	}
 }
 
