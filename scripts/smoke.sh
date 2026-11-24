@@ -1143,6 +1143,218 @@ start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
 pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
 
+# 4m. Milestones through the real catalog: every list, the current one marked, marks by tap, by date and by the caregiver.
+MILESTONES="$KID_PATH/milestones"
+DENYLIST='late|behind|delayed|delay|normal|abnormal|typical|atypical|on track|ahead|missed|missing|concern|worry|should|red flag|warning'
+CDC_MILESTONE_ATTRIBUTION='Source: CDC, Learn the Signs. Act Early. milestone checklists. CDC does not endorse this application or its use of the material. The material is available free of charge at https://www.cdc.gov/act-early/milestones/index.html.'
+CDC_SCREENING_NOTE='Learn the Signs. Act Early. materials are not a substitute for standardized, validated developmental screening tools.'
+declare -A LIST_TITLE=([2]='By 2 months' [4]='By 4 months' [6]='By 6 months' [9]='By 9 months' [12]='By 1 year'
+  [15]='By 15 months' [18]='By 18 months' [24]='By 2 years' [30]='By 30 months' [36]='By 3 years' [48]='By 4 years'
+  [60]='By 5 years')
+LIST_AGES='2 4 6 9 12 15 18 24 30 36 48 60'
+MS_ASCII="$(note "custom-milestone-${SUFFIX}")"
+MS_TEXT="$(note "$MS_ASCII Олег")"
+MS_GONE="$(note "gone-milestone-${SUFFIX}")"
+N_MILESTONE="$(note "milestone-note-${SUFFIX}")"
+# The kid was born 2026-01-15 with no gestation, so the basis is chronological; the lists show until 60 months.
+read -r ty tm td < <(TZ="$KID_ZONE" date '+%Y %-m %-d')
+AGE_MONTHS=$(((ty - 2026) * 12 + tm - 1 - (td < 15 ? 1 : 0)))
+CURRENT=
+for a in $LIST_AGES; do if [ "$a" -le "$AGE_MONTHS" ]; then CURRENT="$a"; fi; done
+reached_label() { LC_ALL=C date -d "$1" '+Reached on %-d %B %Y'; }
+page_text() { # body-name -> the page's visible text without item texts (bare and sr-only spans) and scripts
+  tr -d '\n' <"$WORK/$1.body" | sed -E 's#<script[^>]*>[^<]*</script>##g; s#<span( class="sr-only")?>[^<]*</span>##g
+    s#<[^>]*># #g'
+}
+open_items() { # body-name list-age -> the item ids of that list still offered a Reached form, in page order
+  { grep -oE "name=\"item\" value=\"$2m-[a-z0-9-]+\"" "$WORK/$1.body" || true; } | sed -E 's/.*value="([^"]+)"/\1/'
+}
+item_text() { # body-name item-id -> the item's text as the page shows it, entities decoded
+  pieces "$1" '<li' | grep -F "value=\"$2\"" | head -n 1 | sed -E 's|^<li[^>]*><span>([^<]*)</span>.*|\1|' |
+    sed -e 's/&#39;/'"'"'/g; s/&quot;/"/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g' || true
+}
+item_row() { # body-name text -> the list row that shows text
+  pieces "$1" '<li' | grep -F -- "$2" | head -n 1 || true
+}
+reach() { # name addr cookie path field=value... -> expects the 303 back to the Milestones page
+  local code
+  code="$(form "$@")"
+  [ "$code $(location "$1")" = "303 $MILESTONES" ] || fail "4m $1" "status $code, Location $(location "$1")"
+}
+code="$(req ms-a "$ADDR_A" "$SESSION_A" "$UI_URL$MILESTONES")"
+{ [ "$code" = 200 ] && body_has ms-a "$CDC_MILESTONE_ATTRIBUTION" && body_has ms-a "$CDC_SCREENING_NOTE"; } ||
+  fail "4m milestones page" "status $code"
+words="$(page_text ms-a | { grep -oiwE "$DENYLIST" || true; } | sort -u | tr '\n' ' ')"
+{ page_text ms-a | grep -F 'Your milestones' >/dev/null && [ -z "$words" ]; } ||
+  fail "4m milestones page wording" "judgement words '$words'"
+CDC_TEXTS="$WORK/cdc-texts"
+: >"$CDC_TEXTS"
+if [ "$AGE_MONTHS" -lt 60 ]; then
+  titles="$(grep -oE '<summary[^>]*>[^<]*</summary>' "$WORK/ms-a.body" | sed -E 's|<[^>]*>||g; s| · .*||' |
+    paste -sd '|' || true)"
+  want=""
+  for a in $LIST_AGES; do want="${want:+$want|}${LIST_TITLE[$a]}"; done
+  marked="$(grep -oE "<summary[^>]*>[^<]*· Current list for this age</summary>" "$WORK/ms-a.body" |
+    sed -E 's|<[^>]*>||g' || true)"
+  { [ "$titles" = "$want" ] && [ "$(count ms-a 'Current list for this age')" = 1 ] &&
+    [ "$marked" = "${LIST_TITLE[$CURRENT]} · Current list for this age" ]; } ||
+    fail "4m lists" "titles '$titles', current '$marked', age $AGE_MONTHS months"
+  mapfile -t now_items < <(open_items ms-a "$CURRENT")
+  mapfile -t later_items < <(open_items ms-a 60)
+  { [ "${#now_items[@]}" -ge 3 ] && [ "${#later_items[@]}" -ge 1 ]; } ||
+    fail "4m open items" "${#now_items[@]} in the current list, ${#later_items[@]} in the 5-year list"
+  for id in "${now_items[0]}" "${now_items[1]}" "${now_items[2]}" "${later_items[0]}"; do
+    item_text ms-a "$id" >>"$CDC_TEXTS"
+  done
+  reach ms-reach-today "$ADDR_A" "$SESSION_A" "$MILESTONES?/reach" "item=${now_items[0]}"
+  reach ms-reach-later "$ADDR_A" "$SESSION_A" "$MILESTONES?/reach" "item=${later_items[0]}"
+  reach ms-reach-dated "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save&item=${now_items[1]}" \
+    "item=${now_items[1]}" reached_on=2026-06-01 note=
+  reach ms-reach-b "$ADDR_B" "$SESSION_B" "$MILESTONES?/reach" "item=${now_items[2]}"
+else
+  # From the 5th birthday the lists are hidden: only the custom milestones below are exercised.
+  { ! body_has ms-a 'Milestone checklists' && [ "$(count ms-a 'Current list for this age')" = 0 ]; } ||
+    fail "4m lists hidden" "age $AGE_MONTHS months"
+fi
+reach ms-custom "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save" "text=$MS_TEXT" reached_on=2026-07-01 \
+  "note=$N_MILESTONE"
+reach ms-gone "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save" "text=$MS_GONE" reached_on=2026-07-01 note=
+code="$(req ms-a2 "$ADDR_A" "$SESSION_A" "$UI_URL$MILESTONES")"
+MS_ENTRY="$(item_row ms-a2 "$MS_ASCII" | grep -oE '/milestones/[0-9a-f-]{36}"' | head -n 1 | tr -d '"' || true)"
+MS_GONE_ENTRY="$(item_row ms-a2 "$MS_GONE" | grep -oE '/milestones/[0-9a-f-]{36}"' | head -n 1 | tr -d '"' || true)"
+{ [ "$code" = 200 ] && [ -n "$MS_ENTRY" ] && [ -n "$MS_GONE_ENTRY" ] &&
+  item_row ms-a2 "$MS_ASCII" | grep -F "$MS_TEXT" >/dev/null; } || fail "4m custom milestones" "status $code"
+MS_ENTRY="$KID_PATH$MS_ENTRY"
+code="$(req ms-edit-page "$ADDR_A" "$SESSION_A" "$UI_URL$MS_ENTRY")"
+{ [ "$code" = 200 ] && [ "$(originals ms-edit-page | wc -l)" = 3 ]; } ||
+  fail "4m edit page" "status $code, $(originals ms-edit-page | wc -l) originals"
+edit_form ms-edit-page reached_on=2026-07-02
+reach ms-edit "$ADDR_A" "$SESSION_A" "$MS_ENTRY?/save" "${FIELDS[@]}"
+reach ms-delete "$ADDR_A" "$SESSION_A" "$KID_PATH$MS_GONE_ENTRY?/delete"
+code="$(req ms-a3 "$ADDR_A" "$SESSION_A" "$UI_URL$MILESTONES")"
+{ [ "$code" = 200 ] && item_row ms-a3 "$MS_ASCII" | grep -F "$(reached_label 2026-07-02)" >/dev/null &&
+  ! body_has ms-a3 "$MS_GONE"; } || fail "4m after edit and delete" "status $code"
+if [ "$AGE_MONTHS" -lt 60 ]; then
+  for id in "${now_items[0]}" "${now_items[1]}" "${now_items[2]}" "${later_items[0]}"; do
+    ! body_has ms-a3 "value=\"$id\"" || fail "4m marked items" "$id still offers Reached"
+  done
+  { item_row ms-a3 "$(head -n 1 "$CDC_TEXTS")" | grep -F "$(reached_label "$(today)")" >/dev/null &&
+    item_row ms-a3 "$(sed -n 2p "$CDC_TEXTS")" | grep -F "$(reached_label 2026-06-01)" >/dev/null; } ||
+    fail "4m reached dates" "today's or 2026-06-01's row"
+fi
+for p in milestones:"$MILESTONES" milestones-new:"$MILESTONES/new" milestone-entry:"$MS_ENTRY"; do
+  code="$(req "nogrant-${p%%:*}" "$ADDR_C" "$SESSION_C" "$UI_URL${p#*:}")"
+  { [ "$code" = 404 ] && body_has "nogrant-${p%%:*}" 'Not found' &&
+    ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-${p%%:*}.body" &&
+    ! body_has "nogrant-${p%%:*}" "$KID_NAME"; } || fail "4m no grant ${p%%:*}" "status $code"
+  code="$(req "admin-${p%%:*}" "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL${p#*:}")"
+  [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
+    fail "4m admin GET ${p%%:*}" "status $code, Location $(location "admin-${p%%:*}")"
+done
+pass "4m the Milestones page shows CDC's attribution and sentence, no judgement word, every list in age order with '${LIST_TITLE[$CURRENT]:-none}' current at $AGE_MONTHS months; $USER_A marks items by one tap (today and the 5-year list) and by date, adds two custom milestones, edits one's date and deletes the other; $USER_B marks one; $USER_C gets 404 and the admin a 303 on the milestone pages"
+
+# 4n. The PDF export without JavaScript: every module, the module filter, a switched-off module, refusals, access.
+ALL_MODULES=(bottles nursing pumping diapers sleep feeding milestones growth vaccination sickness medication)
+EXPORT_FROM="$(ago 240 | cut -c1-10)"
+EXPORT_TO="$(today)"
+PAST_FROM=2026-02-03
+PAST_TO=2026-02-05
+for t in '"modules":' 'modules=' "$PAST_FROM" "$PAST_TO"; do remember "$t"; done
+# The UI waits up to EXPORT_TIMEOUT_MS (25 s) for the API, so the call may take longer than req's 10 s.
+export_pdf() { # name addr cookie from to module... -> status; the PDF or page in $WORK/<name>.body
+  local name="$1" addr="$2" cookie="$3" from="$4" to="$5" m mods=()
+  shift 5
+  for m in "$@"; do mods+=(--data-urlencode "modules=$m"); done
+  req "$name" "$addr" "$cookie" -X POST "$UI_URL$KID_PATH/export/pdf" -H "Origin: ${ORIGIN}" \
+    -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "from=$from" \
+    --data-urlencode "to=$to" "${mods[@]}" --max-time 30
+}
+header_is() { tr -d '\r' <"$WORK/$1.headers" | grep -qix -- "$2"; }
+pdf_ok() { # name from to -> succeeds when the response is a whole PDF download with the private headers
+  local b="$WORK/$1.body"
+  header_is "$1" 'content-type: application/pdf' &&
+    header_is "$1" "content-disposition: attachment; filename=\"happybabytracker-$2-$3.pdf\"" &&
+    header_is "$1" 'cache-control: no-store' && [ "$(head -c 7 "$b")" = '%PDF-1.' ] &&
+    tail -c 8 "$b" | grep -aF '%%EOF' >/dev/null && grep -aF '/Type /Pages' "$b" >/dev/null &&
+    grep -aE '/Count [1-9]' "$b" >/dev/null && grep -aF '/FontFile2' "$b" >/dev/null &&
+    ! grep -aF '/BaseFont /Helvetica' "$b" >/dev/null
+}
+# Read to the end (no grep -q): an early exit would fail tr under pipefail.
+pdf_has() { tr -d '\000' <"$WORK/$1.body" | grep -aF -- "$2" >/dev/null; }
+tj_strings() { # name -> the PDF's Tj strings, one per line, unescaped
+  tr -d '\000' <"$WORK/$1.body" | { grep -aoE '\((\\.|[^\\)])*\) ?Tj' || true; } |
+    sed -E 's/^\(//; s/\) ?Tj$//; s/\\(.)/\1/g'
+}
+app_words() { # name words -> the words (regex) found in the PDF's own text: user texts and CDC items left out
+  local s
+  tj_strings "$1" | grep -avF -- "$SUFFIX" | while IFS= read -r s; do
+    if [ -s "$CDC_TEXTS" ] && grep -qF -- "$s" "$CDC_TEXTS"; then continue; fi
+    printf '%s\n' "$s"
+  done | { grep -aoiwE "$2" || true; } | sort -u | tr '\n' ' '
+}
+code="$(export_pdf export-all "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}")"
+{ [ "$code" = 200 ] && pdf_ok export-all "$EXPORT_FROM" "$EXPORT_TO"; } || fail "4n all modules" "status $code"
+for t in "$KID_NAME" 'Bottle 163 ml' 'Pumping 12 min, 211 ml' "$N_DIAPER_EDIT" 'WHO Child Growth Standards' \
+  'Schedule: UK Health Security Agency' "Statuses as of $EXPORT_TO." 'Learn the Signs' "$MS_ASCII" \
+  'Fever 38.6' "$MED_NAME"; do
+  pdf_has export-all "$t" || fail "4n all modules" "missing '$(printf '%s' "$t" | scrub)'"
+done
+! grep -i '^content-disposition:' "$WORK/export-all.headers" | grep -F -- "$KID_NAME" >/dev/null ||
+  fail "4n file name" "it names the kid"
+code="$(export_pdf export-words "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" milestones growth sickness medication)"
+{ [ "$code" = 200 ] && pdf_ok export-words "$EXPORT_FROM" "$EXPORT_TO"; } || fail "4n four modules" "status $code"
+words="$(app_words export-words "$DENYLIST|due|overdue|reminder")"
+control="$(app_words export-all 'due|overdue')"
+{ [ -z "$words" ] && [ -n "$control" ] && tj_strings export-words | grep -axF 'Your milestones' >/dev/null &&
+  tj_strings export-words | grep -axF 'Sickness' >/dev/null; } ||
+  fail "4n section wording" "judgement or reminder words '$words', control '$control'"
+code="$(export_pdf export-filter "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" bottles growth)"
+{ [ "$code" = 200 ] && pdf_ok export-filter "$EXPORT_FROM" "$EXPORT_TO" && pdf_has export-filter 'Bottle 163 ml' &&
+  pdf_has export-filter 'WHO Child Growth Standards' && ! pdf_has export-filter 'Schedule:' &&
+  ! pdf_has export-filter 'Learn the Signs' && ! pdf_has export-filter "$N_DIAPER_EDIT" &&
+  ! pdf_has export-filter "$MS_ASCII"; } || fail "4n module filter" "status $code"
+code="$(req modules-n "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/modules")"
+mapfile -t MODULES_N < <(modules_on modules-n)
+mapfile -t WITHOUT_PUMPING < <(printf '%s\n' "${MODULES_N[@]}" | grep -vx 'module=pumping')
+code_s="$(form modules-off-n "$ADDR_A" "$SESSION_A" "$KID_PATH/modules?/save" "${WITHOUT_PUMPING[@]}")"
+{ [ "$code $code_s" = '200 200' ] && printf '%s\n' "${MODULES_N[@]}" | grep -qx 'module=pumping' &&
+  body_has modules-off-n 'Saved'; } || fail "4n pumping off" "page $code, save $code_s"
+code="$(export_pdf export-off "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" pumping)"
+{ [ "$code" = 200 ] && pdf_ok export-off "$EXPORT_FROM" "$EXPORT_TO" &&
+  pdf_has export-off 'Pumping 12 min, 211 ml' && ! pdf_has export-off 'Bottle 163 ml'; } ||
+  fail "4n switched-off module" "status $code"
+code="$(form modules-on-n "$ADDR_A" "$SESSION_A" "$KID_PATH/modules?/save" "${MODULES_N[@]}")"
+{ [ "$code" = 200 ] && body_has modules-on-n 'Saved'; } || fail "4n pumping on" "status $code"
+code="$(export_pdf export-none "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO")"
+code_x="$(export_pdf export-bogus "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" bogus)"
+case "$code $(location export-none) | $code_x $(location export-bogus)" in
+  "303 $KID_PATH/export?error=modules"*" | 303 $KID_PATH/export?error=modules"*) ;;
+  *) fail "4n refusals" "none $code $(location export-none), bogus $code_x $(location export-bogus)" ;;
+esac
+export_pdf export-e1 "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}" >"$WORK/export-e1.code" &
+code="$(export_pdf export-e2 "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}")"
+wait
+outcomes=""
+for e in export-e1:"$(cat "$WORK/export-e1.code")" export-e2:"$code"; do
+  case "${e#*:} $(location "${e%%:*}")" in
+    "200 ") outcomes="$outcomes 200" ;;
+    "303 $KID_PATH/export?error=busy"*) outcomes="$outcomes busy" ;;
+    *) fail "4n concurrent exports" "${e%%:*} status ${e#*:}, Location $(location "${e%%:*}")" ;;
+  esac
+done
+[[ "$outcomes" == *200* ]] || fail "4n concurrent exports" "no 200:$outcomes"
+code="$(export_pdf export-past "$ADDR_B" "$SESSION_B" "$PAST_FROM" "$PAST_TO" "${ALL_MODULES[@]}")"
+{ [ "$code" = 200 ] && pdf_ok export-past "$PAST_FROM" "$PAST_TO"; } || fail "4n past range" "status $code"
+code="$(export_pdf export-c "$ADDR_C" "$SESSION_C" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}")"
+code_p="$(req export-c-page "$ADDR_C" "$SESSION_C" "$UI_URL$(location export-c)")"
+{ [ "$code $(location export-c) $code_p" = "303 $KID_PATH/export 404" ] && body_has export-c-page 'Not found' &&
+  ! body_has export-c-page "$KID_NAME" && ! grep -qaF -f "$NOTES_FILE" "$WORK/export-c.body"; } ||
+  fail "4n no grant export" "status $code, Location $(location export-c), page $code_p"
+code="$(export_pdf admin-export "$ADDR_ADMIN" "$ADMIN_SESSION" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}")"
+[ "$code $(location admin-export)" = '303 /admin/parents' ] ||
+  fail "4n admin export" "status $code, Location $(location admin-export)"
+pass "4n $USER_B exports every module ($EXPORT_FROM to $EXPORT_TO) as a whole PDF download (no-store, no name in the file name, the embedded font, no core font) with the kid, a bottle, pumping, the diaper note, the WHO attribution, the UK schedule, the milestones, the fever and the course; four sections carry no judgement or reminder word; bottles and growth leave out the schedule, the milestones and the diaper; switched-off pumping is exported when ticked; no module and an unknown module are 303 error=modules; concurrent exports answer$outcomes; a past range exports; $USER_C gets the 404 page and the admin a 303"
+
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
 code="$(req admin-parents "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
@@ -1257,20 +1469,39 @@ printf '%s\n' '{"duration_ms":126,"status":200}' >"$WORK/control-miss.log"
 { logged_value "$WORK/control-hit.log" && ! logged_value "$WORK/control-miss.log"; } ||
   fail "9 control" "logged_value misses a figure or matches a measured one"
 docker logs "$API" >"$WORK/api-2.log" 2>&1
+fail_if_oom "10 memory"
+API_MEM_2="$(mem "$API")"
+# R5: an all-module export in a new API process (a restart would keep the peak file), measured on its own.
+docker rm -f "$API" >/dev/null
+start_api "$ADMIN_PASSWORD_2"
+wait_ok "$UI_URL/healthz/api" || fail "10 api for the export" "no 200 within 30 s"
+SESSION_B3="$(login login-b3 "$ADDR_B" "$USER_B" "$PASSWORD_B")"
+export_pdf export-mem "$ADDR_B" "$SESSION_B3" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}" >"$WORK/export-mem.code" &
+api_export=0
+while [ -z "$MEM_FILE" ] && [ -n "$(jobs -r)" ]; do
+  m="$(mem_mib "$API")"
+  api_export=$((m > api_export ? m : api_export))
+done
+wait
+fail_if_oom "10 export memory"
+if [ -n "$MEM_FILE" ]; then api_export="$(mem "$API")"; fi
+API_MEM_EXPORT="$api_export"
+{ [ "$(cat "$WORK/export-mem.code")" = 200 ] && pdf_ok export-mem "$EXPORT_FROM" "$EXPORT_TO"; } ||
+  fail "10 export in its own process" "status $(cat "$WORK/export-mem.code")"
+docker logs "$API" >"$WORK/api-3.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
-for f in api-0.log api-refused.log api-push.log api-1.log api-2.log ui.log; do
+for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, volume, measurement or temperature"
+pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, milestone text, export module list or range, volume, measurement or temperature"
 
-# 10. Memory of each API process and of the UI, with the login burst in the last API process.
+# 10. Memory of each API process and of the UI: the login burst in the fourth API process, the export in the fifth.
 fail_if_oom "10 memory"
-API_MEM_2="$(mem "$API")"
 UI_MEM_2="$(mem "$UI")"
 api_mem=0
-for m in "$API_MEM_0" "$API_MEM_PUSH" "$API_MEM_1" "$API_MEM_1B" "$api_burst" "$API_MEM_2"; do
+for m in "$API_MEM_0" "$API_MEM_PUSH" "$API_MEM_1" "$API_MEM_1B" "$api_burst" "$API_MEM_2" "$API_MEM_EXPORT"; do
   [ "$m" -gt 0 ] 2>/dev/null || fail "10 api memory" "unreadable reading '$m'"
   api_mem=$((m > api_mem ? m : api_mem))
 done
@@ -1280,12 +1511,12 @@ for m in "$UI_MEM_1" "$ui_burst" "$UI_MEM_2"; do
   ui_mem=$((m > ui_mem ? m : ui_mem))
 done
 if [ -n "$MEM_FILE" ]; then
-  readings="$MEM_FILE: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst} MiB (first process, fake-push process, third process before/after restart, last process after the ${BURST}-login burst), ui ${UI_MEM_2} MiB"
+  readings="$MEM_FILE: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_EXPORT} MiB (first process, fake-push process, third process before/after restart, fourth process after the ${BURST}-login burst, export process), ui ${UI_MEM_2} MiB"
 else
-  readings="sampled docker stats: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_2} MiB (first process, fake-push process, third process before/after restart, during the ${BURST}-login burst, end), ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_2} MiB"
+  readings="sampled docker stats: api ${API_MEM_0}/${API_MEM_PUSH}/${API_MEM_1}/${API_MEM_1B}/${api_burst}/${API_MEM_2}/${API_MEM_EXPORT} MiB (first process, fake-push process, third process before/after restart, during the ${BURST}-login burst, after it, during the export in its own process), ui ${UI_MEM_1}/${ui_burst}/${UI_MEM_2} MiB"
 fi
 code="$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$UI_URL/healthz/api" || true)"
-[ "$code" = 200 ] || fail "10 /healthz/api after the burst" "status $code; $readings"
+[ "$code" = 200 ] || fail "10 /healthz/api after the export" "status $code; $readings"
 [ "$api_mem" -le "$API_MEM_LIMIT_MIB" ] || fail "10 api memory over ${API_MEM_LIMIT_MIB} MiB" "$readings"
 [ "$ui_mem" -le "$UI_MEM_LIMIT_MIB" ] || fail "10 ui memory over ${UI_MEM_LIMIT_MIB} MiB" "$readings"
 pass "10 memory within ${API_MEM_LIMIT_MIB}/${UI_MEM_LIMIT_MIB} MiB, no OOM kill, /healthz/api 200: $readings"
