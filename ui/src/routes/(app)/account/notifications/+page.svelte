@@ -28,6 +28,8 @@
 	const OTHER_KEY = 'Turn notifications off and on again on this device.';
 	const RESEND_FAILED =
 		'This device could not be checked with the server. Reload the page to try again.';
+	const SIGN_OUT_SENTENCE =
+		'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off ntfy or Turn off on this device.';
 
 	// pending until mounted: the enable button exists only once JavaScript runs.
 	let support = $state<'pending' | 'ready' | 'ios' | 'unsupported'>('pending');
@@ -44,6 +46,9 @@
 		form && 'field' in form && (!form.field || form.field === 'kid') && 'message' in form
 			? form.message
 			: null
+	);
+	const regenerateFailed = $derived(
+		form?.action === 'ntfy_regenerate' && 'message' in form && !!form.message
 	);
 	const deviceForm = $derived(
 		form?.action === 'device' && 'values' in form && form.device === current?.id ? form : null
@@ -263,23 +268,37 @@
 				</fieldset>
 				<Button type="submit" class="self-start">Save</Button>
 			</form>
-			<div class="flex flex-wrap gap-2">
-				<form method="POST" action="?/ntfy_regenerate" use:enhance>
-					<Button type="submit" variant="outline" size="sm" aria-describedby="ntfy-regenerate-help"
-						>New topic</Button
+			<form method="POST" action="?/ntfy_off" use:enhance>
+				<Button type="submit" variant="outline" size="sm">Turn off ntfy</Button>
+			</form>
+			<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
+			<details class="rounded-lg border p-3" open={regenerateFailed}>
+				<summary class="cursor-pointer text-sm font-medium">New topic</summary>
+				<form method="POST" action="?/ntfy_regenerate" class="mt-3 flex flex-col gap-3" use:enhance>
+					<p class="text-sm">
+						The current topic stops working. Subscribe to the new topic in the ntfy app again.
+						{SIGN_OUT_SENTENCE}
+					</p>
+					<Button
+						type="submit"
+						variant="outline"
+						class="self-start border-destructive text-destructive">Yes, create a new topic</Button
 					>
 				</form>
-				<form method="POST" action="?/ntfy_off" use:enhance>
-					<Button type="submit" variant="outline" size="sm">Turn off ntfy</Button>
-				</form>
-			</div>
-			<p id="ntfy-regenerate-help" class="text-sm text-muted-foreground">
-				A new topic replaces this one: subscribe to the new one in the ntfy app.
-			</p>
+			</details>
 		{:else}
 			<form method="POST" action="?/ntfy_on" use:enhance>
 				<Button type="submit" class="self-start">Turn on ntfy</Button>
 			</form>
 		{/if}
+		<p class="text-sm text-muted-foreground">{SIGN_OUT_SENTENCE}</p>
+	</section>
+{:else if data.ntfy.hasTopic}
+	<section aria-labelledby="ntfy-heading" class="mt-8 flex max-w-md flex-col gap-3">
+		<h2 id="ntfy-heading" class="font-semibold">ntfy</h2>
+		<p class="text-sm">A topic from earlier is still stored for your account. Remove it.</p>
+		<form method="POST" action="?/ntfy_off" use:enhance>
+			<Button type="submit" variant="outline" size="sm">Remove the stored topic</Button>
+		</form>
 	</section>
 {/if}

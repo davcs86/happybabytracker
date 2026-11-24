@@ -174,11 +174,13 @@ export type PushDevice = { id: string; label: string; createdAt: string; kids: s
 export type PushSubscriptionInput = {
 	endpoint: string;
 	keys: { p256dh: string; auth: string };
-	label: string;
+	// Absent: the API keeps a known device's name, or names a new one "This device".
+	label?: string;
 };
 // topic is null until the parent turns ntfy on; it is a capability, shown only to its owner.
 export type NtfyState =
-	{ enabled: false } | { enabled: true; server: string; topic: string | null; kids: string[] };
+	| { enabled: false; hasTopic: boolean }
+	| { enabled: true; server: string; topic: string | null; kids: string[] };
 
 export type TrackerEntries = {
 	bottles: Bottle;

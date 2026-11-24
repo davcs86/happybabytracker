@@ -3470,6 +3470,7 @@ const medicationRoutes: RouteDef[] = [
 
 // Push devices and ntfy (push.go, ntfy.go and their stores): both channels are on unless the scenario says off.
 const PUSH_LIMITS = { devices: 10, label: 40, endpoint: 2048 };
+const DEFAULT_PUSH_LABEL = 'This device';
 const NTFY_SERVER = 'https://ntfy.stub.example';
 const NTFY_TOPIC_PREFIX = 'hbt';
 const NTFY_TOPIC_RANDOM = 22;
@@ -3555,6 +3556,7 @@ const deviceView = (state: State, d: PushDeviceStub) => ({
 function ntfyView(state: State, t: NtfyTopicStub | undefined) {
 	return {
 		enabled: true,
+		has_topic: t !== undefined,
 		server: NTFY_SERVER,
 		topic: t?.topic ?? null,
 		kids: t ? grantedKids(state, t.parentId, t.kids) : []
@@ -3616,12 +3618,13 @@ const pushRoutes: RouteDef[] = [
 				return error(res, 422, 'invalid', 'keys');
 			}
 			if (!keysOK(keys.p256dh, keys.auth)) return error(res, 422, 'invalid', 'keys');
-			const label = cleanLabel(body.label);
-			if (label === null) return error(res, 422, 'invalid', 'label');
+			// An absent or null label keeps a known device's name and is DEFAULT_PUSH_LABEL on create.
+			const label = body.label == null ? null : cleanLabel(body.label);
+			if (body.label != null && label === null) return error(res, 422, 'invalid', 'label');
 			const endpoint = canonicalEndpoint(body.endpoint);
 			const held = state.pushDevices.find((d) => d.endpoint === endpoint);
 			if (held?.parentId === p.parentId) {
-				held.label = label;
+				held.label = label ?? held.label;
 				return send(res, 200, { device: deviceView(state, held) });
 			}
 			if (
@@ -3635,7 +3638,7 @@ const pushRoutes: RouteDef[] = [
 				id: nextId(state, 'pd'),
 				parentId: p.parentId,
 				endpoint,
-				label,
+				label: label ?? DEFAULT_PUSH_LABEL,
 				createdAt: now(),
 				kids: []
 			};
@@ -3708,7 +3711,9 @@ const ntfyRoutes: RouteDef[] = [
 			send(
 				res,
 				200,
-				ntfyOn(state) ? ntfyView(state, state.ntfyTopics.get(p.parentId)) : { enabled: false }
+				ntfyOn(state)
+					? ntfyView(state, state.ntfyTopics.get(p.parentId))
+					: { enabled: false, has_topic: state.ntfyTopics.has(p.parentId) }
 			)
 	},
 	// setNtfyTopic: PUT keeps an existing topic (200), POST regenerate needs one (404) and keeps the opt-ins.

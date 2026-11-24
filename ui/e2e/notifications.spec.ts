@@ -29,6 +29,10 @@ const IOS_SENTENCE =
 const NTFY_SENTENCE =
 	"ntfy keeps each message for up to 72 hours on its server, so your child's name is stored there in plain text for that long";
 const TOPIC = /^hbt-[0-9A-Za-z]{22}$/;
+const SIGN_OUT_SENTENCE =
+	'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off ntfy or Turn off on this device.';
+const NEW_TOPIC_CONFIRM = `The current topic stops working. Subscribe to the new topic in the ntfy app again. ${SIGN_OUT_SENTENCE}`;
+const STALE_TOPIC_SENTENCE = 'A topic from earlier is still stored for your account. Remove it.';
 const IPHONE_UA =
 	'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 const MAC_UA =
@@ -165,7 +169,8 @@ test.describe('Web Push on', () => {
 
 		const puts = (await receivedRequests()).filter((r) => r.method === 'PUT' && r.path === DEVICES);
 		expect(puts).toHaveLength(1);
-		expect(JSON.parse(puts[0].body ?? '')).toEqual({ ...sub, label: 'This device' });
+		// No label: the API names a new device "This device" and keeps a known one's name.
+		expect(JSON.parse(puts[0].body ?? '')).toEqual(sub);
 		const key = (await ana('GET', '/v1/push')).body.public_key as string;
 		expect(await fakeState(page)).toEqual({ visible: true, key: b64(key), endpoint: sub.endpoint });
 
@@ -375,7 +380,7 @@ test.describe('Web Push on', () => {
 		expect(await fakeCount(page, 'fake-push-unsubscribed')).toBe(1);
 		expect(await fakeState(page)).toEqual({ visible: true, key: b64(key), endpoint: sub.endpoint });
 		const puts = (await receivedRequests()).filter((r) => r.method === 'PUT' && r.path === DEVICES);
-		expect(puts.map((r) => JSON.parse(r.body ?? ''))).toEqual([{ ...sub, label: 'This device' }]);
+		expect(puts.map((r) => JSON.parse(r.body ?? ''))).toEqual([sub]);
 	});
 
 	test('a subscription under another key is not sent again on load', async ({ page, context }) => {
@@ -434,6 +439,34 @@ test.describe('Web Push on', () => {
 		await mia.check();
 		await submit(here.getByRole('button', { name: 'Save' }));
 		await expect(page.getByRole('alert')).toHaveText('Choose from your children');
+	});
+
+	test('turning on again after the cookie is gone keeps the chosen name', async ({
+		page,
+		context
+	}) => {
+		const sub = await fakePush(context);
+		const ana = await stubAs(ANA);
+		await signIn(page, ANA);
+		await openHydrated(page);
+		await enable(page);
+		const here = region(page, 'This device');
+		await here.getByLabel('Device name').fill('Kitchen tablet');
+		await submit(here.getByRole('button', { name: 'Save' }));
+		await expect(page.getByRole('status')).toHaveText('Saved');
+		const before = (await ana('GET', DEVICES)).body.devices;
+
+		await context.clearCookies({ name: DEVICE_COOKIE });
+		const from = (await receivedRequests()).length;
+		await openHydrated(page);
+		await enable(page);
+		await expect(here.getByLabel('Device name')).toHaveValue('Kitchen tablet');
+		const puts = (await receivedRequests())
+			.slice(from)
+			.filter((r) => r.method === 'PUT' && r.path === DEVICES);
+		expect(puts.map((r) => JSON.parse(r.body ?? ''))).toEqual([sub]);
+		expect((await ana('GET', DEVICES)).body.devices).toEqual(before);
+		expect((await deviceCookie(context))?.value).toBe(before[0].id);
 	});
 
 	test('a renewed subscription keeps the name and the kids, and the old device goes', async ({
@@ -588,6 +621,28 @@ test.describe('ntfy', () => {
 		await expectAccessible(page);
 	});
 
+	test('off with a topic stored earlier: one sentence, never the topic, and it can be removed', async ({
+		page
+	}) => {
+		const ana = await stubAs(ANA);
+		const topic = (await ana('PUT', '/v1/me/ntfy')).body.topic as string;
+		await setScenario('ntfy_off');
+		await signIn(page, ANA);
+		await open(page);
+		const ntfy = region(page, 'ntfy');
+		await expect(ntfy.getByText(STALE_TOPIC_SENTENCE)).toBeVisible();
+		await expect(page.getByText(NTFY_SENTENCE)).toHaveCount(0);
+		await expect(ntfy.getByRole('button', { name: 'Turn on ntfy' })).toHaveCount(0);
+		expect(await page.content()).not.toContain(topic);
+		await expectAccessible(page);
+
+		await submit(ntfy.getByRole('button', { name: 'Remove the stored topic' }));
+		await expect(page.getByRole('heading', { name: 'ntfy' })).toHaveCount(0);
+		expect((await ana('GET', '/v1/me/ntfy')).body).toEqual({ enabled: false, has_topic: false });
+		await setScenario('normal');
+		expect((await ana('GET', '/v1/me/ntfy')).body.topic).toBeNull();
+	});
+
 	test('on: the topic and the 72-hour sentence, kid toggles, a new topic, then off', async ({
 		page,
 		context
@@ -598,6 +653,7 @@ test.describe('ntfy', () => {
 		await openHydrated(page);
 		const ntfy = region(page, 'ntfy');
 		await expect(ntfy.getByText(NTFY_SENTENCE)).toBeVisible();
+		await expect(ntfy.getByText(SIGN_OUT_SENTENCE, { exact: true })).toBeVisible();
 		await submit(ntfy.getByRole('button', { name: 'Turn on ntfy' }));
 		const state = (await ana('GET', '/v1/me/ntfy')).body;
 		expect(state.topic).toMatch(TOPIC);
@@ -615,7 +671,15 @@ test.describe('ntfy', () => {
 		await submit(ntfy.getByRole('button', { name: 'Save' }));
 		expect((await ana('GET', '/v1/me/ntfy')).body.kids).toEqual([LEO.id]);
 
-		await submit(ntfy.getByRole('button', { name: 'New topic' }));
+		await expect(ntfy.getByText(SIGN_OUT_SENTENCE, { exact: true })).toBeVisible();
+		// The confirm button exists only inside the opened details.
+		const confirm = ntfy.getByRole('button', { name: 'Yes, create a new topic' });
+		await expect(confirm).toBeHidden();
+		await ntfy.locator('summary', { hasText: 'New topic' }).click();
+		await expect(ntfy.getByText(NEW_TOPIC_CONFIRM)).toBeVisible();
+		await expectAccessible(page);
+		expect((await ana('GET', '/v1/me/ntfy')).body.topic).toBe(state.topic);
+		await submit(confirm);
 		const fresh = (await ana('GET', '/v1/me/ntfy')).body.topic;
 		expect(fresh).toMatch(TOPIC);
 		expect(fresh).not.toBe(state.topic);
@@ -693,12 +757,27 @@ test.describe('without JavaScript', () => {
 		await ntfy.getByLabel(MIA.name).check();
 		await submit(ntfy.getByRole('button', { name: 'Save' }));
 		expect((await ana('GET', '/v1/me/ntfy')).body.kids).toEqual([MIA.id]);
-		await submit(ntfy.getByRole('button', { name: 'New topic' }));
+		await expect(ntfy.getByRole('button', { name: 'Yes, create a new topic' })).toBeHidden();
+		await ntfy.locator('summary', { hasText: 'New topic' }).click();
+		await expect(ntfy.getByText(NEW_TOPIC_CONFIRM)).toBeVisible();
+		await submit(ntfy.getByRole('button', { name: 'Yes, create a new topic' }));
 		const fresh = (await ana('GET', '/v1/me/ntfy')).body.topic;
 		expect(fresh).not.toBe(topic);
 		await expect(ntfy.getByText(fresh)).toBeVisible();
 		await submit(ntfy.getByRole('button', { name: 'Turn off ntfy' }));
 		await expect(ntfy.getByText(fresh)).toHaveCount(0);
 		expect((await ana('GET', '/v1/me/ntfy')).body.topic).toBeNull();
+	});
+
+	test('a topic stored earlier while ntfy is off can be removed', async ({ page }) => {
+		const ana = await stubAs(ANA);
+		await ana('PUT', '/v1/me/ntfy');
+		await setScenario('ntfy_off');
+		await signIn(page, ANA);
+		await open(page);
+		await expect(region(page, 'ntfy').getByText(STALE_TOPIC_SENTENCE)).toBeVisible();
+		await submit(region(page, 'ntfy').getByRole('button', { name: 'Remove the stored topic' }));
+		await expect(page.getByText(STALE_TOPIC_SENTENCE)).toHaveCount(0);
+		expect((await ana('GET', '/v1/me/ntfy')).body).toEqual({ enabled: false, has_topic: false });
 	});
 });

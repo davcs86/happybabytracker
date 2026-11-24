@@ -94,6 +94,26 @@ test('upsert creates (201), a re-send keeps the id and updates the label (200), 
 	});
 });
 
+test('upsert without a label (absent or null): a new device is This device, a known one keeps its name', async () => {
+	const ana = await stubAs(ANA);
+	const { endpoint, keys } = upsert('n');
+	const first = await ana('PUT', DEVICES, { endpoint, keys });
+	expect(first).toMatchObject({ status: 201, body: { device: { label: 'This device' } } });
+	await ana('PATCH', `${DEVICES}/${first.body.device.id}`, { label: 'Kitchen' });
+	for (const body of [
+		{ endpoint, keys },
+		{ endpoint, keys, label: null }
+	]) {
+		expect(await ana('PUT', DEVICES, body)).toMatchObject({
+			status: 200,
+			body: { device: { id: first.body.device.id, label: 'Kitchen' } }
+		});
+	}
+	expect((await ana('PUT', DEVICES, { ...upsert('m'), label: null })).body.device.label).toBe(
+		'This device'
+	);
+});
+
 test('no response and no logged path carries the endpoint or the keys', async () => {
 	const ana = await stubAs(ANA);
 	const body = upsert('secret-endpoint', 'Phone');
@@ -164,7 +184,6 @@ test('upsert checks the body, the endpoint, the keys, then the label', async () 
 	for (const label of ['', '   ', 'x'.repeat(41), '\u{1F4F1}'.repeat(41)]) {
 		expect(await put({ ...ok, label })).toMatchObject(invalid('label'));
 	}
-	expect(await put({ endpoint: ok.endpoint, keys: ok.keys })).toMatchObject(invalid('label'));
 	expect((await put({ ...ok, label: 'x'.repeat(40) })).status).toBe(201);
 	// Keys in the standard alphabet, padded, are accepted as the API does.
 	const std = (key: string) => Buffer.from(key, 'base64url').toString('base64');
@@ -299,7 +318,13 @@ test('ntfy on: turn on makes a topic, a second turn on keeps it, regenerate repl
 	const ana = await stubAs(ANA);
 	expect(await ana('GET', '/v1/me/ntfy')).toEqual({
 		status: 200,
-		body: { enabled: true, server: expect.stringMatching(/^https:\/\//), topic: null, kids: [] }
+		body: {
+			enabled: true,
+			has_topic: false,
+			server: expect.stringMatching(/^https:\/\//),
+			topic: null,
+			kids: []
+		}
 	});
 	expect(await ana('POST', '/v1/me/ntfy/regenerate')).toMatchObject(notFound);
 	expect(await ana('DELETE', '/v1/me/ntfy')).toMatchObject(notFound);
@@ -308,6 +333,7 @@ test('ntfy on: turn on makes a topic, a second turn on keeps it, regenerate repl
 	const on = await ana('PUT', '/v1/me/ntfy');
 	expect(on.status).toBe(201);
 	expect(on.body.topic).toMatch(TOPIC);
+	expect(on.body.has_topic).toBe(true);
 	const kept = await ana('PUT', '/v1/me/ntfy');
 	expect(kept).toMatchObject({ status: 200, body: { topic: on.body.topic } });
 
@@ -327,15 +353,25 @@ test('ntfy on: turn on makes a topic, a second turn on keeps it, regenerate repl
 	expect((await ana('DELETE', '/v1/me/ntfy')).status).toBe(204);
 	expect((await ana('GET', '/v1/me/ntfy')).body.topic).toBeNull();
 	expect((await ana('GET', '/v1/me/ntfy')).body.kids).toEqual([]);
+	expect((await ana('GET', '/v1/me/ntfy')).body.has_topic).toBe(false);
 });
 
-test('ntfy off: GET is {enabled:false} even with a topic, the writes are 409 ntfy_unavailable', async () => {
+test('ntfy off: GET says only whether a topic is stored, the writes are 409 ntfy_unavailable', async () => {
 	const ana = await stubAs(ANA);
+	await setScenario('ntfy_off');
+	expect(await ana('GET', '/v1/me/ntfy')).toEqual({
+		status: 200,
+		body: { enabled: false, has_topic: false }
+	});
+	await setScenario('normal');
 	await ana('PUT', '/v1/me/ntfy');
 	await ana('PUT', `/v1/kids/${MIA.id}/ntfy`);
 	for (const scenario of ['ntfy_off', 'channels_off'] as const) {
 		await setScenario(scenario);
-		expect(await ana('GET', '/v1/me/ntfy')).toEqual({ status: 200, body: { enabled: false } });
+		expect(await ana('GET', '/v1/me/ntfy')).toEqual({
+			status: 200,
+			body: { enabled: false, has_topic: true }
+		});
 		expect(await ana('PUT', '/v1/me/ntfy')).toMatchObject(conflict('ntfy_unavailable'));
 		expect(await ana('POST', '/v1/me/ntfy/regenerate')).toMatchObject(conflict('ntfy_unavailable'));
 		expect(await ana('PUT', `/v1/kids/${IVY.id}/ntfy`)).toMatchObject(conflict('ntfy_unavailable'));
@@ -343,6 +379,7 @@ test('ntfy off: GET is {enabled:false} even with a topic, the writes are 409 ntf
 	}
 	expect((await ana('DELETE', `/v1/kids/${MIA.id}/ntfy`)).status).toBe(204);
 	expect((await ana('DELETE', '/v1/me/ntfy')).status).toBe(204);
+	expect((await ana('GET', '/v1/me/ntfy')).body).toEqual({ enabled: false, has_topic: false });
 	await setScenario('normal');
 	expect((await ana('GET', '/v1/me/ntfy')).body.topic).toBeNull();
 });

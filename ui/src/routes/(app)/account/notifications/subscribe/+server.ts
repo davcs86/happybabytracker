@@ -15,8 +15,6 @@ import {
 } from '#lib/server/notification-form.js';
 import type { RequestHandler } from './$types';
 
-const DEFAULT_LABEL = 'This device';
-
 const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v !== '';
 
 // Only {endpoint, keys: {p256dh, auth}}; the endpoint and keys go to the API and nowhere else.
@@ -43,7 +41,7 @@ function failure(r: ApiFailure) {
 	return json({ message: FAILURE_MESSAGE }, { status: 500 });
 }
 
-// A re-send keeps the name of the device this browser's cookie names, so it never resets a chosen label.
+// Without a cookie-named device no label is sent: the API keeps a known endpoint's name.
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	const type = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
 	if (type !== 'application/json') return json({ message: FAILURE_MESSAGE }, { status: 415 });
@@ -62,7 +60,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 		previous = devices.data.find((d) => d.id === cookie) ?? null;
 	}
 
-	const r = await locals.api.push.upsertDevice({ ...sub, label: previous?.label ?? DEFAULT_LABEL });
+	const r = await locals.api.push.upsertDevice(previous ? { ...sub, label: previous.label } : sub);
 	if (!r.ok) return failure(r);
 	// A renewed subscription is a new device: it takes the old one's kids, and the cookie moves only then.
 	if (previous && previous.id !== r.data.id) {

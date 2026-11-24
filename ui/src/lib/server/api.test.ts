@@ -2581,6 +2581,16 @@ describe('createApi push device and ntfy calls', () => {
 			expect(Object.keys(sent(f).body.keys)).toEqual(['p256dh', 'auth']);
 		});
 
+		it('sends no label key when none is given', async () => {
+			const f = respond({ device: DEVICE_WIRE }, 200);
+			const { endpoint, keys } = INPUT;
+			expect(await api(f).push.upsertDevice({ endpoint, keys })).toEqual({
+				ok: true,
+				data: DEVICE_VIEW
+			});
+			expect(Object.keys(sent(f).body)).toEqual(['endpoint', 'keys']);
+		});
+
 		it('reads the id of a device that moved (201) and of an existing one (200) alike', async () => {
 			const moved = { ...DEVICE_WIRE, id: 'dev-new', kids: [] };
 			expect(await api(respond({ device: moved }, 201)).push.upsertDevice(INPUT)).toEqual({
@@ -2696,9 +2706,9 @@ describe('createApi push device and ntfy calls', () => {
 		const NTFY_WIRE = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
 		const NTFY_VIEW = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
 
-		it('reads {enabled:false} as off', async () => {
-			const f = respond({ enabled: false });
-			expect(await api(f).ntfy.state()).toEqual({ ok: true, data: { enabled: false } });
+		it.each([true, false])('reads off with has_topic %s, and never a topic', async (hasTopic) => {
+			const f = respond({ enabled: false, has_topic: hasTopic, topic: TOPIC });
+			expect(await api(f).ntfy.state()).toEqual({ ok: true, data: { enabled: false, hasTopic } });
 			expect(sent(f)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'GET', body: undefined });
 		});
 
@@ -2715,6 +2725,8 @@ describe('createApi push device and ntfy calls', () => {
 
 		it.each([
 			['no enabled', {}],
+			['off without has_topic', { enabled: false }],
+			['off with a string has_topic', { enabled: false, has_topic: 'true' }],
 			['on without a server', { ...NTFY_WIRE, server: undefined }],
 			['on without a topic key', { ...NTFY_WIRE, topic: undefined }],
 			['a numeric topic', { ...NTFY_WIRE, topic: 5 }],

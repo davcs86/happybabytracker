@@ -744,7 +744,7 @@ function toPushDevice(v: unknown): PushDevice {
 
 function toNtfyState(v: unknown): NtfyState {
 	const o = object(v);
-	if (!boolean(o.enabled)) return { enabled: false };
+	if (!boolean(o.enabled)) return { enabled: false, hasTopic: boolean(o.has_topic) };
 	return {
 		enabled: true,
 		server: string(o.server),
@@ -1179,7 +1179,7 @@ export function createApi(
 					{
 						endpoint: input.endpoint,
 						keys: { p256dh: input.keys.p256dh, auth: input.keys.auth },
-						label: input.label
+						...(input.label === undefined ? {} : { label: input.label })
 					}
 				),
 			renameDevice: (id: string, label: string) =>
