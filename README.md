@@ -253,16 +253,19 @@ records: they print the kid's whole record up to the last date of the range. Gro
 its score and percentile under the kid's source and a chart per measure, with the source's attribution and
 licence name and, for WHO, its adaptation disclaimer. Vaccination prints the schedule's attribution, each line's
 status as of the last date of the range ("Statuses as of <date>.", never later than today; a dismissal counts
-whenever it was made, as dismissals carry no date) and the doses given.
+only if it was made by the end of that date) and the doses given.
 Milestones print CDC's attribution and no-endorsement sentence and what was marked, never what was not.
 Sickness prints the symptoms in the range and medication the courses that touch it with their doses. Values are
 in the requesting parent's units and times in the kid's time zone. A section stops at 3000 rows and the whole
 file at 6000, and a section cut short ends with a line "N more entries in this range are not shown. Export a
-shorter range to see them." (growth: "N more entries up to the end of the range are not shown. Export a range
-that ends earlier to see them.").
+shorter range to see them." ("1 more entry in this range is not shown. Export a shorter range to see it." for
+one; growth: "N more entries up to the end of the range are not shown. Export a range that ends earlier to see
+them.", and its singular).
 
-The file is made when it is downloaded and never stored; one export runs at a time, and a second request at the
-same moment is refused as busy. Latin (including its extended forms), Greek and
+The file is made when it is downloaded and never stored. One export renders at a time, and a second request at
+the same moment is refused as busy; a rendered file then downloads without holding up the next render, with up
+to 2 downloads in flight, and a file rendered while 2 are downloading is refused as busy too, before any byte is
+sent. Latin (including its extended forms), Greek and
 Cyrillic text prints as typed with an embedded Noto Sans; other scripts and emoji appear as `?`, and the PDF then
 says so once. The page is A4 laid out to print at full size on US Letter too.
 

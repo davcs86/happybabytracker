@@ -76,7 +76,9 @@ what a new session needs to start correctly.
       64 MiB ceiling (one process of one run; not measured in the edge's 96m container).
    8. **e2e.** The UI tasks' Playwright specs were not run locally (owner instruction of 2026-11-24); CI on the
       PR is their verification.
-   The parked minor findings are listed in the PR description.
+   The parked minor findings are listed in the PR description; the five of item 29 were fixed since (the
+      singular overflow line, curve labels a line apart, a slow download no longer holds the render slot,
+      dismissals counted only when made by the end of the as-of day, and four smoke checks).
 
 ## Owner decisions in plan 3 (do not reopen)
 
