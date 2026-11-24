@@ -2,6 +2,11 @@
 
 Status: **approved by the owner** (2026-11-20). Plans: `docs/superpowers/plans/`.
 
+Amended 2026-11-24 for single sign-on and public exposure (5.5, 15, 18): **specified, not built.** The shared design is
+`davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` (§ 3 app contract, § 5, § 7, § 8;
+phase P6). Until an image with 5.5 ships and the edge sets `AUTH_MODE`, the app behaves as before, except that the env
+admin is copied into the `admins` table on first start and its sessions end once.
+
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
 
@@ -50,8 +55,10 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 **Non-goals (stage one)**
 
 - Offline use. The PWA is installable but needs a connection **(owner)**.
-- Public ingress. The app is tailnet-only **(owner)**.
-- Authelia login. The design leaves a seam for it (5.4) and nothing more **(owner)**.
+- ~~Public ingress. The app is tailnet-only **(owner)**.~~ Amended 2026-11-24: the UI is public at
+  `happybaby.public.<domain>` behind single sign-on (5.5, 15); the API stays on the compose network.
+- ~~Authelia login. The design leaves a seam for it (5.4) and nothing more **(owner)**.~~ Amended 2026-11-24: single
+  sign-on through a provider-neutral OIDC client (5.5), per the homelab-edge SSO spec.
 - Canadian vaccination schedules (they are provincial) **(owner: left out for now)**.
 - Photos, attachments **(owner)**. Edit history **(owner)**.
 - Languages other than English **(owner)**.
@@ -66,7 +73,10 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 - The admin reads any kid data, including a kid's name.
 - A kid's record becomes unreachable because its last guardian was removed or disabled.
 - A health value, a kid's or parent's name, a username or a secret appears in a log.
-- The app is reachable from the internet.
+- ~~The app is reachable from the internet.~~ Amended 2026-11-24: the API is reachable from the internet, or the UI
+  is reachable from it other than through single sign-on or, in `local`/`both`, the rate-limited password login.
+- A disabled principal, an unlinked identity or a person outside the IdP's `happybabytracker` group reaches a page
+  past the login.
 - A percentile or schedule is computed from reference data whose origin and version are not recorded.
 - The droplet is lost and more than half a day of entries cannot be restored.
 
@@ -136,7 +146,7 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 
 | Principal | Exists as | Can do | Cannot do |
 |---|---|---|---|
-| **Admin** | env vars only; not a row in `parents` | create parents, issue invite and password-reset links, disable and enable parents | see, list, count or name any kid; hold a kid grant; change its own username or password in the app; be deleted or demoted **(owner)** |
+| **Admin** | env vars only; not a row in `parents` (amended 2026-11-24: a row in `admins`, still not in `parents`, 5.5) | create parents, issue invite and password-reset links, disable and enable parents | see, list, count or name any kid; hold a kid grant; change its own username or password in the app; be deleted or demoted **(owner)** |
 | **Parent** | row in `parents` | create kids; everything their grants allow; change their own password, display name, units | see parents or kids they share nothing with |
 
 The admin's lack of kid access is structural, not a permission check: `kid_access.parent_id` is a
@@ -146,6 +156,8 @@ every route outside `/v1/admin/*` and `/v1/session`.
 The admin's username and password come from `ADMIN_USERNAME` and `ADMIN_PASSWORD` (SOPS). At start the
 API stores a keyed fingerprint of both in a `meta` row; when it differs from the stored one, every
 admin session is deleted. Changing either in SOPS and redeploying therefore signs the admin out.
+Amended 2026-11-24 (not built): the two variables seed the `admins` table once and are then ignored, and the
+fingerprint is dropped (5.5).
 
 ### 5.2 Per-kid access
 
@@ -179,9 +191,12 @@ Two levels **(owner)**. A kid has one or more guardians and zero or more caregiv
   their other sessions.
 - Failed logins are limited per client address and per username, in memory **(call: 5 per minute)**.
   The limiter counts admin and parent attempts together and answers both the same way.
-- Disabling a parent deletes their sessions, push subscriptions and ntfy topic at once.
+- Disabling a parent deletes their sessions, push subscriptions and ntfy topic at once. Amended 2026-11-24: so does
+  unlinking a parent's SSO identity, and a disabled linked parent's SSO attempt repeats it (5.5, owner).
 
 ### 5.4 The Authelia seam
+
+Superseded by 5.5 on 2026-11-24 (the `provider` of an OIDC identity is the issuer URL, not `'authelia'`).
 
 Authelia is approved for the edge but not deployed, and it is planned for **public** apps
 (`homelab-edge/docs/runbooks/sso.md`). Nothing is built for it now. The seam is two things:
@@ -191,6 +206,86 @@ Authelia is approved for the edge but not deployed, and it is planned for **publ
   login later adds rows with `provider = 'authelia'` and the Authelia `sub`; no table changes.
 - One Go package turns a request into a principal. Adding a second way to authenticate changes that
   package and the UI's login route, and nothing that checks access.
+
+### 5.5 Single sign-on (amended 2026-11-24, not built)
+
+Implements the shared app contract (homelab-edge SSO spec § 3) and replaces the seam of 5.4. The app stays a
+provider-neutral OIDC client: nothing here names Authelia, and a fork runs with `AUTH_MODE=local` and no IdP.
+
+**Principals.** The admin moves from env vars into its own tables, so it is still never a row in `parents` and still
+never holds a `kid_access` row (Rule 2):
+
+| Table | Columns |
+|---|---|
+| `admins` | id, username (5.3 rules, permanent, never reused), disabled, created/updated |
+| `admin_identities` | admin, provider, subject, secret hash; primary key `(provider, subject)`, as `identities` |
+| `sessions` | gains `admin_id` (references `admins`); `kind = 'admin'` exactly when `admin_id` is set and `parent_id` is not |
+
+`identities` keeps its shape. An OIDC row has `provider` = the issuer URL (exact string), `subject` = `sub`,
+`secret_hash` NULL. At most one OIDC identity per principal and issuer (a partial unique index) **(call)**. One
+`(provider, subject)` pair belongs to a parent or an admin, never both: the store transaction that links checks both
+tables **(call)**. The migration rebuilds `sessions` for the new column and deletes admin sessions, so the admin signs in
+once more after the upgrade.
+
+**Import and bootstrap.** After migrations, if `admins` is empty and `ADMIN_USERNAME`/`ADMIN_PASSWORD` are set, the API
+creates that admin with a local identity (argon2id), once **(call: a start-up step, since SQL cannot hash)**. From then
+on the two variables are ignored with one warning at start, the 5.1 fingerprint is dropped, and the edge retires both
+SOPS keys in the cutover change. They are required only while `admins` is empty. CLI in the API binary, run as `docker
+compose run --rm -T happybabytracker-api admin <verb>` (homelab-edge EDGE-03), password on stdin: `create <username>`
+(only while `admins` is empty) and `reset-password <username>` (deletes that admin's sessions).
+
+**Modes.** `AUTH_MODE` is read by the **API**, which is the authority **(call)**: `local` (default), `oidc`, `both`. The
+API refuses a session or redemption whose kind the mode does not allow; the UI reads the mode from `GET /v1/auth`. In
+`both` the password login keeps working while the issuer is unreachable. Switching mode needs no login: the API's env on
+the edge. The UI holds the relying-party settings (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
+`OIDC_SCOPES`, default `openid profile email`; all or none). `OIDC_AUTO_PROVISION` is **not** implemented and is
+refused if set: parents are created by the admin (5.3) **(call: a deliberate deviation from the shared config list)**.
+
+**SSO login.** The UI runs the authorization code flow with PKCE (S256), `state` and `nonce` in a transaction cookie
+(`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10 minutes; sealed with a new `SESSION_SEAL_KEY`, secret) **(call)**;
+`GET /auth/callback` validates the ID token (`alg` RS256 from the issuer's JWKS, `iss`, `aud`, `exp`, `nonce`), then
+calls `POST /v1/session/oidc {iss, sub}` (`Internal`). The API looks the pair up in `identities`, then in
+`admin_identities`, and issues a parent or admin session with the lifetimes of 5.3; an unknown pair or a disabled
+principal → 403 `not_linked`, one answer. The IdP gates who may open the app (group `happybabytracker`); the app reads
+no groups, email or name. Relying party: `openid-client`, exact pin **(call)**.
+
+**Link SSO.** In `both`, for a parent (account settings) or the admin (admin area) signed in with a password: re-enter
+the password (stamps the session; the link must finish within 5 minutes) → the flow above with `prompt=login` and the
+session's token hash and purpose `link` bound into the transaction cookie → "You are linking <preferred_username> to
+<username>" with Confirm and Cancel → `POST /v1/me/identities` or `POST /v1/admin/me/identities`; 409 `already_linked`
+when the pair is anyone's or the principal already has one for that issuer.
+
+**Invites by SSO.** An invite page offers "Set a password" and, in `oidc`/`both`, "Continue with single sign-on". The
+SSO path binds the invite token's hash and purpose `invite` into the transaction cookie; the callback calls `POST
+/v1/invites/redeem-oidc {token, iss, sub}`, which in one transaction marks the token used, adds the identity (409
+`already_linked` as above) and issues a session. A parent who joined by SSO has no password; an admin-issued reset link
+(5.3) gives them one for break-glass.
+
+**Unlink.** The admin can remove a parent's OIDC identity (`POST /v1/admin/parents/{parent}/unlink-sso`), for an IdP
+account that was recreated or a wrong link. Parents cannot unlink themselves **(call)**.
+
+**Offboarding and notifications (owner, 2026-11-24).** Signing out does not stop reminders (11), and the IdP's removal
+of a person is invisible to the app. So the app's own steps are what stop them, each in the store transaction that
+makes the change: disabling a parent (5.3: sessions, push subscriptions, ntfy topic); **unlinking** a parent's OIDC
+identity deletes the same three; and an OIDC session request for a linked parent who is disabled repeats that purge
+(idempotent) before it answers `not_linked`. Until the admin disables or unlinks an offboarded parent, their devices keep
+receiving "<Category> due for <kid's name>": homelab-edge `sso.md`'s offboarding list names the disable step for this app.
+
+**Routes and the access matrix.** New routes (`GET /v1/auth`, `POST /v1/session/oidc`, `POST /v1/invites/redeem-oidc`,
+`POST /v1/me/identities`, `POST /v1/admin/me/identities`, `POST /v1/admin/parents/{parent}/unlink-sso`, and a re-auth
+route per principal) are added to `routes.go` and the pinned `routeClasses` together (`CLAUDE.md` How to Act 3). Admin
+sessions stay refused outside `/v1/admin/*` and `/v1/session*`.
+
+**Logs and OTEL.** No `sub`, issuer subject or `preferred_username` in a log or an error (Rule 5) **(call)**. The
+callback's query (`code`, `state`) is scrubbed from OTEL like `/invite/*` and `/reset/*`.
+
+**Tests the builder adds.** Every new route and its refusal in each mode; the import (once, then ignored with a
+warning; a second start changes nothing); both CLI verbs; the admin still refused on every kid route after an SSO login
+(the matrix test); the cross-table uniqueness; the link flow's re-auth window, session binding and `already_linked`;
+invite redemption by SSO, including a used or expired token; unlink and the disabled-parent OIDC request each deleting
+sessions, push subscriptions and the ntfy topic; the conformance cases of the SSO spec § 3 (bad `state`, wrong
+`iss`/`aud`, expired token, unlinked `sub`, replayed code, link while another IdP session is live) against a stub
+issuer; no `sub` or token in captured logs.
 
 ## 6. Data
 
@@ -228,8 +323,9 @@ Authelia is approved for the edge but not deployed, and it is planned for **publ
 | Table | Purpose | Columns beyond the common ones |
 |---|---|---|
 | `parents` | accounts | username, display name, unit preferences, disabled flag |
-| `identities` | credentials (5.4) | provider, subject, secret hash |
-| `sessions`, `one_time_tokens` | login state (5.3) | token hash, kind, expiry |
+| `identities` | credentials (5.4, 5.5) | provider, subject, secret hash |
+| `admins`, `admin_identities` | the admin principal and its credentials (5.5, amended 2026-11-24) | username, disabled; provider, subject, secret hash |
+| `sessions`, `one_time_tokens` | login state (5.3) | token hash, kind, expiry; sessions gain `admin_id` (5.5) |
 | `kids` | profile and settings | name, birth date, birth sex (`female`/`male`), gestational age at birth (weeks, days; optional), time zone, growth source, vaccine schema (nullable) |
 | `kid_access` | grants | kid, parent, role |
 | `kid_modules` | per-kid overrides (7.2) | kid, module, enabled |
@@ -508,7 +604,8 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 
 | Env var | Meaning |
 |---|---|
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters) |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters). Amended 2026-11-24: required only while `admins` is empty, then ignored with a warning (5.5) |
+| `AUTH_MODE` | amended 2026-11-24: `local` (default) \| `oidc` \| `both` (5.5) |
 | `INTERNAL_API_TOKEN` | shared with the UI container (secret, at least 32 characters) |
 | `VAPID_PRIVATE_KEY` | optional; P-256 private key for Web Push (secret) |
 | `VAPID_SUBJECT` | optional; the `https:` subject sent to the push services; on the edge, the app's origin |
@@ -536,13 +633,15 @@ configured it is 200.
 
 SvelteKit with the Node adapter on container port 9212, the same stack and versions policy as
 commsgun's dashboard. The browser talks only to this server. It holds no data and no secret other
-than `INTERNAL_API_TOKEN`.
+than `INTERNAL_API_TOKEN` (amended 2026-11-24: and the OIDC client secret and transaction-cookie key, 5.5).
 
 | Env var | Meaning |
 |---|---|
 | `INTERNAL_API_TOKEN` | same value as the API's |
 | `API_BASE_URL` | `http://happybabytracker-api:9210` on the edge |
-| `ORIGIN` | the app's origin; a request whose derived origin differs gets 400, except the health paths |
+| `ORIGIN` | the app's origin; a request whose derived origin differs gets 400, except the health paths. Amended 2026-11-24: `https://happybaby.public.<domain>`, and `PUBLIC_ORIGIN` follows |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (secret), `OIDC_SCOPES` | amended 2026-11-24: the relying party (5.5); all or none |
+| `SESSION_SEAL_KEY` | amended 2026-11-24: seals the OIDC transaction cookie (secret, at least 32 characters) (5.5) |
 | `PORT` | 9212 |
 
 The image sets `PROTOCOL_HEADER`, `HOST_HEADER`, `ADDRESS_HEADER` and `XFF_DEPTH` as commsgun's does.
@@ -602,7 +701,9 @@ Everything follows that repo's `CLAUDE.md`.
 **Image visibility**: the repository is public **(owner)** and both GHCR packages are made public
 once, as commsgun's were, so the edge and the bump workflow pull without a credential.
 
-**Name**: one `*.private` name for the UI, wired in the four places of EDGE-07, inheriting
+**Name** (amended 2026-11-24, not deployed: the UI moves to `happybaby.public.<domain>`, the private name is removed
+in its four EDGE-07 places, and the reachability paragraph below no longer applies; homelab-edge SSO spec § 5): one
+`*.private` name for the UI, wired in the four places of EDGE-07, inheriting
 `tailnet_only` and `deny_staging_vm`: `happybaby.private.<domain>` **(owner)**. Nothing under
 `*.public`, nothing in `edge_sites`.
 
@@ -691,3 +792,27 @@ Each plan after the second ends with: merge, the bump PR, a deploy, and a check 
 - The percentile lines each chart draws, following each source's own convention.
 - The milestone catalog's exact items and the vaccine schedule files, from the named authorities,
   subject to the owner's review in 9.
+
+## 18. Threat model (draft, pending owner review before P6)
+
+Required by the homelab-edge SSO spec § 3 before the app goes public at `happybaby.public.<domain>`.
+
+| Surface | Exposure | Auth | Limits | Secrets in URLs and logs | Session | CSRF |
+|---|---|---|---|---|---|---|
+| UI pages and `/api` routes | internet, through Caddy | SSO; password login only in `local`/`both` | Caddy `<site>_login` and `_login_hourly` zones on the login POST; the 5.3 limiter (per address and per username) | invite and reset tokens in the path: Caddy redacts them in its logs on the public site (SSO spec § 4.3), OTEL scrubs them (Rule 5); query, `Referer` and `Location` dropped | opaque, server-side; parent 30 days sliding, admin 12 h; deleted on logout, disable, reset, unlink | SvelteKit origin check (`ORIGIN`, 13.2); `SameSite=Strict` session; `state` + PKCE + `nonce` |
+| `/auth/callback` | internet | `state` bound to the transaction cookie; ID-token checks | Caddy per-IP zone for the site | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | transaction cookie 10 min, `Lax`, `Path=/auth` | `state`; link and invite purposes bound into it |
+| `/invite/<token>`, `/reset/<token>` | internet | the token (32 random bytes, hashed, single use, 72 h / 1 h) | per-IP zone | as above | — | form POST, origin check |
+| API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | — | none in URLs beyond ids | — | not browser-reachable |
+| Health paths | internet, unauthenticated | none | per-IP zone | none | — | — |
+
+Residuals for the owner to accept or reject:
+
+1. While `both` is on, a password login is reachable from the internet (SSO spec decision 18).
+2. An offboarded parent keeps receiving medication reminders (a kid's name and a category) until the admin disables
+   or unlinks them (5.5); ntfy keeps a sent message in its cache for 72 hours (11.1).
+3. A parent who joined by SSO has no password, so while the issuer is down they cannot sign in even in `both`, until
+   the admin issues a reset link.
+4. The `authelia_session` cookie is scoped to `public.<domain>`; the edge strips it before this upstream (SSO spec
+   § 4.3). If that strip is missing, the app still ignores it.
+5. Kid data now crosses the internet to the browser, over TLS only; `Cache-Control: no-store` (13.2) stays on every
+   such page.
