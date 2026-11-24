@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 )
 
 func TestWHORestrictedZWorkedExamples(t *testing.T) {
@@ -295,5 +296,87 @@ func TestRestrictedPredicate(t *testing.T) {
 				t.Errorf("restricted(%s, %s) = %v, want %v", src, m, got, w)
 			}
 		}
+	}
+}
+
+// TestScoreRow replays the rows of the httpapi growth tests: the same reasons, rounding and BMI.
+func TestScoreRow(t *testing.T) {
+	i := func(v int64) *int64 { return &v }
+	r := func(x, scale float64) float64 { return math.Round(x*scale) / scale }
+	bmi := func(g, mm float64) float64 { return g * 1000 / (mm * mm) }
+	scored := func(src Source, m Measure, sex Sex, days int, value float64, table string) *MeasureScore {
+		s, err := ScoreOf(src, m, sex, days, value)
+		if err != nil {
+			t.Fatalf("engine %s %s %d: %v", src, m, days, err)
+		}
+		return &MeasureScore{Scored: true, Z: r(s.Z, 100), Percentile: r(s.Percentile, 10), Table: table}
+	}
+	reason := func(why string) *MeasureScore { return &MeasureScore{Reason: why} }
+	f := func(v float64) *float64 { return &v }
+	term := func(days int) kidtime.AgeBasis { return kidtime.AgeBasis{ChronologicalDays: days, ScoringDays: days} }
+	corrected := func(chrono, scoring int) kidtime.AgeBasis {
+		return kidtime.AgeBasis{ChronologicalDays: chrono, ScoringDays: scoring, Corrected: true}
+	}
+	cases := []struct {
+		name              string
+		src               Source
+		sex               Sex
+		basis             kidtime.AgeBasis
+		weight, len, head *int64
+		want              RowScores
+	}{
+		{"who female at 89 days", SourceWHO, Female, term(89), i(5000), i(600), i(400), RowScores{
+			Weight: scored(SourceWHO, Weight, Female, 89, 5, "wfa-day"), Length: scored(SourceWHO, Length, Female, 89, 60, "lhfa-day"),
+			Head: scored(SourceWHO, Head, Female, 89, 40, "hcfa-day"), BMI: scored(SourceWHO, BMI, Female, 89, bmi(5000, 600), "bfa-day"),
+			BMIValue: f(13.89)}},
+		{"cdc female at 89 days", SourceCDC, Female, term(89), i(5000), i(600), i(400), RowScores{
+			Weight: scored(SourceCDC, Weight, Female, 89, 5, "wtageinf"), Length: scored(SourceCDC, Length, Female, 89, 60, "lenageinf"),
+			Head: scored(SourceCDC, Head, Female, 89, 40, "hcageinf"), BMI: reason("not_covered"), BMIValue: f(13.89)}},
+		{"corrected at three months", SourceWHO, Female, corrected(92, 59), i(5000), i(600), nil, RowScores{
+			Weight: scored(SourceWHO, Weight, Female, 59, 5, "wfa-day"), Length: scored(SourceWHO, Length, Female, 59, 60, "lhfa-day"),
+			BMI: scored(SourceWHO, BMI, Female, 59, bmi(5000, 600), "bfa-day"), BMIValue: f(13.89)}},
+		{"corrected the day before the second birthday", SourceWHO, Female, corrected(729, 696), i(5000), i(600), nil, RowScores{
+			Weight: scored(SourceWHO, Weight, Female, 696, 5, "wfa-day"), Length: scored(SourceWHO, Length, Female, 696, 60, "lhfa-day"),
+			BMI: scored(SourceWHO, BMI, Female, 696, bmi(5000, 600), "bfa-day"), BMIValue: f(13.89)}},
+		{"the second birthday", SourceWHO, Female, term(730), i(5000), i(600), nil, RowScores{
+			Weight: scored(SourceWHO, Weight, Female, 730, 5, "wfa-day"), Length: scored(SourceWHO, Length, Female, 730, 60, "lhfa-day"),
+			BMI: scored(SourceWHO, BMI, Female, 730, bmi(5000, 600), "bfa-day"), BMIValue: f(13.89)}},
+		{"before term", SourceWHO, Female, corrected(10, -23), i(5000), i(600), i(400), RowScores{
+			Weight: reason("before_term"), Length: reason("before_term"), Head: reason("before_term"), BMI: reason("before_term"),
+			BMIValue: f(13.89)}},
+		{"cdc at 18 months", SourceCDC, Female, term(546), i(11000), i(810), i(470), RowScores{
+			Weight: scored(SourceCDC, Weight, Female, 546, 11, "wtageinf"), Length: scored(SourceCDC, Length, Female, 546, 81, "lenageinf"),
+			Head: scored(SourceCDC, Head, Female, 546, 47, "hcageinf"), BMI: reason("not_covered"), BMIValue: f(r(bmi(11000, 810), 100))}},
+		{"who male at 6 years", SourceWHO, Male, term(2191), i(20000), i(1150), i(510), RowScores{
+			Weight: scored(SourceWHO, Weight, Male, 2191, 20, "wfa-month"), Length: scored(SourceWHO, Length, Male, 2191, 115, "hfa-month"),
+			Head: reason("not_covered"), BMI: scored(SourceWHO, BMI, Male, 2191, bmi(20000, 1150), "bfa-month"),
+			BMIValue: f(r(bmi(20000, 1150), 100))}},
+		{"weight only", SourceWHO, Female, term(89), i(5000), nil, nil, RowScores{Weight: scored(SourceWHO, Weight, Female, 89, 5, "wfa-day")}},
+		{"length only", SourceWHO, Female, term(89), nil, i(600), nil, RowScores{Length: scored(SourceWHO, Length, Female, 89, 60, "lhfa-day")}},
+		{"weight and head", SourceWHO, Female, term(89), i(5000), nil, i(400), RowScores{
+			Weight: scored(SourceWHO, Weight, Female, 89, 5, "wfa-day"), Head: scored(SourceWHO, Head, Female, 89, 40, "hcfa-day")}},
+	}
+	for _, c := range cases {
+		got, err := ScoreRow(c.src, c.sex, c.basis, c.weight, c.len, c.head)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		for _, m := range []struct {
+			name      string
+			got, want *MeasureScore
+		}{{"weight", got.Weight, c.want.Weight}, {"length", got.Length, c.want.Length}, {"head", got.Head, c.want.Head}, {"bmi", got.BMI, c.want.BMI}} {
+			if (m.got == nil) != (m.want == nil) || (m.got != nil && *m.got != *m.want) {
+				t.Errorf("%s %s = %+v, want %+v", c.name, m.name, m.got, m.want)
+			}
+		}
+		if (got.BMIValue == nil) != (c.want.BMIValue == nil) || (got.BMIValue != nil && *got.BMIValue != *c.want.BMIValue) {
+			t.Errorf("%s bmi value = %v, want %v", c.name, got.BMIValue, c.want.BMIValue)
+		}
+	}
+	if s, _ := ScoreRow(SourceWHO, Female, term(89), i(5000), nil, nil); s.Weight.Z == 0 && s.Weight.Percentile == 0 {
+		t.Fatal("no score")
+	}
+	if got := roundTo(-0.001, constants.ZScoreDecimals); math.Signbit(got) {
+		t.Errorf("roundTo(-0.001) = %v, want +0", got)
 	}
 }

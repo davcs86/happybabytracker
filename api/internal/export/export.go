@@ -43,13 +43,14 @@ var moduleTitle = map[model.Module]string{
 	"feeding": "Feeding", "milestones": "Milestones", "growth": "Growth", "vaccination": "Vaccination",
 }
 
-// item is one drawn element: a table when cols is set, else a heading, a profile line or a paragraph.
+// item is one drawn element: a chart or a table when set, else a heading, a profile line or a paragraph.
 type item struct {
 	heading      string
 	label, value string
 	paragraph    string
 	cols         []pdfdoc.Col
 	rows         [][]string
+	chart        *pdfdoc.Chart
 }
 
 func (it item) texts() []string {
@@ -60,11 +61,19 @@ func (it item) texts() []string {
 	for _, r := range it.rows {
 		out = append(out, r...)
 	}
+	if c := it.chart; c != nil {
+		out = append(out, c.Title, c.XLabel, c.YLabel)
+		for _, cv := range c.Curves {
+			out = append(out, cv.Label)
+		}
+	}
 	return out
 }
 
 func (it item) draw(d *pdfdoc.Doc) {
 	switch {
+	case it.chart != nil:
+		d.Chart(*it.chart)
 	case it.cols != nil:
 		d.Table(it.cols, it.rows)
 	case it.heading != "":
@@ -86,10 +95,10 @@ func (b *budget) take(n int) int {
 	return k
 }
 
-// sectionWriters builds each module's items; a requested module without a writer prints no section yet (Tasks 12, 13).
-var sectionWriters = map[model.Module]func(snap store.ExportSnapshot, req Request, b *budget) []item{
+// sectionWriters builds each module's items; a requested module without a writer prints no section yet (Task 13).
+var sectionWriters = map[model.Module]func(snap store.ExportSnapshot, req Request, b *budget) ([]item, error){
 	"bottles": bottles.items, "nursing": nursing.items, "pumping": pumping.items,
-	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items,
+	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items, "growth": growthItems,
 }
 
 // Render writes the PDF of req.Modules only, in model.Modules order, after the profile; nothing is written on failure.
@@ -104,7 +113,11 @@ func Render(w io.Writer, snap store.ExportSnapshot, req Request) error {
 	var body []item
 	for _, m := range model.Modules {
 		if write := sectionWriters[m]; write != nil && slices.Contains(req.Modules, m) {
-			body = append(body, write(snap, req, b)...)
+			items, err := write(snap, req, b)
+			if err != nil {
+				return err
+			}
+			body = append(body, items...)
 		}
 	}
 	profile, err := profileItems(snap.Kid, req)

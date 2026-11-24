@@ -88,6 +88,9 @@ const (
 	ZScoreDecimals     = 2
 	PercentileDecimals = 1
 	BMIDecimals        = 2
+	// Percentiles outside [PercentileShownMin, PercentileShownMax] print as a bound (ui/src/lib/constants.ts PERCENTILE_SHOWN).
+	PercentileShownMin = 0.1
+	PercentileShownMax = 99.9
 
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
@@ -213,6 +216,9 @@ const (
 	ExportFontSizeBody       = 9
 	ExportFontSizeHeading    = 12
 	ExportFontSizeSmall      = 7
+	// Target tick counts of a growth chart's axes, as ui/src/lib/growth-chart.ts X_TICKS and Y_TICKS.
+	ExportChartXTicks = 6
+	ExportChartYTicks = 5
 )
 
 // Export limits: inclusive kid-local days per export, printed rows per section and in all, exports at once.

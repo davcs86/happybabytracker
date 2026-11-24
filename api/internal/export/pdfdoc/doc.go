@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"codeberg.org/go-pdf/fpdf"
@@ -68,7 +69,7 @@ type Chart struct {
 	Points                 []Point
 }
 
-// Curve is one reference line.
+// Curve is one reference line; an empty Label draws no label.
 type Curve struct {
 	Label  string
 	Points []Point
@@ -125,6 +126,14 @@ func (d *Doc) newPage() {
 	d.atTop = true
 }
 
+// setFont skips an unchanged font: fpdf writes a font operator on every SetFont call.
+func (d *Doc) setFont(style string, size float64) {
+	if pt, _ := d.f.GetFontSize(); strings.EqualFold(d.f.GetFontFamily(), family) && d.f.GetFontStyle() == style && pt == size {
+		return
+	}
+	d.f.SetFont(family, style, size)
+}
+
 func fontMM(size float64) float64 { return size * mmPerPt }
 
 type cell struct {
@@ -140,7 +149,7 @@ func (d *Doc) row(cells []cell, size float64, repeat func()) {
 	lines := make([][]string, len(cells))
 	n := 1
 	for i, c := range cells {
-		d.f.SetFont(family, c.style, size)
+		d.setFont(c.style, size)
 		lines[i] = d.f.SplitText(d.enc(c.text), c.w-2*pad)
 		n = max(n, len(lines[i]))
 	}
@@ -157,7 +166,7 @@ func (d *Doc) row(cells []cell, size float64, repeat func()) {
 		}
 		k := min(n-start, max(fit, 1))
 		for i, c := range cells {
-			d.f.SetFont(family, c.style, size)
+			d.setFont(c.style, size)
 			for j := start; j < start+k && j < len(lines[i]); j++ {
 				d.f.Text(c.x+pad, d.y+pad+float64(j-start)*lh+fontMM(size), lines[i][j])
 			}
@@ -308,7 +317,7 @@ func (d *Doc) Chart(c Chart) {
 			}
 			last = &cv.Points[j]
 		}
-		if last != nil {
+		if last != nil && labels[i] != "" {
 			f.Text(right+pad, py(last.Y)+fontMM(small)/2, labels[i])
 		}
 	}

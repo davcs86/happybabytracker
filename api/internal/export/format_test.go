@@ -321,3 +321,34 @@ func TestText(t *testing.T) {
 		}
 	}
 }
+
+// The examples of ui/src/lib/growth.test.ts and timeline.test.ts.
+func TestFormatPercentile(t *testing.T) {
+	for _, c := range []struct {
+		p    float64
+		want string
+	}{{0, "<0.1"}, {0.05, "<0.1"}, {0.1, "0.1"}, {50, "50.0"}, {57.9, "57.9"}, {50.25, "50.3"}, {99.9, "99.9"}, {99.95, ">99.9"}, {100, ">99.9"}} {
+		if got := FormatPercentile(c.p); got != c.want {
+			t.Errorf("FormatPercentile(%v) = %q, want %q", c.p, got, c.want)
+		}
+	}
+}
+
+func TestFormatZ(t *testing.T) {
+	for _, c := range []struct {
+		z    float64
+		want string
+	}{{0.207, "0.21"}, {0.2, "0.20"}, {-1.5, "-1.50"}, {-0.001, "0.00"}, {0, "0.00"}, {3.456, "3.46"}, {-0.125, "-0.12"}} {
+		if got := FormatZ(c.z); got != c.want {
+			t.Errorf("FormatZ(%v) = %q, want %q", c.z, got, c.want)
+		}
+	}
+}
+
+func TestFormatDayHeading(t *testing.T) {
+	for date, want := range map[string]string{"2026-03-29": "Sun 29 Mar 2026", "2026-10-14": "Wed 14 Oct 2026"} {
+		if got := FormatDayHeading(date); got != want {
+			t.Errorf("FormatDayHeading(%q) = %q, want %q", date, got, want)
+		}
+	}
+}

@@ -48,12 +48,12 @@ type tracker struct {
 	day        func(d store.DaySummary, u model.Units) string // "" for a day with nothing
 }
 
-func (tr tracker) items(snap store.ExportSnapshot, req Request, b *budget) []item {
+func (tr tracker) items(snap store.ExportSnapshot, req Request, b *budget) ([]item, error) {
 	out := []item{{heading: tr.title}}
 	entries, count := snap.Entries[tr.typ], snap.Counts[tr.typ]
 	shown := min(b.take(count), len(entries))
 	if count > 0 && shown == 0 {
-		return append(out, item{paragraph: strconv.Itoa(count) + overflow})
+		return append(out, item{paragraph: strconv.Itoa(count) + overflow}), nil
 	}
 	if count == 0 {
 		out = append(out, item{paragraph: noEntries})
@@ -77,7 +77,7 @@ func (tr tracker) items(snap store.ExportSnapshot, req Request, b *budget) []ite
 		cols := []pdfdoc.Col{{Title: "Date", WidthMM: contentWidth * dateShare}, {Title: dayTotal, WidthMM: contentWidth * (1 - dateShare)}}
 		out = append(out, item{cols: cols, rows: days})
 	}
-	return out
+	return out, nil
 }
 
 func note(entry any) string {

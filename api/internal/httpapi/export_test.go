@@ -232,8 +232,7 @@ func TestExportModuleFilter(t *testing.T) {
 	kid, ana := k.filterKid()
 
 	strs, _ := pdfStrings(t, k.exportPDF(ana, kid, "growth", "bottles"))
-	// Task 12: the growth section adds "Growth" after "Bottles".
-	if got := headings(strs); !slices.Equal(got, []string{"Bottles"}) {
+	if got := headings(strs); !slices.Equal(got, []string{"Bottles", "Growth"}) {
 		t.Errorf("headings = %q, want only the requested sections", got)
 	}
 	wantStrings(t, "growth and bottles", strs, "Growth source", "Modules", "Bottles, Growth", "Bottle 120 ml, formula")
@@ -253,6 +252,7 @@ func TestExportModuleFilter(t *testing.T) {
 	rows := map[string]string{
 		"bottles": "Bottle 120 ml, formula", "nursing": "Nursing L 1 min · R 1 min", "pumping": "Pumping 10 min, 120 ml (both)",
 		"diapers": "Diaper wet", "sleep": "Sleep until 2026-11-18 10:30 (30 min)", "feeding": "Solids: pear",
+		"growth": "Mon 1 Jun 2026",
 	}
 	for _, m := range constants.ExportModules {
 		strs, _ := pdfStrings(t, k.exportPDF(ana, kid, m))
@@ -266,7 +266,7 @@ func TestExportModuleFilter(t *testing.T) {
 				}
 			}
 		}
-		// Tasks 12 and 13: growth, vaccination and milestones then print their own heading.
+		// Task 13: vaccination and milestones then print their own heading.
 		if got := headings(strs); !slices.Equal(got, want) {
 			t.Errorf("%s alone: headings %q, want %q", m, got, want)
 		}
@@ -358,12 +358,15 @@ func TestExportEmptyKid(t *testing.T) {
 	if pages != 1 {
 		t.Errorf("an empty export has %d pages, want 1", pages)
 	}
-	// Tasks 12 and 13 add the growth, vaccination and milestones headings and their empty texts.
-	if got := headings(strs); !slices.Equal(got, sectionTitles[:6]) {
+	// Task 13 adds the vaccination and milestones headings and their empty texts.
+	if got := headings(strs); !slices.Equal(got, append(slices.Clone(sectionTitles[:6]), "Growth")) {
 		t.Errorf("headings = %q", got)
 	}
 	if n := countOf(strs, noEntries); n != 6 {
 		t.Errorf("%q appears %d times, want once per daily tracker", noEntries, n)
+	}
+	if n := countOf(strs, "No measurements recorded."); n != 1 {
+		t.Errorf("the empty growth text appears %d times, want once", n)
 	}
 	wantStrings(t, "profile", strs, "Profile", testKidName, "2026-03-04", "Female", "Europe/Madrid", "8 months 16 days",
 		"2026-11-01 to 2026-11-20", "Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination",
@@ -586,4 +589,62 @@ func TestExportNoValuesInLogs(t *testing.T) {
 	k.exportReq(ana, kid, exportBody(exportFrom, "2026-11-21", "bottles"))
 	k.exportReq(ana, kid, exportBody(exportFrom, exportTo, "bottles", "weather"))
 	wantCleanLog(t, k.Log.String(), 3, "Quillon", "xyzzy", "639", exportFrom, exportTo, "2026-11-21", "bottles", "diapers", "weather", "modules")
+}
+
+// TestGrowthSectionScores: the PDF words each score as the growth screen does from GET …/growth, under the current source.
+func TestGrowthSectionScores(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	k.createGrowth(ana, kid, nil)
+	k.createGrowth(ana, kid, map[string]any{"measured_on": "2026-10-01", "weight": amountBody("kg", 7400), "length": amountBody("cm", 680), "head": nil})
+	reasons := map[string]string{"before_term": "before expected term", "not_covered": "this source has no table for this age"}
+	list := func() []any {
+		rec := k.do(http.MethodGet, "/v1/kids/"+kid+"/growth", ana, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list growth: %d", rec.Code)
+		}
+		return bodyMap(t, rec)["growth"].([]any)
+	}
+	check := func(name string) (string, []any) {
+		rows := list()
+		strs, _ := pdfStrings(t, k.exportPDF(ana, kid, "growth"))
+		text := strings.Join(strs, " ")
+		n := 0
+		for _, r := range rows {
+			for _, m := range []string{"weight", "length", "head", "bmi"} {
+				sc, ok := r.(map[string]any)["scores"].(map[string]any)[m].(map[string]any)
+				if !ok {
+					continue
+				}
+				reason, _ := sc["reason"].(string)
+				want := reasons[reason]
+				if sc["scored"] == true {
+					want = "z " + export.FormatZ(sc["z"].(float64)) + ", percentile " + export.FormatPercentile(sc["percentile"].(float64))
+				}
+				if !strings.Contains(text, ": "+want) {
+					t.Errorf("%s %s: %q missing", name, m, want)
+				}
+				n++
+			}
+		}
+		if n != 7 {
+			t.Fatalf("%s: %d scores checked, want 7", name, n)
+		}
+		return text, rows
+	}
+	whoText, whoRows := check("who")
+	if rec := k.do(http.MethodPatch, "/v1/kids/"+kid, ana, map[string]any{"growth_source": "cdc"}); rec.Code != http.StatusOK {
+		t.Fatalf("switch source: %d %q", rec.Code, rec.Body.String())
+	}
+	cdcText, cdcRows := check("cdc")
+	if whoText == cdcText {
+		t.Error("switching the source left the PDF unchanged")
+	}
+	for i := range whoRows {
+		for _, key := range []string{"id", "measured_on", "weight", "length", "head", "note", "age"} {
+			if a, b := whoRows[i].(map[string]any)[key], cdcRows[i].(map[string]any)[key]; !equalJSON(a, b) {
+				t.Errorf("row %d %s changed with the source: %v -> %v", i, key, a, b)
+			}
+		}
+	}
 }

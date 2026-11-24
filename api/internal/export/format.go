@@ -25,6 +25,7 @@ const (
 	secondsPerHour   = 3600
 	secondsPerDay    = 86400
 	dayLayout        = "2006-01-02"
+	dayHeadingLayout = "Mon 2 Jan 2006"
 	instantLayout    = "2006-01-02 15:04"
 	beforeTerm       = "before expected term"
 )
@@ -204,6 +205,38 @@ func FormatAgeHeader(age string, correctedBirthDate *string, today string) strin
 		return age + " (" + beforeTerm + ")"
 	}
 	return age + " (corrected " + FormatAge(*correctedBirthDate, today) + ")"
+}
+
+// fixedHalfUp mirrors growth.ts toFixedHalfUp: Math.round rounds halves up, and -0 prints as 0.
+func fixedHalfUp(x float64, places int) string {
+	p := math.Pow(10, float64(places))
+	r := math.Floor(x*p+0.5) / p
+	if r == 0 {
+		r = 0
+	}
+	return strconv.FormatFloat(r, 'f', places, 64)
+}
+
+// FormatPercentile mirrors growth.ts formatPercentile: beyond the shown range a bound, never 0 or 100.
+func FormatPercentile(p float64) string {
+	switch {
+	case p < constants.PercentileShownMin:
+		return "<" + strconv.FormatFloat(constants.PercentileShownMin, 'f', -1, 64)
+	case p > constants.PercentileShownMax:
+		return ">" + strconv.FormatFloat(constants.PercentileShownMax, 'f', -1, 64)
+	}
+	return fixedHalfUp(p, constants.PercentileDecimals)
+}
+
+func FormatZ(z float64) string { return fixedHalfUp(z, constants.ZScoreDecimals) }
+
+// FormatDayHeading mirrors timeline.ts formatDayHeading ("Sun 29 Mar 2026"); a malformed date prints as stored.
+func FormatDayHeading(date string) string {
+	t, err := time.Parse(dayLayout, date)
+	if err != nil {
+		return date
+	}
+	return t.Format(dayHeadingLayout)
 }
 
 // FormatDate is the stored YYYY-MM-DD, as the UI prints plain dates.
