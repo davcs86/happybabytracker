@@ -4,8 +4,12 @@ Status: **approved by the owner** (2026-11-20). Plans: `docs/superpowers/plans/`
 
 Amended 2026-11-24 for single sign-on and public exposure (5.5, 15, 18): **specified, not built.** The shared design is
 `davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` (§ 3 app contract, § 5, § 7, § 8;
-phase P6). Until an image with 5.5 ships and the edge sets `AUTH_MODE`, the app behaves as before, except that the env
-admin is copied into the `admins` table on first start and its sessions end once.
+phase P6). Once an image with 5.5 ships, and until the edge sets `AUTH_MODE`, the app runs in `local` and behaves as
+before, with three exceptions from its first start: the env admin is copied into the `admins` table and its sessions
+end once; `ADMIN_USERNAME`/`ADMIN_PASSWORD` are ignored from then on, so rotating the admin password in SOPS no longer
+works and moves to the CLI's `reset-password` at that bump; and a password change counts against the login limiter
+(5.3, 5.5). The edge retires both SOPS keys in a later change: the
+bump that brings the image changes only its digest.
 
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
@@ -75,8 +79,8 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 - A health value, a kid's or parent's name, a username or a secret appears in a log.
 - ~~The app is reachable from the internet.~~ Amended 2026-11-24: the API is reachable from the internet, or the UI
   is reachable from it other than through single sign-on or, in `local`/`both`, the rate-limited password login.
-- A disabled principal, an unlinked identity or a person outside the IdP's `happybabytracker` group reaches a page
-  past the login.
+- A disabled parent, an unlinked identity or a person outside the IdP's `happybabytracker` group signs in. Sessions
+  that exist when the IdP removes a person last until the admin disables or unlinks them (5.5; residual 2 in 18).
 - A percentile or schedule is computed from reference data whose origin and version are not recorded.
 - The droplet is lost and more than half a day of entries cannot be restored.
 
@@ -146,7 +150,7 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
 
 | Principal | Exists as | Can do | Cannot do |
 |---|---|---|---|
-| **Admin** | env vars only; not a row in `parents` (amended 2026-11-24: a row in `admins`, still not in `parents`, 5.5) | create parents, issue invite and password-reset links, disable and enable parents | see, list, count or name any kid; hold a kid grant; change its own username or password in the app; be deleted or demoted **(owner)** |
+| **Admin** | env vars only; not a row in `parents` (amended 2026-11-24: a row in `admins`, still not in `parents`, 5.5) | create parents, issue invite and password-reset links, disable and enable parents | see, list, count or name any kid; hold a kid grant; change its own username or password in the app (amended 2026-11-24: its password changes only through the CLI's `reset-password`, 5.5); be deleted or demoted **(owner)** |
 | **Parent** | row in `parents` | create kids; everything their grants allow; change their own password, display name, units | see parents or kids they share nothing with |
 
 The admin's lack of kid access is structural, not a permission check: `kid_access.parent_id` is a
@@ -190,7 +194,8 @@ Two levels **(owner)**. A kid has one or more guardians and zero or more caregiv
   days, the admin session lasts 12 hours **(call)**. Logout deletes the row. A parent can see and end
   their other sessions.
 - Failed logins are limited per client address and per username, in memory **(call: 5 per minute)**.
-  The limiter counts admin and parent attempts together and answers both the same way.
+  The limiter counts admin and parent attempts together and answers both the same way. Amended 2026-11-24: re-auth
+  and the password change count too (5.5).
 - Disabling a parent deletes their sessions, push subscriptions and ntfy topic at once. Amended 2026-11-24: so does
   unlinking a parent's SSO identity, and a disabled linked parent's SSO attempt repeats it (5.5, owner).
 
@@ -217,81 +222,184 @@ never holds a `kid_access` row (Rule 2):
 
 | Table | Columns |
 |---|---|
-| `admins` | id, username (5.3 rules, permanent, never reused), disabled, created/updated |
+| `admins` | id, username (5.3 rules, permanent, never reused), created/updated. No disabled flag: the admin is never deleted or demoted (5.1), and the CLI's `unlink-sso` stops its SSO **(call)** |
 | `admin_identities` | admin, provider, subject, secret hash; primary key `(provider, subject)`, as `identities` |
-| `sessions` | gains `admin_id` (references `admins`); `kind = 'admin'` exactly when `admin_id` is set and `parent_id` is not |
+| `sessions` | gains `admin_id` (references `admins`) and `reauth_at` (unix seconds, nullable; set by re-auth below); `kind = 'admin'` exactly when `admin_id` is set and `parent_id` is not |
 
 `identities` keeps its shape. An OIDC row has `provider` = the issuer URL (exact string), `subject` = `sub`,
-`secret_hash` NULL. At most one OIDC identity per principal and issuer (a partial unique index) **(call)**. One
-`(provider, subject)` pair belongs to a parent or an admin, never both: the store transaction that links checks both
-tables **(call)**. The migration rebuilds `sessions` for the new column and deletes admin sessions, so the admin signs in
-once more after the upgrade.
+`secret_hash` NULL. At most one OIDC identity per principal and issuer, in both identity tables (a partial unique index)
+**(call)**. One `(provider, subject)` pair belongs to a parent or an admin, never both: every store transaction that adds
+an OIDC identity (link, SSO redemption) checks both tables **(call)**. The migration rebuilds `sessions` for the new
+columns and deletes admin sessions, so the admin signs in once more after the upgrade.
 
-**Import and bootstrap.** After migrations, if `admins` is empty and `ADMIN_USERNAME`/`ADMIN_PASSWORD` are set, the API
-creates that admin with a local identity (argon2id), once **(call: a start-up step, since SQL cannot hash)**. From then
-on the two variables are ignored with one warning at start, the 5.1 fingerprint is dropped, and the edge retires both
-SOPS keys in the cutover change. They are required only while `admins` is empty. CLI in the API binary, run as `docker
-compose run --rm -T happybabytracker-api admin <verb>` (homelab-edge EDGE-03), password on stdin: `create <username>`
-(only while `admins` is empty) and `reset-password <username>` (deletes that admin's sessions).
+**One username namespace.** A username belongs to at most one row across `parents` and `admins`. `createParent`, the
+CLI's `create` and the start-up import each refuse a name held in either table inside their own transaction
+(`createParent` answers 409 `username_taken`, as today; the import's refusal stops the start, as `checkAdminUsername`
+does now) **(call)**. The password login looks the name up in `admins`, then in `parents`, and runs exactly one password
+verification on every path, against the dummy hash when neither holds it, as today.
 
-**Modes.** `AUTH_MODE` is read by the **API**, which is the authority **(call)**: `local` (default), `oidc`, `both`. The
-API refuses a session or redemption whose kind the mode does not allow; the UI reads the mode from `GET /v1/auth`. In
-`both` the password login keeps working while the issuer is unreachable. Switching mode needs no login: the API's env on
-the edge. The UI holds the relying-party settings (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`,
-`OIDC_SCOPES`, default `openid profile email`; all or none). `OIDC_AUTO_PROVISION` is **not** implemented and is
-refused if set: parents are created by the admin (5.3) **(call: a deliberate deviation from the shared config list)**.
+**Import.** After migrations, in one transaction that first checks that `admins` is empty, the API creates the admin
+from `ADMIN_USERNAME`/`ADMIN_PASSWORD` with a local identity (argon2id), once **(call: a start-up step, since SQL cannot
+hash)**. The two variables are validated there, after the store opens, no longer in `config.Load`: while `admins` is
+empty they are required (the username pattern, a password of at least 16 characters, `MinAdminPasswordLen`) and the
+start fails without them; once it holds a row they are ignored, with one warning at each start that sees either set.
+The 5.1 fingerprint and its `meta` row are dropped. From the first start of this image, changing the admin password in
+SOPS changes nothing: rotation is the CLI's `reset-password`.
 
-**SSO login.** The UI runs the authorization code flow with PKCE (S256), `state` and `nonce` in a transaction cookie
-(`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10 minutes; sealed with a new `SESSION_SEAL_KEY`, secret) **(call)**;
-`GET /auth/callback` validates the ID token (`alg` RS256 from the issuer's JWKS, `iss`, `aud`, `exp`, `nonce`), then
-calls `POST /v1/session/oidc {iss, sub}` (`Internal`). The API looks the pair up in `identities`, then in
-`admin_identities`, and issues a parent or admin session with the lifetimes of 5.3; an unknown pair or a disabled
-principal → 403 `not_linked`, one answer. The IdP gates who may open the app (group `happybabytracker`); the app reads
-no groups, email or name. Relying party: `openid-client`, exact pin **(call)**.
+**CLI.** The API binary also runs `admin <verb>`, on the edge as `docker compose -f {{ edge_root }}/compose.yml run --rm
+-T happybabytracker-api admin <verb>` (homelab-edge EDGE-03), any password on stdin and at least 16 characters:
 
-**Link SSO.** In `both`, for a parent (account settings) or the admin (admin area) signed in with a password: re-enter
-the password (stamps the session; the link must finish within 5 minutes) → the flow above with `prompt=login` and the
-session's token hash and purpose `link` bound into the transaction cookie → "You are linking <preferred_username> to
-<username>" with Confirm and Cancel → `POST /v1/me/identities` or `POST /v1/admin/me/identities`; 409 `already_linked`
-when the pair is anyone's or the principal already has one for that issuer.
+- `create <username>`: only while `admins` is empty;
+- `reset-password <username>`: sets the admin's local password and deletes that admin's sessions;
+- `unlink-sso <username>`: deletes that admin's OIDC identities and sessions, so the admin can link again, for an IdP
+  account that was recreated or the edge's "both databases lost" recovery (SSO spec § 8) **(call)**.
 
-**Invites by SSO.** An invite page offers "Set a password" and, in `oidc`/`both`, "Continue with single sign-on". The
-SSO path binds the invite token's hash and purpose `invite` into the transaction cookie; the callback calls `POST
-/v1/invites/redeem-oidc {token, iss, sub}`, which in one transaction marks the token used, adds the identity (409
-`already_linked` as above) and issues a session. A parent who joined by SSO has no password; an admin-issued reset link
-(5.3) gives them one for break-glass.
+The CLI is a second, short-lived SQLite writer beside the running API (6.1): WAL and the busy timeout serialise the two,
+and `create` and the import each check that `admins` is empty inside their own immediate transaction, so exactly one of
+them creates the admin and the other changes nothing (`create` exits with an error).
 
-**Unlink.** The admin can remove a parent's OIDC identity (`POST /v1/admin/parents/{parent}/unlink-sso`), for an IdP
-account that was recreated or a wrong link. Parents cannot unlink themselves **(call)**.
+**Modes.** `AUTH_MODE` is read by the **API**, which is the authority **(call)**: `local` (default), `oidc`, `both`; any
+other value stops the start. The UI reads the mode from `GET /v1/auth` on each load of the login, invite, reset and
+account pages. Switching mode needs no login: the API's env on the edge. In `oidc`, password redemption of invite and
+reset links is refused, and in `local`, SSO redemption is refused **(owner, 2026-11-24)**. What each mode allows:
+
+| | `local` | `oidc` | `both` |
+|---|---|---|---|
+| Password login, `POST /v1/session` | yes | 403 `mode_refused` | yes |
+| SSO login, `POST /v1/session/oidc` | 403 `mode_refused` | yes | yes |
+| Invite or reset by password, `POST /v1/tokens/{token}/redeem` | yes | 403 `mode_refused` | yes |
+| Invite by SSO, `POST /v1/tokens/{token}/redeem-oidc` | 403 `mode_refused` | yes | yes |
+| Re-auth and Link SSO | 403 `mode_refused` | 403 `mode_refused` | yes |
+
+The mode check runs first, before a token is looked up, a password hashed or the limiter counted, so a refused
+redemption leaves the token usable. In `oidc` the invite page offers only "Continue with single sign-on", and the reset
+page says the link works only once the operator switches the app to `both`: a reset link is break-glass, and only in
+`both`. In `local` the invite page offers only "Set a password". In `both` it offers both, and the password login keeps
+working while the issuer is unreachable.
+
+**Relying party.** The UI holds the settings: `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (all three or none),
+`OIDC_SCOPES` (default `openid profile` **(call)**: the app reads no email; the edge's client may stay registered with
+`openid profile email`, SSO spec § 4.6), and `SESSION_SEAL_KEY`, required with them. The UI refuses to start on a
+partial set and on `OIDC_AUTO_PROVISION` set to anything: it is **not** implemented, parents are created by the admin
+(5.3) **(call: a deliberate deviation from the shared config list)**.
+Discovery and the JWKS are fetched on first use and cached; a failure fails that SSO attempt only ("Single sign-on is
+unavailable"), never the start or the password login. When the API reports `oidc` or `both` and the UI has no
+relying-party settings, the UI shows no SSO button, its login page in `oidc` says sign-in is unavailable, and it logs
+`oidc_not_configured` **(call)**. Library: `openid-client`, exact pin **(call)**.
+
+**UI routes.** Every path under `/auth/` is public (no session needed) and exempt from the admin redirect in
+`hooks.server.ts`; `/auth/*`, `/invite/*` and `/reset/*` send `Referrer-Policy: no-referrer` **(call)**.
+
+- `POST /auth/sso`: the login page's SSO button; purpose `login`, with the validated `next` path.
+- `POST /invite/{token}?/sso`: the invite page's SSO button; purpose `invite`. Starting from a form POST keeps the token
+  out of any new URL.
+- `POST /account/link-sso` (parent) and `POST /admin/account/link-sso` (admin; a new admin account page): Link SSO's
+  password field; calls the re-auth route, then starts purpose `link`.
+- `GET /auth/callback`: the redirect URI, `${ORIGIN}/auth/callback`, with `response_mode` `query`.
+- `POST /auth/confirm`: Confirm or Cancel on the link and invite confirmation.
+
+**The flow.** The start writes a transaction cookie `hbt_oidc` (`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10
+minutes, in `ui/src/lib/server/constants.ts`), AEAD-encrypted with a key derived from `SESSION_SEAL_KEY` **(call)**. It
+holds the PKCE (S256) verifier, `state`, `nonce`, the purpose and its binding: for `link` the session token's hash, for
+`invite` the raw invite token. `link` and `invite` send `prompt=login` (SSO spec § 3, S17); `login` does not. The
+callback checks `state` against the cookie, exchanges the code, and validates the ID token (`alg` RS256 from the
+issuer's JWKS, `iss`, `aud`, `exp`, `nonce`). It then answers **200**, never a redirect, so the next step is a
+same-origin navigation that carries the `SameSite=Strict` session cookie, whatever site the IdP is on **(call)**:
+
+- `login`: calls `POST /v1/session/oidc {iss, sub}`, sets the session cookie, and answers a page that continues to
+  `next` (the admin home for an admin) by meta refresh, with a Continue link.
+- `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, iss, sub, label}` (same attributes, the
+  remaining lifetime) and answers "You are linking <label> to <username>" with Confirm and Cancel; for `invite` the
+  username comes from `GET /v1/tokens/{token}`.
+
+`POST /auth/confirm` is same-origin, so it carries the session cookie. It clears `hbt_oidc`; on Confirm, for `link` it
+checks that the session cookie's token hashes to the bound hash and calls `POST /v1/me/identities` or
+`POST /v1/admin/me/identities {iss, sub}` with that session; for `invite` it calls
+`POST /v1/tokens/{token}/redeem-oidc {iss, sub}` and sets the returned session's cookie.
+
+**The label.** `preferred_username` comes with the `profile` scope, which the edge's `happybabytracker` client is
+registered with (SSO spec § 4.6). The UI reads it from the ID token, else from one userinfo call with the access token;
+it is shown on the confirmation only, never stored, sent to the API or logged. Without it the label is "the single
+sign-on account you just signed in with" **(call)**.
+
+**API side.** `POST /v1/session/oidc` looks `(iss, sub)` up in `identities`, then in `admin_identities`, and issues a
+parent or admin session with the lifetimes of 5.3; an unknown pair or a disabled parent → 403 `not_linked`, one answer.
+The IdP gates who may open the app (group `happybabytracker`); the app reads no groups, email or name.
+
+- Re-auth (`POST /v1/me/reauth`, `POST /v1/admin/me/reauth`, body `{password}`) verifies the principal's local password,
+  counts against the 5.3 limiter per address and per username like a login, and stamps `sessions.reauth_at`; a wrong
+  password → 403 `wrong_password`.
+- The identity routes require `reauth_at` within 5 minutes (`ReauthWindow` in `constants.go`), else 403
+  `reauth_required`. Both identity routes and `redeem-oidc` answer 409 `already_linked` when the pair belongs to anyone
+  or the principal already has an OIDC identity for that issuer.
+- `redeem-oidc` does, in one transaction, what `redeem` does without the password: it marks an unused, unexpired invite
+  of an enabled parent used, adds the identity and issues a parent session. A reset token, like an unknown, used or
+  expired one, → 404 `not_found` **(call)**.
+- `POST /v1/me/password` now counts against the same limiter, so a stolen session cannot guess the current password
+  from the internet without limit **(call)**.
+
+A parent who joined by SSO has no password. The admin's link for them is an invite (`resetLink` issues one when there
+is no password), redeemable by password in `local` or `both`.
+
+**Unlink.** The admin removes a parent's OIDC identities (`POST /v1/admin/parents/{parent}/unlink-sso`, 204; 404
+`not_found` for an unknown parent), for an IdP account that was recreated or a wrong link; the admin's own go through
+the CLI's `unlink-sso`. Parents cannot unlink themselves **(call)**. The parent view of `GET /v1/session` and the
+admin's parent list gain `sso_linked` (a boolean), so the UI shows Link SSO or Unlink **(call)**.
 
 **Offboarding and notifications (owner, 2026-11-24).** Signing out does not stop reminders (11), and the IdP's removal
-of a person is invisible to the app. So the app's own steps are what stop them, each in the store transaction that
-makes the change: disabling a parent (5.3: sessions, push subscriptions, ntfy topic); **unlinking** a parent's OIDC
-identity deletes the same three; and an OIDC session request for a linked parent who is disabled repeats that purge
-(idempotent) before it answers `not_linked`. Until the admin disables or unlinks an offboarded parent, their devices keep
-receiving "<Category> due for <kid's name>": homelab-edge `sso.md`'s offboarding list names the disable step for this app.
+of a person is invisible to the app: it stops new SSO logins only, and a live parent session slides for 30 days (5.3).
+So the app's own steps are what stop them, each in the store transaction that makes the change: disabling a parent
+(5.3: sessions, push subscriptions, ntfy topic); **unlinking** a parent's OIDC identities deletes the same three; and
+an OIDC session request for a linked parent who is disabled repeats that purge (idempotent) before it answers
+`not_linked`. Until the admin disables or unlinks an offboarded parent, their sessions keep working and their devices
+keep receiving "<Category> due for <kid's name>": homelab-edge `sso.md`'s offboarding list names the disable step for
+this app.
 
-**Routes and the access matrix.** New routes (`GET /v1/auth`, `POST /v1/session/oidc`, `POST /v1/invites/redeem-oidc`,
-`POST /v1/me/identities`, `POST /v1/admin/me/identities`, `POST /v1/admin/parents/{parent}/unlink-sso`, and a re-auth
-route per principal) are added to `routes.go` and the pinned `routeClasses` together (`CLAUDE.md` How to Act 3). Admin
-sessions stay refused outside `/v1/admin/*` and `/v1/session*`.
+**Routes and the access matrix.** Each new route goes into `routes.go` and the pinned `routeClasses` together
+(`CLAUDE.md` How to Act 3):
 
-**Logs and OTEL.** No `sub`, issuer subject or `preferred_username` in a log or an error (Rule 5) **(call)**. The
-callback's query (`code`, `state`) is scrubbed from OTEL like `/invite/*` and `/reset/*`.
+| Route | Class | Answers beyond 2xx |
+|---|---|---|
+| `GET /v1/auth` | `Internal` | — (`{mode}`) |
+| `POST /v1/session/oidc` | `Internal` | 403 `mode_refused`, 403 `not_linked` |
+| `POST /v1/tokens/{token}/redeem-oidc` | `Internal` | 403 `mode_refused`, 404 `not_found`, 409 `already_linked` |
+| `POST /v1/me/reauth` | `Parent` | 403 `mode_refused`, 403 `wrong_password`, 429 `rate_limited` |
+| `POST /v1/admin/me/reauth` | `Admin` | as above |
+| `POST /v1/me/identities` | `Parent` | 403 `mode_refused`, 403 `reauth_required`, 409 `already_linked` |
+| `POST /v1/admin/me/identities` | `Admin` | as above |
+| `POST /v1/admin/parents/{parent}/unlink-sso` | `Admin` | 404 `not_found` |
 
-**Tests the builder adds.** Every new route and its refusal in each mode; the import (once, then ignored with a
-warning; a second start changes nothing); both CLI verbs; the admin still refused on every kid route after an SSO login
-(the matrix test); the cross-table uniqueness; the link flow's re-auth window, session binding and `already_linked`;
-invite redemption by SSO, including a used or expired token; unlink and the disabled-parent OIDC request each deleting
-sessions, push subscriptions and the ntfy topic; the conformance cases of the SSO spec § 3 (bad `state`, wrong
-`iss`/`aud`, expired token, unlinked `sub`, replayed code, link while another IdP session is live) against a stub
-issuer; no `sub` or token in captured logs.
+Existing routes gain: `POST /v1/session` and `POST /v1/tokens/{token}/redeem` 403 `mode_refused`; `POST /v1/me/password`
+429 `rate_limited`. Admin sessions stay refused outside `/v1/admin/*` and `/v1/session` (Rule 2): the new session and
+token routes are `Internal` and take no session.
+
+**Routes that accept a password**, for the edge's `<site>_login` and `<site>_login_hourly` Caddy zones (SSO spec § 4.3):
+`POST /login`, `POST /invite/{token}`, `POST /reset/{token}`, `POST /account` (its `?/password` action; the page's
+other actions share the path), `POST /account/link-sso` and `POST /admin/account/link-sso`. The invite page's SSO
+start shares the `/invite/{token}` path and falls in the same zones.
+
+**Logs and OTEL.** No `sub` or `preferred_username` in a log or an error (Rule 5) **(call)**; refusals log their code.
+The callback's query (`code`, `state`) is scrubbed from OTEL like `/invite/*` and `/reset/*`.
+
+**Tests the builder adds.** Every new route and its refusal in each mode, per the table above, including that a
+password redemption refused in `oidc` and an SSO redemption refused in `local` leave the token usable; the import
+(once, then ignored with a warning; a second start changes nothing; a parent holding the name stops the start); the
+username namespace across both tables; the three CLI verbs, and `create` racing the import; the admin still refused on
+every kid route after an SSO login (the matrix test); the cross-table uniqueness of a pair; re-auth counting against
+the limiter, and the password change too; the link flow's re-auth window, session binding and `already_linked`;
+invite redemption by SSO with `prompt=login` and the confirmation, including a used, expired or reset token; the
+callback answering 200 and the session cookie arriving on the next navigation; unlink and the disabled-parent OIDC
+request each deleting sessions, push subscriptions and the ntfy topic; the UI's refusals of a partial relying-party
+set and of `OIDC_AUTO_PROVISION`; the conformance cases of the SSO spec § 3 (bad `state`, wrong `iss`/`aud`, expired
+token, unlinked `sub`, replayed code, link while another IdP session is live) against a stub issuer; no `sub`, label or
+token in captured logs.
 
 ## 6. Data
 
 ### 6.1 Storage rules
 
-- SQLite, WAL mode, foreign keys on, one process. Ids are UUIDv7. Forward-only migrations embedded in
+- SQLite, WAL mode, foreign keys on, one process (amended 2026-11-24: plus the admin CLI's short-lived runs, 5.5).
+  Ids are UUIDv7. Forward-only migrations embedded in
   the binary and applied at start.
 - Every tracker has its own table with typed columns (6.3). Every entry row carries `kid_id`,
   `created_by`, `updated_by` (parent ids), `created_at`, `updated_at`, and an optional `note`.
@@ -324,8 +432,8 @@ issuer; no `sub` or token in captured logs.
 |---|---|---|
 | `parents` | accounts | username, display name, unit preferences, disabled flag |
 | `identities` | credentials (5.4, 5.5) | provider, subject, secret hash |
-| `admins`, `admin_identities` | the admin principal and its credentials (5.5, amended 2026-11-24) | username, disabled; provider, subject, secret hash |
-| `sessions`, `one_time_tokens` | login state (5.3) | token hash, kind, expiry; sessions gain `admin_id` (5.5) |
+| `admins`, `admin_identities` | the admin principal and its credentials (5.5, amended 2026-11-24) | username; provider, subject, secret hash |
+| `sessions`, `one_time_tokens` | login state (5.3) | token hash, kind, expiry; sessions gain `admin_id` and `reauth_at` (5.5) |
 | `kids` | profile and settings | name, birth date, birth sex (`female`/`male`), gestational age at birth (weeks, days; optional), time zone, growth source, vaccine schema (nullable) |
 | `kid_access` | grants | kid, parent, role |
 | `kid_modules` | per-kid overrides (7.2) | kid, module, enabled |
@@ -345,7 +453,7 @@ issuer; no `sub` or token in captured logs.
 | `reminders` | materialised reminder occurrences (11) | medication, due time, state, attempts |
 | `push_subscriptions`, `push_kid_optins` | Web Push (11) | parent, device label, endpoint, keys; subscription, kid |
 | `ntfy_topics`, `ntfy_kid_optins` | ntfy (11.1) | parent (one row each), topic; parent, kid |
-| `meta` | schema version, admin fingerprint | key, value |
+| `meta` | schema version, admin fingerprint (amended 2026-11-24: no fingerprint, 5.5) | key, value |
 
 BMI is never stored; it is computed from a weight and a length/height measured on the same date.
 
@@ -598,13 +706,14 @@ parent's units **(call on contents; the owner asked for a PDF export)**.
 
 ### 13.1 API (`api/`, image `ghcr.io/davcs86/happybabytracker-api`)
 
-One Go binary, one process, **one listener** on container port 9210, never published to the host. It
+One Go binary, one process, **one listener** on container port 9210, never published to the host. The same binary's
+`admin <verb>` runs as a second, short-lived process against the same database (amended 2026-11-24, 5.5). It
 serves `/v1/*` to the UI container only and `GET /healthz`. Every `/v1/*` request must carry the
 shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person's session token.
 
 | Env var | Meaning |
 |---|---|
-| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters). Amended 2026-11-24: required only while `admins` is empty, then ignored with a warning (5.5) |
+| `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters). Amended 2026-11-24: validated after the store opens, required only while `admins` is empty, then ignored with a warning (5.5) |
 | `AUTH_MODE` | amended 2026-11-24: `local` (default) \| `oidc` \| `both` (5.5) |
 | `INTERNAL_API_TOKEN` | shared with the UI container (secret, at least 32 characters) |
 | `VAPID_PRIVATE_KEY` | optional; P-256 private key for Web Push (secret) |
@@ -623,6 +732,9 @@ origin. The VAPID variables are optional, both or neither (neither turns Web Pus
 an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
 prefix, a prefix outside 1–32 of `a-z0-9-`, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, an `NTFY_TOKEN`
 with a space, control or non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
+Amended 2026-11-24 (5.5): it also refuses an `AUTH_MODE` other than `local`, `oidc` or `both`, and, while `admins` is
+empty, a missing or invalid `ADMIN_USERNAME` or `ADMIN_PASSWORD`, checked after migrations rather than with the other
+variables.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
 `GET /healthz/reminders` is 503 when a delivery of a due reminder is still pending or sending 15 minutes
@@ -640,11 +752,15 @@ than `INTERNAL_API_TOKEN` (amended 2026-11-24: and the OIDC client secret and tr
 | `INTERNAL_API_TOKEN` | same value as the API's |
 | `API_BASE_URL` | `http://happybabytracker-api:9210` on the edge |
 | `ORIGIN` | the app's origin; a request whose derived origin differs gets 400, except the health paths. Amended 2026-11-24: `https://happybaby.public.<domain>`, and `PUBLIC_ORIGIN` follows |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (secret), `OIDC_SCOPES` | amended 2026-11-24: the relying party (5.5); all or none |
-| `SESSION_SEAL_KEY` | amended 2026-11-24: seals the OIDC transaction cookie (secret, at least 32 characters) (5.5) |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` (secret) | amended 2026-11-24: the relying party (5.5); all three or none |
+| `OIDC_SCOPES` | amended 2026-11-24: optional, default `openid profile` (5.5) |
+| `SESSION_SEAL_KEY` | amended 2026-11-24: the key the OIDC transaction cookie is encrypted with (secret, at least 32 characters); required with `OIDC_ISSUER` (5.5) |
+| `OIDC_AUTO_PROVISION` | amended 2026-11-24: not implemented; any value is refused (5.5) |
 | `PORT` | 9212 |
 
 The image sets `PROTOCOL_HEADER`, `HOST_HEADER`, `ADDRESS_HEADER` and `XFF_DEPTH` as commsgun's does.
+Amended 2026-11-24 (5.5): the UI refuses to start on a partial relying-party set, on `SESSION_SEAL_KEY` missing or
+shorter than 32 characters while `OIDC_ISSUER` is set, and on `OIDC_AUTO_PROVISION` set. It never contacts the issuer at start.
 Health: `GET /healthz` (the UI itself), `GET /healthz/api` and `GET /healthz/reminders` (the API's
 two answers passed through), so Gatus can probe everything through the one published name.
 
@@ -655,7 +771,8 @@ Every page that shows kid data is sent `Cache-Control: no-store`.
 JSON lines. They carry ids (kid, parent, entry, request, reminder) and enumerated facts (route,
 tracker, role, status, outcome, durations). Never a name, a username, a note, a health value, a
 medication name, a push endpoint or a secret. URLs carry ids and `from`/`to`/`types` only, so the
-edge's Caddy access log holds nothing else either.
+edge's Caddy access log holds nothing else either. Amended 2026-11-24: except the invite and reset tokens in their paths
+and the callback's `code` and `state`, which the edge redacts and drops (5.5, 18).
 
 ## 14. Build and release (this repo)
 
@@ -674,7 +791,8 @@ Tests the builder must include:
   without a row fails: guardian, caregiver, a parent with no grant (404), the admin (refused), no
   session (401).
 - The last-guardian rules of 5.2, each inside its transaction, including the admin's disable.
-- The admin fingerprint: a changed username or password at start ends admin sessions.
+- ~~The admin fingerprint: a changed username or password at start ends admin sessions.~~ Amended 2026-11-24: the
+  admin import and the rest of 5.5's tests list replace it.
 - Unit conversion round trips, and that an edit recomputes the derived column.
 - Each growth table against its source's published examples; corrected age on and off; a source
   change altering percentiles without touching stored rows.
@@ -698,6 +816,10 @@ Everything follows that repo's `CLAUDE.md`.
 | `happybabytracker-api` | `happybabytracker_api_image` | none published | `happybabytracker-data:/data` | 96m **(call)** |
 | `happybabytracker-ui` | `happybabytracker_ui_image` | `127.0.0.1:9212:9212` | none | 192m **(call)** |
 
+Amended 2026-11-24 (5.5, not deployed): the API's env gains `AUTH_MODE`; the UI's gains the `OIDC_*` settings and
+`SESSION_SEAL_KEY` of 13.2, and the UI service gains `extra_hosts: ["auth.public.<domain>:host-gateway"]` (SSO spec
+§ 4.2), its only path to the issuer.
+
 **Image visibility**: the repository is public **(owner)** and both GHCR packages are made public
 once, as commsgun's were, so the edge and the bump workflow pull without a credential.
 
@@ -707,8 +829,9 @@ in its four EDGE-07 places, and the reachability paragraph below no longer appli
 `tailnet_only` and `deny_staging_vm`: `happybaby.private.<domain>` **(owner)**. Nothing under
 `*.public`, nothing in `edge_sites`.
 
-**Who can reach it**: only the tailnet users that reach `*.private` today, `david@` and
-`david_admin@` **(owner)**. No policy or Caddy change. Other parents and caregivers can have accounts
+**Who can reach it** (amended 2026-11-24, not deployed: anyone on the internet reaches the login, and only members of
+the IdP's `happybabytracker` group, or password holders in `local`/`both`, get past it; 18): only the tailnet users
+that reach `*.private` today, `david@` and `david_admin@` **(owner)**. No policy or Caddy change. Other parents and caregivers can have accounts
 but cannot reach the app until the Authelia work changes how it is exposed (5.4); that work decides
 their network path.
 
@@ -717,11 +840,13 @@ their network path.
 
 | Key | Source |
 |---|---|
-| `happybabytracker_admin_username` | owner-provided **(owner: only in SOPS)** |
-| `happybabytracker_admin_password` | generated; the owner may replace it with `sops set` |
+| `happybabytracker_admin_username` | owner-provided **(owner: only in SOPS)**. Amended 2026-11-24: ignored once the image with 5.5 has imported it; retired in a later edge change |
+| `happybabytracker_admin_password` | generated; the owner may replace it with `sops set`. Amended 2026-11-24: as the username; from the bump on, rotation is the CLI's `reset-password` (5.5) |
 | `happybabytracker_internal_api_token` | generated |
 | `happybabytracker_vapid_private_key` | generated once (a P-256 key in a form with no quote, backslash or line break). Never rotated casually: a new key invalidates every push subscription |
 | `happybabytracker_ntfy_token`, `happybabytracker_ntfy_password_bcrypt` | generated, only when ntfy is enabled for the app (below) |
+| `happybabytracker_oidc_client_secret`, `happybabytracker_oidc_client_secret_pbkdf2` | amended 2026-11-24: generated once, the hash for Authelia's client config (SSO spec § 4.7); the secret goes to the UI as `OIDC_CLIENT_SECRET` **(call: key names)** |
+| `happybabytracker_session_seal_key` | amended 2026-11-24: generated, at least 32 characters; the UI's `SESSION_SEAL_KEY`. Rotating it only fails SSO attempts in flight **(call: key name)** |
 
 The deploy asserts presence, shape and minimum length before it writes any file, as it does for
 commsgun.
@@ -735,7 +860,7 @@ existing heartbeat endpoint keeps its name (EDGE-10) and its interval is shorten
 the restore steps for this database.
 
 **Monitoring**: Gatus probes for `/healthz`, `/healthz/api` and `/healthz/reminders` through the
-private name, in the `edge` group, with ntfy alerts.
+private name, in the `edge` group, with ntfy alerts. Amended 2026-11-24: through the public name (SSO spec § 4.9).
 
 **Pins and bumps**: both image vars in `versions.yml` with rows in `docs/versions.md`, and a
 `bump-happybabytracker` workflow modelled on `bump-commsgun` that pins both in one PR and refuses a
@@ -757,7 +882,14 @@ Push alone. On, the edge PR adds:
 
 **Docs**: a runbook (first deploy, add a parent, reset a password, rotate the internal token, restore
 the database, what a VAPID key change costs), the Context Guide row in `CLAUDE.md`, one entry in
-`docs/decisions.md`, `secrets/README.md`.
+`docs/decisions.md`, `secrets/README.md`. Amended 2026-11-24 (5.5): before the bump that brings the SSO image is
+merged, the runbook's admin rotation moves to the CLI's `reset-password`; it gains the CLI verbs, switching
+`AUTH_MODE`, linking and unlinking (the admin's own through `unlink-sso`), and the cutover step below.
+
+**Origin move** (amended 2026-11-24, not deployed): installed PWAs, push subscriptions and the push-device cookie
+belong to the old origin. Old subscriptions keep delivering, and enabling notifications on the new origin adds a second
+device row, so the same device would get each reminder twice. Cutover step **(call)**: each parent opens Account →
+Notifications on the new origin, enables push, deletes the old device's row, and removes the old installed app.
 
 ## 16. Order of work
 
@@ -799,20 +931,26 @@ Required by the homelab-edge SSO spec § 3 before the app goes public at `happyb
 
 | Surface | Exposure | Auth | Limits | Secrets in URLs and logs | Session | CSRF |
 |---|---|---|---|---|---|---|
-| UI pages and `/api` routes | internet, through Caddy | SSO; password login only in `local`/`both` | Caddy `<site>_login` and `_login_hourly` zones on the login POST; the 5.3 limiter (per address and per username) | invite and reset tokens in the path: Caddy redacts them in its logs on the public site (SSO spec § 4.3), OTEL scrubs them (Rule 5); query, `Referer` and `Location` dropped | opaque, server-side; parent 30 days sliding, admin 12 h; deleted on logout, disable, reset, unlink | SvelteKit origin check (`ORIGIN`, 13.2); `SameSite=Strict` session; `state` + PKCE + `nonce` |
-| `/auth/callback` | internet | `state` bound to the transaction cookie; ID-token checks | Caddy per-IP zone for the site | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | transaction cookie 10 min, `Lax`, `Path=/auth` | `state`; link and invite purposes bound into it |
-| `/invite/<token>`, `/reset/<token>` | internet | the token (32 random bytes, hashed, single use, 72 h / 1 h) | per-IP zone | as above | — | form POST, origin check |
-| API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | — | none in URLs beyond ids | — | not browser-reachable |
+| UI pages, form actions and server endpoints (`/logout`, `/account/notifications/subscribe`) | internet, through Caddy | the session cookie, reached by SSO or, in `local`/`both`, a password | Caddy per-IP zone for the site | ids only (13.3) | opaque, server-side; parent 30 days sliding, admin 12 h; deleted on logout, disable, reset, unlink | SvelteKit origin check (`ORIGIN`, 13.2); `SameSite=Strict` session cookie |
+| Password routes (5.5): `POST /login`, `/invite/{token}`, `/reset/{token}`, `/account` (`?/password`), `/account/link-sso`, `/admin/account/link-sso` | internet | a password; refused by mode as 5.5's table says: in `oidc` no invite or reset link is redeemed by password (403 `mode_refused`), so none yields a session without SSO **(owner, 2026-11-24)** | Caddy `<site>_login` and `<site>_login_hourly`; the 5.3 limiter per address and per username (login, re-auth, password change) or per address (redemption) | invite and reset tokens in the path: Caddy redacts them on the public site (SSO spec § 4.3), OTEL scrubs them (Rule 5); query, `Referer` and `Location` dropped; `Referrer-Policy: no-referrer` | a redemption issues a parent session | origin check; `SameSite=Strict` |
+| SSO starts: `POST /auth/sso`, `POST /invite/{token}?/sso` | internet | none, or the invite token | per-IP zone; the invite start also in the login zones | the token stays in its path; the transaction cookie is encrypted | `hbt_oidc`: 10 min, `Lax`, `Path=/auth` | origin check (form POST) |
+| `GET /auth/callback` | internet | `state` bound to the transaction cookie; ID-token checks (`alg`, `iss`, `aud`, `exp`, `nonce`) | per-IP zone | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | answers 200, never a redirect | `state` + PKCE + `nonce`; purpose and binding in the cookie; `prompt=login` for link and invite |
+| `POST /auth/confirm` | internet | the pending cookie; for a link, the session whose hash it binds plus a re-auth within 5 minutes (API); for an invite, the token | per-IP zone | none | an invite issues a parent session | origin check; same-origin POST |
+| API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | the 5.3 limiter | `/v1/tokens/{token}`, `…/redeem` and `…/redeem-oidc` carry the token in the path; the API logs route patterns only (`middleware.go`) | — | not browser-reachable |
 | Health paths | internet, unauthenticated | none | per-IP zone | none | — | — |
 
 Residuals for the owner to accept or reject:
 
 1. While `both` is on, a password login is reachable from the internet (SSO spec decision 18).
-2. An offboarded parent keeps receiving medication reminders (a kid's name and a category) until the admin disables
-   or unlinks them (5.5); ntfy keeps a sent message in its cache for 72 hours (11.1).
-3. A parent who joined by SSO has no password, so while the issuer is down they cannot sign in even in `both`, until
-   the admin issues a reset link.
+2. An offboarded parent keeps their live sessions (sliding for 30 days, 5.3), any password login in `both`, and their
+   medication reminders (a kid's name and a category) until the admin disables or unlinks them (5.5; homelab-edge
+   `sso.md` offboarding); ntfy keeps a sent message in its cache for 72 hours (11.1).
+3. A parent who joined by SSO has no password, so while the issuer is down they cannot sign in until the operator
+   switches the app to `both` and the admin sends them a link (an invite, since they have no password) that they redeem
+   with a password. In `oidc` no link can be redeemed by password (5.5).
 4. The `authelia_session` cookie is scoped to `public.<domain>`; the edge strips it before this upstream (SSO spec
    § 4.3). If that strip is missing, the app still ignores it.
 5. Kid data now crosses the internet to the browser, over TLS only; `Cache-Control: no-store` (13.2) stays on every
    such page.
+6. In `oidc` with the issuer down nobody signs in, the admin included, until the operator switches the app to `both`
+   (the API's env and a deploy) **(call)**.
