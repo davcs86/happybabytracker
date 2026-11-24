@@ -113,8 +113,9 @@ func TestMilestonesShape(t *testing.T) {
 		cat["attribution"] != c.Attribution || cat["screening_note"] != c.ScreeningNote {
 		t.Errorf("catalog = %v", cat)
 	}
+	raw := k.do(http.MethodGet, "/v1/kids/"+kid+"/milestones", cara, nil).Body.String()
 	for _, o := range c.Omitted {
-		if strings.Contains(k.do(http.MethodGet, "/v1/kids/"+kid+"/milestones", cara, nil).Body.String(), o) {
+		if strings.Contains(raw, o) {
 			t.Errorf("the view carries the omitted provenance %q", o)
 		}
 	}
@@ -298,6 +299,9 @@ func TestMilestonesWithModuleOff(t *testing.T) {
 		t.Errorf("module off: shown %v, age %v", v["catalog_shown"], v["age"])
 	}
 	k.reach(cara, kid, map[string]any{"item": firstItem(t, 30).ID, "reached_on": "2026-11-01"})
+	if m := moduleItem(t, k.modules(ana, kid), "milestones"); m["enabled"] != true || m["default"] != false || m["overridden"] != true {
+		t.Errorf("after the first mark at 24+: milestones module = %v, want on as a stored override", m)
+	}
 }
 
 func TestRolesAndNotFound(t *testing.T) {
@@ -565,6 +569,10 @@ func TestRetiredRowListed(t *testing.T) {
 	in := milestoneInput{Item: optionalString{Set: true, V: &retired}, ReachedOn: optionalString{Set: true, V: strPtr("2026-05-01")}}
 	if _, field := in.mergeOnto(model.Milestone{}, c, "2026-01-01", time.UTC, t0); field != "item" {
 		t.Errorf("reaching a retired item: field %q, want item", field)
+	}
+	edit := milestoneInput{Note: optionalString{Set: true, V: strPtr("edited")}}
+	if m, field := edit.mergeOnto(rows[0], c, "2026-01-01", time.UTC, t0); field != "" || m.Text != nil || *m.Note != "edited" {
+		t.Errorf("a note edit on a retired-item row: field %q, row %+v", field, m)
 	}
 	unknown := "2m-se-gone"
 	if _, err := newMilestonesView(c, []model.Milestone{{Item: &unknown, ReachedOn: "2026-05-01"}}, milestones.AgeBasis{}, true); err == nil {

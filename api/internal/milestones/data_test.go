@@ -1,6 +1,7 @@
 package milestones
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -57,15 +58,21 @@ func TestShippedCatalogLoads(t *testing.T) {
 	if c.ScreeningNote != screeningNote {
 		t.Errorf("screening_note = %q, want %q", c.ScreeningNote, screeningNote)
 	}
-	counts := map[int]int{}
+	shipped, counts, active := shippedIDs(t), map[int]int{}, 0
 	for _, it := range c.Items {
-		counts[it.AgeMonths]++
+		if it.Retired == "" {
+			counts[it.AgeMonths]++
+		}
 		if it.SourceURL != agePageURL(it.AgeMonths) {
 			t.Errorf("%s: source_url %q, want its age page", it.ID, it.SourceURL)
 		}
 		if it.Retired != "" {
-			t.Errorf("%s is retired", it.ID)
+			if !shipped[it.ID] {
+				t.Errorf("%s is retired but was never released (not in %s)", it.ID, shippedIDsFile)
+			}
+			continue
 		}
+		active++
 	}
 	want := map[int]int{2: 11, 4: 13, 6: 12, 9: 13, 12: 10, 15: 13, 18: 15, 24: 13, 30: 15, 36: 12, 48: 17, 60: 15}
 	for age, n := range want {
@@ -73,8 +80,38 @@ func TestShippedCatalogLoads(t *testing.T) {
 			t.Errorf("age %d: %d items, want %d", age, counts[age], n)
 		}
 	}
-	if len(c.Items) != 159 {
-		t.Errorf("%d items, want 159", len(c.Items))
+	if active != 159 {
+		t.Errorf("%d active items, want 159", active)
+	}
+}
+
+// shippedIDsFile lists every item id ever released, one per line: append-only, and a new id is appended once its
+// catalog update is released.
+const shippedIDsFile = "testdata/ids.txt"
+
+func shippedIDs(t *testing.T) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(shippedIDsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]bool{}
+	for i, id := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		if !idPattern.MatchString(id) || out[id] {
+			t.Fatalf("%s:%d: not an item id, or a duplicate", shippedIDsFile, i+1)
+		}
+		out[id] = true
+	}
+	return out
+}
+
+// TestShippedIDsStay keeps every released id in the catalog, so stored reached rows never lose their item.
+func TestShippedIDsStay(t *testing.T) {
+	mustLoad(t)
+	for id := range shippedIDs(t) {
+		if _, ok := Lookup(id); !ok {
+			t.Errorf("%s was released (%s) but is not in the catalog: retire it, never delete or rename it", id, shippedIDsFile)
+		}
 	}
 }
 

@@ -53,6 +53,10 @@ findings and the traps.
      `retrieved` date of the update and add the new wording as a new row with a new id. Stored reached
      rows reference ids, so a deleted row would lose its text and an edited one would change what was
      recorded. Never renumber or reuse an id.
+   - **The released ids are guarded.** `api/internal/milestones/testdata/ids.txt` lists every id ever
+     released, one per line, and is append-only. `TestShippedIDsStay` fails when a listed id is no longer
+     in the CSV (deleted or renamed); `TestShippedCatalogLoads` accepts a retired item only when its id is
+     listed. Append a new item's id to `ids.txt` once the update that adds it is released.
 5. Run `cd api && UPDATE_DOCS=1 go test ./internal/milestones/ -race`, then read the diff of
    `docs/milestones/cdc.md` and check that it shows exactly the changes listed in step 2. The loader
    names the file, line and column of every error, never the cell's text.
