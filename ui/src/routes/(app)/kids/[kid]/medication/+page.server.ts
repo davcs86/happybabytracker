@@ -9,10 +9,11 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies, url }) => {
 	const medication = url.searchParams.get('medication');
-	const [kid, courses, doses] = await Promise.all([
+	const [kid, courses, doses, modules] = await Promise.all([
 		locals.api.getKid(params.kid),
 		locals.api.medications.list(params.kid),
-		locals.api.doses.list(params.kid, medication === null ? {} : { medication })
+		locals.api.doses.list(params.kid, medication === null ? {} : { medication }),
+		locals.api.modules(params.kid)
 	]);
 	if (!kid.ok) failPage(kid);
 	if (!courses.ok) failPage(courses);
@@ -27,7 +28,9 @@ export const load: PageServerLoad = async ({ locals, params, cookies, url }) => 
 		today: todayInOrUtc(kid.data.timeZone),
 		courses: courses.data,
 		filter,
-		doses: doses.data.items
+		doses: doses.data.items,
+		// The paused note is advisory: a failed modules call shows no note.
+		medicationOff: modules.ok && modules.data.some((m) => m.module === 'medication' && !m.enabled)
 	};
 };
 

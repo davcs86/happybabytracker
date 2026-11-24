@@ -36,7 +36,7 @@ routes answer JSON: `/healthz` `{"status":"ok"}` or, on 503, `{"error":"unavaila
 Check in this order; each step names what to look at, never a secret.
 
 1. **The course.** On the kid's Medication page the course is active, inside its dates, has a schedule
-   (not "as needed") and shows "Next due". The kid's `medication` module is on (Modules page).
+   (not "as needed") and shows "Next due". The kid's `medication` module is on (Modules page; with it off the page says "reminders are paused").
 2. **The Due list.** The occurrence shows on the kid's home Due list: the row exists (course, dose and
    kid-zone writes create rows too, not only the worker). Whether it is sent depends on the worker: check
    `/healthz/api` (a stalled worker) and the API log for `reminder step failed` (its `step`

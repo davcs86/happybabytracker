@@ -164,7 +164,8 @@ The owner's answers of 2026-11-24 (after the final review):
   the stored name; a new device is "This device").
 - `GET /v1/me/ntfy` carries `has_topic`; while ntfy is off it is `{"enabled":false,"has_topic":<bool>}`
   (never the topic), and the page then offers to remove a topic stored earlier.
-- The Medication link stays visible with the module off (no change; the owner asked for an explanation).
+- The Medication link and pages stay reachable with the module off. The owner chose option A on 2026-11-24: the
+  Medication page then says "Medication is off for <kid>: reminders are paused." (a guardian also gets a link to Modules).
 
 ## Order of work (design section 16)
 

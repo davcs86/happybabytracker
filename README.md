@@ -181,7 +181,8 @@ score or a chart. The app records and displays; it never interprets a weight, a 
 - Medication (module `medication`): a course has a name, a dose text, a start, an optional last day and a
   schedule: as needed, fixed times of day, or every N hours on a fixed grid from the start. The grid is
   never moved to the last dose logged and the app never suggests an interval. "Log dose now" on the
-  Medication page records a dose; doses are not on the timeline.
+  Medication page records a dose; doses are not on the timeline. With the module off the page stays
+  reachable and says reminders are paused.
 - Reminders: each due occurrence of an active scheduled course is listed on the kid's home Due list (first,
   before vaccines) and as "Next due" on the Medication page, read from the same rows the sender uses. A
   missed dose shows `overdue` until the kid's "Show a missed dose as overdue for (minutes)" setting runs

@@ -36,6 +36,17 @@
 </div>
 <p class="mb-4 text-sm text-muted-foreground">Times are in {zone}</p>
 
+{#if data.medicationOff}
+	<p class="mb-4 text-sm [overflow-wrap:anywhere]">
+		Medication is off for {data.kid.name}: reminders are paused.
+		{#if data.kid.role === 'guardian'}
+			<a href={resolve('/(app)/kids/[kid]/modules', { kid: data.kid.id })} class="underline"
+				>Turn it on in Modules</a
+			>
+		{/if}
+	</p>
+{/if}
+
 {#if topMessage}
 	<p class="{ERROR_CLASS} mb-4" role="alert">{topMessage}</p>
 {/if}

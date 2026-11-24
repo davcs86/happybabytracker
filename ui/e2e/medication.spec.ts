@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
+	KID_NAME_MAX_LEN,
 	MAX_EVERY_HOURS,
 	MAX_SCHEDULE_TIMES,
 	MEDICATION_TEXT_MAX_LEN
@@ -1224,6 +1225,84 @@ test('the course pages work with the medication module off', async ({ page }) =>
 	expect(await courses(api)).toHaveLength(2);
 	await page.goto(courseUrl(calpol.id));
 	await expect(field(page, 'Name')).toHaveValue('Calpol');
+});
+
+const pausedNote = (name: string) => `Medication is off for ${name}: reminders are paused.`;
+const turnOnLink = (page: Page) => page.getByRole('link', { name: 'Turn it on in Modules' });
+const setMedication = (api: Api, kid: string, enabled: boolean) =>
+	api('PUT', `/v1/kids/${kid}/modules/medication`, { enabled });
+
+test('the medication page has no paused note while the module is on', async ({ page }) => {
+	await stubAs(ANA);
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await onMedication(page);
+	await expect(page.getByText('reminders are paused')).toHaveCount(0);
+	await expect(turnOnLink(page)).toHaveCount(0);
+	await expectAccessible(page);
+});
+
+test('a guardian sees the paused note with a link to the modules page while the module is off', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await seedCourse(api, { name: 'Calpol' });
+	expect((await setMedication(api, MIA.id, false)).status).toBeLessThan(300);
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await onMedication(page);
+	await expect(page.getByText(pausedNote('Mia'))).toBeVisible();
+	await expect(page.getByRole('alert')).toHaveCount(0);
+	await expect(card(page, 'Calpol')).toBeVisible();
+	await expectAccessible(page);
+	await turnOnLink(page).click();
+	await expect(page).toHaveURL(`/kids/${MIA.id}/modules`);
+});
+
+for (const [who, role, expected] of [
+	[ANA, 'caregiver', false],
+	[CLEO, 'guardian', true]
+] as const) {
+	test(`a ${role} of Leo sees the paused note ${expected ? 'with' : 'without'} the modules link`, async ({
+		page
+	}) => {
+		expect((await setMedication(await stubAs(CLEO), LEO.id, false)).status).toBeLessThan(300);
+		await stubAs(who);
+		await signIn(page, who);
+		await page.goto(pageUrl(LEO.id));
+		await onMedication(page, LEO.id);
+		await expect(page.getByText(pausedNote('Leo'))).toBeVisible();
+		await expect(turnOnLink(page)).toHaveCount(expected ? 1 : 0);
+		await expectAccessible(page);
+	});
+}
+
+test('the paused note wraps a long kid name at phone width', async ({ page }, testInfo) => {
+	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+	const api = await stubAs(ANA);
+	const name = 'w'.repeat(KID_NAME_MAX_LEN);
+	expect((await api('PATCH', `/v1/kids/${MIA.id}`, { name })).status).toBeLessThan(300);
+	expect((await setMedication(api, MIA.id, false)).status).toBeLessThan(300);
+	await signIn(page, ANA);
+	await page.goto(pageUrl());
+	await expect(page.getByText(pausedNote(name))).toBeVisible();
+	// The kid page's own back link has no wrap rule (not this change), so only the note is measured.
+	const box = await page.getByText(pausedNote(name)).boundingBox();
+	expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+});
+
+test.describe('the paused note without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('the server renders the note and the link', async ({ page }) => {
+		const api = await stubAs(ANA);
+		expect((await setMedication(api, MIA.id, false)).status).toBeLessThan(300);
+		await signIn(page, ANA);
+		await page.goto(pageUrl());
+		await expect(page.getByText(pausedNote('Mia'))).toBeVisible();
+		await turnOnLink(page).click();
+		await expect(page).toHaveURL(`/kids/${MIA.id}/modules`);
+	});
 });
 
 test('long unbroken texts and twelve time fields do not overflow the course pages at phone width', async ({
