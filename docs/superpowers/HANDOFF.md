@@ -153,6 +153,8 @@ The owner's answers of 2026-11-23, recorded verbatim in the plan ("Questions for
 The owner's answers of 2026-11-24 (after the final review):
 
 - The smoke's API memory ceiling is 64 MiB (raised from 60 MiB); the UI's stays 140 MiB.
+- `MaxScheduleOccurrences` = 1000 (the schedule engine lists at most the earliest 1000 occurrences of a
+  course per call) is owner-ratified.
 
 ## Order of work (design section 16)
 
