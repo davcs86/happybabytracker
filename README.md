@@ -216,8 +216,8 @@ Act Early." milestone checklists: twelve lists, from 2 months to 5 years, each w
 list can be opened; the one for the kid's age is marked "Current list for this age" and linked from the top of
 the page. Its age is the corrected age until the second birthday (the rule under "Growth") and the
 chronological age after; a kid younger than 2 months sees the 2-month list marked "Next list". The full
-catalog shows until the kid's 5th birthday; from then on the page lists only what was marked, the custom
-milestones and items CDC has since retired.
+catalog shows until the kid's 5th birthday; from then on the page lists only what was marked (including items
+CDC has since retired) and the custom milestones.
 
 A parent with access marks an item reached with a date (not in the future and not before the birth date) and
 an optional note, edits that date or note, or removes the mark. A custom milestone is free text of up to 200
@@ -232,7 +232,8 @@ page stays reachable and says "Milestones are off for <kid name>."; a guardian a
 Modules".
 
 CDC's conditions apply to the checklists: "Source: CDC, Learn the Signs. Act Early. milestone checklists. CDC
-does not endorse this application or its use of the material." is shown with them, together with CDC's sentence
+does not endorse this application or its use of the material. The material is available free of charge at
+https://www.cdc.gov/act-early/milestones/index.html." is shown with them, together with CDC's sentence
 that the materials are not a substitute for standardized, validated developmental screening tools. CDC's
 introductory text, its questions for the doctor, "act early" boxes, tips and images are not included. The
 catalog is one CSV with a generated review table (`docs/milestones/cdc.md`; index in `docs/milestones/README.md`);
@@ -250,13 +251,15 @@ The PDF holds the kid's profile, the chosen sections in module order and a foote
 The daily trackers print their entries and daily totals for the range. Growth, vaccination and milestones are
 records: they print the kid's whole record up to the last date of the range. Growth lists each measurement with
 its score and percentile under the kid's source and a chart per measure, with the source's attribution and
-licence name and the adaptation disclaimer. Vaccination prints the schedule's attribution, each line's status as
-of the last date of the range ("Statuses as of <date>.", never later than today) and the doses given.
+licence name and, for WHO, its adaptation disclaimer. Vaccination prints the schedule's attribution, each line's
+status as of the last date of the range ("Statuses as of <date>.", never later than today; a dismissal counts
+whenever it was made, as dismissals carry no date) and the doses given.
 Milestones print CDC's attribution and no-endorsement sentence and what was marked, never what was not.
 Sickness prints the symptoms in the range and medication the courses that touch it with their doses. Values are
 in the requesting parent's units and times in the kid's time zone. A section stops at 3000 rows and the whole
 file at 6000, and a section cut short ends with a line "N more entries in this range are not shown. Export a
-shorter range to see them."
+shorter range to see them." (growth: "N more entries up to the end of the range are not shown. Export a range
+that ends earlier to see them.").
 
 The file is made when it is downloaded and never stored; one export runs at a time, and a second request at the
 same moment is refused as busy. Latin (including its extended forms), Greek and
@@ -387,11 +390,12 @@ moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
 
-Deploy and rollback: both images ship together (the bump PR pins both). Migrations 0006 (sickness,
-medication, reminders) and 0007 (milestones) are forward-only: an older API refuses a database whose schema is newer than its
-own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
-the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the deploy. A rollback
-is both pins back plus a restore of the last `edge-backup` archive; anything written since it is lost.
+Deploy and rollback: both images ship together (the bump PR pins both). Migrations 0006 (sickness, medication,
+reminders) and 0007 (milestones) are forward-only: an older API refuses a database whose schema is newer than
+its own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
+the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the
+deploy. A rollback is both pins back plus a restore of the last `edge-backup` archive; anything written since
+it is lost.
 
 ## Third-party data
 

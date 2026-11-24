@@ -24,16 +24,16 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. Plan 6 is merged (PR #9) and CI published both images; the edge's `bump-happybabytracker` PR changes the
-   two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and `ui/` sources only (no Dockerfile or
-   dependency change; migration 0006 runs at the API's start) and deploys with the edge unchanged: no
-   `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in the app (the home Due
-   list and the Medication page). Migration 0006 is forward-only (an older API refuses the newer schema,
-   and the previous UI rejects the home list's medication entries): take an `edge-backup` archive right
-   before the deploy; a rollback is both pins back plus a restore of that archive, losing what was
-   written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
-   alive (503 after 60 seconds without a tick): point the edge's alert runbook at
-   `docs/runbooks/reminders.md` for that answer.
+1. Plan 6 is merged (PR #9); CI publishes both images on the merge (not checked in this session); the edge's
+   `bump-happybabytracker` PR changes the two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and
+   `ui/` sources only (no Dockerfile or dependency change; migration 0006 runs at the API's start) and deploys
+   with the edge unchanged: no `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in
+   the app (the home Due list and the Medication page). Migration 0006 is forward-only (an older API refuses
+   the newer schema, and the previous UI rejects the home list's medication entries): take an `edge-backup`
+   archive right before the deploy; a rollback is both pins back plus a restore of that archive, losing what
+   was written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
+   alive (503 after 60 seconds without a tick): point the edge's alert runbook at `docs/runbooks/reminders.md`
+   for that answer.
 2. **Edge, Web Push:** whenever the owner wants Web Push on (before or after the plan-6 bump), a PR in
    `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
    literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
@@ -209,9 +209,10 @@ The owner's answers of 2026-11-23 (recorded in the plan, "Owner answers"):
 5. Module default visibility unchanged (on at 0 to 23 months, off from 24); the full catalog until the 5th
    birthday; whether the module stays on after the default is the guardian's decision.
 
-Defaults accepted on 2026-11-24 ("Start plan 7"): growth, vaccination and milestones print the whole record up to
-the range's end (trackers only the range); A4 with content that also prints on Letter; sickness and medication are
-in the export.
+Defaults taken as accepted on 2026-11-24 (an assumption: the controller's reading of the owner's "Start plan 7",
+not an explicit answer; the owner may still correct it): growth, vaccination and milestones print the whole
+record up to the range's end (trackers only the range); A4 with content that also prints on Letter; sickness and
+medication are in the export.
 
 Smoke: steps 4m (the Milestones page against the real catalog) and 4n (the PDF export without JavaScript, the
 module filter, refusals and access); the smoke also measures the export in its own API process (the ceilings stay

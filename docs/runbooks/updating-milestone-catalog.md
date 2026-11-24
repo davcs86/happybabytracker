@@ -34,7 +34,8 @@ findings and the traps.
 3. Check each new or reworded item against the denylist in `TestNoJudgementWords`
    (`api/internal/milestones/data_test.go`). On a match, stop and ask the owner; never reword CDC's text.
 4. Edit the CSV.
-   - **Provenance keys** (all required except `omitted`): `catalog` (`cdc`), `name`, `authority`,
+   - **Provenance keys** (all required except `omitted` for the loader; `TestShippedCatalogLoads` also
+     fails on an empty `omitted` in the shipped file): `catalog` (`cdc`), `name`, `authority`,
      `edition` (with the "Updated" date the pages show), `retrieved` (YYYY-MM-DD, the day you fetched
      the pages), `origin_url` (the index page), `licence`, `attribution`, `screening_note` (the "Keep in
      mind" sentence of the age pages, verbatim) and `omitted` (one line of `;`-separated items: what the
@@ -56,7 +57,7 @@ findings and the traps.
    - **The released ids are guarded.** `api/internal/milestones/testdata/ids.txt` lists every id ever
      released, one per line, and is append-only. `TestShippedIDsStay` fails when a listed id is no longer
      in the CSV (deleted or renamed); `TestShippedCatalogLoads` accepts a retired item only when its id is
-     listed. Append a new item's id to `ids.txt` once the update that adds it is released.
+     listed. Append each new item's id to `ids.txt` in the same pull request that adds it.
 5. Run `cd api && UPDATE_DOCS=1 go test ./internal/milestones/ -race`, then read the diff of
    `docs/milestones/cdc.md` and check that it shows exactly the changes listed in step 2. The loader
    names the file, line and column of every error, never the cell's text.
@@ -64,7 +65,8 @@ findings and the traps.
    `api/internal/milestones/review_test.go`, with the comparison date in its comment and in
    `renderMarkdown`. Regenerate the review document again.
 7. Update the tests that pin real data: the per-age counts and the 159 total in
-   `TestShippedCatalogLoads`, `TestPinnedItems`, and any test or smoke step that names a catalog id.
+   `TestShippedCatalogLoads`, the `screeningNote` constant in `data_test.go` (when CDC rewords the
+   "Keep in mind" sentence), `TestPinnedItems`, and any test or smoke step that names a catalog id.
 8. Run the whole pipeline in `CLAUDE.md` (API, UI, images and smoke) and open the pull request.
 
 ## Traps

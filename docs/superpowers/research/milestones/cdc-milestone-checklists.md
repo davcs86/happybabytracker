@@ -17,7 +17,9 @@ transcribed into the repository. Not legal advice. Every source below was retrie
    *Pediatrics* 149(3), 1 March 2022, DOI 10.1542/peds.2021-052138, PMCID PMC9680195. That article is
    AAP's publication, so its copyright was not checked and it is not a source for the catalog. The
    English PDFs CDC links today are named `Eng.-<age>-Milestone-Moments-Checklist-2021-P.pdf`, under
-   a `2025/05` path. The current web pages match the PDF items except for pronouns (point 7).
+   a `2025/05` path. The current web pages differ from the PDF items in pronouns (point 7) and, at
+   9 months, in one item's wording ("Makes a lot of different sounds" on the page, "Makes different
+   sounds" in the PDF); `docs/milestones/cdc.md` lists all 12 differences.
 4. **Licence: public domain, with CDC's reuse conditions.** CDC's general page "Use of Agency
    Materials" says most content "is not subject to copyright, is in the public domain". Reuse needs
    attribution to the agency, a prominent statement that the use implies no endorsement, no change
@@ -38,7 +40,7 @@ transcribed into the repository. Not legal advice. Every source below was retrie
    decision in plan 4) is the app's own.
 7. **Pronouns differ between formats.** The 4-year web page has "Serves herself food or pours
    water, with adult supervision", and the 2021-named PDF has "Serves himself food or pours water,
-   with adult". The 2-month web page has "Smiles when you talk to or smile at her" in its list and
+   with adult supervision". The 2-month web page has "Smiles when you talk to or smile at her" in its list and
    "… at him" in the image caption. The transcription has to pick one source and say which. The
    plan picks the HTML age pages, the newest dated text.
 8. **Size.** The combined English PDF (`/act-early/media/pdfs/2025/10/cdc-milestone-checklists-ltsae-english-508.pdf`)
@@ -98,14 +100,15 @@ quotations, so these are fragments:
 
 ## 4. Traps
 
-- `curl` to cdc.gov answered 403 during plan 5's research, so only the WebFetch tool reaches it. The
-  transcription task should use the HTML pages through the same tool, and `pdftotext` on a PDF
-  downloaded through it.
+- `curl` to cdc.gov answered 403 during plan 5's research. Found on 2026-11-24: curl with its default
+  User-Agent gets 200 and a browser User-Agent gets 403. Fetch the HTML pages with curl; the WebFetch
+  tool shortens quotations, so use it only to cross-check.
 - The PDF's two-column layout splits items across lines in `pdftotext -layout` output (for example
   "Changes behavior based on where she is (place of" continues lower down). Do not transcribe from
   the PDF text. Use the HTML pages.
 - Some items contain inner quotes, for example `Asks to go play with children if none are around,
-  like "Can I play with Alex?"`. The CSV must quote such fields properly.
+  like “Can I play with Alex?”`. CDC's pages and the CSV use curly quotes (U+201C, U+201D); the CSV
+  must quote such fields properly.
 - The checklists go up to 5 years, but the module is off by default from 24 months (spec 7.2,
   owner). See the plan's question 3.
 
