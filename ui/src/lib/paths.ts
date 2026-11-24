@@ -23,3 +23,8 @@ export const medicationEntryPath = (kidId: string, id: string) => `${medicationP
 export const doseEntryPath = (kidId: string, id: string) => `${medicationPath(kidId)}/doses/${id}`;
 export const notificationsPath = '/account/notifications';
 export const notificationsSubscribePath = `${notificationsPath}/subscribe`;
+export const milestonesPath = (kidId: string) => `/kids/${kidId}/milestones`;
+// item is a catalog item id, which needs no escaping in a query.
+export const milestoneNewPath = (kidId: string, item?: string) =>
+	`${milestonesPath(kidId)}/new${item ? `?item=${item}` : ''}`;
+export const milestoneEntryPath = (kidId: string, id: string) => `${milestonesPath(kidId)}/${id}`;

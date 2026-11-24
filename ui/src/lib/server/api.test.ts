@@ -2859,3 +2859,285 @@ describe('createApi push device and ntfy calls', () => {
 		}
 	});
 });
+
+describe('createApi milestone calls', () => {
+	const KID = 'k-1';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+
+	const CATALOG_WIRE = {
+		id: 'cdc',
+		name: 'Checklists',
+		authority: 'CDC',
+		edition: '2022',
+		retrieved: '2026-11-24',
+		origin_url: 'https://www.cdc.gov/act-early/milestones/index.html',
+		licence: 'Public domain',
+		attribution: 'Source: CDC',
+		screening_note: 'Not a screening tool.'
+	};
+	const VIEW_WIRE = {
+		catalog: CATALOG_WIRE,
+		age: { chronological_months: 3, corrected_months: 1, basis_months: 1 },
+		catalog_shown: true,
+		checklists: [
+			{
+				age_months: 2,
+				position: 'next',
+				items: [
+					{
+						id: '2m-se-a',
+						domain: 'social_emotional',
+						text: 'Item A',
+						reached: { id: 'r-1', reached_on: '2026-11-01', note: null }
+					},
+					{ id: '2m-mp-b', domain: 'movement_physical', text: 'Item B', reached: null }
+				]
+			}
+		],
+		custom: [{ id: 'r-2', text: 'Waves', reached_on: '2026-10-01', note: 'park' }],
+		retired: [{ id: 'r-3', item: '4m-cg-old', text: 'Old', reached_on: '2026-09-01', note: null }],
+		reached: [
+			{
+				id: 'r-4',
+				item: '60m-lc-c',
+				age_months: 60,
+				domain: 'language_communication',
+				text: 'Item C',
+				reached_on: '2026-08-01',
+				note: null
+			}
+		]
+	};
+	const VIEW = {
+		catalog: {
+			id: 'cdc',
+			name: 'Checklists',
+			authority: 'CDC',
+			edition: '2022',
+			retrieved: '2026-11-24',
+			originUrl: 'https://www.cdc.gov/act-early/milestones/index.html',
+			licence: 'Public domain',
+			attribution: 'Source: CDC',
+			screeningNote: 'Not a screening tool.'
+		},
+		age: { chronologicalMonths: 3, correctedMonths: 1, basisMonths: 1 },
+		catalogShown: true,
+		checklists: [
+			{
+				ageMonths: 2,
+				position: 'next',
+				items: [
+					{
+						id: '2m-se-a',
+						domain: 'social_emotional',
+						text: 'Item A',
+						reached: { id: 'r-1', reachedOn: '2026-11-01', note: null }
+					},
+					{ id: '2m-mp-b', domain: 'movement_physical', text: 'Item B', reached: null }
+				]
+			}
+		],
+		custom: [{ id: 'r-2', text: 'Waves', reachedOn: '2026-10-01', note: 'park' }],
+		retired: [{ id: 'r-3', item: '4m-cg-old', text: 'Old', reachedOn: '2026-09-01', note: null }],
+		reached: [
+			{
+				id: 'r-4',
+				item: '60m-lc-c',
+				ageMonths: 60,
+				domain: 'language_communication',
+				text: 'Item C',
+				reachedOn: '2026-08-01',
+				note: null
+			}
+		]
+	};
+	const ENTRY_WIRE = {
+		id: 'r-1',
+		item: '2m-se-a',
+		text: 'Item A',
+		reached_on: '2026-11-01',
+		note: null
+	};
+	const ENTRY = { id: 'r-1', item: '2m-se-a', text: 'Item A', reachedOn: '2026-11-01', note: null };
+
+	it('lists, gets, creates, updates and removes', async () => {
+		const f = mockFetch(async (u, init) =>
+			init?.method === 'DELETE'
+				? new Response(null, { status: 204 })
+				: json(init?.method === 'GET' && u.endsWith('/milestones') ? VIEW_WIRE : ENTRY_WIRE)
+		);
+		const m = api(f).milestones;
+		expect(await m.list(KID)).toEqual({ ok: true, data: VIEW });
+		expect(await m.get(KID, 'r-1')).toEqual({ ok: true, data: ENTRY });
+		expect(await m.create(KID, { item: '2m-se-a', reached_on: '2026-11-01' })).toEqual({
+			ok: true,
+			data: ENTRY
+		});
+		expect(await m.update(KID, 'r-1', { note: null })).toEqual({ ok: true, data: ENTRY });
+		expect(await m.remove(KID, 'r-1')).toEqual({ ok: true, data: null });
+		expect([0, 1, 2, 3, 4].map((i) => sent(f, i))).toEqual([
+			{ url: 'http://api:9210/v1/kids/k-1/milestones', method: 'GET', body: undefined },
+			{ url: 'http://api:9210/v1/kids/k-1/milestones/r-1', method: 'GET', body: undefined },
+			{
+				url: 'http://api:9210/v1/kids/k-1/milestones',
+				method: 'POST',
+				body: { item: '2m-se-a', reached_on: '2026-11-01' }
+			},
+			{
+				url: 'http://api:9210/v1/kids/k-1/milestones/r-1',
+				method: 'PATCH',
+				body: { note: null }
+			},
+			{ url: 'http://api:9210/v1/kids/k-1/milestones/r-1', method: 'DELETE', body: undefined }
+		]);
+	});
+
+	it('reads a custom entry and a view past the catalog span', async () => {
+		const custom = { ...ENTRY_WIRE, item: null, text: 'Waves' };
+		expect(await api(respond(custom)).milestones.get(KID, 'r-1')).toEqual({
+			ok: true,
+			data: { ...ENTRY, item: null, text: 'Waves' }
+		});
+		const past = {
+			...VIEW_WIRE,
+			age: { chronological_months: 60, corrected_months: null, basis_months: 60 },
+			catalog_shown: false,
+			checklists: []
+		};
+		expect(await api(respond(past)).milestones.list(KID)).toMatchObject({
+			ok: true,
+			data: {
+				age: { chronologicalMonths: 60, correctedMonths: null, basisMonths: 60 },
+				catalogShown: false,
+				checklists: []
+			}
+		});
+	});
+
+	it('a refused create names its field; a second mark and the cap are conflicts with their code', async () => {
+		expect(
+			await api(respond({ error: 'invalid', field: 'reached_on' }, 422)).milestones.create(KID, {})
+		).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'reached_on' });
+		for (const code of ['already_reached', 'limit']) {
+			expect(await api(respond({ error: code }, 409)).milestones.create(KID, {})).toEqual({
+				ok: false,
+				status: 409,
+				reason: 'conflict',
+				code
+			});
+		}
+	});
+
+	const checklist = VIEW_WIRE.checklists[0];
+	const item = checklist.items[0];
+	it.each([
+		['no catalog', { ...VIEW_WIRE, catalog: undefined }],
+		[
+			'a catalog without its screening note',
+			{ ...VIEW_WIRE, catalog: { ...CATALOG_WIRE, screening_note: undefined } }
+		],
+		[
+			'a corrected age that is a string',
+			{ ...VIEW_WIRE, age: { ...VIEW_WIRE.age, corrected_months: '1' } }
+		],
+		['a fractional basis', { ...VIEW_WIRE, age: { ...VIEW_WIRE.age, basis_months: 1.5 } }],
+		['a catalog_shown that is a string', { ...VIEW_WIRE, catalog_shown: 'true' }],
+		['no checklists key', { ...VIEW_WIRE, checklists: undefined }],
+		[
+			'a checklist age outside the catalog',
+			{ ...VIEW_WIRE, checklists: [{ ...checklist, age_months: 7 }] }
+		],
+		['an unknown position', { ...VIEW_WIRE, checklists: [{ ...checklist, position: 'behind' }] }],
+		[
+			'an unknown domain',
+			{ ...VIEW_WIRE, checklists: [{ ...checklist, items: [{ ...item, domain: 'fine_motor' }] }] }
+		],
+		[
+			'a reached that is not an object',
+			{ ...VIEW_WIRE, checklists: [{ ...checklist, items: [{ ...item, reached: '2026-11-01' }] }] }
+		],
+		[
+			'a missing reached',
+			{ ...VIEW_WIRE, checklists: [{ ...checklist, items: [{ ...item, reached: undefined }] }] }
+		],
+		[
+			'a custom row without text',
+			{ ...VIEW_WIRE, custom: [{ ...VIEW_WIRE.custom[0], text: undefined }] }
+		],
+		[
+			'a retired row without its item',
+			{ ...VIEW_WIRE, retired: [{ ...VIEW_WIRE.retired[0], item: null }] }
+		],
+		[
+			'a reached row with a number date',
+			{ ...VIEW_WIRE, reached: [{ ...VIEW_WIRE.reached[0], reached_on: 20260801 }] }
+		],
+		['no reached key', { ...VIEW_WIRE, reached: undefined }]
+	])('maps a view with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).milestones.list(KID)).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it.each([
+		['an item that is a number', { ...ENTRY_WIRE, item: 7 }],
+		['a missing item', { ...ENTRY_WIRE, item: undefined }],
+		['a missing text', { ...ENTRY_WIRE, text: undefined }],
+		['a missing date', { ...ENTRY_WIRE, reached_on: undefined }],
+		['a missing note', { ...ENTRY_WIRE, note: undefined }],
+		['an array', [ENTRY_WIRE]]
+	])('maps an entry with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).milestones.get(KID, 'r-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a body that is not JSON to error', async () => {
+		const f = mockFetch(async () => new Response('<html>', { status: 200 }));
+		expect(await api(f).milestones.create(KID, {})).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond({});
+		const m = api(f).milestones;
+		for (const r of [
+			await m.list('a/b'),
+			await m.get(KID, '..?x'),
+			await m.get('a/b', 'r-1'),
+			await m.create('', {}),
+			await m.update(KID, 'a b', {}),
+			await m.update('a/b', 'r-1', {}),
+			await m.remove(KID, '../r-1')
+		]) {
+			expect(r).toEqual({ ok: false, status: 404, reason: 'not_found' });
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a milestone call by its endpoint name only', async () => {
+		await api(respond({ error: 'invalid', field: 'text' }, 422)).milestones.update(
+			KID,
+			'r-secret',
+			{
+				text: 'Secret words'
+			}
+		);
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'update_milestone', status: 422 }
+		]);
+		expect(logged()).not.toContain('r-secret');
+		expect(logged()).not.toContain('Secret words');
+	});
+});

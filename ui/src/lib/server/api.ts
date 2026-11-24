@@ -8,6 +8,9 @@ import {
 	GROWTH_SOURCES,
 	LENGTH_UNITS,
 	MEASURES,
+	MILESTONE_AGES,
+	MILESTONE_DOMAINS,
+	MILESTONE_POSITIONS,
 	MODULES,
 	NURSING_SIDES,
 	PUMPING_SIDES,
@@ -51,6 +54,11 @@ import type {
 	Meal,
 	Medication,
 	MedicationDose,
+	MilestoneChecklist,
+	MilestoneEntry,
+	MilestoneItem,
+	MilestoneReached,
+	Milestones,
 	Milk,
 	ModuleId,
 	ModuleState,
@@ -131,7 +139,7 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose' | 'milestone'}`
 	| 'push_state'
 	| 'list_push_devices'
 	| 'upsert_push_device'
@@ -723,6 +731,84 @@ function toMedicationDose(v: unknown): MedicationDose {
 	};
 }
 
+function toMilestoneReached(v: unknown): MilestoneReached {
+	const o = object(v);
+	return { id: string(o.id), reachedOn: string(o.reached_on), note: stringOrNull(o.note) };
+}
+
+const toMilestoneDomain = (v: unknown) => oneOf(v, MILESTONE_DOMAINS);
+
+function toMilestoneAge(v: unknown): number {
+	const age = int(v);
+	if (!(MILESTONE_AGES as readonly number[]).includes(age)) throw new ShapeError();
+	return age;
+}
+
+function toMilestoneItem(v: unknown): MilestoneItem {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		domain: toMilestoneDomain(o.domain),
+		text: string(o.text),
+		reached: nullOr(o.reached, toMilestoneReached)
+	};
+}
+
+function toMilestoneChecklist(v: unknown): MilestoneChecklist {
+	const o = object(v);
+	return {
+		ageMonths: toMilestoneAge(o.age_months),
+		position: oneOf(o.position, MILESTONE_POSITIONS),
+		items: list(o, 'items', toMilestoneItem)
+	};
+}
+
+function toMilestones(v: unknown): Milestones {
+	const o = object(v);
+	const c = object(o.catalog);
+	const age = object(o.age);
+	return {
+		catalog: {
+			id: string(c.id),
+			name: string(c.name),
+			authority: string(c.authority),
+			edition: string(c.edition),
+			retrieved: string(c.retrieved),
+			originUrl: string(c.origin_url),
+			licence: string(c.licence),
+			attribution: string(c.attribution),
+			screeningNote: string(c.screening_note)
+		},
+		age: {
+			chronologicalMonths: int(age.chronological_months),
+			correctedMonths: intOrNull(age.corrected_months),
+			basisMonths: int(age.basis_months)
+		},
+		catalogShown: boolean(o.catalog_shown),
+		checklists: list(o, 'checklists', toMilestoneChecklist),
+		custom: list(o, 'custom', (r) => ({ ...toMilestoneReached(r), text: string(object(r).text) })),
+		retired: list(o, 'retired', (r) => {
+			const row = object(r);
+			return { ...toMilestoneReached(r), item: string(row.item), text: string(row.text) };
+		}),
+		reached: list(o, 'reached', (r) => {
+			const row = object(r);
+			return {
+				...toMilestoneReached(r),
+				item: string(row.item),
+				ageMonths: toMilestoneAge(row.age_months),
+				domain: toMilestoneDomain(row.domain),
+				text: string(row.text)
+			};
+		})
+	};
+}
+
+function toMilestoneEntry(v: unknown): MilestoneEntry {
+	const o = object(v);
+	return { ...toMilestoneReached(o), item: stringOrNull(o.item), text: string(o.text) };
+}
+
 function toPushState(v: unknown): PushState {
 	const o = object(v);
 	if (!boolean(o.enabled)) return { enabled: false };
@@ -1160,6 +1246,35 @@ export function createApi(
 			remove: (kidId: string, id: string) =>
 				withKidEntry(kidId, id, (k, i) =>
 					call<null>('delete_dose', 'DELETE', `/v1/kids/${k}/medication-doses/${i}`, null)
+				)
+		},
+		// input is the API's own JSON body, as readMilestoneForm builds it.
+		milestones: {
+			list: (kidId: string) =>
+				withId(kidId, (k) =>
+					call('list_milestone', 'GET', `/v1/kids/${k}/milestones`, toMilestones)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_milestone', 'GET', `/v1/kids/${k}/milestones/${i}`, toMilestoneEntry)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_milestone', 'POST', `/v1/kids/${k}/milestones`, toMilestoneEntry, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call(
+						'update_milestone',
+						'PATCH',
+						`/v1/kids/${k}/milestones/${i}`,
+						toMilestoneEntry,
+						input
+					)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_milestone', 'DELETE', `/v1/kids/${k}/milestones/${i}`, null)
 				)
 		},
 		// A write answers 409 with code push_unavailable while Web Push is off; list and removal still work.
