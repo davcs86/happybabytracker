@@ -22,7 +22,8 @@ export const ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 // A catalogue antigen id, and a schedule line id in a path; anything else never reaches the API.
 export const ANTIGEN_PATTERN = /^[a-z][a-z0-9_]*$/;
 export const VACCINE_LINE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
-// A milestone catalog item id (the API's idPattern); anything else never reaches the API.
+// A milestone catalog item id (the API's idPattern; the 48 is MilestoneCatalogSlugMaxLen); anything else never
+// reaches the API.
 export const MILESTONE_ITEM_PATTERN = /^[0-9]{1,2}m-(se|lc|cg|mp)-[a-z0-9-]{1,48}$/;
 export const NOT_FOUND_MESSAGE = 'Not found';
 export const FAILURE_MESSAGE = 'Something went wrong, try again';

@@ -54,7 +54,7 @@
 						{:else}
 							<form
 								method="POST"
-								action="?/reach"
+								action="?/reach#item-{item.id}"
 								class="flex flex-wrap items-center gap-x-3 gap-y-1"
 								use:enhance
 							>

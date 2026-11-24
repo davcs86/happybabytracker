@@ -1177,9 +1177,12 @@ item_row() { # body-name text -> the list row that shows text
   pieces "$1" '<li' | grep -F -- "$2" | head -n 1 || true
 }
 reach() { # name addr cookie path field=value... -> expects the 303 back to the Milestones page
-  local code
+  local code want="${REACH_LOCATION:-$MILESTONES}"
   code="$(form "$@")"
-  [ "$code $(location "$1")" = "303 $MILESTONES" ] || fail "4m $1" "status $code, Location $(location "$1")"
+  [ "$code $(location "$1")" = "303 $want" ] || fail "4m $1" "status $code, Location $(location "$1")"
+}
+tap() { # name addr cookie item -> a one-tap mark, expected back at the item's row with its list open
+  REACH_LOCATION="$MILESTONES?open=$4#item-$4" reach "$1" "$2" "$3" "$MILESTONES?/reach" "item=$4"
 }
 code="$(req ms-a "$ADDR_A" "$SESSION_A" "$UI_URL$MILESTONES")"
 { [ "$code" = 200 ] && body_has ms-a "$CDC_MILESTONE_ATTRIBUTION" && body_has ms-a "$CDC_SCREENING_NOTE"; } ||
@@ -1206,11 +1209,11 @@ if [ "$AGE_MONTHS" -lt 60 ]; then
   for id in "${now_items[0]}" "${now_items[1]}" "${now_items[2]}" "${later_items[0]}"; do
     item_text ms-a "$id" >>"$CDC_TEXTS"
   done
-  reach ms-reach-today "$ADDR_A" "$SESSION_A" "$MILESTONES?/reach" "item=${now_items[0]}"
-  reach ms-reach-later "$ADDR_A" "$SESSION_A" "$MILESTONES?/reach" "item=${later_items[0]}"
+  tap ms-reach-today "$ADDR_A" "$SESSION_A" "${now_items[0]}"
+  tap ms-reach-later "$ADDR_A" "$SESSION_A" "${later_items[0]}"
   reach ms-reach-dated "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save&item=${now_items[1]}" \
     "item=${now_items[1]}" reached_on=2026-06-01 note=
-  reach ms-reach-b "$ADDR_B" "$SESSION_B" "$MILESTONES?/reach" "item=${now_items[2]}"
+  tap ms-reach-b "$ADDR_B" "$SESSION_B" "${now_items[2]}"
 else
   # From the 5th birthday the lists are hidden: only the custom milestones below are exercised.
   { ! body_has ms-a 'Milestone checklists' && [ "$(count ms-a 'Current list for this age')" = 0 ]; } ||

@@ -103,12 +103,15 @@ const quickLog = (page: Page) => page.getByRole('region', { name: 'Quick log' })
 const overflows = (page: Page) =>
 	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 
+// Hydration can close a list opened just before it: click again until it stays open.
 async function open(page: Page, title: string) {
 	const details = list(page, title);
-	if ((await details.getAttribute('open')) === null) {
-		await details.locator(':scope > summary').click();
-	}
-	await expect(details).toHaveAttribute('open', '');
+	await expect(async () => {
+		if ((await details.getAttribute('open')) === null) {
+			await details.locator(':scope > summary').click();
+		}
+		await expect(details).toHaveAttribute('open', '', { timeout: 1000 });
+	}).toPass();
 	return details;
 }
 async function onPage(page: Page, kid: { id: string; name: string }) {
@@ -126,8 +129,6 @@ async function onItem(page: Page, kid: { id: string; name: string }, id: string)
 		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
 	).toBeVisible();
 }
-// Hydration rewrites each list's open state: toggle a list only after it.
-const hydrated = (page: Page) => untilHydrated(page.locator('main input[name="item"]').first());
 const stored = async (api: Api, kid: string) => {
 	const v = (await api('GET', apiPath(kid))).body;
 	const items = (v.checklists as { items: { id: string; reached: Row | null }[] }[]).flatMap(
@@ -217,7 +218,6 @@ test('an item in a later and one in an earlier list are each marked reached', as
 	const cleo = await stubAs(CLEO);
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
-	await hydrated(page);
 	for (const [title, id] of [
 		['By 3 years', '36m-cg-stub-1'],
 		['By 2 months', '2m-mp-stub-1']
@@ -276,7 +276,6 @@ test('a kid at 4 years 11 months: 4 years current, 5 years reachable; a retired 
 	await stubAs(CLEO);
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(OTTO.id));
-	await hydrated(page);
 	await expect(summaries(page)).toHaveCount(12);
 	await expect(list(page, 'By 4 years')).toHaveAttribute('open', '');
 	await expect(list(page, 'By 4 years').locator(':scope > summary')).toHaveText(
@@ -384,7 +383,7 @@ test('a 30-month kid with the module off: the page loads from the kid links, the
 
 	await page.goto(pageUrl(SAMI.id));
 	await submit(reachButton(page, '30m-mp-stub-1'));
-	await onPage(page, SAMI);
+	await onItem(page, SAMI, '30m-mp-stub-1');
 	await expect(item(page, '30m-mp-stub-1')).toContainText(reachedLabel(TODAY));
 	await expect(page.getByText(NOTE_OFF(SAMI.name))).toHaveCount(0);
 	await page.goto(`/kids/${SAMI.id}`);
@@ -753,6 +752,7 @@ test.describe('without JavaScript', () => {
 		await submit(reachButton(list(page, 'By 3 years'), id));
 		await expect(list(page, 'By 3 years')).toHaveAttribute('open', '');
 		await expect(item(page, id).getByRole('alert')).toHaveText('Already marked as reached');
+		await expect(item(page, id).getByRole('alert')).toBeInViewport();
 	});
 
 	test('the off note and its link are rendered by the server', async ({ page }) => {
