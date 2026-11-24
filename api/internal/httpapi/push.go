@@ -85,6 +85,7 @@ func (d Deps) listDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 // upsertDevice checks endpoint, keys, label in that order and stores the keys as canonical unpadded base64url.
+// An absent or null label keeps a known device's name.
 func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 	if !d.pushOn(w) {
 		return
@@ -127,10 +128,13 @@ func (d Deps) upsertDevice(w http.ResponseWriter, r *http.Request) {
 		respondInvalid(w, "keys")
 		return
 	}
-	label, ok := cleanLabel(in.Label)
-	if !ok {
-		respondInvalid(w, "label")
-		return
+	label := ""
+	if in.Label != nil {
+		var ok bool
+		if label, ok = cleanLabel(in.Label); !ok {
+			respondInvalid(w, "label")
+			return
+		}
 	}
 	enc := base64.RawURLEncoding
 	dev, created, err := d.Store.UpsertDevice(r.Context(), PrincipalFrom(r.Context()).ParentID, canonicalEndpoint(*in.Endpoint),

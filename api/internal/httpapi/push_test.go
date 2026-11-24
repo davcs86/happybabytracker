@@ -152,6 +152,39 @@ func TestUpsertDevice(t *testing.T) {
 	wantCleanLog(t, k.Log.String(), 4, testEndpoint, "push.example.com", p, a, gotP, base64.StdEncoding.EncodeToString(raw))
 }
 
+// An upsert without a label (absent or null) names a new device DefaultPushLabel and keeps a known device's name.
+func TestUpsertDeviceWithoutALabel(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	k.Log.Reset()
+	body := deviceBody(testEndpoint, "")
+	delete(body, "label")
+	rec := k.putDevice(ana, body)
+	noSecrets(t, "create", rec)
+	dev := bodyMap(t, rec)["device"].(map[string]any)
+	if rec.Code != http.StatusCreated || dev["label"] != constants.DefaultPushLabel {
+		t.Fatalf("create without a label: %d %q", rec.Code, rec.Body.String())
+	}
+	id := dev["id"].(string)
+	if rename := k.do(http.MethodPatch, "/v1/me/push-devices/"+id, ana, map[string]any{"label": "Kitchen"}); rename.Code != http.StatusOK {
+		t.Fatalf("rename: %d %q", rename.Code, rename.Body.String())
+	}
+	for name, label := range map[string]any{"absent": nil, "null": "null"} {
+		body := deviceBody(testEndpoint, "")
+		delete(body, "label")
+		if label != nil {
+			body["label"] = nil
+		}
+		rec := k.putDevice(ana, body)
+		again := bodyMap(t, rec)["device"].(map[string]any)
+		if rec.Code != http.StatusOK || again["id"] != id || again["label"] != "Kitchen" {
+			t.Fatalf("%s: %d %q", name, rec.Code, rec.Body.String())
+		}
+	}
+	p, a := testSubscriptionKeys()
+	wantCleanLog(t, k.Log.String(), 4, testEndpoint, "push.example.com", p, a, "Kitchen")
+}
+
 func TestDeviceMovesToTheParentWhoRegistersIt(t *testing.T) {
 	k := newKit(t)
 	kid, ana, bob := k.trackerKid()
@@ -361,14 +394,10 @@ func TestDeviceBadKeysAndLabel(t *testing.T) {
 		noSecrets(t, name, rec)
 	}
 	for name, label := range map[string]any{
-		"41": strings.Repeat("é", constants.PushLabelMaxLen+1), "empty": "", "blank": "   ", "missing": nil,
+		"41": strings.Repeat("é", constants.PushLabelMaxLen+1), "empty": "", "blank": "   ",
 	} {
 		body := deviceBody(testEndpoint, "")
-		if label == nil {
-			delete(body, "label")
-		} else {
-			body["label"] = label
-		}
+		body["label"] = label
 		wantInvalid2(t, name, k.putDevice(ana, body), "label")
 	}
 	if rec := k.putDevice(ana, deviceBody(testEndpoint, strings.Repeat("é", constants.PushLabelMaxLen))); rec.Code != http.StatusCreated {

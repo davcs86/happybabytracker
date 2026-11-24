@@ -138,6 +138,7 @@ const (
 	PushDevicesPerParent = 10
 	PushLabelMaxLen      = 40
 	PushEndpointMaxLen   = 2048
+	DefaultPushLabel     = "This device" // a new device's name when the upsert sends none
 
 	ReminderTick        = 30 * time.Second
 	ReminderExpiry      = 30 * time.Minute

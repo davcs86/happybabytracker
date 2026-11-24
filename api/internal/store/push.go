@@ -16,7 +16,8 @@ type PushTarget struct {
 }
 
 // UpsertDevice: created is false only for parentID's own endpoint; another parent's is deleted with its opt-ins and stored
-// under a new id. ErrConflict at PushDevicesPerParent; ErrNotFound for a disabled parent.
+// under a new id. An empty label keeps the stored one, or is DefaultPushLabel on create. ErrConflict at PushDevicesPerParent;
+// ErrNotFound for a disabled parent.
 func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, auth, label string, now time.Time) (d model.PushDevice, created bool, err error) {
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var enabled int
@@ -32,7 +33,7 @@ func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, au
 			return err
 		}
 		if owner == parentID {
-			if _, err := tx.ExecContext(ctx, `UPDATE push_subscriptions SET p256dh = ?, auth = ?, label = ?, updated_at = ? WHERE id = ?`,
+			if _, err := tx.ExecContext(ctx, `UPDATE push_subscriptions SET p256dh = ?, auth = ?, label = COALESCE(NULLIF(?, ''), label), updated_at = ? WHERE id = ?`,
 				p256dh, auth, label, now.Unix(), id); err != nil {
 				return err
 			}
@@ -50,6 +51,9 @@ func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, au
 				}
 			}
 			id, created = model.NewID(), true
+			if label == "" {
+				label = constants.DefaultPushLabel
+			}
 			_, err = tx.ExecContext(ctx,
 				`INSERT INTO push_subscriptions(id, parent_id, endpoint, p256dh, auth, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				id, parentID, endpoint, p256dh, auth, label, now.Unix(), now.Unix())

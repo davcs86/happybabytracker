@@ -74,6 +74,30 @@ func TestUpsertDeviceCreatesThenUpdates(t *testing.T) {
 	}
 }
 
+func TestUpsertDeviceWithoutALabelKeepsTheStoredOne(t *testing.T) {
+	s := openMem(t)
+	ana, ben := mustParent(t, s, "ana"), mustParent(t, s, "ben")
+	d, created, err := s.UpsertDevice(ctx, ana.ID, "https://push.example.com/a", testP256dh, testAuth, "", t0)
+	if err != nil || !created || d.Label != constants.DefaultPushLabel {
+		t.Fatalf("create without a label: %+v created=%v err=%v", d, created, err)
+	}
+	if _, err := s.RenameDevice(ctx, ana.ID, d.ID, "Kitchen", t0); err != nil {
+		t.Fatal(err)
+	}
+	again, created, err := s.UpsertDevice(ctx, ana.ID, "https://push.example.com/a", "BOTHER", "AUTHOTHER", "", t0.Add(time.Hour))
+	if err != nil || created || again.ID != d.ID || again.Label != "Kitchen" {
+		t.Fatalf("re-send without a label: %+v created=%v err=%v", again, created, err)
+	}
+	var p256dh string
+	if err := s.w.QueryRow(`SELECT p256dh FROM push_subscriptions WHERE id = ?`, d.ID).Scan(&p256dh); err != nil || p256dh != "BOTHER" {
+		t.Fatalf("keys not updated: %q %v", p256dh, err)
+	}
+	moved, created, err := s.UpsertDevice(ctx, ben.ID, "https://push.example.com/a", testP256dh, testAuth, "", t0.Add(2*time.Hour))
+	if err != nil || !created || moved.Label != constants.DefaultPushLabel {
+		t.Fatalf("a move without a label: %+v created=%v err=%v", moved, created, err)
+	}
+}
+
 func TestUpsertDeviceMovesToTheNewParent(t *testing.T) {
 	s := openMem(t)
 	ana, ben := mustParent(t, s, "ana"), mustParent(t, s, "ben")
