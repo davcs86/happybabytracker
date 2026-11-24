@@ -3,6 +3,7 @@ package export
 import (
 	"bytes"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +107,63 @@ func TestRecordSectionsUpToTo(t *testing.T) {
 	wantNotIn(t, "up to to", text, "2026-11-15", "Claps after the range", "Later product", "LOT-LATE", "after the range")
 	if strings.Contains(text, "Other (product name required)") {
 		t.Error("a dose after to appears under Other")
+	}
+}
+
+func renderAt(t *testing.T, snap store.ExportSnapshot, from, to string, now time.Time) string {
+	t.Helper()
+	var buf bytes.Buffer
+	req := Request{From: from, To: to, Modules: []model.Module{"vaccination"}, Units: metric, Now: now, Loc: time.UTC}
+	if err := Render(&buf, snap, req); err != nil {
+		t.Fatal(err)
+	}
+	return joined(pdfText(t, buf.Bytes()))
+}
+
+func TestVaccinationStatusesAsOfTo(t *testing.T) {
+	today := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	dose1 := func() (model.Administration, []model.VaccineDose) {
+		return administered("a1", "2026-03-04", []string{"hepatitis_b"}, nil, nil, nil)
+	}
+	dose2 := func() (model.Administration, []model.VaccineDose) {
+		return administered("a2", "2026-11-15", []string{"hepatitis_b"}, nil, ptr("Given after to"), nil)
+	}
+	snap := vaccineSnap(ptr("us"), map[string]string{}, dose1, dose2)
+
+	// As of 2026-11-10 dose 2 (window 2026-04-04 to 2026-06-04) is not given yet: the line reads as it did on that day.
+	text := renderAt(t, snap, "2026-11-01", "2026-11-10", today)
+	wantIn(t, "as of to", text, "Statuses as of 2026-11-10.",
+		"Hepatitis B, dose 2 Overdue Due from 2026-04-04 · overdue from 2026-06-04", "Hepatitis B, dose 1 Given Given 2026-03-04")
+	wantNotIn(t, "as of to", text, "2026-11-15", "Given after to", "Statuses as of 2026-11-24")
+
+	// A line due at the end of the range prints Due, though it is overdue today.
+	early := renderAt(t, vaccineSnap(ptr("us"), map[string]string{}), "2026-05-01", "2026-05-10", today)
+	wantIn(t, "early range", early, "Statuses as of 2026-05-10.", "Diphtheria, dose 1 Due Due from 2026-05-04")
+	wantNotIn(t, "early range", early, "Diphtheria, dose 1 Overdue")
+
+	none := renderAt(t, vaccineSnap(nil, map[string]string{}, dose1), "2026-11-01", "2026-11-10", today)
+	wantNotIn(t, "no schedule", none, "Statuses as of")
+}
+
+func TestVaccinationRangeEndingToday(t *testing.T) {
+	us, _ := vaccines.GetSchema("us")
+	snap := vaccineSnap(ptr("us"), map[string]string{"rotavirus-1": "not_needed"}, func() (model.Administration, []model.VaccineDose) {
+		return administered("a1", "2026-03-04", []string{"hepatitis_b"}, nil, nil, nil)
+	})
+	text := renderAt(t, snap, "2026-11-01", "2026-11-20", renderNow)
+	wantIn(t, "caption", text, "Schedule: "+us.Authority+", "+us.Edition+" Statuses as of 2026-11-20. "+us.Attribution)
+	e, err := vaccines.Evaluate(us, vaccines.DosesFrom(snap.Doses), snap.Dismissals, snap.Kid.BirthDate, "2026-11-20", time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, a := range vaccines.Antigens() {
+		names[a.ID] = a.Name
+	}
+	for _, ls := range append(e.Lines, e.Also...) {
+		want := names[ls.Line.Antigen] + ", dose " + strconv.Itoa(ls.Line.Series) + " " + statusLabel[ls.Status]
+		if !strings.Contains(text, want) {
+			t.Errorf("%q missing: a range ending today prints today's statuses", want)
+		}
 	}
 }

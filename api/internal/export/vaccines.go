@@ -15,6 +15,7 @@ import (
 // The screen's words: vaccines/+page.svelte, VaccineGroup.svelte, ui/src/lib/vaccines.ts and VACCINE_STATUS_LABEL.
 const (
 	schedulePrefix = "Schedule: "
+	asOfPrefix     = "Statuses as of "
 	alsoAvailable  = "Also available"
 	otherTitle     = "Other recorded vaccinations"
 	noneRecorded   = "None"
@@ -93,7 +94,8 @@ func optional(s *string) string {
 	return Text(*s)
 }
 
-// vaccinationItems evaluates the doses given up to req.To on the kid-local today, as the screen does on that day.
+// vaccinationItems evaluates the doses given up to req.To as of min(req.To, kid-local today); dismissals carry no
+// date, so every stored one applies.
 func vaccinationItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, error) {
 	names := map[string]string{}
 	for _, a := range vaccines.Antigens() {
@@ -122,11 +124,13 @@ func vaccinationItems(snap store.ExportSnapshot, req Request, b *budget) ([]item
 	}
 	if chosen {
 		start, _ := kidtime.DayBounds(req.Loc, req.Now)
-		e, err := vaccines.Evaluate(schema, vaccines.DosesFrom(doses), snap.Dismissals, snap.Kid.BirthDate, start.Format(time.DateOnly), req.Loc)
+		asOf := min(req.To, start.Format(time.DateOnly))
+		e, err := vaccines.Evaluate(schema, vaccines.DosesFrom(doses), snap.Dismissals, snap.Kid.BirthDate, asOf, req.Loc)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, item{body: schedulePrefix + schema.Authority + ", " + schema.Edition}, item{paragraph: schema.Attribution})
+		out = append(out, item{body: schedulePrefix + schema.Authority + ", " + schema.Edition},
+			item{body: asOfPrefix + FormatDate(asOf) + "."}, item{paragraph: schema.Attribution})
 		var lines [][]string
 		for _, ls := range e.Lines {
 			detail := ""
