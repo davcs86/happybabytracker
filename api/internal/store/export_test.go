@@ -1,11 +1,13 @@
 package store
 
 import (
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -76,6 +78,8 @@ func TestExportSnapshotReadsOnlyRequested(t *testing.T) {
 		{"milestones", []model.Module{"milestones"}, nil, 2},
 		{"vaccination without a schedule", []model.Module{"vaccination"}, nil, 3},
 		{"every daily tracker", nil, []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal"}, 1 + 6 + 1 + 6},
+		{"sickness: symptoms and no aggregate", []model.Module{"sickness"}, []string{"symptom"}, 2},
+		{"medication: courses and doses", []model.Module{"medication"}, nil, 3},
 	} {
 		n.Store(0)
 		exportSnap(t, s, k.ID, c.modules, c.types, 10)
@@ -128,5 +132,78 @@ func TestExportSnapshotRangeIsKidLocalDays(t *testing.T) {
 	snap := exportSnap(t, s, k.ID, nil, []string{"diaper"}, 10)
 	if len(snap.Entries["diaper"]) != 2 || len(snap.Days) != 20 || snap.Days[0].Date != "2026-11-01" || snap.Days[19].Date != "2026-11-20" {
 		t.Errorf("entries %d, days %d, want 2 entries and the 20 days 2026-11-01..20", len(snap.Entries["diaper"]), len(snap.Days))
+	}
+}
+
+// TestExportSnapshotMedication pins Open value 7 (R1): every course whose kid-local span touches the range, active or
+// not, and any course with a dose in the range; then the doses in the range, newest first.
+func TestExportSnapshotMedication(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKidIn(t, s, ana.ID, "Lía", "Europe/Madrid")
+	madrid := mustLoc(t, "Europe/Madrid")
+	oct1 := time.Date(2026, 10, 1, 9, 0, 0, 0, madrid)
+	add := func(name string, start time.Time, endOn *string, active bool) model.Medication {
+		return mustCourse(t, s, k.ID, ana.ID, model.Medication{Name: name, Dose: "1 ml", Schedule: schedule.Schedule{Kind: schedule.KindNone},
+			StartAt: start, EndOn: endOn, Active: active}, t0)
+	}
+	day := func(d string) *string { return &d }
+	ended := add("ended before", oct1, day("2026-10-31"), true)
+	lastDay := add("last day is from", oct1, day("2026-11-01"), false)
+	lateStart := add("starts on to", time.Date(2026, 11, 20, 23, 30, 0, 0, madrid), nil, true)
+	add("starts after to", time.Date(2026, 11, 21, 0, 0, 0, 0, madrid), nil, true)
+	dosed := add("dose in range", oct1.Add(time.Hour), day("2026-10-15"), true)
+	open := add("never ended, inactive", oct1.Add(2*time.Hour), nil, false)
+	in := []time.Time{time.Date(2026, 11, 1, 0, 0, 0, 0, madrid), time.Date(2026, 11, 5, 10, 0, 0, 0, madrid), time.Date(2026, 11, 20, 23, 59, 0, 0, madrid)}
+	for _, at := range in {
+		mustDose(t, s, k.ID, ana.ID, model.MedicationDose{MedicationID: dosed.ID, GivenAt: at}, t0)
+	}
+	for _, at := range []time.Time{time.Date(2026, 10, 31, 23, 59, 0, 0, madrid), time.Date(2026, 11, 21, 0, 0, 0, 0, madrid)} {
+		mustDose(t, s, k.ID, ana.ID, model.MedicationDose{MedicationID: ended.ID, GivenAt: at}, t0)
+	}
+
+	snap := exportSnap(t, s, k.ID, []model.Module{"medication"}, nil, 10)
+	var names []string
+	for _, m := range snap.Medications {
+		names = append(names, m.Name)
+	}
+	want := []string{lastDay.Name, dosed.Name, open.Name, lateStart.Name}
+	if !slices.Equal(names, want) || snap.Counts["medication"] != 4 {
+		t.Errorf("courses = %q (count %d), want %q oldest start first", names, snap.Counts["medication"], want)
+	}
+	for _, m := range snap.Medications {
+		if m.LastDose != nil || m.NextDue != nil || m.DoseCount != 0 {
+			t.Errorf("%s carries last dose, next due or a count", m.Name)
+		}
+	}
+	if len(snap.MedicationDoses) != 3 || snap.Counts["medication_dose"] != 3 || !snap.MedicationDoses[0].GivenAt.Equal(in[2]) || !snap.MedicationDoses[2].GivenAt.Equal(in[0]) {
+		t.Errorf("doses = %+v (count %d), want the three in range, newest first", snap.MedicationDoses, snap.Counts["medication_dose"])
+	}
+
+	capped := exportSnap(t, s, k.ID, []model.Module{"medication"}, nil, 1)
+	if len(capped.Medications) != 2 || capped.Counts["medication"] != 4 || len(capped.MedicationDoses) != 2 || capped.Counts["medication_dose"] != 3 {
+		t.Errorf("cap 1: %d courses (count %d), %d doses (count %d); want cap+1 rows and the whole counts",
+			len(capped.Medications), capped.Counts["medication"], len(capped.MedicationDoses), capped.Counts["medication_dose"])
+	}
+	if other := exportSnap(t, s, k.ID, []model.Module{"growth"}, nil, 10); other.Medications != nil || other.MedicationDoses != nil {
+		t.Error("medication read without being requested")
+	}
+}
+
+func TestExportSnapshotSymptoms(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	madrid := mustLoc(t, "Europe/Madrid")
+	for _, at := range []time.Time{time.Date(2026, 10, 31, 23, 59, 0, 0, madrid), time.Date(2026, 11, 1, 0, 0, 0, 0, madrid),
+		time.Date(2026, 11, 20, 23, 59, 0, 0, madrid), time.Date(2026, 11, 21, 0, 0, 0, 0, madrid)} {
+		mustSymptom(t, s, k.ID, ana.ID, model.Symptom{At: at, Symptom: "cough"})
+	}
+	snap := exportSnap(t, s, k.ID, []model.Module{"sickness"}, []string{"symptom"}, 10)
+	if got := snap.Entries["symptom"]; len(got) != 2 || snap.Counts["symptom"] != 2 || got[0].Entry.(model.Symptom).Symptom != "cough" {
+		t.Errorf("symptoms = %d (count %d), want the 2 in range", len(got), snap.Counts["symptom"])
+	}
+	if capped := exportSnap(t, s, k.ID, []model.Module{"sickness"}, []string{"symptom"}, 0); len(capped.Entries["symptom"]) != 1 || capped.Counts["symptom"] != 2 {
+		t.Errorf("cap 0: %d rows, count %d; want 1 and 2", len(capped.Entries["symptom"]), capped.Counts["symptom"])
 	}
 }

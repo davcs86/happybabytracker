@@ -95,6 +95,10 @@ func note(entry any) string {
 		n = e.Note
 	case model.Meal:
 		n = e.Note
+	case model.Symptom:
+		n = e.Note
+	case model.MedicationDose:
+		n = e.Note
 	}
 	if n == nil {
 		return ""

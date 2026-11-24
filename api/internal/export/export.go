@@ -42,6 +42,7 @@ const (
 var moduleTitle = map[model.Module]string{
 	"bottles": "Bottles", "nursing": "Nursing", "pumping": "Pumping", "diapers": "Diapers", "sleep": "Sleep",
 	"feeding": "Feeding", "milestones": "Milestones", "growth": "Growth", "vaccination": "Vaccination",
+	"sickness": "Sickness", "medication": "Medication",
 }
 
 // item is one drawn element: a chart or a table when set, else a heading, a profile line, body text or a paragraph.
@@ -107,25 +108,35 @@ type section struct {
 
 func newSection(b *budget) *section { return &section{b: b, left: maxRowsPerSection} }
 
+// take is how many of n rows the section and the budget let through.
+func (s *section) take(n int) int {
+	k := s.b.take(min(n, s.left))
+	s.left -= k
+	return k
+}
+
 // table takes non-empty rows: those the budget lets through, then the overflow line; only that line when none fits.
 func (s *section) table(cols []pdfdoc.Col, rows [][]string) []item {
-	shown := s.b.take(min(len(rows), s.left))
-	s.left -= shown
-	if shown == 0 {
-		return []item{{paragraph: strconv.Itoa(len(rows)) + overflow}}
+	return s.shown(cols, rows[:s.take(len(rows))], len(rows))
+}
+
+// shown prints rows, already taken, of total, then the overflow line for the rest; only that line when rows is empty.
+func (s *section) shown(cols []pdfdoc.Col, rows [][]string, total int) []item {
+	if len(rows) == 0 {
+		return []item{{paragraph: strconv.Itoa(total) + overflow}}
 	}
-	out := []item{{cols: cols, rows: rows[:shown]}}
-	if len(rows) > shown {
-		out = append(out, item{paragraph: strconv.Itoa(len(rows)-shown) + overflow})
+	out := []item{{cols: cols, rows: rows}}
+	if total > len(rows) {
+		out = append(out, item{paragraph: strconv.Itoa(total-len(rows)) + overflow})
 	}
 	return out
 }
 
-// sectionWriters builds each module's items; a requested module without a writer prints no section yet (Task 17).
+// sectionWriters builds each module's items; a requested module without a writer prints no section.
 var sectionWriters = map[model.Module]func(snap store.ExportSnapshot, req Request, b *budget) ([]item, error){
 	"bottles": bottles.items, "nursing": nursing.items, "pumping": pumping.items,
 	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items, "milestones": milestoneItems,
-	"growth": growthItems, "vaccination": vaccinationItems,
+	"growth": growthItems, "vaccination": vaccinationItems, "sickness": sicknessItems, "medication": medicationItems,
 }
 
 // Render writes the PDF of req.Modules only, in model.Modules order, after the profile; nothing is written on failure.

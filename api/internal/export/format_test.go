@@ -1,18 +1,21 @@
 package export
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 	_ "time/tzdata"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
 var (
-	metric   = model.Units{Weight: "kg", Length: "cm", Volume: "ml"}
-	imperial = model.Units{Weight: "lb", Length: "in", Volume: "floz"}
+	metric   = model.Units{Weight: "kg", Length: "cm", Volume: "ml", Temp: "c"}
+	imperial = model.Units{Weight: "lb", Length: "in", Volume: "floz", Temp: "f"}
 )
 
 func TestFormatWeight(t *testing.T) {
@@ -349,6 +352,58 @@ func TestFormatDayHeading(t *testing.T) {
 	for date, want := range map[string]string{"2026-03-29": "Sun 29 Mar 2026", "2026-10-14": "Wed 14 Oct 2026"} {
 		if got := FormatDayHeading(date); got != want {
 			t.Errorf("FormatDayHeading(%q) = %q, want %q", date, got, want)
+		}
+	}
+}
+
+// The examples of ui/src/lib/entry-edit.test.ts (temperatureText) and timeline.test.ts (TEMP_UNIT_LABEL).
+func TestFormatTemperature(t *testing.T) {
+	feverC := units.Temperature{CHundredths: 3840, FHundredths: 10112, Typed: units.UnitC}
+	feverF := units.Temperature{CHundredths: 3850, FHundredths: 10130, Typed: units.UnitF}
+	for _, c := range []struct {
+		t    units.Temperature
+		u    model.Units
+		want string
+	}{
+		{feverC, metric, "38.4 °C"}, {feverC, imperial, "101.12 °F"}, {feverF, imperial, "101.3 °F"}, {feverF, metric, "38.5 °C"},
+		{units.Temperature{CHundredths: 3800, FHundredths: 10040, Typed: units.UnitC}, metric, "38 °C"},
+		{units.Temperature{CHundredths: 3805, FHundredths: 10049, Typed: units.UnitC}, metric, "38.05 °C"},
+	} {
+		if got := FormatTemperature(c.t, c.u); got != c.want {
+			t.Errorf("%+v in %s = %q, want %q", c.t, c.u.Temp, got, c.want)
+		}
+	}
+}
+
+// The examples of ui/src/lib/medication.test.ts (scheduleLabel).
+func TestFormatSchedule(t *testing.T) {
+	start := time.Date(2026, 11, 20, 8, 0, 0, 0, time.UTC)
+	twelve := make([]string, 12)
+	for i := range twelve {
+		twelve[i] = fmt.Sprintf("%02d:30", i*2)
+	}
+	ny, madrid, kolkata := mustZone(t, "America/New_York"), mustZone(t, "Europe/Madrid"), mustZone(t, "Asia/Kolkata")
+	for _, c := range []struct {
+		s     schedule.Schedule
+		start time.Time
+		loc   *time.Location
+		want  string
+	}{
+		{schedule.Schedule{Kind: schedule.KindNone}, start, time.UTC, "As needed"},
+		{schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"08:00", "20:00"}}, start, time.UTC, "08:00, 20:00"},
+		{schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"08:00"}}, start, time.UTC, "08:00"},
+		{schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"20:00", "08:00"}}, start, time.UTC, "20:00, 08:00"},
+		{schedule.Schedule{Kind: schedule.KindTimes, Times: twelve}, start, time.UTC, strings.Join(twelve, ", ")},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 6}, start, time.UTC, "Every 6 hours from 08:00"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 1}, start, time.UTC, "Every hour from 08:00"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 168}, start, time.UTC, "Every 168 hours from 08:00"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 8}, start, madrid, "Every 8 hours from 09:00"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 8}, time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC), madrid, "Every 8 hours from 10:00"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 4}, time.Date(2026, 3, 8, 7, 30, 0, 0, time.UTC), ny, "Every 4 hours from 03:30"},
+		{schedule.Schedule{Kind: schedule.KindEvery, EveryHours: 4}, time.Date(2026, 11, 20, 23, 30, 0, 0, time.UTC), kolkata, "Every 4 hours from 05:00"},
+	} {
+		if got := FormatSchedule(c.s, c.start, c.loc); got != c.want {
+			t.Errorf("%+v from %v in %s = %q, want %q", c.s, c.start, c.loc, got, c.want)
 		}
 	}
 }

@@ -13,19 +13,21 @@ import (
 type ExportSnapshot struct {
 	Kid             model.Kid
 	Entries         map[string][]TimelineItem // per requested type, newest first by (At, ID), at most rowCap+1
-	Counts          map[string]int            // per requested type, every row in the range
+	Counts          map[string]int            // per requested type, "medication" and "medication_dose": every row in the range
 	Days            []DaySummary              // nil when no type is requested
 	Growth          []model.Growth
 	Doses           []model.VaccineDose
 	Administrations []model.Administration
 	Dismissals      map[string]string
 	Milestones      []model.Milestone
+	Medications     []model.Medication     // Open value 7 (R1), oldest start first, at most rowCap+1; no last dose, next due or count
+	MedicationDoses []model.MedicationDose // given in the range, newest first by (GivenAt, ID), at most rowCap+1
 }
 
 // exportTables names each exportable type's table and time column, both code constants.
 var exportTables = map[string]struct{ table, timeCol string }{
 	"bottle": {"bottle_feeds", "at"}, "nursing": {"nursing_sessions", "started_at"}, "pumping": {"pumping_sessions", "started_at"},
-	"sleep": {"sleep_sessions", "started_at"}, "diaper": {"diapers", "at"}, "meal": {"meals", "at"},
+	"sleep": {"sleep_sessions", "started_at"}, "diaper": {"diapers", "at"}, "meal": {"meals", "at"}, "symptom": {"symptoms", "at"},
 }
 
 func exportEntries(ctx context.Context, q querier, typ, kidID string, lq ListQuery) ([]TimelineItem, error) {
@@ -54,12 +56,51 @@ func exportEntries(ctx context.Context, q querier, typ, kidID string, lq ListQue
 	case "meal":
 		rows, err := listEntries(ctx, q, `SELECT `+mealColumns+` FROM meals`, "at", kidID, lq, scanMeal)
 		return timelineItems(typ, rows, err, func(v model.Meal) (time.Time, string) { return v.At, v.ID })
+	case "symptom":
+		rows, err := listEntries(ctx, q, `SELECT `+symptomColumns+` FROM symptoms`, "at", kidID, lq, scanSymptom)
+		return timelineItems(typ, rows, err, func(v model.Symptom) (time.Time, string) { return v.At, v.ID })
 	}
 	return nil, errUnknownTimelineType
 }
 
+// exportCoursesWhere is Open value 7 (R1): a course whose kid-local span touches the range, or with a dose in it.
+const exportCoursesWhere = ` FROM medications m WHERE m.kid_id = ? AND ((m.start_at < ? AND (m.end_on IS NULL OR m.end_on >= ?))
+	OR EXISTS (SELECT 1 FROM medication_doses d WHERE d.medication_id = m.id AND d.given_at >= ? AND d.given_at < ?))`
+
+func exportMedication(ctx context.Context, q querier, snap *ExportSnapshot, kidID, fromDate string, lq ListQuery) error {
+	args := []any{kidID, lq.To.Unix(), fromDate, lq.From.Unix(), lq.To.Unix()}
+	snap.Medications = []model.Medication{}
+	err := eachRow(ctx, q, `SELECT `+prefixed("m.", medicationColumns)+exportCoursesWhere+` ORDER BY m.start_at, m.id LIMIT ?`,
+		append(slices.Clone(args), lq.Limit), func(row rowScanner) error {
+			v, err := scanMedication(row)
+			snap.Medications = append(snap.Medications, v)
+			return err
+		})
+	if err != nil {
+		return err
+	}
+	courses := len(snap.Medications)
+	if courses >= lq.Limit {
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*)`+exportCoursesWhere, args...).Scan(&courses); err != nil {
+			return err
+		}
+	}
+	snap.Counts["medication"] = courses
+	if snap.MedicationDoses, err = listEntries(ctx, q, `SELECT `+medicationDoseColumns+` FROM medication_doses`, "given_at", kidID, lq, scanMedicationDose); err != nil {
+		return err
+	}
+	doses := len(snap.MedicationDoses)
+	if doses >= lq.Limit {
+		err = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM medication_doses WHERE kid_id = ? AND given_at >= ? AND given_at < ?`,
+			kidID, lq.From.Unix(), lq.To.Unix()).Scan(&doses)
+	}
+	snap.Counts["medication_dose"] = doses
+	return err
+}
+
 // ExportSnapshot reads types' entries from the start of from to the end of to in loc, their day summaries and the whole
-// record of each requested growth, vaccination or milestones module; at most rowCap+1 entries per type show overflow.
+// record of each requested growth, vaccination or milestones module, and medication's courses and doses (R1); at most
+// rowCap+1 entries per type, courses and doses show overflow.
 func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []model.Module, types []string, loc *time.Location, from, to, now time.Time, rowCap int) (ExportSnapshot, error) {
 	_, end := kidtime.DayBounds(loc, to)
 	lq := ListQuery{From: from, To: end, Limit: rowCap + 1}
@@ -114,6 +155,9 @@ func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []mode
 			if snap.Milestones, err = listMilestones(ctx, q, kidID); err != nil {
 				return err
 			}
+		}
+		if slices.Contains(modules, "medication") {
+			return exportMedication(ctx, q, &snap, kidID, from.In(loc).Format(time.DateOnly), lq)
 		}
 		return nil
 	})

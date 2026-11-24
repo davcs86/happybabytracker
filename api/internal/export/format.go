@@ -9,6 +9,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -27,6 +28,7 @@ const (
 	dayLayout        = "2006-01-02"
 	dayHeadingLayout = "Mon 2 Jan 2006"
 	instantLayout    = "2006-01-02 15:04"
+	clockLayout      = "15:04"
 	beforeTerm       = "before expected term"
 )
 
@@ -84,6 +86,34 @@ func FormatMilk(m units.Milk, u model.Units) string {
 		gain = strconv.FormatInt(m.GainGrams, 10) + " g"
 	}
 	return "weight gain " + gain + ", about " + FormatVolume(units.Volume{ML: m.ML, FlOzHundredths: m.FlOzHundredths}, u)
+}
+
+// FormatTemperature prints the stored column of the parent's unit with its symbol, as temperatureText and TEMP_UNIT_LABEL do.
+func FormatTemperature(t units.Temperature, u model.Units) string {
+	if u.Temp == string(units.UnitC) {
+		return decimal(t.CHundredths, hundredths) + " °C"
+	}
+	return decimal(t.FHundredths, hundredths) + " °F"
+}
+
+// FormatSchedule words s as scheduleLabel does; an every-N-hours grid names start's clock in loc.
+func FormatSchedule(s schedule.Schedule, start time.Time, loc *time.Location) string {
+	if loc == nil {
+		loc = time.UTC
+	}
+	switch s.Kind {
+	case schedule.KindNone:
+		return "As needed"
+	case schedule.KindTimes:
+		return strings.Join(s.Times, ", ")
+	case schedule.KindEvery:
+		every := strconv.Itoa(s.EveryHours) + " hours"
+		if s.EveryHours == 1 {
+			every = "hour"
+		}
+		return "Every " + every + " from " + start.In(loc).Format(clockLayout)
+	}
+	return ""
 }
 
 func FormatDuration(seconds int) string {

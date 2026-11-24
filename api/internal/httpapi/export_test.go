@@ -27,7 +27,7 @@ const (
 	notice     = "Some characters cannot be shown in this PDF and appear as ?"
 )
 
-var sectionTitles = []string{"Bottles", "Nursing", "Pumping", "Diapers", "Sleep", "Feeding", "Milestones", "Growth", "Vaccination"}
+var sectionTitles = []string{"Bottles", "Nursing", "Pumping", "Diapers", "Sleep", "Feeding", "Milestones", "Growth", "Vaccination", "Sickness", "Medication"}
 
 func exportBody(from, to string, modules ...string) map[string]any {
 	return map[string]any{"from": from, "to": to, "modules": modules}
@@ -135,33 +135,32 @@ func TestExportValidation(t *testing.T) {
 	path := "/v1/kids/" + kid + "/export"
 	ok := `"modules":["bottles"]`
 	for name, c := range map[string]struct{ body, field string }{
-		"from missing":       {`{"to":"2026-11-20",` + ok + `}`, "from"},
-		"from malformed":     {`{"from":"2026-11-1","to":"2026-11-20",` + ok + `}`, "from"},
-		"from no date":       {`{"from":"2026-02-30","to":"2026-11-20",` + ok + `}`, "from"},
-		"from before birth":  {`{"from":"2026-03-03","to":"2026-11-20",` + ok + `}`, "from"},
-		"to missing":         {`{"from":"2026-11-01",` + ok + `}`, "to"},
-		"to malformed":       {`{"from":"2026-11-01","to":"20-11-2026",` + ok + `}`, "to"},
-		"to before from":     {`{"from":"2026-11-02","to":"2026-11-01",` + ok + `}`, "to"},
-		"to after today":     {`{"from":"2026-11-01","to":"2026-11-21",` + ok + `}`, "to"},
-		"94 days":            {`{"from":"2026-08-19","to":"2026-11-20",` + ok + `}`, "to"},
-		"from bad before to": {`{"from":"x","to":"y","modules":[]}`, "from"},
-		"to bad before mods": {`{"from":"2026-11-01","to":"y","modules":[]}`, "to"},
-		"modules missing":    {`{"from":"2026-11-01","to":"2026-11-20"}`, "modules"},
-		"modules unknown":    {`{"from":"2026-11-01","to":"2026-11-20","modules":["weather"]}`, "modules"},
-		"modules case":       {`{"from":"2026-11-01","to":"2026-11-20","modules":["Bottles"]}`, "modules"},
-		"modules path":       {`{"from":"2026-11-01","to":"2026-11-20","modules":["../x"]}`, "modules"},
-		"modules duplicate":  {`{"from":"2026-11-01","to":"2026-11-20","modules":["bottles","sleep","bottles"]}`, "modules"},
-		"modules empty":      {`{"from":"2026-11-01","to":"2026-11-20","modules":[]}`, "modules"},
-		"modules string":     {`{"from":"2026-11-01","to":"2026-11-20","modules":"bottles"}`, "modules"},
-		"modules number":     {`{"from":"2026-11-01","to":"2026-11-20","modules":3}`, "modules"},
-		"modules null":       {`{"from":"2026-11-01","to":"2026-11-20","modules":null}`, "modules"},
-		"modules object":     {`{"from":"2026-11-01","to":"2026-11-20","modules":{"bottles":true}}`, "modules"},
-		"modules number el":  {`{"from":"2026-11-01","to":"2026-11-20","modules":[1]}`, "modules"},
-		"modules null el":    {`{"from":"2026-11-01","to":"2026-11-20","modules":["bottles",null]}`, "modules"},
-		"modules nested":     {`{"from":"2026-11-01","to":"2026-11-20","modules":[["bottles"]]}`, "modules"},
-		// Task 17 moves these two to the accepted ids.
-		"modules sickness":   {`{"from":"2026-11-01","to":"2026-11-20","modules":["sickness"]}`, "modules"},
-		"modules medication": {`{"from":"2026-11-01","to":"2026-11-20","modules":["bottles","medication"]}`, "modules"},
+		"from missing":                 {`{"to":"2026-11-20",` + ok + `}`, "from"},
+		"from malformed":               {`{"from":"2026-11-1","to":"2026-11-20",` + ok + `}`, "from"},
+		"from no date":                 {`{"from":"2026-02-30","to":"2026-11-20",` + ok + `}`, "from"},
+		"from before birth":            {`{"from":"2026-03-03","to":"2026-11-20",` + ok + `}`, "from"},
+		"to missing":                   {`{"from":"2026-11-01",` + ok + `}`, "to"},
+		"to malformed":                 {`{"from":"2026-11-01","to":"20-11-2026",` + ok + `}`, "to"},
+		"to before from":               {`{"from":"2026-11-02","to":"2026-11-01",` + ok + `}`, "to"},
+		"to after today":               {`{"from":"2026-11-01","to":"2026-11-21",` + ok + `}`, "to"},
+		"94 days":                      {`{"from":"2026-08-19","to":"2026-11-20",` + ok + `}`, "to"},
+		"from bad before to":           {`{"from":"x","to":"y","modules":[]}`, "from"},
+		"to bad before mods":           {`{"from":"2026-11-01","to":"y","modules":[]}`, "to"},
+		"modules missing":              {`{"from":"2026-11-01","to":"2026-11-20"}`, "modules"},
+		"modules unknown":              {`{"from":"2026-11-01","to":"2026-11-20","modules":["weather"]}`, "modules"},
+		"modules case":                 {`{"from":"2026-11-01","to":"2026-11-20","modules":["Bottles"]}`, "modules"},
+		"modules path":                 {`{"from":"2026-11-01","to":"2026-11-20","modules":["../x"]}`, "modules"},
+		"modules duplicate":            {`{"from":"2026-11-01","to":"2026-11-20","modules":["bottles","sleep","bottles"]}`, "modules"},
+		"modules empty":                {`{"from":"2026-11-01","to":"2026-11-20","modules":[]}`, "modules"},
+		"modules string":               {`{"from":"2026-11-01","to":"2026-11-20","modules":"bottles"}`, "modules"},
+		"modules number":               {`{"from":"2026-11-01","to":"2026-11-20","modules":3}`, "modules"},
+		"modules null":                 {`{"from":"2026-11-01","to":"2026-11-20","modules":null}`, "modules"},
+		"modules object":               {`{"from":"2026-11-01","to":"2026-11-20","modules":{"bottles":true}}`, "modules"},
+		"modules number el":            {`{"from":"2026-11-01","to":"2026-11-20","modules":[1]}`, "modules"},
+		"modules null el":              {`{"from":"2026-11-01","to":"2026-11-20","modules":["bottles",null]}`, "modules"},
+		"modules nested":               {`{"from":"2026-11-01","to":"2026-11-20","modules":[["bottles"]]}`, "modules"},
+		"modules sick case":            {`{"from":"2026-11-01","to":"2026-11-20","modules":["Sickness"]}`, "modules"},
+		"modules medication duplicate": {`{"from":"2026-11-01","to":"2026-11-20","modules":["medication","sickness","medication"]}`, "modules"},
 	} {
 		wantInvalid2(t, name, k.do(http.MethodPost, path, ana, c.body), c.field)
 	}
@@ -171,7 +170,8 @@ func TestExportValidation(t *testing.T) {
 	wantErr(t, k.do(http.MethodPost, path, ana, `{"from":"2026-11-01","to":["2026-11-20"],`+ok+`}`), http.StatusBadRequest, "bad_request")
 	wantErr(t, k.do(http.MethodPost, path, ana, `not json`), http.StatusBadRequest, "bad_request")
 
-	for _, ids := range [][]string{{"bottles"}, {"vaccination", "growth", "milestones", "feeding", "sleep", "diapers", "pumping", "nursing", "bottles"}} {
+	for _, ids := range [][]string{{"bottles"}, {"sickness"}, {"bottles", "medication"},
+		{"medication", "sickness", "vaccination", "growth", "milestones", "feeding", "sleep", "diapers", "pumping", "nursing", "bottles"}} {
 		k.exportRange(ana, kid, "2026-08-20", "2026-11-20", ids...)
 	}
 	k.exportRange(ana, kid, "2026-03-04", "2026-03-04", "bottles")
@@ -213,7 +213,8 @@ func TestExportUnavailable(t *testing.T) {
 	k.exportPDF(ana, kid, "milestones", "vaccination")
 }
 
-// filterKid holds an entry of every daily tracker, a measurement, a US schedule and a custom milestone.
+// filterKid holds an entry of every daily tracker, a measurement, a US schedule, a custom milestone, a symptom, a course
+// and a dose.
 func (k *kit) filterKid() (kid, ana string) {
 	k.t.Helper()
 	ana = k.asParent("ana")
@@ -224,6 +225,9 @@ func (k *kit) filterKid() (kid, ana string) {
 	}
 	k.createGrowth(ana, kid, nil)
 	k.reach(ana, kid, map[string]any{"text": "Waves bye", "reached_on": "2026-10-01"})
+	k.seedEntry(kid, "ana", "symptom", at)
+	course := k.createMedication(ana, kid, medBody(map[string]any{"name": "Zentrolex"}))["id"].(string)
+	k.createDose(ana, kid, doseBody(course, nil))
 	return kid, ana
 }
 
@@ -245,6 +249,17 @@ func TestExportModuleFilter(t *testing.T) {
 	}
 	wantNoSubstring(t, "trackers only", strs, "Growth source", "Vaccination schedule")
 
+	strs, _ = pdfStrings(t, k.exportPDF(ana, kid, "medication", "bottles"))
+	if got := headings(strs); !slices.Equal(got, []string{"Bottles", "Medication"}) {
+		t.Errorf("headings = %q, want bottles then medication", got)
+	}
+	wantNoSubstring(t, "medication and bottles", strs, "Cough", "Diaper wet")
+
+	strs, _ = pdfStrings(t, k.exportPDF(ana, kid, reversed(constants.ExportModules)...))
+	if got := headings(strs); !slices.Equal(got, sectionTitles) {
+		t.Errorf("every module in reverse: headings %q, want model.Modules order", got)
+	}
+
 	strs, _ = pdfStrings(t, k.exportPDF(ana, kid, "vaccination"))
 	wantStrings(t, "vaccination", strs, "Vaccination schedule", "Centers for Disease Control and Prevention (CDC), CDC Child and Adolescent Immunization Schedule by Age, 2025 (addendum updated July 2, 2025)")
 	wantNoSubstring(t, "vaccination", strs, "Growth source", "Bottle 120 ml")
@@ -253,6 +268,7 @@ func TestExportModuleFilter(t *testing.T) {
 		"bottles": "Bottle 120 ml, formula", "nursing": "Nursing L 1 min · R 1 min", "pumping": "Pumping 10 min, 120 ml (both)",
 		"diapers": "Diaper wet", "sleep": "Sleep until 2026-11-18 10:30 (30 min)", "feeding": "Solids: pear",
 		"growth": "Mon 1 Jun 2026", "milestones": "Waves bye", "vaccination": "Hepatitis B, dose 1",
+		"sickness": "Cough", "medication": "Zentrolex",
 	}
 	for _, m := range constants.ExportModules {
 		strs, _ := pdfStrings(t, k.exportPDF(ana, kid, m))
@@ -267,6 +283,26 @@ func TestExportModuleFilter(t *testing.T) {
 			t.Errorf("%s alone: headings %q, want %q", m, got, want)
 		}
 	}
+}
+
+// TestExportModulesMatchModel pins R3: both lists are kept, and an export accepts every module in model.Modules order.
+func TestExportModulesMatchModel(t *testing.T) {
+	ids := make([]string, len(model.Modules))
+	for i, m := range model.Modules {
+		ids[i] = string(m)
+	}
+	if !slices.Equal(constants.ExportModules, ids) {
+		t.Errorf("ExportModules = %q, want model.Modules %q", constants.ExportModules, ids)
+	}
+	if len(sectionTitles) != len(ids) {
+		t.Errorf("%d section titles for %d modules", len(sectionTitles), len(ids))
+	}
+}
+
+func reversed(ids []string) []string {
+	out := slices.Clone(ids)
+	slices.Reverse(out)
+	return out
 }
 
 func sectionTitle(m string) string {
@@ -301,35 +337,36 @@ func TestExportHeaders(t *testing.T) {
 }
 
 func TestExportRoles(t *testing.T) {
+	roleModules := []string{"bottles", "sickness", "medication"}
 	k := newKit(t)
 	kid, ana, bob := k.trackerKid()
-	k.exportPDF(ana, kid, "bottles")
-	k.exportPDF(bob, kid, "bottles")
+	k.exportPDF(ana, kid, roleModules...)
+	k.exportPDF(bob, kid, roleModules...)
 
 	x := k.asParent("xena")
-	noGrant := k.exportReq(x, kid, exportBody(exportFrom, exportTo, "bottles"))
-	unknown := k.exportReq(x, model.NewID(), exportBody(exportFrom, exportTo, "bottles"))
+	noGrant := k.exportReq(x, kid, exportBody(exportFrom, exportTo, roleModules...))
+	unknown := k.exportReq(x, model.NewID(), exportBody(exportFrom, exportTo, roleModules...))
 	wantErr(t, noGrant, http.StatusNotFound, "not_found")
 	if unknown.Code != noGrant.Code || unknown.Body.String() != noGrant.Body.String() {
 		t.Errorf("unknown kid %d %q differs from no grant %d %q", unknown.Code, unknown.Body.String(), noGrant.Code, noGrant.Body.String())
 	}
-	wantErr(t, k.exportReq(k.asAdmin(), kid, exportBody(exportFrom, exportTo, "bottles")), http.StatusForbidden, "forbidden")
+	wantErr(t, k.exportReq(k.asAdmin(), kid, exportBody(exportFrom, exportTo, roleModules...)), http.StatusForbidden, "forbidden")
 
 	k.asParent("cara")
 	k.grant(ana, kid, "cara", "caregiver")
 	cara := k.asParent("cara")
-	k.exportPDF(cara, kid, "bottles")
+	k.exportPDF(cara, kid, roleModules...)
 	if rec := k.do(http.MethodDelete, "/v1/kids/"+kid+"/access/"+k.parentID("cara"), ana, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke cara: %d %q", rec.Code, rec.Body.String())
 	}
-	sameResponse(t, "revoked caregiver", k.exportReq(cara, kid, exportBody(exportFrom, exportTo, "bottles")), noGrant)
+	sameResponse(t, "revoked caregiver", k.exportReq(cara, kid, exportBody(exportFrom, exportTo, roleModules...)), noGrant)
 
 	if err := k.Store.SetParentDisabled(context.Background(), k.parentID("bob"), true, t0); err != nil {
 		t.Fatal(err)
 	}
 	// Disabling ends the sessions, so a disabled caregiver never reaches the kid lookup.
-	wantErr(t, k.exportReq(bob, kid, exportBody(exportFrom, exportTo, "bottles")), http.StatusUnauthorized, "no_session")
-	wantErr(t, k.exportReq(k.asParent("bob"), kid, exportBody(exportFrom, exportTo, "bottles")), http.StatusUnauthorized, "no_session")
+	wantErr(t, k.exportReq(bob, kid, exportBody(exportFrom, exportTo, roleModules...)), http.StatusUnauthorized, "no_session")
+	wantErr(t, k.exportReq(k.asParent("bob"), kid, exportBody(exportFrom, exportTo, roleModules...)), http.StatusUnauthorized, "no_session")
 }
 
 func TestExportBusy(t *testing.T) {
@@ -351,8 +388,8 @@ func TestExportEmptyKid(t *testing.T) {
 	kid, ana, _ := k.trackerKid()
 	pdf := k.exportPDF(ana, kid, constants.ExportModules...)
 	strs, pages := pdfStrings(t, pdf)
-	if pages != 1 {
-		t.Errorf("an empty export has %d pages, want 1", pages)
+	if pages != 2 {
+		t.Errorf("an empty export of every module has %d pages, want 2", pages)
 	}
 	if got := headings(strs); !slices.Equal(got, sectionTitles) {
 		t.Errorf("headings = %q", got)
@@ -362,16 +399,17 @@ func TestExportEmptyKid(t *testing.T) {
 			t.Errorf("%q appears %d times, want once", empty, n)
 		}
 	}
-	if n := countOf(strs, noEntries); n != 6 {
-		t.Errorf("%q appears %d times, want once per daily tracker", noEntries, n)
+	if n := countOf(strs, noEntries); n != 8 {
+		t.Errorf("%q appears %d times, want once per daily tracker, sickness and medication", noEntries, n)
 	}
 	if n := countOf(strs, "No measurements recorded."); n != 1 {
 		t.Errorf("the empty growth text appears %d times, want once", n)
 	}
 	wantStrings(t, "profile", strs, "Profile", testKidName, "2026-03-04", "Female", "Europe/Madrid", "8 months 16 days",
-		"2026-11-01 to 2026-11-20", "Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination",
+		"2026-11-01 to 2026-11-20", "Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication",
 		"No schedule chosen", "WHO Child Growth Standards (2006) and Growth Reference (2007)",
-		"Generated 2026-11-20 13:00 (Europe/Madrid) by happybabytracker · Page 1 of 1")
+		"Generated 2026-11-20 13:00 (Europe/Madrid) by happybabytracker · Page 1 of 2",
+		"Generated 2026-11-20 13:00 (Europe/Madrid) by happybabytracker · Page 2 of 2")
 	wantNoSubstring(t, "empty", strs, notice, "Day total")
 }
 
@@ -584,11 +622,16 @@ func TestExportNoValuesInLogs(t *testing.T) {
 	ana := k.asParent("ana")
 	kid := k.createKid(ana, map[string]any{"name": "Quillon"})
 	k.createBottle(ana, kid, map[string]any{"at": ts(time.Date(2026, 11, 18, 7, 0, 0, 0, time.UTC)), "volume": volumeBody("ml", 639), "note": "xyzzy"})
+	k.createSymptom(ana, kid, symptomBody(map[string]any{"symptom": "other", "other_text": "Grommetfizz", "severity": nil}))
+	k.createSymptom(ana, kid, symptomBody(feverBody(map[string]any{"temperature": amountBody("c", 3917)})))
+	course := k.createMedication(ana, kid, medBody(map[string]any{"name": "Blorptazine", "dose": "Kwazzle drops"}))["id"].(string)
+	k.createDose(ana, kid, doseBody(course, map[string]any{"amount": "Snorkwhistle"}))
 	k.Log.Reset()
-	k.exportPDF(ana, kid, "bottles", "diapers")
+	k.exportPDF(ana, kid, "bottles", "diapers", "sickness", "medication")
 	k.exportReq(ana, kid, exportBody(exportFrom, "2026-11-21", "bottles"))
 	k.exportReq(ana, kid, exportBody(exportFrom, exportTo, "bottles", "weather"))
-	wantCleanLog(t, k.Log.String(), 3, "Quillon", "xyzzy", "639", exportFrom, exportTo, "2026-11-21", "bottles", "diapers", "weather", "modules")
+	wantCleanLog(t, k.Log.String(), 3, "Quillon", "xyzzy", "639", exportFrom, exportTo, "2026-11-21", "bottles", "diapers", "weather", "modules",
+		"Grommetfizz", "39.17", "Blorptazine", "Kwazzle", "Snorkwhistle", "sickness", "medication")
 }
 
 // TestGrowthSectionScores: the PDF words each score as the growth screen does from GET …/growth, under the current source.
@@ -647,4 +690,44 @@ func TestGrowthSectionScores(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestExportSicknessMedication: each parent's file holds the stored temperature column of their unit, and the courses of
+// Open value 7 (R1) with the doses in the range.
+func TestExportSicknessMedication(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	if rec := k.do(http.MethodPatch, "/v1/me", bob, map[string]any{"units": map[string]any{"temp": "f"}}); rec.Code != http.StatusOK {
+		t.Fatalf("units: %d %q", rec.Code, rec.Body.String())
+	}
+	day := func(d, h int) string { return ts(time.Date(2026, 11, d, h, 0, 0, 0, time.UTC)) }
+	plain := map[string]any{"severity": nil, "note": nil}
+	k.createSymptom(ana, kid, withOverrides(symptomBody(feverBody(map[string]any{"at": day(18, 8), "temperature": amountBody("c", 3860)})),
+		map[string]any{"severity": nil, "note": "cool cloth"}))
+	k.createSymptom(ana, kid, withOverrides(symptomBody(feverBody(map[string]any{"at": day(18, 9), "temperature": amountBody("f", 10130), "method": "ear"})), plain))
+	k.createSymptom(ana, kid, symptomBody(map[string]any{"at": day(18, 10), "severity": "moderate", "note": nil}))
+	k.createSymptom(ana, kid, symptomBody(map[string]any{"at": day(18, 11), "symptom": "other", "other_text": "hiccups", "severity": nil, "note": nil}))
+	k.createSymptom(ana, kid, symptomBody(map[string]any{"at": day(10, 23), "symptom": "rash", "severity": nil, "note": nil}))
+	k.createSymptom(ana, kid, symptomBody(map[string]any{"at": ts(time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)), "symptom": "vomiting"}))
+
+	c, _ := pdfStrings(t, k.exportPDF(ana, kid, "sickness"))
+	f, _ := pdfStrings(t, k.exportPDF(bob, kid, "sickness"))
+	wantStrings(t, "°C", c, "2026-11-18 09:00", "Fever 38.6 °C (oral)", "cool cloth", "Fever 38.5 °C (ear)", "Cough, moderate", "Other: hiccups", "Rash")
+	wantNoSubstring(t, "°C", c, "°F", "Vomiting")
+	wantStrings(t, "°F", f, "Fever 101.48 °F (oral)", "Fever 101.3 °F (ear)")
+	wantNoSubstring(t, "°F", f, "°C", "Vomiting")
+	if i, j := slices.Index(c, "Rash"), slices.Index(c, "Other: hiccups"); i < 0 || i > j {
+		t.Errorf("symptoms are not oldest first: %q", c)
+	}
+
+	start := ts(time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC))
+	inactive := k.createMedication(ana, kid, medBody(map[string]any{"name": "Zentrolex", "start_at": start, "end_on": "2026-11-02", "active": false}))
+	outside := k.createMedication(ana, kid, medBody(map[string]any{"name": "Quorbitan", "start_at": start, "end_on": "2026-10-20", "schedule": everySchedule(6)}))
+	k.createMedication(ana, kid, medBody(map[string]any{"name": "Plixamol", "start_at": start, "end_on": "2026-10-20", "schedule": map[string]any{"kind": "none"}}))
+	k.createDose(ana, kid, doseBody(outside["id"].(string), map[string]any{"given_at": day(5, 14), "amount": "1.5 ml", "note": "with yogurt"}))
+	k.createDose(ana, kid, doseBody(inactive["id"].(string), map[string]any{"given_at": ts(time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)), "amount": "9 drops"}))
+	strs, _ := pdfStrings(t, k.exportPDF(bob, kid, "medication"))
+	wantStrings(t, "medication", strs, "Zentrolex", "08:00, 20:00", "2026-11-02", "Not active", "Quorbitan", "Every 6 hours from 10:00",
+		"2026-10-01 10:00", "Given at", "2026-11-05 15:00", "1.5 ml", "with yogurt")
+	wantNoSubstring(t, "medication", strs, "Plixamol", "9 drops", "Next", "Last dose")
 }
