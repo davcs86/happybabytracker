@@ -251,7 +251,7 @@ Vaccine schedules, dismissals and the vaccination forms.
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
 | `01-no-schedule-guardian` | No schedule chosen: a guardian gets a link to the settings | [mobile](vaccines/01-no-schedule-guardian-mobile.png) | [desktop](vaccines/01-no-schedule-guardian-desktop.png) |
-| `02-us-schedule` | United States (stub) at 13 months: given, overdue, due, upcoming, recurring, Other | [mobile](vaccines/02-us-schedule-mobile.png) | [desktop](vaccines/02-us-schedule-desktop.png) |
+| `02-us-schedule` | United States (stub) at 13 months: due and upcoming visits, Completed folded, also available, every season, Other | [mobile](vaccines/02-us-schedule-mobile.png) | [desktop](vaccines/02-us-schedule-desktop.png) |
 | `03-us-schedule-about-open` | About this schedule and What is not included opened | [mobile](vaccines/03-us-schedule-about-open-mobile.png) | [desktop](vaccines/03-us-schedule-about-open-desktop.png) |
 | `04-line-dismissed` | A guardian dismissed a line: the reason and Undo | [mobile](vaccines/04-line-dismissed-mobile.png) | [desktop](vaccines/04-line-dismissed-desktop.png) |
 | `05-dismiss-before-result` | Dismiss older lines: says how many it dismissed | [mobile](vaccines/05-dismiss-before-result-mobile.png) | [desktop](vaccines/05-dismiss-before-result-desktop.png) |
@@ -408,10 +408,10 @@ The 404 and 503 pages.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
-| `01-404-unknown-kid` | An unknown kid (or one without a grant): the 404 page in the app shell | [mobile](errors/01-404-unknown-kid-mobile.png) | [desktop](errors/01-404-unknown-kid-desktop.png) |
+| `01-404-unknown-kid` | An unknown kid (or one without a grant): the 404 page, outside the app shell | [mobile](errors/01-404-unknown-kid-mobile.png) | [desktop](errors/01-404-unknown-kid-desktop.png) |
 | `02-404-unknown-path` | A path that does not exist | [mobile](errors/02-404-unknown-path-mobile.png) | [desktop](errors/02-404-unknown-path-desktop.png) |
 | `03-404-parent-on-admin` | A parent on /admin/* | [mobile](errors/03-404-parent-on-admin-mobile.png) | [desktop](errors/03-404-parent-on-admin-desktop.png) |
-| `04-503-api-unavailable` | The API is down, unavailable or slow: the 503 page, the session kept | [mobile](errors/04-503-api-unavailable-mobile.png) | [desktop](errors/04-503-api-unavailable-desktop.png) |
+| `04-503-api-unavailable` | The API is down, unavailable or slow: SvelteKit’s plain fallback 503 page, the session kept | [mobile](errors/04-503-api-unavailable-mobile.png) | [desktop](errors/04-503-api-unavailable-desktop.png) |
 
 ## Not captured
 
