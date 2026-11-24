@@ -31,6 +31,8 @@ const NTFY_SENTENCE =
 const TOPIC = /^hbt-[0-9A-Za-z]{22}$/;
 const SIGN_OUT_SENTENCE =
 	'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off ntfy or Turn off on this device.';
+const PUSH_SIGN_OUT_SENTENCE =
+	'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off on this device.';
 const NEW_TOPIC_CONFIRM = `The current topic stops working. Subscribe to the new topic in the ntfy app again. ${SIGN_OUT_SENTENCE}`;
 const STALE_TOPIC_SENTENCE = 'A topic from earlier is still stored for your account. Remove it.';
 const IPHONE_UA =
@@ -146,6 +148,30 @@ async function expectNoSecret(page: Page, sub: Sub) {
 }
 
 test.describe('Web Push on', () => {
+	test('the sign-out note shows once in the Web Push section and once in the ntfy section', async ({
+		page
+	}) => {
+		await signIn(page, ANA);
+		await open(page);
+		await expect(
+			region(page, 'This device').getByText(PUSH_SIGN_OUT_SENTENCE, { exact: true })
+		).toHaveCount(1);
+		await expect(page.getByText(PUSH_SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(1);
+		await expect(region(page, 'ntfy').getByText(SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(1);
+		await expect(page.getByText(SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(1);
+		await expect(page.getByRole('alert').filter({ hasText: 'Signing out' })).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('the sign-out note shows once with ntfy off', async ({ page }) => {
+		await setScenario('ntfy_off');
+		await signIn(page, ANA);
+		await open(page);
+		await expect(page.getByText(PUSH_SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(1);
+		await expect(page.getByText(SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
 	test('enable subscribes with the server key, posts the subscription and lists this device', async ({
 		page,
 		context
@@ -580,6 +606,7 @@ test.describe('Web Push off', () => {
 		const before = (await receivedRequests()).length;
 		await open(page);
 		await expect(page.getByText(OFF_SENTENCE)).toBeVisible();
+		await expect(page.getByText(PUSH_SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(0);
 		await expect(enableButton(page)).toHaveCount(0);
 		await expect(page.getByText(IOS_SENTENCE)).toHaveCount(0);
 		await expect(page.getByLabel('Device name')).toHaveCount(0);
@@ -722,6 +749,7 @@ test.describe('without JavaScript', () => {
 		await signIn(page, ANA);
 		await open(page);
 		await expect(enableButton(page)).toHaveCount(0);
+		await expect(page.getByText(PUSH_SIGN_OUT_SENTENCE, { exact: true })).toHaveCount(1);
 		await expectNoSecret(page, sub);
 
 		const here = region(page, 'This device');

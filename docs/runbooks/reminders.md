@@ -65,7 +65,7 @@ Known gaps by design:
   worker deletes that device and its opt-ins, and the renewed subscription registers with no kids. The
   parent ticks the kids again. There is no `pushsubscriptionchange` handler.
 - Signing out of the app does not unsubscribe a browser or stop ntfy on a phone: the parent turns them
-  off first ("Turn off on this device", "Turn off ntfy"); the Notifications page says so.
+  off first ("Turn off on this device", "Turn off ntfy"); both sections of the Notifications page say so.
 
 ## Turning Web Push on
 

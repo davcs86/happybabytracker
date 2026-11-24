@@ -30,6 +30,8 @@
 		'This device could not be checked with the server. Reload the page to try again.';
 	const SIGN_OUT_SENTENCE =
 		'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off ntfy or Turn off on this device.';
+	const PUSH_SIGN_OUT_SENTENCE =
+		'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off on this device.';
 
 	// pending until mounted: the enable button exists only once JavaScript runs.
 	let support = $state<'pending' | 'ready' | 'ios' | 'unsupported'>('pending');
@@ -193,6 +195,7 @@
 				Turning on notifications needs JavaScript, and the browser asks for your permission.
 			</p>
 		{/if}
+		<p class="text-sm text-muted-foreground">{PUSH_SIGN_OUT_SENTENCE}</p>
 		{#if problem}<p class={ERROR_CLASS} role="alert">{problem}</p>{/if}
 	</section>
 	{#if others.length}
