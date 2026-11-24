@@ -383,6 +383,21 @@ func TestExportBusy(t *testing.T) {
 	}
 }
 
+// TestExportReleasesTheSlotOnFailure: a render that fails after taking the slot frees it for the next export.
+func TestExportReleasesTheSlotOnFailure(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	gone := "99m-se-gone"
+	if _, err := k.Store.CreateMilestone(context.Background(), kid, k.parentID("ana"), model.Milestone{Item: &gone, ReachedOn: "2026-10-01"}, k.now); err != nil {
+		t.Fatal(err)
+	}
+	wantErr(t, k.exportReq(ana, kid, exportBody(exportFrom, exportTo, "milestones")), http.StatusInternalServerError, "internal")
+	if len(exportSlots) != 0 {
+		t.Errorf("%d slots still held after a failed render", len(exportSlots))
+	}
+	k.exportPDF(ana, kid, "bottles")
+}
+
 func TestExportEmptyKid(t *testing.T) {
 	k := newKit(t)
 	kid, ana, _ := k.trackerKid()
@@ -449,8 +464,21 @@ func TestExportTrackers(t *testing.T) {
 		"Pumping 15 min, 125 ml (L 70 ml · R 55 ml)", "Pumping 10 min, 40 ml (left)",
 		"2026-11-18 11:00", "Sleep until 2026-11-18 12:45 (1 h 45 min)", "Sleep, running",
 		"Diaper dirty", "Solids: parsnip · spat it out",
-		"Day total", "2026-11-18", "2 · 243 ml", "1 · 10 min", "2 · 165 ml", "1 (1 dirty)", "1 h 45 min", "1",
 	)
+	for _, c := range []struct {
+		section string
+		cells   []string
+	}{
+		{"Bottles", []string{"2026-11-18", "2 · 243 ml"}}, {"Nursing", []string{"2026-11-18", "1 · 10 min", "2026-11-20", "1 · 0 s"}},
+		{"Pumping", []string{"2026-11-18", "2 · 165 ml"}}, {"Diapers", []string{"2026-11-18", "1 (1 dirty)"}},
+		{"Sleep", []string{"2026-11-18", "1 h 45 min"}}, {"Feeding", []string{"2026-11-18", "1"}},
+	} {
+		i := slices.Index(strs, c.section)
+		j := i + slices.Index(strs[max(i, 0):], "Day total")
+		if i < 0 || j < i || len(strs) < j+1+len(c.cells) || !slices.Equal(strs[j+1:j+1+len(c.cells)], c.cells) {
+			t.Errorf("%s: the Date | Day total rows are not %q in %q", c.section, c.cells, strs[max(i, 0):])
+		}
+	}
 	for _, s := range []string{"Bottle ", "Nursing", "Pumping ", "Sleep ", "Diaper ", "Solids:"} {
 		if n := len(withPrefix(strs, s)); n == 0 {
 			t.Errorf("no row starts with %q", s)
@@ -549,6 +577,10 @@ func TestExportCaps(t *testing.T) {
 	if n := countOf(strs, "1"+overflowOf); n != 1 {
 		t.Errorf("the overflow line appears %d times, want once", n)
 	}
+	// Two bottles print as 2026-08-20 00:00; the oldest of them is the one left out.
+	if old, newest := countOf(strs, "2026-08-20 00:00"), countOf(strs, "2026-11-20 19:00"); old != 1 || newest != 1 {
+		t.Errorf("2026-08-20 00:00 printed %d times, 2026-11-20 19:00 %d times; want the newest rows kept", old, newest)
+	}
 	wantStrings(t, "after the cap", strs, "Diapers", noEntries)
 }
 
@@ -615,6 +647,24 @@ func TestExportNoJudgement(t *testing.T) {
 			t.Errorf("%q judges", s)
 		}
 	}
+
+	k.createSymptom(ana, kid, symptomBody(nil))
+	k.createSymptom(ana, kid, symptomBody(feverBody(map[string]any{"severity": "severe"})))
+	course := k.createMedication(ana, kid, medBody(nil))["id"].(string)
+	k.createDose(ana, kid, doseBody(course, nil))
+	strs, _ = pdfStrings(t, k.exportPDF(ana, kid, constants.ExportModules...))
+	i := slices.Index(strs, "Sickness")
+	if i < 0 || !slices.Contains(strs[i:], "Medication") {
+		t.Fatalf("no sickness and medication sections in %q", strs)
+	}
+	app := strings.Join(strs[i:], "\n")
+	for _, user := range []string{"Amoxicillin", "2.5 ml", "with food", "after food", "first"} {
+		app = strings.ReplaceAll(app, user, "")
+	}
+	sectionDeny := regexp.MustCompile(`(?i)\b(late|behind|delayed|delay|normal|abnormal|typical|atypical|on track|ahead|missed|missing|concern|worry|should|red flag|warning|due|overdue|reminder)\b`)
+	if m := sectionDeny.FindString(app); m != "" {
+		t.Errorf("%q in the sickness or medication section", m)
+	}
 }
 
 func TestExportNoValuesInLogs(t *testing.T) {
@@ -654,6 +704,20 @@ func TestGrowthSectionScores(t *testing.T) {
 		text := strings.Join(strs, " ")
 		n := 0
 		for _, r := range rows {
+			// The row's cells follow its date, in column order, before the next row's date.
+			day := export.FormatDayHeading(r.(map[string]any)["measured_on"].(string))
+			i := slices.Index(strs, day)
+			if i < 0 {
+				t.Fatalf("%s: row %q missing", name, day)
+			}
+			cells := strs[i+1:]
+			for j, s := range cells {
+				if j > 0 && slices.ContainsFunc(rows, func(o any) bool { return export.FormatDayHeading(o.(map[string]any)["measured_on"].(string)) == s }) {
+					cells = cells[:j]
+					break
+				}
+			}
+			rest := strings.Join(cells, " ")
 			for _, m := range []string{"weight", "length", "head", "bmi"} {
 				sc, ok := r.(map[string]any)["scores"].(map[string]any)[m].(map[string]any)
 				if !ok {
@@ -664,9 +728,12 @@ func TestGrowthSectionScores(t *testing.T) {
 				if sc["scored"] == true {
 					want = "z " + export.FormatZ(sc["z"].(float64)) + ", percentile " + export.FormatPercentile(sc["percentile"].(float64))
 				}
-				if !strings.Contains(text, ": "+want) {
-					t.Errorf("%s %s: %q missing", name, m, want)
+				at := strings.Index(rest, ": "+want)
+				if at < 0 {
+					t.Errorf("%s %s %s: %q missing from the row %q", name, day, m, want, rest)
+					continue
 				}
+				rest = rest[at+len(want)+2:]
 				n++
 			}
 		}

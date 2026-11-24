@@ -7,7 +7,8 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
-// errUnknownCourse: a dose's course is not in the snapshot, which R1 rules out; as the API's 500.
+// errUnknownCourse: a dose's course is not in the snapshot, as the API's 500. Ruled out only while R1's dose clause
+// matches every dosed course and MaxMedicationsPerKid stays below the row cap, so no matching course is cut.
 var errUnknownCourse = errors.New("export: a dose's course is not in the snapshot")
 
 // The form's words: CourseFields.svelte and the dose page.

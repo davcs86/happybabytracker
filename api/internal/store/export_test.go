@@ -1,11 +1,13 @@
 package store
 
 import (
+	"reflect"
 	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
@@ -205,5 +207,40 @@ func TestExportSnapshotSymptoms(t *testing.T) {
 	}
 	if capped := exportSnap(t, s, k.ID, []model.Module{"sickness"}, []string{"symptom"}, 0); len(capped.Entries["symptom"]) != 1 || capped.Counts["symptom"] != 2 {
 		t.Errorf("cap 0: %d rows, count %d; want 1 and 2", len(capped.Entries["symptom"]), capped.Counts["symptom"])
+	}
+}
+
+// TestExportEntriesMatchTimeline pins the export's list queries to the timeline's, type by type, so they cannot drift.
+func TestExportEntriesMatchTimeline(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	madrid := mustLoc(t, "Europe/Madrid")
+	ats := []time.Time{time.Date(2026, 10, 31, 22, 0, 0, 0, madrid), time.Date(2026, 11, 1, 0, 0, 0, 0, madrid),
+		time.Date(2026, 11, 5, 10, 0, 0, 0, madrid), time.Date(2026, 11, 10, 10, 0, 0, 0, madrid),
+		time.Date(2026, 11, 15, 10, 0, 0, 0, madrid)}
+	for _, at := range ats {
+		end := at.Add(30 * time.Minute)
+		mustBottle(t, s, k.ID, ana.ID, advancedBottle(t, at, units.UnitML, map[string]int64{model.ContentBreastMilk: 60, model.ContentFormula: 30}))
+		mustNursing(t, s, k.ID, ana.ID, finishedNursing(at, end, 600, 300))
+		mustPumping(t, s, k.ID, ana.ID, advancedPumping(t, at, units.UnitML, map[string]int64{"left": 40, "right": 50}))
+		mustSleep(t, s, k.ID, ana.ID, model.SleepSession{StartedAt: at, EndedAt: &end})
+		mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: at, Kind: "wet"})
+		mustMeal(t, s, k.ID, ana.ID, model.Meal{At: at, What: "pear"})
+		mustSymptom(t, s, k.ID, ana.ID, model.Symptom{At: at, Symptom: "cough"})
+	}
+	from := mustDate(t, "2026-11-01", madrid)
+	_, end := kidtime.DayBounds(madrid, mustDate(t, "2026-11-20", madrid))
+	for _, rowCap := range []int{10, 1} {
+		snap := exportSnap(t, s, k.ID, nil, TimelineTypes, rowCap)
+		for _, typ := range TimelineTypes {
+			want, err := s.timelineOf(ctx, typ, k.ID, ListQuery{From: from, To: end, Limit: rowCap + 1})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := snap.Entries[typ]; len(got) != min(4, rowCap+1) || !reflect.DeepEqual(got, want) {
+				t.Errorf("cap %d, %s: export rows = %+v, timeline rows = %+v", rowCap, typ, got, want)
+			}
+		}
 	}
 }

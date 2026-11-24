@@ -212,7 +212,7 @@ func TestGrowth3000Rows(t *testing.T) {
 	if n != len(rows) {
 		t.Errorf("%d dated rows listed, want %d", n, len(rows))
 	}
-	wantNotIn(t, "3000 rows", joined(strs), overflow)
+	wantNotIn(t, "3000 rows", joined(strs), overflow, growthOverflow)
 }
 
 func TestGrowthRowBudget(t *testing.T) {
@@ -225,8 +225,9 @@ func TestGrowthRowBudget(t *testing.T) {
 		rows = append(rows, measured(t, strconv.Itoa(i), "2026-10-2"+strconv.Itoa(4-i), 5000, 0, 0))
 	}
 	text := joined(pdfText(t, renderGrowth(t, kid, rows, metric, time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC), "2026-11-20")))
-	wantIn(t, "budget", text, "Sat 24 Oct 2026", "Thu 22 Oct 2026", "1"+overflow)
-	wantNotIn(t, "budget", text, "Wed 21 Oct 2026")
+	wantIn(t, "budget", text, "Sat 24 Oct 2026", "Thu 22 Oct 2026",
+		"1 more entries up to the end of the range are not shown. Export a range that ends earlier to see them.")
+	wantNotIn(t, "budget", text, "Wed 21 Oct 2026", overflow)
 }
 
 func TestGrowthCorrectedAge(t *testing.T) {

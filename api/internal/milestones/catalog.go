@@ -82,7 +82,7 @@ var (
 	provenanceKeys = []string{"catalog", "name", "authority", "edition", "retrieved", "origin_url", "licence", "attribution", "screening_note"}
 	itemHeader     = []string{"id", "age_months", "domain", "text", "source_url", "retired"}
 	domains        = []Domain{DomainSocialEmotional, DomainLanguage, DomainCognitive, DomainMovement}
-	idPattern      = regexp.MustCompile(`^[0-9]{1,2}m-(se|lc|cg|mp)-[a-z0-9-]{1,48}$`)
+	idPattern      = regexp.MustCompile(fmt.Sprintf(`^[0-9]{1,2}m-(se|lc|cg|mp)-[a-z0-9-]{1,%d}$`, constants.MilestoneCatalogSlugMaxLen))
 	domainCodes    = map[Domain]string{DomainSocialEmotional: "se", DomainLanguage: "lc", DomainCognitive: "cg", DomainMovement: "mp"}
 	reasonTextLong = fmt.Sprintf("longer than %d characters", constants.MilestoneCatalogTextMaxLen)
 )

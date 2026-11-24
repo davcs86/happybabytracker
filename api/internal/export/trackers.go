@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/export/pdfdoc"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -13,7 +12,7 @@ import (
 
 // Shares of the content width per column.
 const (
-	contentWidth = constants.ExportPageWidthMM - 2*constants.ExportMarginMM
+	contentWidth = pdfdoc.ContentWidthMM
 	timeShare    = 0.2
 	entryShare   = 0.5
 	noteShare    = 0.3

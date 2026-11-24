@@ -123,3 +123,38 @@ func TestExportSicknessMedicationDST(t *testing.T) {
 	wantIn(t, "dst", text, "Zentrolex dose text As needed 2026-11-01 00:30 Active", "2026-11-01 01:30 -04:00 Cough", "2026-11-01 01:30 -05:00 Rash",
 		"2026-11-01 01:30 -04:00 Zentrolex first", "2026-11-01 01:30 -05:00 Zentrolex second")
 }
+
+// TestSicknessLabelsCoverModel: every stored symptom and method has a printed label.
+func TestSicknessLabelsCoverModel(t *testing.T) {
+	for _, s := range model.Symptoms {
+		if symptomLabel[s] == "" {
+			t.Errorf("symptom %q has no label", s)
+		}
+	}
+	for _, m := range model.TempMethods {
+		if tempMethodLabel[m] == "" {
+			t.Errorf("method %q has no label", m)
+		}
+	}
+}
+
+// TestSymptomLine pins the examples of ui/src/lib/timeline.test.ts, without the clock.
+func TestSymptomLine(t *testing.T) {
+	fever := func(sev *string) model.Symptom {
+		return model.Symptom{Symptom: "fever", Temperature: temp(t, units.UnitC, 3840), Method: ptr("ear"), Severity: sev}
+	}
+	for _, c := range []struct {
+		v    model.Symptom
+		want string
+	}{
+		{fever(nil), "Fever 38.4 °C (ear)"},
+		{model.Symptom{Symptom: "cough", Severity: ptr("moderate")}, "Cough, moderate"},
+		{model.Symptom{Symptom: "ear_pain", Severity: ptr("mild")}, "Ear pain, mild"},
+		{fever(ptr("severe")), "Fever 38.4 °C (ear), severe"},
+		{model.Symptom{Symptom: "other", OtherText: ptr("hiccups")}, "Other: hiccups"},
+	} {
+		if got := symptomLine(c.v, metric); got != c.want {
+			t.Errorf("symptomLine = %q, want %q", got, c.want)
+		}
+	}
+}

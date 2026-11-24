@@ -13,7 +13,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
-// Radices of the stored columns, as ui/src/lib/constants.ts spells them.
+// Must equal the radices in ui/src/lib/constants.ts.
 const (
 	gramsPerKG       = 1000
 	mmPerCM          = 10
@@ -48,7 +48,7 @@ func decimal(n int64, scale uint64) string {
 	return sign + strconv.FormatUint(m/scale, 10) + "." + frac
 }
 
-// FormatWeight prints the stored column of the parent's unit: kg from grams, lb and oz from hundredths of an ounce.
+// FormatWeight reads only the stored column of the parent's unit, never converting between kg and lb.
 func FormatWeight(w units.Weight, u model.Units) string {
 	if u.Weight == string(units.UnitKG) {
 		return decimal(w.Grams, gramsPerKG) + " kg"
@@ -269,7 +269,7 @@ func FormatDayHeading(date string) string {
 	return t.Format(dayHeadingLayout)
 }
 
-// FormatDate is the stored YYYY-MM-DD, as the UI prints plain dates.
+// FormatDate must print as the UI prints plain dates.
 func FormatDate(date string) string { return date }
 
 // repeated reports whether t's wall clock also names another instant in loc (the fall-back hour).
@@ -306,7 +306,7 @@ func FormatInstant(t time.Time, loc *time.Location) string {
 	return fmt.Sprintf("%s %c%02d:%02d", out, sign, off/secondsPerHour, off%secondsPerHour/secondsPerMinute)
 }
 
-// Text maps each run of newlines and tabs to one space; other control runes and invalid bytes are left for the font layer.
+// Text must leave control runes other than newlines and tabs, and invalid bytes, to the font layer.
 func Text(s string) string {
 	var b strings.Builder
 	inRun := false

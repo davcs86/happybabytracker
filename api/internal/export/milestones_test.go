@@ -110,13 +110,16 @@ func TestMilestonesSection(t *testing.T) {
 func TestMilestonesRetiredAndUnknown(t *testing.T) {
 	c, _ := milestones.Get()
 	it2 := firstItem(t, c, 2)
-	for i := range c.Items {
-		if c.Items[i].ID == it2.ID {
-			c.Items[i].Retired = "2026-11-24"
+	retiredIt := it2
+	retiredIt.Retired = "2026-11-24"
+	lookup := func(id string) (milestones.Item, bool) {
+		if id == it2.ID {
+			return retiredIt, true
 		}
+		return milestones.Lookup(id)
 	}
 	rows := []model.Milestone{reachedRow("r1", it2.ID, "2026-01-10", ptr("kept"))}
-	items, err := milestoneSection(c, rows, "2026-11-20", &budget{left: maxRows})
+	items, err := milestoneSection(c, lookup, rows, "2026-11-20", &budget{left: maxRows})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +132,7 @@ func TestMilestonesRetiredAndUnknown(t *testing.T) {
 	wantNotIn(t, "retired", text, ChecklistTitle(2), noMilestones)
 
 	rows = []model.Milestone{reachedRow("r1", "99m-se-gone", "2026-01-10", nil)}
-	if _, err := milestoneSection(c, rows, "2026-11-20", &budget{left: maxRows}); !errors.Is(err, errUnknownMilestoneItem) {
+	if _, err := milestoneSection(c, milestones.Lookup, rows, "2026-11-20", &budget{left: maxRows}); !errors.Is(err, errUnknownMilestoneItem) {
 		t.Errorf("an item missing from the catalog: %v, want errUnknownMilestoneItem", err)
 	}
 }

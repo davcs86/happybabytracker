@@ -26,6 +26,7 @@ const (
 // The screen's words: GrowthTable.svelte, growth/+page.svelte and growth-chart.ts.
 const (
 	noMeasurements = "No measurements recorded."
+	growthOverflow = " more entries up to the end of the range are not shown. Export a range that ends earlier to see them."
 	noTableSuffix  = " has no table for this measure at this age"
 	licencePrefix  = "Licence: "
 	axisAge        = "Age (months)"
@@ -87,7 +88,7 @@ func growthItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, err
 	}
 	shown := b.take(len(listed))
 	if shown == 0 {
-		return append(out, item{paragraph: strconv.Itoa(len(listed)) + overflow}), nil
+		return append(out, item{paragraph: strconv.Itoa(len(listed)) + growthOverflow}), nil
 	}
 	rows := make([]scoredRow, shown)
 	cells := make([][]string, shown)
@@ -121,7 +122,7 @@ func growthItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, err
 	}
 	out = append(out, item{cols: growthCols, rows: cells})
 	if len(listed) > shown {
-		out = append(out, item{paragraph: strconv.Itoa(len(listed)-shown) + overflow})
+		out = append(out, item{paragraph: strconv.Itoa(len(listed)-shown) + growthOverflow})
 	}
 	out = append(out, item{paragraph: info.Attribution}, item{paragraph: licencePrefix + pdfLicence(info.Licence)})
 	for _, p := range growth.AdaptationDisclaimers(src, tables) {

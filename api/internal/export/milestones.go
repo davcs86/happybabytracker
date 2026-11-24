@@ -74,12 +74,13 @@ func milestoneItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, 
 	if !ok {
 		return nil, milestones.ErrCatalogUnavailable
 	}
-	return milestoneSection(c, snap.Milestones, req.To, b)
+	return milestoneSection(c, milestones.Lookup, snap.Milestones, req.To, b)
 }
 
 // milestoneSection prints CDC's sentence and attribution at body size, then the rows reached up to to, oldest first:
 // catalog items, custom rows, retired items. Unreached items never appear, nor their count.
-func milestoneSection(c milestones.Catalog, rows []model.Milestone, to string, b *budget) ([]item, error) {
+func milestoneSection(c milestones.Catalog, lookup func(string) (milestones.Item, bool), rows []model.Milestone, to string,
+	b *budget) ([]item, error) {
 	out := []item{{heading: moduleTitle["milestones"]}, {body: c.ScreeningNote}, {body: c.Attribution}}
 	var listed []model.Milestone
 	for _, m := range rows {
@@ -100,7 +101,7 @@ func milestoneSection(c milestones.Catalog, rows []model.Milestone, to string, b
 			custom = append(custom, []string{FormatDate(m.ReachedOn), Text(*m.Text), note})
 			continue
 		}
-		it, ok := catalogItem(c, *m.Item)
+		it, ok := lookup(*m.Item)
 		switch {
 		case !ok:
 			return nil, errUnknownMilestoneItem
@@ -123,12 +124,4 @@ func milestoneSection(c milestones.Catalog, rows []model.Milestone, to string, b
 		}
 	}
 	return out, nil
-}
-
-func catalogItem(c milestones.Catalog, id string) (milestones.Item, bool) {
-	i := slices.IndexFunc(c.Items, func(it milestones.Item) bool { return it.ID == id })
-	if i < 0 {
-		return milestones.Item{}, false
-	}
-	return c.Items[i], true
 }

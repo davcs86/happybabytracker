@@ -98,9 +98,8 @@ func exportMedication(ctx context.Context, q querier, snap *ExportSnapshot, kidI
 	return err
 }
 
-// ExportSnapshot reads types' entries from the start of from to the end of to in loc, their day summaries and the whole
-// record of each requested growth, vaccination or milestones module, and medication's courses and doses (R1); at most
-// rowCap+1 entries per type, courses and doses show overflow.
+// ExportSnapshot reads, in one transaction, only the requested modules and types, from the start of from to the end of to
+// in loc (growth, vaccination and milestones: the whole record); at most rowCap+1 rows per list show overflow.
 func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []model.Module, types []string, loc *time.Location, from, to, now time.Time, rowCap int) (ExportSnapshot, error) {
 	_, end := kidtime.DayBounds(loc, to)
 	lq := ListQuery{From: from, To: end, Limit: rowCap + 1}

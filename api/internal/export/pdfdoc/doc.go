@@ -25,6 +25,9 @@ var (
 	loadFonts = fonts.Load               // replaced by tests only
 )
 
+// ContentWidthMM is the page width inside the margins.
+const ContentWidthMM = constants.ExportPageWidthMM - 2*constants.ExportMarginMM
+
 const (
 	family = "NotoSans"
 	// nbAlias is a private-use rune fonts.Encode never lets through, so no user text matches it.
@@ -40,7 +43,6 @@ const (
 	hairlineMM    = 0.1
 	ruleMM        = 0.2
 	greyLevel     = 150
-	contentWidth  = constants.ExportPageWidthMM - 2*constants.ExportMarginMM
 	footerBaseMM  = constants.ExportPageHeightUsableMM - constants.ExportMarginMM
 	contentBottom = footerBaseMM - 2*lineFactor*constants.ExportFontSizeSmall*mmPerPt
 )
@@ -193,7 +195,7 @@ func (d *Doc) Heading(text string) {
 		d.y += fontMM(constants.ExportFontSizeBody) * lineFactor
 	}
 	d.ensure(fontMM(constants.ExportFontSizeHeading)*(lineFactor+2*padFactor) + fontMM(constants.ExportFontSizeBody)*(lineFactor+2*padFactor))
-	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: text, style: "B"}}, constants.ExportFontSizeHeading, nil)
+	d.row([]cell{{x: constants.ExportMarginMM, w: ContentWidthMM, text: text, style: "B"}}, constants.ExportFontSizeHeading, nil)
 }
 
 // Line writes one key/value row of the profile block.
@@ -201,10 +203,10 @@ func (d *Doc) Line(label, value string) {
 	if !d.ok() {
 		return
 	}
-	lw := contentWidth * labelShare
+	lw := ContentWidthMM * labelShare
 	d.row([]cell{
 		{x: constants.ExportMarginMM, w: lw, text: label, style: "B"},
-		{x: constants.ExportMarginMM + lw, w: contentWidth - lw, text: value},
+		{x: constants.ExportMarginMM + lw, w: ContentWidthMM - lw, text: value},
 	}, constants.ExportFontSizeBody, nil)
 }
 
@@ -213,7 +215,7 @@ func (d *Doc) Paragraph(text string) {
 	if !d.ok() {
 		return
 	}
-	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: text}}, constants.ExportFontSizeSmall, nil)
+	d.row([]cell{{x: constants.ExportMarginMM, w: ContentWidthMM, text: text}}, constants.ExportFontSizeSmall, nil)
 }
 
 // Body writes wrapped text at the body size: for wording that must not read as small print.
@@ -221,7 +223,7 @@ func (d *Doc) Body(text string) {
 	if !d.ok() {
 		return
 	}
-	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: text}}, constants.ExportFontSizeBody, nil)
+	d.row([]cell{{x: constants.ExportMarginMM, w: ContentWidthMM, text: text}}, constants.ExportFontSizeBody, nil)
 }
 
 // Table writes a header row, repeated after every page break, then the rows; columns wider than the page are scaled down.
@@ -233,7 +235,7 @@ func (d *Doc) Table(cols []Col, rows [][]string) {
 	for _, c := range cols {
 		total += c.WidthMM
 	}
-	scale := min(1, contentWidth/total)
+	scale := min(1, ContentWidthMM/total)
 	header := make([]cell, len(cols))
 	x := float64(constants.ExportMarginMM)
 	for i, c := range cols {
@@ -275,9 +277,9 @@ func (d *Doc) Chart(c Chart) {
 	small := float64(constants.ExportFontSizeSmall)
 	slh := fontMM(small) * lineFactor
 	pad := fontMM(small) * padFactor
-	plotH := contentWidth * chartAspect
+	plotH := ContentWidthMM * chartAspect
 	d.ensure(fontMM(constants.ExportFontSizeBody)*(lineFactor+2*padFactor) + 2*slh + plotH + 2*slh)
-	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: c.Title, style: "B"}}, constants.ExportFontSizeBody, nil)
+	d.row([]cell{{x: constants.ExportMarginMM, w: ContentWidthMM, text: c.Title, style: "B"}}, constants.ExportFontSizeBody, nil)
 
 	f := d.f
 	f.SetFont(family, "", small)
@@ -292,7 +294,7 @@ func (d *Doc) Chart(c Chart) {
 		labelW = max(labelW, f.GetStringWidth(labels[i]))
 	}
 	left := constants.ExportMarginMM + max(f.GetStringWidth(yticks[0]), f.GetStringWidth(yticks[1])) + pad
-	right := constants.ExportMarginMM + contentWidth - labelW - pad
+	right := constants.ExportMarginMM + ContentWidthMM - labelW - pad
 	f.Text(constants.ExportMarginMM, d.y+fontMM(small), ylabel)
 	top := d.y + slh
 	bottom := top + plotH
