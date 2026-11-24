@@ -283,3 +283,24 @@ func TestMilestonesCascadeWithKid(t *testing.T) {
 		t.Errorf("the other kid's row = %+v, %v", got, err)
 	}
 }
+
+func TestKidMilestones(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k, other := mustKid(t, s, ana.ID, "Lía"), mustKid(t, s, ana.ID, "Noa")
+	older := mustMilestone(t, s, k.ID, ana.ID, itemMilestone("m2-social-1", "2026-02-01"))
+	newer := mustMilestone(t, s, k.ID, ana.ID, textMilestone("Claps", "2026-03-01"))
+	mustMilestone(t, s, other.ID, ana.ID, textMilestone("Waves", "2026-03-02"))
+
+	kid, rows, err := s.KidMilestones(ctx, k.ID)
+	want, _ := s.Kid(ctx, k.ID)
+	if err != nil || !reflect.DeepEqual(kid, want) || !reflect.DeepEqual(rows, []model.Milestone{newer, older}) {
+		t.Fatalf("KidMilestones = %+v, %+v, %v", kid, rows, err)
+	}
+	if _, rows, err := s.KidMilestones(ctx, mustKid(t, s, ana.ID, "Ivo").ID); err != nil || rows == nil || len(rows) != 0 {
+		t.Errorf("a kid with no rows = %v, %v; want an empty, non-nil list", rows, err)
+	}
+	if _, _, err := s.KidMilestones(ctx, model.NewID()); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown kid: %v, want ErrNotFound", err)
+	}
+}

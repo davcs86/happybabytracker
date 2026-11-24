@@ -66,7 +66,31 @@ func (s *Store) Milestone(ctx context.Context, kidID, id string) (model.Mileston
 
 // ListMilestones returns all of the kid's reached milestones, newest first by (reached_on, id); never nil.
 func (s *Store) ListMilestones(ctx context.Context, kidID string) ([]model.Milestone, error) {
-	rows, err := s.r.QueryContext(ctx,
+	return listMilestones(ctx, s.r, kidID)
+}
+
+// KidMilestones reads the kid and ListMilestones' rows from one snapshot; ErrNotFound for an unknown kid.
+func (s *Store) KidMilestones(ctx context.Context, kidID string) (model.Kid, []model.Milestone, error) {
+	var (
+		kid  model.Kid
+		rows []model.Milestone
+	)
+	err := s.inReadTx(ctx, func(q querier) error {
+		var err error
+		if kid, err = scanKid(q.QueryRowContext(ctx, `SELECT `+kidColumns+` FROM kids k WHERE k.id = ?`, kidID)); err != nil {
+			return err
+		}
+		rows, err = listMilestones(ctx, q, kidID)
+		return err
+	})
+	if err != nil {
+		return model.Kid{}, nil, err
+	}
+	return kid, rows, nil
+}
+
+func listMilestones(ctx context.Context, q querier, kidID string) ([]model.Milestone, error) {
+	rows, err := q.QueryContext(ctx,
 		`SELECT `+milestoneColumns+` FROM milestones_reached WHERE kid_id = ? ORDER BY reached_on DESC, id DESC LIMIT ?`,
 		kidID, constants.MaxMilestonesPerKid)
 	if err != nil {

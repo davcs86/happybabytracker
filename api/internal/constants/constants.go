@@ -189,6 +189,9 @@ var MilestoneCatalogAges = []int{2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60}
 // MilestoneCatalogUntilYears is the age in whole years from which the checklists are no longer shown.
 const MilestoneCatalogUntilYears = 5
 
+// MilestoneTextMaxLen caps a custom milestone's text, in characters after trimming.
+const MilestoneTextMaxLen = 200
+
 // MaxMilestonesPerKid caps a kid's reached milestones, catalog and custom together.
 const MaxMilestonesPerKid = 1000
 

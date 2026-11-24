@@ -20,6 +20,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
+	"github.com/davcs86/happybabytracker/api/internal/milestones"
 	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/reminders"
@@ -124,7 +125,10 @@ func prepare(ctx context.Context, st *store.Store, cfg config.Config) error {
 	if err := growth.Load(); err != nil {
 		return err
 	}
-	return vaccines.Load()
+	if err := vaccines.Load(); err != nil {
+		return err
+	}
+	return milestones.Load()
 }
 
 func run(ctx context.Context, getenv func(string) string, stdout io.Writer) error {

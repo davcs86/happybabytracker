@@ -158,6 +158,11 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/vaccinations/{administration}":    Caregiver,
 	"PATCH /v1/kids/{kid}/vaccinations/{administration}":  Caregiver,
 	"DELETE /v1/kids/{kid}/vaccinations/{administration}": Caregiver,
+	"GET /v1/kids/{kid}/milestones":                       Caregiver,
+	"POST /v1/kids/{kid}/milestones":                      Caregiver,
+	"GET /v1/kids/{kid}/milestones/{entry}":               Caregiver,
+	"PATCH /v1/kids/{kid}/milestones/{entry}":             Caregiver,
+	"DELETE /v1/kids/{kid}/milestones/{entry}":            Caregiver,
 	"PUT /v1/kids/{kid}/vaccine-dismissals/{line}":        Guardian,
 	"DELETE /v1/kids/{kid}/vaccine-dismissals/{line}":     Guardian,
 	"POST /v1/kids/{kid}/vaccine-dismissals":              Guardian,
@@ -195,7 +200,7 @@ type fixture struct {
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
 	growth, administration, symptom, medication   string
-	dose                                          string
+	dose, milestone                               string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -246,6 +251,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.medication
 		case strings.Contains(rt.Pattern, "/medication-doses/"):
 			return f.dose
+		case strings.Contains(rt.Pattern, "/milestones/"):
+			return f.milestone
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -365,6 +372,12 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.dose = given.ID
+	item := "2m-se-calms-down-when"
+	reached, err := k.Store.CreateMilestone(ctx, kid.ID, f.parent[aG].ID, model.Milestone{Item: &item, ReachedOn: "2026-05-01"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.milestone = reached.ID
 	p256dh, authKey := testSubscriptionKeys()
 	for _, a := range []actor{aX, aC, aG} {
 		dev, _, err := k.Store.UpsertDevice(ctx, f.parent[a].ID, "https://push.example.com/"+a.String(), p256dh, authKey, "Phone", k.now)
