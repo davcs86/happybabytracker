@@ -525,7 +525,7 @@ origin. The VAPID variables are optional, both or neither (neither turns Web Pus
 2026-11-23, superseding "the VAPID variables are always required")**; one of them without the other,
 an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
 prefix, a prefix outside 1–32 of `a-z0-9-`, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, an `NTFY_TOKEN`
-with a space or a non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
+with a space, control or non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
 `GET /healthz/reminders` is 503 when a delivery of a due reminder is still pending or sending 15 minutes

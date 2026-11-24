@@ -127,9 +127,8 @@ func checkReminder(ctx context.Context, q querier, id string) (c reminderCheck, 
 	return c, true, nil
 }
 
-// OpenDue cancels each due pending reminder a reminder-level gate closes and otherwise adds a pending delivery for each
-// allowed target of each configured channel; it returns how many deliveries it added. A reminder whose kid's zone does
-// not load is skipped; the rest commit and the error is returned after them.
+// OpenDue cancels each due pending reminder a gate closes, else adds a delivery per allowed target of each configured
+// channel, and returns the count; a reminder whose kid's zone does not load is skipped and reported after the commit.
 func (s *Store) OpenDue(ctx context.Context, now time.Time, ch Channels) (int, error) {
 	var (
 		added   int
@@ -392,9 +391,8 @@ type prependScanner struct {
 
 func (p prependScanner) Scan(dest ...any) error { return p.row.Scan(append(p.head, dest...)...) }
 
-// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, keeping a past one only
-// when it is its course's latest past row in any state and now < min(due + overdue, Next), by due time then course id.
-// The caller gates the module.
+// DueEntries lists the kid's pending or expired reminders of active courses due before dayEnd, by due then course id;
+// a past one only as its course's latest past row in any state while now < min(due + overdue, Next). Module: caller.
 func (s *Store) DueEntries(ctx context.Context, kidID string, overdue time.Duration, now, dayEnd time.Time) ([]DueEntry, error) {
 	var out []DueEntry
 	err := s.inReadTx(ctx, func(q querier) error {

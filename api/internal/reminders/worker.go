@@ -187,6 +187,10 @@ func (w *Worker) send(t *tick, d store.Delivery) {
 			outcome = push.Failed // ntfy has no subscription to delete
 		}
 	}
+	// Cut off by shutdown with no answer, the service may have the message: left sending, it becomes unconfirmed.
+	if t.ctx.Err() != nil && outcome == push.Retry && status == 0 {
+		return
+	}
 	s := store.Settle{Outcome: store.OutcomeFailed}
 	switch outcome {
 	case push.Sent:
@@ -208,10 +212,7 @@ func (w *Worker) settle(t *tick, d store.Delivery, s store.Settle, status int, s
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(t.ctx), constants.ReminderSettleTimeout)
 	err := w.d.Store.SettleDelivery(ctx, d.ID, s, w.d.Now())
 	cancel()
-	if errors.Is(err, store.ErrNotFound) {
-		return
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		t.fail("settle", err)
 		return
 	}

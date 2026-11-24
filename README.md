@@ -326,7 +326,7 @@ change is live only after those pins are changed there and the edge is deployed.
 Deploy and rollback: both images ship together (the bump PR pins both). Migration 0006 (sickness,
 medication, reminders) is forward-only: an older API refuses a database whose schema is newer than its
 own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
-the home page of any kid with a course. Take an `edge-backup` archive right before the deploy. A rollback
+the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the deploy. A rollback
 is both pins back plus a restore of the last `edge-backup` archive; anything written since it is lost.
 
 ## Third-party data

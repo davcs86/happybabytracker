@@ -11,7 +11,8 @@ read the same rows, so they work with no channel configured. Spec: sections 11 a
 
 Both images ship together (the edge's bump PR pins both). Migration 0006 is forward-only:
 `api/internal/store/migrate.go` makes an older API refuse a newer schema, and the previous UI rejects the
-home list's medication entries, so rolling back the UI alone breaks the home page of a kid with a course.
+home list's medication entries, so rolling back the UI alone breaks the home page of a kid whose Due list
+has a medication entry.
 Take an `edge-backup` archive right before the deploy. A rollback is both image pins back plus a restore of
 the last `edge-backup` archive; anything written since that archive is lost.
 

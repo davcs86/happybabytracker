@@ -277,9 +277,13 @@ log.
   first (push service 404 or 410), the worker deletes that device and its opt-ins and the new subscription
   registers with no kids (there is no `pushsubscriptionchange` handler). After a VAPID key rotation every
   device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page, opened on such a
-  device, says "Turn notifications off and on again on this device.": the parent uses "Turn off on this device" and turns it on again, which resubscribes under the new key. A
-  stale ntfy topic cannot be seen while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it). Signing
-  out of the app does not unsubscribe the device: on a shared tablet, use "Turn off on this device" first.
+  device, says "Turn notifications off and on again on this device.": the parent uses "Turn off on this
+  device" and turns it on again, which resubscribes under the new key. A stale ntfy topic cannot be seen
+  while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it). Signing out of the app does not
+  unsubscribe the device: on a shared tablet, use "Turn off on this device" first.
+- Plan 6, known edge: when a course is edited minutes after an early dose, the done row of the older
+  schedule counts as the course's latest past row, so it can hide an overdue entry of the new schedule
+  from the home Due list for up to the kid's overdue minutes.
 - Plan 6, smoke: the push assertion sees only the title, path and tag (the test route decodes only those);
   the payload's other fields are covered by the Go tests, so the smoke is not proof that nothing else
   leaks. The API's memory ceiling has thin headroom: one smoke run on 2026-11-23 read a 61 MiB peak for

@@ -501,11 +501,15 @@ func TestNoDuplicateAfterRestartMidSend(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		outcome push.Outcome
+		status  int
 		after   string // the row's state once the cancelled tick returns
 		resends int
+		final   string
 	}{
-		{"a send finished during shutdown keeps its outcome", push.Sent, "sent", 0},
-		{"a send cut off by shutdown goes back to pending", push.Retry, "pending", 1},
+		{"a send finished during shutdown keeps its outcome", push.Sent, 201, "sent", 0, "sent"},
+		{"a retry the push service answered during shutdown is kept", push.Retry, 503, "pending", 1, "sent"},
+		// No answer: the service may have the message, so it is never sent again.
+		{"a send cut off by shutdown is never sent again", push.Retry, 0, "sending", 0, "unconfirmed"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newEnv(t)
@@ -515,7 +519,7 @@ func TestNoDuplicateAfterRestartMidSend(t *testing.T) {
 			e.push.hook = func(context.Context, push.Subscription, push.Message) (push.Result, bool) {
 				calls.Add(1)
 				cancel()
-				return push.Result{Outcome: tc.outcome, Status: 201}, true
+				return push.Result{Outcome: tc.outcome, Status: tc.status}, true
 			}
 			e.set(at(14, 0))
 			_ = e.worker(true, false).Tick(tctx)
@@ -533,8 +537,8 @@ func TestNoDuplicateAfterRestartMidSend(t *testing.T) {
 			if n := len(e.push.rec.Sends()); n != tc.resends || calls.Load() != 1 {
 				t.Fatalf("after a restart: %d recorded, %d hooked; want %d recorded", n, calls.Load(), tc.resends)
 			}
-			if got := e.deliveries(t)["push "+e.anaDev.ID]; got != "sent" {
-				t.Fatalf("delivery %q, want sent", got)
+			if got := e.deliveries(t)["push "+e.anaDev.ID]; got != tc.final {
+				t.Fatalf("delivery %q, want %q", got, tc.final)
 			}
 			if n := countMsg(e.logLines(t), "reminder step failed"); n != 0 {
 				t.Fatalf("%d step failure lines: %s", n, e.log)
@@ -667,8 +671,13 @@ func TestADeliveryDeletedMidSendIsNotAFailure(t *testing.T) {
 		return push.Result{Outcome: push.Sent, Status: 201}, true
 	}
 	e.tick(t, e.worker(true, false), at(14, 0))
-	if n := countMsg(e.logLines(t), "reminder step failed"); n != 0 {
+	lines := e.logLines(t)
+	if n := countMsg(lines, "reminder step failed"); n != 0 {
 		t.Fatalf("%d step failure lines: %s", n, e.log)
+	}
+	// The push went out: its ids-only line stays as the trace.
+	if n := countMsg(lines, "delivery"); n != 1 {
+		t.Fatalf("%d delivery lines, want 1: %s", n, e.log)
 	}
 	if got := e.deliveries(t); len(got) != 0 {
 		t.Fatalf("deliveries %v, want none", got)
