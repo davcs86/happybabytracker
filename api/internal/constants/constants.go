@@ -200,3 +200,23 @@ var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 
 
 // ExportFallbackRune replaces, in an export, each rune the embedded fonts cannot print and each invalid byte.
 const ExportFallbackRune = '?'
+
+// Export page geometry: A4, with everything inside the top ExportPageHeightUsableMM so it prints on US Letter.
+const (
+	ExportPageWidthMM        = 210
+	ExportPageHeightMM       = 297
+	ExportPageHeightUsableMM = 279.4
+	ExportMarginMM           = 12
+	ExportFontSizeBody       = 9
+	ExportFontSizeHeading    = 12
+	ExportFontSizeSmall      = 7
+)
+
+// ExportMaxBytes caps one rendered export; a larger document is refused, not truncated.
+const ExportMaxBytes = 4 << 20
+
+// The export PDF's fixed metadata; no author is written.
+const (
+	ExportProducer = "happybabytracker"
+	ExportTitle    = "happybabytracker export"
+)
