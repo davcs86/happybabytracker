@@ -175,7 +175,7 @@ Failure modes that no task's happy path exercises. Each has a test in the named 
     - A 29 February birth: the 5th birthday is 1 March.
     - In Pacific/Auckland the boundary follows the kid's local date, not UTC.
     - A preterm kid (32 weeks) at 3 months chronological still gets all twelve lists, with basis 1 by corrected age: no list is current, the 2-month list is open as "Next list", and both ages are shown. At 5 months chronological "By 2 months" is current. At 2 years 1 month it is chronological again (P-10).
-    - A kid at 30 months whose module is switched off by default: the page is still reachable (by URL and kid links), shows the full catalog under the note "Milestones are off for <kid name>." (R2) and accepts marks, while the quick-log tile is hidden. `DefaultEnabled` is unchanged (`modules_test.go` still pins off at 24+).
+    - A kid at 30 months whose module is switched off by default: the page is still reachable (by URL and kid links), shows the full catalog under the note "Milestones are off for <kid name>." (R2) and accepts marks, while the quick-log tile is hidden **until the first mark**: marking one milestone is an entry inside plan 3's 60-day lookback, so the band rule stores the module as on (owner answer 5: "may keep it on"; Open value 27); from then on the note is gone and the tile shows (ruling T5-1, 2026-11-24). `DefaultEnabled` is unchanged (`modules_test.go` still pins off at 24+).
 12. **Milestones** (Tasks 1, 3, 4, 5):
     - A catalog item reached twice is a 409, never a second row.
     - A date after the kid-local today or before the birth date is a 422.
@@ -488,7 +488,7 @@ CREATE INDEX milestones_reached_kid_date ON milestones_reached (kid_id, reached_
   - a stub kid at 4 years 11 months: the 4-year list is current and the 5-year list is reachable;
   - a stub kid on its 5th birthday: no list titles, the "Reached" section lists a reached 5-year item, the custom rows are shown;
   - a preterm stub kid shows both ages and the list positions by corrected age (a 32-week kid at 3 months chronological: "Next list" on "By 2 months"; one at 5 months chronological: "By 2 months" current; P-10);
-  - a 30-month stub kid with the module off: the page loads from the kid links with the full catalog, the quick-log tile is absent, and the Modules page still shows milestones off;
+  - a 30-month stub kid with the module off: the page loads from the kid links with the full catalog, the quick-log tile is absent, and the Modules page still shows milestones off; after the first mark the stub (mirroring `readModules`' band rule) reports it on, the note is gone and the tile shows (T5-1);
   - with the module off, the note "Milestones are off for <kid name>." shows for a guardian and a caregiver, the link "Turn it on in Modules" for the guardian only, and axe passes (R2, P-28);
   - one-tap reached records today and shows the date (every save goes through `submit()`, which waits for the action's response);
   - choose a past date, read it back and edit it (the JavaScript test waits for `untilHydrated` on the prefilled date and note before filling them; the no-JS variant does not);
