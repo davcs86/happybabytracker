@@ -186,5 +186,8 @@ const MilestoneCatalogTextMaxLen = 200
 // MilestoneCatalogAges lists the checklist ages, in months, a catalog item may carry.
 var MilestoneCatalogAges = []int{2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60}
 
+// MilestoneCatalogUntilYears is the age in whole years from which the checklists are no longer shown.
+const MilestoneCatalogUntilYears = 5
+
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
