@@ -216,6 +216,14 @@ func (d *Doc) Paragraph(text string) {
 	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: text}}, constants.ExportFontSizeSmall, nil)
 }
 
+// Body writes wrapped text at the body size: for wording that must not read as small print.
+func (d *Doc) Body(text string) {
+	if !d.ok() {
+		return
+	}
+	d.row([]cell{{x: constants.ExportMarginMM, w: contentWidth, text: text}}, constants.ExportFontSizeBody, nil)
+}
+
 // Table writes a header row, repeated after every page break, then the rows; columns wider than the page are scaled down.
 func (d *Doc) Table(cols []Col, rows [][]string) {
 	if !d.ok() || len(cols) == 0 {

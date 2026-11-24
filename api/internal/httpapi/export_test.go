@@ -252,21 +252,17 @@ func TestExportModuleFilter(t *testing.T) {
 	rows := map[string]string{
 		"bottles": "Bottle 120 ml, formula", "nursing": "Nursing L 1 min · R 1 min", "pumping": "Pumping 10 min, 120 ml (both)",
 		"diapers": "Diaper wet", "sleep": "Sleep until 2026-11-18 10:30 (30 min)", "feeding": "Solids: pear",
-		"growth": "Mon 1 Jun 2026",
+		"growth": "Mon 1 Jun 2026", "milestones": "Waves bye", "vaccination": "Hepatitis B, dose 1",
 	}
 	for _, m := range constants.ExportModules {
 		strs, _ := pdfStrings(t, k.exportPDF(ana, kid, m))
-		want := []string{}
-		if row, ok := rows[m]; ok {
-			want = []string{sectionTitle(m)}
-			wantStrings(t, m, strs, row)
-			for other, row := range rows {
-				if other != m {
-					wantNoSubstring(t, m, strs, row)
-				}
+		want := []string{sectionTitle(m)}
+		wantStrings(t, m, strs, rows[m])
+		for other, row := range rows {
+			if other != m {
+				wantNoSubstring(t, m, strs, row)
 			}
 		}
-		// Task 13: vaccination and milestones then print their own heading.
 		if got := headings(strs); !slices.Equal(got, want) {
 			t.Errorf("%s alone: headings %q, want %q", m, got, want)
 		}
@@ -358,9 +354,13 @@ func TestExportEmptyKid(t *testing.T) {
 	if pages != 1 {
 		t.Errorf("an empty export has %d pages, want 1", pages)
 	}
-	// Task 13 adds the vaccination and milestones headings and their empty texts.
-	if got := headings(strs); !slices.Equal(got, append(slices.Clone(sectionTitles[:6]), "Growth")) {
+	if got := headings(strs); !slices.Equal(got, sectionTitles) {
 		t.Errorf("headings = %q", got)
+	}
+	for _, empty := range []string{"No milestones recorded", "No vaccinations recorded."} {
+		if n := countOf(strs, empty); n != 1 {
+			t.Errorf("%q appears %d times, want once", empty, n)
+		}
 	}
 	if n := countOf(strs, noEntries); n != 6 {
 		t.Errorf("%q appears %d times, want once per daily tracker", noEntries, n)

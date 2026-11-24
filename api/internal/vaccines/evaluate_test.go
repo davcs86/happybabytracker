@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
+	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 func age(n int, u Unit) Age    { return Age{N: n, Unit: u} }
@@ -57,6 +58,21 @@ func statusOf(t *testing.T, e Evaluation, id string) Status {
 		t.Fatalf("line %s missing", id)
 	}
 	return l.Status
+}
+
+func TestDosesFrom(t *testing.T) {
+	lot, product, note := "L1", "Pediarix", "left thigh"
+	rows := []model.VaccineDose{
+		{ID: "d1", KidID: "k", Administration: "a1", Antigen: "hepatitis_b", GivenOn: "2025-01-10", Lot: &lot, Product: &product, Note: &note},
+		{ID: "d2", KidID: "k", Administration: "a1", Antigen: "polio", GivenOn: "2025-01-10"},
+	}
+	want := []Dose{{ID: "d1", Administration: "a1", Antigen: "hepatitis_b", GivenOn: "2025-01-10"}, {ID: "d2", Administration: "a1", Antigen: "polio", GivenOn: "2025-01-10"}}
+	if got := DosesFrom(rows); !reflect.DeepEqual(got, want) {
+		t.Errorf("DosesFrom = %+v, want %+v", got, want)
+	}
+	if got := DosesFrom(nil); got == nil || len(got) != 0 {
+		t.Errorf("DosesFrom(nil) = %#v, want an empty slice", got)
+	}
 }
 
 func TestEvaluateStatuses(t *testing.T) {

@@ -342,3 +342,17 @@ func TestAliasNeverInUserText(t *testing.T) {
 		t.Fatalf("user text changed by the page-count alias: %q", got)
 	}
 }
+
+func TestBodyIsBodySize(t *testing.T) {
+	op := func(size float64) []byte { return []byte(fmt.Sprintf(" %.2f Tf", size)) }
+	d := New(fixedTime, footerText)
+	d.Body("Prominent text, not small print")
+	if b := render(t, d); !bytes.Contains(b, op(constants.ExportFontSizeBody)) {
+		t.Error("Body is not drawn at the body size")
+	}
+	p := New(fixedTime, footerText)
+	p.Paragraph("Small print")
+	if bytes.Contains(render(t, p), op(constants.ExportFontSizeBody)) {
+		t.Error("the check cannot tell body from small print")
+	}
+}

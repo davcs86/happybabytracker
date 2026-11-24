@@ -9,6 +9,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
+	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 // Status is a line's state for one kid on one day.
@@ -28,6 +29,15 @@ const (
 // Dose is one antigen of a recorded administration; GivenOn is a kid-local YYYY-MM-DD date the caller
 // has already validated (the store does), compared here as a string.
 type Dose struct{ ID, Administration, Antigen, GivenOn string }
+
+// DosesFrom maps stored dose rows to the doses Evaluate reads.
+func DosesFrom(rows []model.VaccineDose) []Dose {
+	out := make([]Dose, len(rows))
+	for i, r := range rows {
+		out[i] = Dose{ID: r.ID, Administration: r.Administration, Antigen: r.Antigen, GivenOn: r.GivenOn}
+	}
+	return out
+}
 
 // LineState is one schedule line evaluated for a kid; FromDate and UntilDate are kid-local, UntilDate exclusive.
 type LineState struct {

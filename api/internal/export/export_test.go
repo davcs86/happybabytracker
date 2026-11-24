@@ -100,9 +100,8 @@ func pumpingItems(n int) []store.TimelineItem {
 func TestRenderSkipsModulesWithoutAWriter(t *testing.T) {
 	kid := model.Kid{Name: "Ada", BirthDate: "2026-03-04", Sex: "male", TimeZone: "UTC", GrowthSource: "cdc"}
 	strs := renderStrings(t, store.ExportSnapshot{Kid: kid}, "growth", "milestones")
-	// Task 13 replaces this: milestones then prints its section.
-	if slices.Contains(strs, "Milestones") {
-		t.Errorf("%q printed before its section exists", "Milestones")
+	if i, j := slices.Index(strs, "Milestones"), slices.Index(strs, "Growth"); i < 0 || i > j || !slices.Contains(strs[i:j], noMilestones) {
+		t.Errorf("milestones section missing or not before growth: %q", strs)
 	}
 	if i := slices.Index(strs, "Growth"); i < 0 || strs[i+1] != noMeasurements {
 		t.Errorf("growth section missing or not empty: %q", strs)

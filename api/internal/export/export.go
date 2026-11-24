@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -43,10 +44,11 @@ var moduleTitle = map[model.Module]string{
 	"feeding": "Feeding", "milestones": "Milestones", "growth": "Growth", "vaccination": "Vaccination",
 }
 
-// item is one drawn element: a chart or a table when set, else a heading, a profile line or a paragraph.
+// item is one drawn element: a chart or a table when set, else a heading, a profile line, body text or a paragraph.
 type item struct {
 	heading      string
 	label, value string
+	body         string
 	paragraph    string
 	cols         []pdfdoc.Col
 	rows         [][]string
@@ -54,7 +56,7 @@ type item struct {
 }
 
 func (it item) texts() []string {
-	out := []string{it.heading, it.label, it.value, it.paragraph}
+	out := []string{it.heading, it.label, it.value, it.body, it.paragraph}
 	for _, c := range it.cols {
 		out = append(out, c.Title)
 	}
@@ -80,6 +82,8 @@ func (it item) draw(d *pdfdoc.Doc) {
 		d.Heading(it.heading)
 	case it.label != "":
 		d.Line(it.label, it.value)
+	case it.body != "":
+		d.Body(it.body)
 	default:
 		d.Paragraph(it.paragraph)
 	}
@@ -95,10 +99,33 @@ func (b *budget) take(n int) int {
 	return k
 }
 
-// sectionWriters builds each module's items; a requested module without a writer prints no section yet (Task 13).
+// section is one section's share of the budget: at most maxRowsPerSection over all its tables.
+type section struct {
+	b    *budget
+	left int
+}
+
+func newSection(b *budget) *section { return &section{b: b, left: maxRowsPerSection} }
+
+// table takes non-empty rows: those the budget lets through, then the overflow line; only that line when none fits.
+func (s *section) table(cols []pdfdoc.Col, rows [][]string) []item {
+	shown := s.b.take(min(len(rows), s.left))
+	s.left -= shown
+	if shown == 0 {
+		return []item{{paragraph: strconv.Itoa(len(rows)) + overflow}}
+	}
+	out := []item{{cols: cols, rows: rows[:shown]}}
+	if len(rows) > shown {
+		out = append(out, item{paragraph: strconv.Itoa(len(rows)-shown) + overflow})
+	}
+	return out
+}
+
+// sectionWriters builds each module's items; a requested module without a writer prints no section yet (Task 17).
 var sectionWriters = map[model.Module]func(snap store.ExportSnapshot, req Request, b *budget) ([]item, error){
 	"bottles": bottles.items, "nursing": nursing.items, "pumping": pumping.items,
-	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items, "growth": growthItems,
+	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items, "milestones": milestoneItems,
+	"growth": growthItems, "vaccination": vaccinationItems,
 }
 
 // Render writes the PDF of req.Modules only, in model.Modules order, after the profile; nothing is written on failure.

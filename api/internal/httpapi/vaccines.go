@@ -191,10 +191,7 @@ func (d Deps) evaluateKid(ctx context.Context, kid model.Kid, s *vaccines.Schema
 	if err != nil {
 		return vaccines.Evaluation{}, nil, "", err
 	}
-	doses := make([]vaccines.Dose, len(rows))
-	for i, r := range rows {
-		doses[i] = vaccines.Dose{ID: r.ID, Administration: r.Administration, Antigen: r.Antigen, GivenOn: r.GivenOn}
-	}
+	doses := vaccines.DosesFrom(rows)
 	var (
 		schema     vaccines.Schema
 		dismissals map[string]string
