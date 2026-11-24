@@ -34,7 +34,7 @@ func nullableString(s sql.NullString) *string {
 	return &s.String
 }
 
-func queryDoses(ctx context.Context, r *sql.DB, tail string, args ...any) ([]model.VaccineDose, error) {
+func queryDoses(ctx context.Context, r querier, tail string, args ...any) ([]model.VaccineDose, error) {
 	rows, err := r.QueryContext(ctx, `SELECT `+doseColumns+` FROM vaccine_doses `+tail, args...)
 	if err != nil {
 		return nil, err
@@ -246,7 +246,11 @@ func (s *Store) ClearDismissal(ctx context.Context, kidID, actorID, schema, line
 
 // Dismissals maps each dismissed line of the kid's schema to its reason; never nil.
 func (s *Store) Dismissals(ctx context.Context, kidID, schema string) (map[string]string, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT line, reason FROM vaccine_dismissals WHERE kid_id = ? AND schema = ?`, kidID, schema)
+	return dismissals(ctx, s.r, kidID, schema)
+}
+
+func dismissals(ctx context.Context, q querier, kidID, schema string) (map[string]string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT line, reason FROM vaccine_dismissals WHERE kid_id = ? AND schema = ?`, kidID, schema)
 	if err != nil {
 		return nil, err
 	}

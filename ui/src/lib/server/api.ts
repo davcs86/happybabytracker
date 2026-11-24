@@ -1,4 +1,11 @@
-import { API_TIMEOUT_MS, ID_PATTERN, TOKEN_PATTERN, VACCINE_LINE_PATTERN } from './constants';
+import {
+	API_TIMEOUT_MS,
+	EXPORT_DISPOSITION_PATTERN,
+	EXPORT_TIMEOUT_MS,
+	ID_PATTERN,
+	TOKEN_PATTERN,
+	VACCINE_LINE_PATTERN
+} from './constants';
 import type { Env } from './env';
 import {
 	AGE_BANDS,
@@ -8,6 +15,9 @@ import {
 	GROWTH_SOURCES,
 	LENGTH_UNITS,
 	MEASURES,
+	MILESTONE_AGES,
+	MILESTONE_DOMAINS,
+	MILESTONE_POSITIONS,
 	MODULES,
 	NURSING_SIDES,
 	PUMPING_SIDES,
@@ -36,6 +46,7 @@ import type {
 	DaySummary,
 	Diaper,
 	EntryBody,
+	ExportInput,
 	Grant,
 	GrowthLength,
 	GrowthRow,
@@ -51,6 +62,11 @@ import type {
 	Meal,
 	Medication,
 	MedicationDose,
+	MilestoneChecklist,
+	MilestoneEntry,
+	MilestoneItem,
+	MilestoneReached,
+	Milestones,
 	Milk,
 	ModuleId,
 	ModuleState,
@@ -106,6 +122,10 @@ export type ApiResult<T> =
 	| { ok: true; data: T }
 	| { ok: false; status: number; reason: ApiReason; code?: string; field?: string };
 
+export type ExportResult =
+	| { ok: true; body: ReadableStream<Uint8Array>; contentType: string; disposition: string }
+	| Extract<ApiResult<never>, { ok: false }>;
+
 type Endpoint =
 	| 'health'
 	| 'reminders_health'
@@ -131,7 +151,7 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose' | 'milestone'}`
 	| 'push_state'
 	| 'list_push_devices'
 	| 'upsert_push_device'
@@ -159,7 +179,8 @@ type Endpoint =
 	| 'vaccine_catalogue'
 	| 'set_dismissal'
 	| 'clear_dismissal'
-	| 'dismiss_before';
+	| 'dismiss_before'
+	| 'export_pdf';
 
 // Thrown by a wire-shape parser; the call becomes reason 'error'.
 class ShapeError extends Error {}
@@ -723,6 +744,84 @@ function toMedicationDose(v: unknown): MedicationDose {
 	};
 }
 
+function toMilestoneReached(v: unknown): MilestoneReached {
+	const o = object(v);
+	return { id: string(o.id), reachedOn: string(o.reached_on), note: stringOrNull(o.note) };
+}
+
+const toMilestoneDomain = (v: unknown) => oneOf(v, MILESTONE_DOMAINS);
+
+function toMilestoneAge(v: unknown): number {
+	const age = int(v);
+	if (!(MILESTONE_AGES as readonly number[]).includes(age)) throw new ShapeError();
+	return age;
+}
+
+function toMilestoneItem(v: unknown): MilestoneItem {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		domain: toMilestoneDomain(o.domain),
+		text: string(o.text),
+		reached: nullOr(o.reached, toMilestoneReached)
+	};
+}
+
+function toMilestoneChecklist(v: unknown): MilestoneChecklist {
+	const o = object(v);
+	return {
+		ageMonths: toMilestoneAge(o.age_months),
+		position: oneOf(o.position, MILESTONE_POSITIONS),
+		items: list(o, 'items', toMilestoneItem)
+	};
+}
+
+function toMilestones(v: unknown): Milestones {
+	const o = object(v);
+	const c = object(o.catalog);
+	const age = object(o.age);
+	return {
+		catalog: {
+			id: string(c.id),
+			name: string(c.name),
+			authority: string(c.authority),
+			edition: string(c.edition),
+			retrieved: string(c.retrieved),
+			originUrl: string(c.origin_url),
+			licence: string(c.licence),
+			attribution: string(c.attribution),
+			screeningNote: string(c.screening_note)
+		},
+		age: {
+			chronologicalMonths: int(age.chronological_months),
+			correctedMonths: intOrNull(age.corrected_months),
+			basisMonths: int(age.basis_months)
+		},
+		catalogShown: boolean(o.catalog_shown),
+		checklists: list(o, 'checklists', toMilestoneChecklist),
+		custom: list(o, 'custom', (r) => ({ ...toMilestoneReached(r), text: string(object(r).text) })),
+		retired: list(o, 'retired', (r) => {
+			const row = object(r);
+			return { ...toMilestoneReached(r), item: string(row.item), text: string(row.text) };
+		}),
+		reached: list(o, 'reached', (r) => {
+			const row = object(r);
+			return {
+				...toMilestoneReached(r),
+				item: string(row.item),
+				ageMonths: toMilestoneAge(row.age_months),
+				domain: toMilestoneDomain(row.domain),
+				text: string(row.text)
+			};
+		})
+	};
+}
+
+function toMilestoneEntry(v: unknown): MilestoneEntry {
+	const o = object(v);
+	return { ...toMilestoneReached(o), item: stringOrNull(o.item), text: string(o.text) };
+}
+
 function toPushState(v: unknown): PushState {
 	const o = object(v);
 	if (!boolean(o.enabled)) return { enabled: false };
@@ -899,6 +998,17 @@ export function createApi(
 ) {
 	const base = env.apiBaseUrl.replace(/\/+$/, '');
 
+	function requestHeaders(accept: string, json: boolean): Record<string, string> {
+		const headers: Record<string, string> = {
+			authorization: `Bearer ${env.internalApiToken}`,
+			accept
+		};
+		if (json) headers['content-type'] = 'application/json';
+		if (session) headers['x-session-token'] = session;
+		if (clientAddress) headers['x-client-address'] = clientAddress;
+		return headers;
+	}
+
 	async function call<T>(
 		endpoint: Endpoint,
 		method: string,
@@ -906,14 +1016,7 @@ export function createApi(
 		parse: ((body: unknown) => T) | null,
 		body?: unknown
 	): Promise<ApiResult<T>> {
-		const headers: Record<string, string> = {
-			authorization: `Bearer ${env.internalApiToken}`,
-			accept: 'application/json'
-		};
-		if (body !== undefined) headers['content-type'] = 'application/json';
-		if (session) headers['x-session-token'] = session;
-		if (clientAddress) headers['x-client-address'] = clientAddress;
-
+		const headers = requestHeaders('application/json', body !== undefined);
 		let res: Response;
 		let raw: unknown = undefined;
 		let parsed = true;
@@ -935,18 +1038,7 @@ export function createApi(
 			return { ok: false, status: 0, reason: 'unavailable' };
 		}
 
-		if (!res.ok) {
-			logFailure(endpoint, res.status);
-			const failure: ApiResult<T> = {
-				ok: false,
-				status: res.status,
-				reason: reasonFor(res.status)
-			};
-			const err = typeof raw === 'object' && raw !== null ? (raw as Wire) : {};
-			if (typeof err.error === 'string') failure.code = err.error;
-			if (res.status === 422 && typeof err.field === 'string') failure.field = err.field;
-			return failure;
-		}
+		if (!res.ok) return refused(endpoint, res.status, raw);
 		if (parse === null) return { ok: true, data: null as T };
 		try {
 			if (!parsed) throw new ShapeError();
@@ -955,6 +1047,63 @@ export function createApi(
 			logFailure(endpoint, res.status);
 			return { ok: false, status: res.status, reason: 'error' };
 		}
+	}
+
+	function refused(endpoint: Endpoint, status: number, raw: unknown) {
+		logFailure(endpoint, status);
+		const failure: Extract<ApiResult<never>, { ok: false }> = {
+			ok: false,
+			status,
+			reason: reasonFor(status)
+		};
+		const err = typeof raw === 'object' && raw !== null ? (raw as Wire) : {};
+		if (typeof err.error === 'string') failure.code = err.error;
+		if (status === 422 && typeof err.field === 'string') failure.field = err.field;
+		return failure;
+	}
+
+	// A 200 is streamed unread, and only as a PDF attachment; a refusal's JSON is read as call() reads it.
+	async function exportPdf(kidId: string, input: ExportInput): Promise<ExportResult> {
+		const endpoint = 'export_pdf';
+		let res: Response;
+		let raw: unknown = undefined;
+		// The timeout bounds the wait for the headers and a refusal's body only; the PDF streams after it.
+		const timeout = new AbortController();
+		const timer = setTimeout(
+			() => timeout.abort(new DOMException('export timed out', 'TimeoutError')),
+			EXPORT_TIMEOUT_MS
+		);
+		try {
+			res = await fetchFn(`${base}/v1/kids/${kidId}/export`, {
+				method: 'POST',
+				headers: requestHeaders('application/pdf', true),
+				body: JSON.stringify(input),
+				signal: timeout.signal
+			});
+			if (!res.ok) {
+				raw = await res.json().catch((e: unknown) => {
+					if (isAbort(e)) throw e;
+				});
+			}
+		} catch (e) {
+			logFailure(endpoint, isAbort(e) ? 'timeout' : 'network');
+			return { ok: false, status: 0, reason: 'unavailable' };
+		} finally {
+			clearTimeout(timer);
+		}
+		if (!res.ok) return refused(endpoint, res.status, raw);
+		const contentType = res.headers.get('content-type') ?? '';
+		const disposition = res.headers.get('content-disposition') ?? '';
+		if (
+			res.body === null ||
+			contentType !== 'application/pdf' ||
+			!EXPORT_DISPOSITION_PATTERN.test(disposition)
+		) {
+			await res.body?.cancel().catch(() => {});
+			logFailure(endpoint, res.status);
+			return { ok: false, status: res.status, reason: 'error' };
+		}
+		return { ok: true, body: res.body, contentType, disposition };
 	}
 
 	const tokenPath = (token: string) =>
@@ -1162,6 +1311,35 @@ export function createApi(
 					call<null>('delete_dose', 'DELETE', `/v1/kids/${k}/medication-doses/${i}`, null)
 				)
 		},
+		// input is the API's own JSON body, as readMilestoneForm builds it.
+		milestones: {
+			list: (kidId: string) =>
+				withId(kidId, (k) =>
+					call('list_milestone', 'GET', `/v1/kids/${k}/milestones`, toMilestones)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_milestone', 'GET', `/v1/kids/${k}/milestones/${i}`, toMilestoneEntry)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_milestone', 'POST', `/v1/kids/${k}/milestones`, toMilestoneEntry, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call(
+						'update_milestone',
+						'PATCH',
+						`/v1/kids/${k}/milestones/${i}`,
+						toMilestoneEntry,
+						input
+					)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_milestone', 'DELETE', `/v1/kids/${k}/milestones/${i}`, null)
+				)
+		},
 		// A write answers 409 with code push_unavailable while Web Push is off; list and removal still work.
 		push: {
 			state: () => call('push_state', 'GET', '/v1/push', toPushState),
@@ -1364,6 +1542,8 @@ export function createApi(
 					(b) => int(object(b).dismissed),
 					{ before, reason }
 				)
-			)
+			),
+		exportPdf: (kidId: string, input: ExportInput): Promise<ExportResult> =>
+			ID_PATTERN.test(kidId) ? exportPdf(kidId, input) : Promise.resolve(NOT_FOUND)
 	};
 }

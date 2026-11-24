@@ -555,8 +555,9 @@ Every page that shows kid data is sent `Cache-Control: no-store`.
 
 JSON lines. They carry ids (kid, parent, entry, request, reminder) and enumerated facts (route,
 tracker, role, status, outcome, durations). Never a name, a username, a note, a health value, a
-medication name, a push endpoint or a secret. URLs carry ids and `from`/`to`/`types` only, so the
-edge's Caddy access log holds nothing else either.
+medication name, a push endpoint or a secret. URLs carry ids and `from`/`to`/`types` only, plus, on the
+export page's validation redirect, `error` (a field name or `busy`) and `modules` (enumerated module ids,
+never a value or a name), so the edge's Caddy access log holds nothing else either.
 
 ## 14. Build and release (this repo)
 

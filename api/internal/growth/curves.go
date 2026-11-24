@@ -115,3 +115,16 @@ func curveAges(from, to float64) []float64 {
 	}
 	return ages
 }
+
+// Imperial is the display-only pounds or inches of a curve value; nil for BMI, which has no imperial unit.
+func Imperial(m Measure, v float64) *float64 {
+	switch m {
+	case Weight:
+		v *= constants.PoundsPerKG
+	case Length, Head:
+		v /= constants.CMPerInch
+	default:
+		return nil
+	}
+	return &v
+}

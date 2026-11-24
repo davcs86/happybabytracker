@@ -216,6 +216,8 @@ export type ModuleId =
 	| 'vaccination'
 	| 'sickness'
 	| 'medication';
+// The export's JSON body: kid-local dates, ids in EXPORT_MODULES order.
+export type ExportInput = { from: string; to: string; modules: ModuleId[] };
 export type ModuleState = {
 	module: ModuleId;
 	enabled: boolean;
@@ -393,3 +395,47 @@ export type HomeDueMedication = {
 	state: 'due' | 'overdue';
 };
 export type HomeDue = HomeDueVaccine | HomeDueMedication;
+
+export type MilestoneDomain =
+	'social_emotional' | 'language_communication' | 'cognitive' | 'movement_physical';
+export type MilestonePosition = 'earlier' | 'current' | 'next' | 'later';
+// Dates are YYYY-MM-DD in the kid's zone.
+export type MilestoneReached = Noted & { reachedOn: string };
+export type MilestoneItem = {
+	id: string;
+	domain: MilestoneDomain;
+	text: string;
+	reached: MilestoneReached | null;
+};
+export type MilestoneChecklist = {
+	ageMonths: number;
+	position: MilestonePosition;
+	items: MilestoneItem[];
+};
+// checklists is empty once catalogShown is false; reached then lists the reached catalog rows.
+export type Milestones = {
+	catalog: {
+		id: string;
+		name: string;
+		authority: string;
+		edition: string;
+		retrieved: string;
+		originUrl: string;
+		licence: string;
+		attribution: string;
+		screeningNote: string;
+	};
+	age: { chronologicalMonths: number; correctedMonths: number | null; basisMonths: number };
+	catalogShown: boolean;
+	checklists: MilestoneChecklist[];
+	custom: (MilestoneReached & { text: string })[];
+	retired: (MilestoneReached & { item: string; text: string })[];
+	reached: (MilestoneReached & {
+		item: string;
+		ageMonths: number;
+		domain: MilestoneDomain;
+		text: string;
+	})[];
+};
+// item is null for a custom milestone; text is the catalog's for an item.
+export type MilestoneEntry = MilestoneReached & { item: string | null; text: string };

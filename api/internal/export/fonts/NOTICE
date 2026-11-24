@@ -1,0 +1,15 @@
+Noto Sans, version 2.015 (unhinted static TrueType)
+
+Files:
+  NotoSans-Regular.ttf  431,364 bytes  SHA-256 f3961a9cde016d41a4879aecda1474d3a36d6bf54fa0e4643de029cc2248b0e8
+  NotoSans-Bold.ttf     432,376 bytes  SHA-256 87cb2d84472a7d66da659ee47b6cdb9552326e8c128245231f191b6ac72529d9
+  LICENSE (OFL.txt)       4,396 bytes  SHA-256 cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a
+
+Sources (retrieved 2026-11-24):
+  https://raw.githubusercontent.com/notofonts/notofonts.github.io/main/fonts/NotoSans/unhinted/ttf/NotoSans-Regular.ttf
+  https://raw.githubusercontent.com/notofonts/notofonts.github.io/main/fonts/NotoSans/unhinted/ttf/NotoSans-Bold.ttf
+  https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt
+
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
+
+These fonts are not covered by the MIT licence of this repository; they are licensed under the SIL Open Font License 1.1 (see LICENSE). Subsets of them are embedded in every exported PDF; the OFL does not apply to those documents.

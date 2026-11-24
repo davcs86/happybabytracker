@@ -40,19 +40,6 @@ type curvesView struct {
 	CorrectedAgeAxis bool       `json:"corrected_age_axis"`
 }
 
-// imperialOf is the display-only pounds or inches of a curve value; nil for BMI, which has no imperial unit.
-func imperialOf(m growth.Measure, v float64) *float64 {
-	switch m {
-	case growth.Weight:
-		v *= constants.PoundsPerKG
-	case growth.Length, growth.Head:
-		v /= constants.CMPerInch
-	default:
-		return nil
-	}
-	return &v
-}
-
 // monthsParam reads a finite month count in [0, CurveMaxMonths]; def when the key is absent.
 func monthsParam(r *http.Request, key string, def float64) (float64, bool) {
 	q := r.URL.Query()
@@ -125,7 +112,7 @@ func (d Deps) growthCurves(w http.ResponseWriter, r *http.Request) {
 	for _, c := range curves {
 		line := lineView{Percentile: c.Percentile, Points: make([]pointView, len(c.Points))}
 		for i, p := range c.Points {
-			line.Points[i] = pointView{AgeMonths: p.AgeMonths, Metric: p.Value, Imperial: imperialOf(m, p.Value), Gap: p.Gap}
+			line.Points[i] = pointView{AgeMonths: p.AgeMonths, Metric: p.Value, Imperial: growth.Imperial(m, p.Value), Gap: p.Gap}
 		}
 		v.Lines = append(v.Lines, line)
 	}

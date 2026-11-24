@@ -5,6 +5,7 @@ go 1.27
 toolchain go1.27.4
 
 require (
+	codeberg.org/go-pdf/fpdf v0.12.0
 	github.com/google/uuid v1.6.0
 	golang.org/x/crypto v0.58.0
 	modernc.org/sqlite v1.61.0

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"time"
 
@@ -60,15 +59,6 @@ type growthView struct {
 	Scores     scoresView  `json:"scores"`
 }
 
-// roundTo rounds x to decimals places; never -0.
-func roundTo(x float64, decimals int) float64 {
-	p := math.Pow(10, float64(decimals))
-	if r := math.Round(x*p) / p; r != 0 {
-		return r
-	}
-	return 0
-}
-
 func newLengthView(l *units.Length) *lengthView {
 	if l == nil {
 		return nil
@@ -87,46 +77,37 @@ func newGrowthView(g model.Growth, kid model.Kid, loc *time.Location) (growthVie
 	if basis.Corrected {
 		v.Age.CorrectedDays = &basis.ScoringDays
 	}
-	src, sex := growth.Source(kid.GrowthSource), growth.Sex(kid.Sex)
-	score := func(m growth.Measure, value float64) (*scoreView, error) {
-		if basis.ScoringDays < 0 {
-			return &scoreView{Reason: "before_term"}, nil
-		}
-		s, err := growth.ScoreOf(src, m, sex, basis.ScoringDays, value)
-		if errors.Is(err, growth.ErrNotCovered) {
-			return &scoreView{Reason: "not_covered"}, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		z, p := roundTo(s.Z, constants.ZScoreDecimals), roundTo(s.Percentile, constants.PercentileDecimals)
-		return &scoreView{Scored: true, Z: &z, Percentile: &p}, nil
-	}
+	var weightG, lengthMM, headMM *int64
 	if w := g.Weight; w != nil {
 		v.Weight = &weightView{Grams: w.Grams, OzHundredths: w.OzHundredths, TypedUnit: w.Typed}
-		if v.Scores.Weight, err = score(growth.Weight, float64(w.Grams)/1000); err != nil {
-			return growthView{}, err
-		}
+		weightG = &w.Grams
 	}
-	if l := g.Length; l != nil {
-		if v.Scores.Length, err = score(growth.Length, float64(l.MM)/10); err != nil {
-			return growthView{}, err
-		}
+	if g.Length != nil {
+		lengthMM = &g.Length.MM
 	}
-	if h := g.Head; h != nil {
-		if v.Scores.Head, err = score(growth.Head, float64(h.MM)/10); err != nil {
-			return growthView{}, err
-		}
+	if g.Head != nil {
+		headMM = &g.Head.MM
 	}
-	if g.Weight != nil && g.Length != nil {
-		bmi := float64(g.Weight.Grams) * 1000 / (float64(g.Length.MM) * float64(g.Length.MM))
-		if v.Scores.BMI, err = score(growth.BMI, bmi); err != nil {
-			return growthView{}, err
-		}
-		value := roundTo(bmi, constants.BMIDecimals)
-		v.Scores.BMI.Value = &value
+	s, err := growth.ScoreRow(growth.Source(kid.GrowthSource), growth.Sex(kid.Sex), basis, weightG, lengthMM, headMM)
+	if err != nil {
+		return growthView{}, err
+	}
+	v.Scores = scoresView{Weight: newScoreView(s.Weight), Length: newScoreView(s.Length), Head: newScoreView(s.Head), BMI: newScoreView(s.BMI)}
+	if v.Scores.BMI != nil {
+		v.Scores.BMI.Value = s.BMIValue
 	}
 	return v, nil
+}
+
+func newScoreView(s *growth.MeasureScore) *scoreView {
+	if s == nil {
+		return nil
+	}
+	if !s.Scored {
+		return &scoreView{Reason: s.Reason}
+	}
+	z, p := s.Z, s.Percentile
+	return &scoreView{Scored: true, Z: &z, Percentile: &p}
 }
 
 type measureInput struct {
