@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,11 +21,11 @@ import (
 )
 
 const (
-	exportFrom = "2026-11-01"
-	exportTo   = "2026-11-20"
-	overflowOf = " more entries in this range are not shown. Export a shorter range to see them."
-	noEntries  = "No entries in this range."
-	notice     = "Some characters cannot be shown in this PDF and appear as ?"
+	exportFrom  = "2026-11-01"
+	exportTo    = "2026-11-20"
+	overflowOne = "1 more entry in this range is not shown. Export a shorter range to see it."
+	noEntries   = "No entries in this range."
+	notice      = "Some characters cannot be shown in this PDF and appear as ?"
 )
 
 var sectionTitles = []string{"Bottles", "Nursing", "Pumping", "Diapers", "Sleep", "Feeding", "Milestones", "Growth", "Vaccination", "Sickness", "Medication"}
@@ -378,9 +379,93 @@ func TestExportBusy(t *testing.T) {
 	<-exportSlots
 	k.exportPDF(ana, kid, "bottles")
 	k.exportPDF(ana, kid, "bottles")
-	if len(exportSlots) != 0 {
-		t.Errorf("%d slots still held after the exports", len(exportSlots))
+	wantNoSlotsHeld(t, "after the exports")
+}
+
+// slowWriter is a response writer whose first Write blocks until release is closed.
+type slowWriter struct {
+	header           http.Header
+	status           int
+	body             bytes.Buffer
+	entered, release chan struct{}
+	once, freed      sync.Once
+}
+
+func (s *slowWriter) free() { s.freed.Do(func() { close(s.release) }) }
+
+func newSlowWriter() *slowWriter {
+	return &slowWriter{header: http.Header{}, entered: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (s *slowWriter) Header() http.Header  { return s.header }
+func (s *slowWriter) WriteHeader(code int) { s.status = code }
+func (s *slowWriter) Write(p []byte) (int, error) {
+	s.once.Do(func() { close(s.entered) })
+	<-s.release
+	return s.body.Write(p)
+}
+
+// slowExport starts an export whose download blocks in Write; done closes when the handler returns.
+func (k *kit) slowExport(token, kid string) (w *slowWriter, done chan struct{}) {
+	k.t.Helper()
+	r := k.newReq(http.MethodPost, "/v1/kids/"+kid+"/export", exportBody(exportFrom, exportTo, "bottles"))
+	r.Header.Set("X-Session-Token", token)
+	w, done = newSlowWriter(), make(chan struct{})
+	go func() {
+		defer close(done)
+		k.Handler.ServeHTTP(w, r)
+	}()
+	k.t.Cleanup(func() { w.free(); <-done })
+	select {
+	case <-w.entered:
+	case <-done:
+		k.t.Fatalf("export ended before writing: %d %q", w.status, w.body.String())
+	case <-time.After(30 * time.Second):
+		k.t.Fatal("export never reached Write")
 	}
+	return w, done
+}
+
+func wantNoSlotsHeld(t *testing.T, when string) {
+	t.Helper()
+	if n, m := len(exportSlots), len(exportWriteSlots); n != 0 || m != 0 {
+		t.Errorf("%s: %d render and %d write slots still held", when, n, m)
+	}
+}
+
+// TestExportSlowDownload: a download blocked in Write holds a write slot only; other exports render and complete.
+func TestExportSlowDownload(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	var slow []*slowWriter
+	var dones []chan struct{}
+	for range constants.MaxConcurrentExportWrites - 1 {
+		w, done := k.slowExport(ana, kid)
+		slow, dones = append(slow, w), append(dones, done)
+	}
+	k.exportPDF(ana, kid, "bottles")
+
+	w, done := k.slowExport(ana, kid)
+	slow, dones = append(slow, w), append(dones, done)
+	rec := k.exportReq(ana, kid, exportBody(exportFrom, exportTo, "bottles"))
+	wantErr(t, rec, http.StatusServiceUnavailable, "busy")
+	if ct := rec.Header().Get("Content-Type"); ct == "application/pdf" || bytes.Contains(rec.Body.Bytes(), []byte("%PDF")) {
+		t.Errorf("a refused export wrote PDF bytes or headers: %q %q", ct, rec.Body.String())
+	}
+	if len(exportSlots) != 0 {
+		t.Errorf("the render slot is held through a download")
+	}
+
+	for i, w := range slow {
+		w.free()
+		<-dones[i]
+		if w.status != http.StatusOK || !bytes.HasPrefix(w.body.Bytes(), []byte("%PDF")) {
+			t.Errorf("slow download %d: %d, %d bytes", i, w.status, w.body.Len())
+		}
+	}
+	wantNoSlotsHeld(t, "after the downloads and the refusal")
+	k.exportPDF(ana, kid, "bottles")
+	wantNoSlotsHeld(t, "after a download")
 }
 
 // TestExportReleasesTheSlotOnFailure: a render that fails after taking the slot frees it for the next export.
@@ -392,9 +477,7 @@ func TestExportReleasesTheSlotOnFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantErr(t, k.exportReq(ana, kid, exportBody(exportFrom, exportTo, "milestones")), http.StatusInternalServerError, "internal")
-	if len(exportSlots) != 0 {
-		t.Errorf("%d slots still held after a failed render", len(exportSlots))
-	}
+	wantNoSlotsHeld(t, "after a failed render")
 	k.exportPDF(ana, kid, "bottles")
 }
 
@@ -562,7 +645,7 @@ func TestExportCaps(t *testing.T) {
 	if n := len(withPrefix(strs, "Bottle ")); n != 1860 {
 		t.Errorf("1860 bottles printed %d rows", n)
 	}
-	wantNoSubstring(t, "1860", strs, overflowOf)
+	wantNoSubstring(t, "1860", strs, " not shown.")
 	if n := countOf(strs, "20 · 1200 ml"); n != 93 {
 		t.Errorf("%d day totals of 20 bottles, want 93", n)
 	}
@@ -574,7 +657,7 @@ func TestExportCaps(t *testing.T) {
 	if n := len(withPrefix(strs, "Bottle ")); n != 3000 {
 		t.Errorf("3001 bottles printed %d rows, want 3000", n)
 	}
-	if n := countOf(strs, "1"+overflowOf); n != 1 {
+	if n := countOf(strs, overflowOne); n != 1 {
 		t.Errorf("the overflow line appears %d times, want once", n)
 	}
 	// Two bottles print as 2026-08-20 00:00; the oldest of them is the one left out.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -19,8 +20,11 @@ import (
 // loadFonts is replaced by tests to simulate embedded fonts that failed to load.
 var loadFonts = fonts.Load
 
-// exportSlots admits MaxConcurrentExports renders; a request finding none free is refused, never queued.
-var exportSlots = make(chan struct{}, constants.MaxConcurrentExports)
+// exportSlots admits MaxConcurrentExports renders and exportWriteSlots MaxConcurrentExportWrites downloads; neither queues.
+var (
+	exportSlots      = make(chan struct{}, constants.MaxConcurrentExports)
+	exportWriteSlots = make(chan struct{}, constants.MaxConcurrentExportWrites)
+)
 
 type exportInput struct {
 	From    string          `json:"from"`
@@ -130,11 +134,12 @@ func (d Deps) export(w http.ResponseWriter, r *http.Request) {
 	}
 	select {
 	case exportSlots <- struct{}{}:
-		defer func() { <-exportSlots }()
 	default:
 		respondError(w, http.StatusServiceUnavailable, "busy")
 		return
 	}
+	releaseRender := sync.OnceFunc(func() { <-exportSlots })
+	defer releaseRender()
 	snap, err := d.Store.ExportSnapshot(r.Context(), kid.ID, modules, exportTypes(modules), loc, from, to, now, constants.ExportMaxRowsPerSection)
 	if !entryOK(w, err) {
 		return
@@ -145,6 +150,15 @@ func (d Deps) export(w http.ResponseWriter, r *http.Request) {
 		respondInternal(w, err)
 		return
 	}
+	// Tried before the render slot is freed, so a refused render never overlaps the next one.
+	select {
+	case exportWriteSlots <- struct{}{}:
+		defer func() { <-exportWriteSlots }()
+	default:
+		respondError(w, http.StatusServiceUnavailable, "busy")
+		return
+	}
+	releaseRender()
 	h := w.Header()
 	h.Set("Content-Type", "application/pdf")
 	h.Set("Content-Disposition", `attachment; filename="happybabytracker-`+in.From+`-`+in.To+`.pdf"`)

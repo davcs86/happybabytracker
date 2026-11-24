@@ -21,10 +21,19 @@ const (
 
 const (
 	noEntries = "No entries in this range."
-	overflow  = " more entries in this range are not shown. Export a shorter range to see them."
 	running   = "running"
 	dayTotal  = "Day total"
 )
+
+// overflowLine words the n entries a section leaves out, where says which ones and export how to see them.
+func overflowLine(n int, where, export string) string {
+	if n == 1 {
+		return "1 more entry " + where + " is not shown. " + export + " to see it."
+	}
+	return strconv.Itoa(n) + " more entries " + where + " are not shown. " + export + " to see them."
+}
+
+func overflow(n int) string { return overflowLine(n, "in this range", "Export a shorter range") }
 
 var entryCols = []pdfdoc.Col{
 	{Title: "Time", WidthMM: contentWidth * timeShare},
@@ -52,7 +61,7 @@ func (tr tracker) items(snap store.ExportSnapshot, req Request, b *budget) ([]it
 	entries, count := snap.Entries[tr.typ], snap.Counts[tr.typ]
 	shown := min(b.take(count), len(entries))
 	if count > 0 && shown == 0 {
-		return append(out, item{paragraph: strconv.Itoa(count) + overflow}), nil
+		return append(out, item{paragraph: overflow(count)}), nil
 	}
 	if count == 0 {
 		out = append(out, item{paragraph: noEntries})
@@ -63,7 +72,7 @@ func (tr tracker) items(snap store.ExportSnapshot, req Request, b *budget) ([]it
 		}
 		out = append(out, item{cols: entryCols, rows: rows})
 		if count > shown {
-			out = append(out, item{paragraph: strconv.Itoa(count-shown) + overflow})
+			out = append(out, item{paragraph: overflow(count - shown)})
 		}
 	}
 	var days [][]string

@@ -18,10 +18,16 @@ type ExportSnapshot struct {
 	Growth          []model.Growth
 	Doses           []model.VaccineDose
 	Administrations []model.Administration
-	Dismissals      map[string]string
+	Dismissals      map[string]ExportDismissal // per dismissed line of the kid's schema
 	Milestones      []model.Milestone
 	Medications     []model.Medication     // Open value 7 (R1), oldest start first, at most rowCap+1; no last dose, next due or count
 	MedicationDoses []model.MedicationDose // given in the range, newest first by (GivenAt, ID), at most rowCap+1
+}
+
+// ExportDismissal is a dismissal's reason and when it was made.
+type ExportDismissal struct {
+	Reason    string
+	CreatedAt time.Time
 }
 
 // exportTables names each exportable type's table and time column, both code constants.
@@ -143,9 +149,9 @@ func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []mode
 			if err != nil {
 				return err
 			}
-			snap.Administrations, snap.Dismissals = groupDoses(admin), map[string]string{}
+			snap.Administrations, snap.Dismissals = groupDoses(admin), map[string]ExportDismissal{}
 			if snap.Kid.VaccineSchema != nil {
-				if snap.Dismissals, err = dismissals(ctx, q, kidID, *snap.Kid.VaccineSchema); err != nil {
+				if snap.Dismissals, err = exportDismissals(ctx, q, kidID, *snap.Kid.VaccineSchema); err != nil {
 					return err
 				}
 			}
@@ -164,4 +170,22 @@ func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []mode
 		return ExportSnapshot{}, err
 	}
 	return snap, nil
+}
+
+func exportDismissals(ctx context.Context, q querier, kidID, schema string) (map[string]ExportDismissal, error) {
+	rows, err := q.QueryContext(ctx, `SELECT line, reason, created_at FROM vaccine_dismissals WHERE kid_id = ? AND schema = ?`, kidID, schema)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]ExportDismissal{}
+	for rows.Next() {
+		var line, reason string
+		var at int64
+		if err := rows.Scan(&line, &reason, &at); err != nil {
+			return nil, err
+		}
+		out[line] = ExportDismissal{Reason: reason, CreatedAt: time.Unix(at, 0)}
+	}
+	return out, rows.Err()
 }

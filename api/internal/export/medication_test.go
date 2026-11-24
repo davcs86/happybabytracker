@@ -81,7 +81,7 @@ func TestMedicationBudget(t *testing.T) {
 		dose("d2", "m1", at(2), ptr("two"), nil))
 	snap.Counts["medication_dose"] = 7
 	text := joined(renderWith(t, snap, metric, time.UTC, "medication"))
-	wantIn(t, "budget", text, "three", "four", "5"+overflow)
+	wantIn(t, "budget", text, "three", "four", overflow(5))
 	wantNotIn(t, "budget", text, " two")
 	if strings.Index(text, "three") > strings.Index(text, "four") {
 		t.Error("the shown doses are not oldest first")

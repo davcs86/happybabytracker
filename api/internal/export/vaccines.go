@@ -94,8 +94,8 @@ func optional(s *string) string {
 	return Text(*s)
 }
 
-// vaccinationItems evaluates the doses given up to req.To as of min(req.To, kid-local today); dismissals carry no
-// date, so every stored one applies.
+// vaccinationItems evaluates the doses given up to req.To, and the dismissals made by the end of the as-of day, as of
+// min(req.To, kid-local today).
 func vaccinationItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, error) {
 	names := map[string]string{}
 	for _, a := range vaccines.Antigens() {
@@ -125,7 +125,18 @@ func vaccinationItems(snap store.ExportSnapshot, req Request, b *budget) ([]item
 	if chosen {
 		start, _ := kidtime.DayBounds(req.Loc, req.Now)
 		asOf := min(req.To, start.Format(time.DateOnly))
-		e, err := vaccines.Evaluate(schema, vaccines.DosesFrom(doses), snap.Dismissals, snap.Kid.BirthDate, asOf, req.Loc)
+		day, err := kidtime.ParseDate(asOf, req.Loc)
+		if err != nil {
+			return nil, err
+		}
+		_, end := kidtime.DayBounds(req.Loc, day)
+		dismissed := map[string]string{}
+		for line, d := range snap.Dismissals {
+			if d.CreatedAt.Before(end) {
+				dismissed[line] = d.Reason
+			}
+		}
+		e, err := vaccines.Evaluate(schema, vaccines.DosesFrom(doses), dismissed, snap.Kid.BirthDate, asOf, req.Loc)
 		if err != nil {
 			return nil, err
 		}

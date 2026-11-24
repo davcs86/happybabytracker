@@ -99,7 +99,7 @@ func TestSicknessBudget(t *testing.T) {
 	)
 	snap.Counts["symptom"] = 5
 	text := joined(renderWith(t, snap, metric, time.UTC, "sickness"))
-	wantIn(t, "budget", text, "Cough", "Rash", "3"+overflow)
+	wantIn(t, "budget", text, "Cough", "Rash", overflow(3))
 	wantNotIn(t, "budget", text, "Vomiting")
 	if strings.Index(text, "Cough") > strings.Index(text, "Rash") {
 		t.Error("the shown rows are not oldest first")

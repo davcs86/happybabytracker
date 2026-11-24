@@ -225,13 +225,16 @@ const (
 	ExportChartYTicks = 5
 )
 
-// Export limits: inclusive kid-local days per export, printed rows per section and in all, exports at once.
+// Export limits: inclusive kid-local days per export, printed rows per section and in all, renders at once.
 const (
 	ExportMaxDays           = 93
 	ExportMaxRowsPerSection = 3000
 	ExportMaxRows           = 6000
 	MaxConcurrentExports    = 1
 )
+
+// MaxConcurrentExportWrites caps finished exports being downloaded; each holds up to ExportMaxBytes.
+const MaxConcurrentExportWrites = 2
 
 // ExportMaxBytes caps one rendered export; a larger document is refused, not truncated.
 const ExportMaxBytes = 4 << 20

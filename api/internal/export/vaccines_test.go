@@ -25,10 +25,17 @@ func administered(id, on string, antigens []string, lot, product, note *string) 
 	return a, doses
 }
 
-// vaccineSnap is a kid born 2026-03-04 with the given administrations, newest first as the store returns them.
+// dismissedOnBirth is a dismissal made on the kid's birth date, before every range these tests export.
+var dismissedOnBirth = time.Date(2026, 3, 4, 9, 0, 0, 0, time.UTC)
+
+// vaccineSnap is a kid born 2026-03-04 with the given administrations, newest first as the store returns them, and
+// the given dismissals made on the birth date.
 func vaccineSnap(schema *string, dismissals map[string]string, admins ...func() (model.Administration, []model.VaccineDose)) store.ExportSnapshot {
 	snap := store.ExportSnapshot{Kid: model.Kid{Name: "Ada", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who", VaccineSchema: schema},
-		Dismissals: dismissals}
+		Dismissals: map[string]store.ExportDismissal{}}
+	for line, reason := range dismissals {
+		snap.Dismissals[line] = store.ExportDismissal{Reason: reason, CreatedAt: dismissedOnBirth}
+	}
 	for _, f := range admins {
 		a, d := f()
 		snap.Administrations = append([]model.Administration{a}, snap.Administrations...)
@@ -152,7 +159,7 @@ func TestVaccinationRangeEndingToday(t *testing.T) {
 	})
 	text := renderAt(t, snap, "2026-11-01", "2026-11-20", renderNow)
 	wantIn(t, "caption", text, "Schedule: "+us.Authority+", "+us.Edition+" Statuses as of 2026-11-20. "+us.Attribution)
-	e, err := vaccines.Evaluate(us, vaccines.DosesFrom(snap.Doses), snap.Dismissals, snap.Kid.BirthDate, "2026-11-20", time.UTC)
+	e, err := vaccines.Evaluate(us, vaccines.DosesFrom(snap.Doses), map[string]string{"rotavirus-1": "not_needed"}, snap.Kid.BirthDate, "2026-11-20", time.UTC)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +171,52 @@ func TestVaccinationRangeEndingToday(t *testing.T) {
 		want := names[ls.Line.Antigen] + ", dose " + strconv.Itoa(ls.Line.Series) + " " + statusLabel[ls.Status]
 		if !strings.Contains(text, want) {
 			t.Errorf("%q missing: a range ending today prints today's statuses", want)
+		}
+	}
+}
+
+func TestVaccinationDismissalsAsOf(t *testing.T) {
+	today := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	dismissedAt := func(at time.Time) store.ExportSnapshot {
+		snap := vaccineSnap(ptr("us"), nil)
+		snap.Dismissals["rotavirus-1"] = store.ExportDismissal{Reason: "not_needed", CreatedAt: at}
+		return snap
+	}
+	const dismissed = "Rotavirus, dose 1 Dismissed Dismissed: not needed"
+	for _, c := range []struct {
+		name  string
+		at    time.Time
+		to    string
+		shown bool
+	}{
+		{"made after to", time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC), "2026-11-10", false},
+		{"made at the next midnight", time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC), "2026-11-10", false},
+		{"made on to", time.Date(2026, 11, 10, 23, 59, 59, 0, time.UTC), "2026-11-10", true},
+		{"made before from", time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC), "2026-11-10", true},
+		{"range ending today", time.Date(2026, 11, 24, 11, 0, 0, 0, time.UTC), "2026-11-24", true},
+	} {
+		text := renderAt(t, dismissedAt(c.at), "2026-11-01", c.to, today)
+		if strings.Contains(text, dismissed) != c.shown {
+			t.Errorf("%s: dismissal shown = %v, want %v", c.name, !c.shown, c.shown)
+		}
+	}
+
+	// The as-of day ends at the kid's local midnight: 03:00 UTC on 2026-11-11 is still 2026-11-10 in New York.
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		at    time.Time
+		shown bool
+	}{{time.Date(2026, 11, 11, 3, 0, 0, 0, time.UTC), true}, {time.Date(2026, 11, 11, 5, 0, 0, 0, time.UTC), false}} {
+		var buf bytes.Buffer
+		req := Request{From: "2026-11-01", To: "2026-11-10", Modules: []model.Module{"vaccination"}, Units: metric, Now: today, Loc: ny}
+		if err := Render(&buf, dismissedAt(c.at), req); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(joined(pdfText(t, buf.Bytes())), dismissed); got != c.shown {
+			t.Errorf("New York, made %v: dismissal shown = %v, want %v", c.at, got, c.shown)
 		}
 	}
 }

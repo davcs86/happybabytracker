@@ -3,10 +3,12 @@ package pdfdoc
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,6 +47,8 @@ const (
 	greyLevel     = 150
 	footerBaseMM  = constants.ExportPageHeightUsableMM - constants.ExportMarginMM
 	contentBottom = footerBaseMM - 2*lineFactor*constants.ExportFontSizeSmall*mmPerPt
+	// Curve labels' baselines stay at least one small-print line apart.
+	labelGapMM = lineFactor * constants.ExportFontSizeSmall * mmPerPt
 )
 
 // Doc is one export document; methods after a failure do nothing, and WriteTo returns the failure.
@@ -312,23 +316,31 @@ func (d *Doc) Chart(c Chart) {
 	f.Text(right-f.GetStringWidth(xticks[1]), bottom+fontMM(small)+pad, xticks[1])
 	f.Text(left+(right-left-f.GetStringWidth(xlabel))/2, bottom+slh+fontMM(small)+pad, xlabel)
 
+	labelY := make([]float64, len(c.Curves))
+	var labelled []int
+	for i, cv := range c.Curves {
+		for j := len(cv.Points) - 1; j >= 0; j-- {
+			if in(cv.Points[j]) {
+				if labels[i] != "" {
+					labelY[i] = py(cv.Points[j].Y) + fontMM(small)/2
+					labelled = append(labelled, i)
+				}
+				break
+			}
+		}
+	}
+	spreadLabels(labelY, labelled, top+fontMM(small), bottom)
+
 	f.SetDrawColor(greyLevel, greyLevel, greyLevel)
 	f.SetLineWidth(hairlineMM)
 	for i, cv := range c.Curves {
-		var last *Point
-		for j := range cv.Points {
-			p := cv.Points[j]
-			if !in(p) {
-				continue
-			}
-			if j > 0 && in(cv.Points[j-1]) {
-				q := cv.Points[j-1]
+		for j := 1; j < len(cv.Points); j++ {
+			if p, q := cv.Points[j], cv.Points[j-1]; in(p) && in(q) {
 				f.Line(px(q.X), py(q.Y), px(p.X), py(p.Y))
 			}
-			last = &cv.Points[j]
 		}
-		if last != nil && labels[i] != "" {
-			f.Text(right+pad, py(last.Y)+fontMM(small)/2, labels[i])
+		if slices.Contains(labelled, i) {
+			f.Text(right+pad, labelY[i], labels[i])
 		}
 	}
 	f.SetFillColor(0, 0, 0)
@@ -340,6 +352,25 @@ func (d *Doc) Chart(c Chart) {
 	}
 	d.y = bottom + 2*slh + pad
 	d.atTop = false
+}
+
+// spreadLabels moves the baselines y[idx] apart by labelGapMM in their order, keeping each within [lo, hi] while they fit.
+func spreadLabels(y []float64, idx []int, lo, hi float64) {
+	slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(y[a], y[b]) })
+	for k, i := range idx {
+		y[i] = max(y[i], lo)
+		if k > 0 {
+			y[i] = max(y[i], y[idx[k-1]]+labelGapMM)
+		}
+	}
+	for k := len(idx) - 1; k >= 0; k-- {
+		i := idx[k]
+		y[i] = min(y[i], hi)
+		if k < len(idx)-1 {
+			y[i] = min(y[i], y[idx[k+1]]-labelGapMM)
+		}
+		y[i] = max(y[i], lo)
+	}
 }
 
 // Substituted reports whether any rune of this document was replaced by fonts.Encode.

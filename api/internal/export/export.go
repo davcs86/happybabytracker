@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -123,11 +122,11 @@ func (s *section) table(cols []pdfdoc.Col, rows [][]string) []item {
 // shown prints rows, already taken, of total, then the overflow line for the rest; only that line when rows is empty.
 func (s *section) shown(cols []pdfdoc.Col, rows [][]string, total int) []item {
 	if len(rows) == 0 {
-		return []item{{paragraph: strconv.Itoa(total) + overflow}}
+		return []item{{paragraph: overflow(total)}}
 	}
 	out := []item{{cols: cols, rows: rows}}
 	if total > len(rows) {
-		out = append(out, item{paragraph: strconv.Itoa(total-len(rows)) + overflow})
+		out = append(out, item{paragraph: overflow(total - len(rows))})
 	}
 	return out
 }

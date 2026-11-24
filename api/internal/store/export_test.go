@@ -244,3 +244,33 @@ func TestExportEntriesMatchTimeline(t *testing.T) {
 		}
 	}
 }
+
+func TestExportSnapshotDismissalTimes(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	schema := "us"
+	kid := k
+	kid.VaccineSchema = &schema
+	if err := s.UpdateKid(ctx, kid, ana.ID, t0); err != nil {
+		t.Fatal(err)
+	}
+	later := t0.Add(26 * time.Hour)
+	if _, err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"rv-1"}, "not_needed", t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DismissLines(ctx, k.ID, ana.ID, "us", []string{"hepb-1"}, "given_unknown", later); err != nil {
+		t.Fatal(err)
+	}
+	snap := exportSnap(t, s, k.ID, []model.Module{"vaccination"}, nil, 10)
+	want := map[string]ExportDismissal{
+		"rv-1":   {Reason: "not_needed", CreatedAt: time.Unix(t0.Unix(), 0)},
+		"hepb-1": {Reason: "given_unknown", CreatedAt: time.Unix(later.Unix(), 0)},
+	}
+	if !reflect.DeepEqual(snap.Dismissals, want) {
+		t.Errorf("dismissals = %v, want %v", snap.Dismissals, want)
+	}
+	if got, err := s.Dismissals(ctx, k.ID, "us"); err != nil || !reflect.DeepEqual(got, map[string]string{"rv-1": "not_needed", "hepb-1": "given_unknown"}) {
+		t.Errorf("Store.Dismissals = %v, %v; want the reasons unchanged", got, err)
+	}
+}

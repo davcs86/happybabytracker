@@ -356,3 +356,32 @@ func TestBodyIsBodySize(t *testing.T) {
 		t.Error("the check cannot tell body from small print")
 	}
 }
+
+func TestChartLabelsApart(t *testing.T) {
+	flat := func(label string, y float64) Curve { return Curve{Label: label, Points: []Point{{0, y}, {10, y}}} }
+	d := New(fixedTime, footerText)
+	d.Chart(Chart{Title: "t", XLabel: "x", YLabel: "y", XMin: 0, XMax: 10, YMin: 0, YMax: 10, Curves: []Curve{
+		flat("P97", 10), flat("P90", 10), flat("P75", 10), flat("P50", 5), flat("P25", 5), flat("P15", 5),
+		flat("P10", 0), flat("P5", 0), flat("P3", 0), flat("P1", 0),
+	}})
+	var ys []float64
+	for _, tx := range pageTexts(t, render(t, d))[0] {
+		if !strings.HasPrefix(tx.S, "P") {
+			continue
+		}
+		ys = append(ys, tx.Y)
+		if tx.X+d.testWidth(tx.S, "", constants.ExportFontSizeSmall) > constants.ExportPageWidthMM-constants.ExportMarginMM+0.01 ||
+			tx.Y-fontMM(constants.ExportFontSizeSmall) < constants.ExportMarginMM-0.01 || tx.Y > contentBottom+0.01 {
+			t.Errorf("label %q at (%.2f, %.2f) leaves the margins", tx.S, tx.X, tx.Y)
+		}
+	}
+	if len(ys) != 10 {
+		t.Fatalf("%d labels drawn, want 10", len(ys))
+	}
+	slices.Sort(ys)
+	for i := 1; i < len(ys); i++ {
+		if ys[i]-ys[i-1] < labelGapMM-0.01 {
+			t.Errorf("labels %.2f mm apart, want at least %.2f: %v", ys[i]-ys[i-1], labelGapMM, ys)
+		}
+	}
+}

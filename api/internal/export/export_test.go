@@ -56,14 +56,14 @@ func TestRowBudget(t *testing.T) {
 			t.Errorf("%q: %d rows, want %d", prefix, got, want)
 		}
 	}
-	if n := countOf(strs, "6"+overflow); n != 1 {
+	if n := countOf(strs, overflow(6)); n != 1 {
 		t.Errorf("nursing's overflow line appears %d times, want once", n)
 	}
-	if n := countOf(strs, "2"+overflow); n != 2 {
-		t.Errorf("%q appears %d times, want once for pumping and once for diapers", "2"+overflow, n)
+	if n := countOf(strs, overflow(2)); n != 2 {
+		t.Errorf("%q appears %d times, want once for pumping and once for diapers", overflow(2), n)
 	}
 	i := slices.Index(strs, "Diapers")
-	if i < 0 || strs[i+1] != "2"+overflow || slices.Contains(strs[i:], "Day total") || slices.Contains(strs[i:], "Time") {
+	if i < 0 || strs[i+1] != overflow(2) || slices.Contains(strs[i:], "Day total") || slices.Contains(strs[i:], "Time") {
 		t.Errorf("after the budget a section prints only its heading and overflow line: %q", strs[max(0, i):])
 	}
 }
@@ -109,6 +109,19 @@ func TestRenderSkipsModulesWithoutAWriter(t *testing.T) {
 	for _, want := range []string{"Profile", "Male", "Growth source", "CDC 2000 Growth Charts", "Milestones, Growth"} {
 		if !slices.Contains(strs, want) {
 			t.Errorf("%q missing from %q", want, strs)
+		}
+	}
+}
+
+func TestOverflowLine(t *testing.T) {
+	for _, c := range []struct{ got, want string }{
+		{overflow(1), "1 more entry in this range is not shown. Export a shorter range to see it."},
+		{overflow(2), "2 more entries in this range are not shown. Export a shorter range to see them."},
+		{growthOverflow(1), "1 more entry up to the end of the range is not shown. Export a range that ends earlier to see it."},
+		{growthOverflow(40), "40 more entries up to the end of the range are not shown. Export a range that ends earlier to see them."},
+	} {
+		if c.got != c.want {
+			t.Errorf("got %q, want %q", c.got, c.want)
 		}
 	}
 }
