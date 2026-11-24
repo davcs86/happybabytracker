@@ -1157,8 +1157,9 @@ MS_TEXT="$(note "$MS_ASCII Олег")"
 MS_GONE="$(note "gone-milestone-${SUFFIX}")"
 N_MILESTONE="$(note "milestone-note-${SUFFIX}")"
 # The kid was born 2026-01-15 with no gestation, so the basis is chronological; the lists show until 60 months.
-read -r ty tm td < <(TZ="$KID_ZONE" date '+%Y %-m %-d')
-AGE_MONTHS=$(((ty - 2026) * 12 + tm - 1 - (td < 15 ? 1 : 0)))
+MS_TODAY="$(today)"
+IFS=- read -r ty tm td <<<"$MS_TODAY"
+AGE_MONTHS=$(((ty - 2026) * 12 + 10#$tm - 1 - (10#$td < 15 ? 1 : 0)))
 CURRENT=
 for a in $LIST_AGES; do if [ "$a" -le "$AGE_MONTHS" ]; then CURRENT="$a"; fi; done
 reached_label() { LC_ALL=C date -d "$1" '+Reached on %-d %B %Y'; }
@@ -1214,10 +1215,12 @@ if [ "$AGE_MONTHS" -lt 60 ]; then
   reach ms-reach-dated "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save&item=${now_items[1]}" \
     "item=${now_items[1]}" reached_on=2026-06-01 note=
   tap ms-reach-b "$ADDR_B" "$SESSION_B" "${now_items[2]}"
+  MS_LISTS="every list in age order with '${LIST_TITLE[$CURRENT]:-none}' current at $AGE_MONTHS months; $USER_A marks items by one tap (today and the 5-year list) and by date, $USER_B marks one;"
 else
   # From the 5th birthday the lists are hidden: only the custom milestones below are exercised.
   { ! body_has ms-a 'Milestone checklists' && [ "$(count ms-a 'Current list for this age')" = 0 ]; } ||
     fail "4m lists hidden" "age $AGE_MONTHS months"
+  MS_LISTS="no list at $AGE_MONTHS months (from the 5th birthday) and so no item marked;"
 fi
 reach ms-custom "$ADDR_A" "$SESSION_A" "$MILESTONES/new?/save" "text=$MS_TEXT" reached_on=2026-07-01 \
   "note=$N_MILESTONE"
@@ -1241,7 +1244,7 @@ if [ "$AGE_MONTHS" -lt 60 ]; then
   for id in "${now_items[0]}" "${now_items[1]}" "${now_items[2]}" "${later_items[0]}"; do
     ! body_has ms-a3 "value=\"$id\"" || fail "4m marked items" "$id still offers Reached"
   done
-  { item_row ms-a3 "$(head -n 1 "$CDC_TEXTS")" | grep -F "$(reached_label "$(today)")" >/dev/null &&
+  { item_row ms-a3 "$(head -n 1 "$CDC_TEXTS")" | grep -F "$(reached_label "$MS_TODAY")" >/dev/null &&
     item_row ms-a3 "$(sed -n 2p "$CDC_TEXTS")" | grep -F "$(reached_label 2026-06-01)" >/dev/null; } ||
     fail "4m reached dates" "today's or 2026-06-01's row"
 fi
@@ -1254,7 +1257,7 @@ for p in milestones:"$MILESTONES" milestones-new:"$MILESTONES/new" milestone-ent
   [ "$code $(location "admin-${p%%:*}")" = '303 /admin/parents' ] ||
     fail "4m admin GET ${p%%:*}" "status $code, Location $(location "admin-${p%%:*}")"
 done
-pass "4m the Milestones page shows CDC's attribution and sentence, no judgement word, every list in age order with '${LIST_TITLE[$CURRENT]:-none}' current at $AGE_MONTHS months; $USER_A marks items by one tap (today and the 5-year list) and by date, adds two custom milestones, edits one's date and deletes the other; $USER_B marks one; $USER_C gets 404 and the admin a 303 on the milestone pages"
+pass "4m the Milestones page shows CDC's attribution and sentence, no judgement word, $MS_LISTS $USER_A adds two custom milestones, edits one's date and deletes the other; $USER_C gets 404 and the admin a 303 on the milestone pages"
 
 # 4n. The PDF export without JavaScript: every module, the module filter, a switched-off module, refusals, access.
 ALL_MODULES=(bottles nursing pumping diapers sleep feeding milestones growth vaccination sickness medication)
@@ -1262,6 +1265,8 @@ EXPORT_FROM="$(ago 240 | cut -c1-10)"
 EXPORT_TO="$(today)"
 PAST_FROM=2026-02-03
 PAST_TO=2026-02-05
+# Only the growth section prints this: the profile's "Growth source" line has no colon after "Standards".
+WHO_ATTRIBUTION='WHO Child Growth Standards: length/height-for-age'
 for t in '"modules":' 'modules=' "$PAST_FROM" "$PAST_TO"; do remember "$t"; done
 # The UI waits up to EXPORT_TIMEOUT_MS (25 s) for the API, so the call may take longer than req's 10 s.
 export_pdf() { # name addr cookie from to module... -> status; the PDF or page in $WORK/<name>.body
@@ -1272,7 +1277,7 @@ export_pdf() { # name addr cookie from to module... -> status; the PDF or page i
     -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode "from=$from" \
     --data-urlencode "to=$to" "${mods[@]}" --max-time 30
 }
-header_is() { tr -d '\r' <"$WORK/$1.headers" | grep -qix -- "$2"; }
+header_is() { tr -d '\r' <"$WORK/$1.headers" | grep -ix -- "$2" >/dev/null; }
 pdf_ok() { # name from to -> succeeds when the response is a whole PDF download with the private headers
   local b="$WORK/$1.body"
   header_is "$1" 'content-type: application/pdf' &&
@@ -1297,7 +1302,7 @@ app_words() { # name words -> the words (regex) found in the PDF's own text: use
 }
 code="$(export_pdf export-all "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" "${ALL_MODULES[@]}")"
 { [ "$code" = 200 ] && pdf_ok export-all "$EXPORT_FROM" "$EXPORT_TO"; } || fail "4n all modules" "status $code"
-for t in "$KID_NAME" 'Bottle 163 ml' 'Pumping 12 min, 211 ml' "$N_DIAPER_EDIT" 'WHO Child Growth Standards' \
+for t in "$KID_NAME" 'Bottle 163 ml' 'Pumping 12 min, 211 ml' "$N_DIAPER_EDIT" "$WHO_ATTRIBUTION" \
   'Schedule: UK Health Security Agency' "Statuses as of $EXPORT_TO." 'Learn the Signs' "$MS_ASCII" \
   'Fever 38.6' "$MED_NAME"; do
   pdf_has export-all "$t" || fail "4n all modules" "missing '$(printf '%s' "$t" | scrub)'"
@@ -1313,7 +1318,7 @@ control="$(app_words export-all 'due|overdue')"
   fail "4n section wording" "judgement or reminder words '$words', control '$control'"
 code="$(export_pdf export-filter "$ADDR_B" "$SESSION_B" "$EXPORT_FROM" "$EXPORT_TO" bottles growth)"
 { [ "$code" = 200 ] && pdf_ok export-filter "$EXPORT_FROM" "$EXPORT_TO" && pdf_has export-filter 'Bottle 163 ml' &&
-  pdf_has export-filter 'WHO Child Growth Standards' && ! pdf_has export-filter 'Schedule:' &&
+  pdf_has export-filter "$WHO_ATTRIBUTION" && ! pdf_has export-filter 'Schedule:' &&
   ! pdf_has export-filter 'Learn the Signs' && ! pdf_has export-filter "$N_DIAPER_EDIT" &&
   ! pdf_has export-filter "$MS_ASCII"; } || fail "4n module filter" "status $code"
 code="$(req modules-n "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH/modules")"
