@@ -9,7 +9,9 @@
 		GESTATION_DAYS,
 		GESTATION_WEEKS,
 		KID_MIN_BIRTH_DATE,
-		KID_NAME_MAX_LEN
+		KID_NAME_MAX_LEN,
+		MAX_REMINDER_OVERDUE_MINUTES,
+		MIN_REMINDER_OVERDUE_MINUTES
 	} from '#lib/constants.js';
 	import { todayIn } from '#lib/format.js';
 	import { acceptsZone, withZone } from '#lib/time-zone.js';
@@ -24,6 +26,8 @@
 		timeZone: string;
 		growthSource: string;
 		vaccineSchema: string;
+		reminderOverdue: string;
+		reminderOverdueOriginal: string;
 	};
 
 	let {
@@ -34,6 +38,7 @@
 		sources,
 		schedules,
 		detectZone = false,
+		mode = 'create',
 		submitLabel,
 		action
 	}: {
@@ -44,6 +49,7 @@
 		sources: { id: string; name: string; hint: string }[];
 		schedules: { id: string; label: string }[];
 		detectZone?: boolean;
+		mode?: 'create' | 'settings';
 		submitLabel: string;
 		action?: string;
 	} = $props();
@@ -253,5 +259,42 @@
 			</p>
 		{/if}
 	</div>
+	{#if mode === 'settings'}
+		<div class="flex flex-col gap-2">
+			<Label for="kid-reminder_overdue_minutes">Show a missed dose as overdue for (minutes)</Label>
+			<Input
+				id="kid-reminder_overdue_minutes"
+				name="reminder_overdue_minutes"
+				type="number"
+				inputmode="numeric"
+				min={MIN_REMINDER_OVERDUE_MINUTES}
+				max={MAX_REMINDER_OVERDUE_MINUTES}
+				step="1"
+				value={values.reminderOverdue}
+				aria-invalid={invalid('reminder_overdue_minutes')}
+				aria-describedby={[
+					'kid-reminder_overdue_minutes-hint',
+					describedBy('reminder_overdue_minutes')
+				]
+					.filter(Boolean)
+					.join(' ')}
+			/>
+			<input
+				type="hidden"
+				name="reminder_overdue_minutes_original"
+				value={values.reminderOverdueOriginal}
+			/>
+			<p id="kid-reminder_overdue_minutes-hint" class="text-sm text-muted-foreground">
+				From {MIN_REMINDER_OVERDUE_MINUTES} to {MAX_REMINDER_OVERDUE_MINUTES} ({MAX_REMINDER_OVERDUE_MINUTES /
+					60} hours). A missed dose leaves the home list after this time, or when the next dose of that
+				course is due, whichever comes first.
+			</p>
+			{#if err('reminder_overdue_minutes')}
+				<p id="kid-reminder_overdue_minutes-error" class={ERROR_CLASS} role="alert">
+					{err('reminder_overdue_minutes')}
+				</p>
+			{/if}
+		</div>
+	{/if}
 	<Button type="submit" class="self-start">{submitLabel}</Button>
 </form>

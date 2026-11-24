@@ -9,7 +9,8 @@
 		values,
 		error,
 		hint = null,
-		required = false
+		required = false,
+		blank = null
 	}: {
 		name: string;
 		legend: string;
@@ -18,6 +19,8 @@
 		error: (name: string) => string | null;
 		hint?: string | null;
 		required?: boolean;
+		// The label of one more radio with an empty value, for a field that can be left unset.
+		blank?: string | null;
 	} = $props();
 
 	const id = $derived(`entry-${name}`);
@@ -43,6 +46,12 @@
 				{label(option)}
 			</label>
 		{/each}
+		{#if blank !== null}
+			<label class="flex min-h-11 items-center gap-2 text-sm">
+				<input type="radio" {name} value="" checked={values[name] === ''} />
+				{blank}
+			</label>
+		{/if}
 	</div>
 	{#if hint}<p id="{id}-hint" class="text-sm text-muted-foreground">{hint}</p>{/if}
 	{#if error(name)}<p id="{id}-error" class={ERROR_CLASS} role="alert">{error(name)}</p>{/if}

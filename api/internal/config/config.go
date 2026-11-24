@@ -2,12 +2,16 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
+	"github.com/davcs86/happybabytracker/api/internal/push"
 )
 
 type Config struct {
@@ -17,6 +21,13 @@ type Config struct {
 	PublicOrigin     string
 	DataDir          string
 	Addr             string
+	// VAPIDKey is nil when Web Push is off.
+	VAPIDKey      *ecdsa.PrivateKey
+	VAPIDSubject  string
+	AllowFakePush bool
+	// Ntfy is the zero value when ntfy is off.
+	Ntfy        ntfy.Config
+	NtfyEnabled bool
 }
 
 var usernameRE = regexp.MustCompile(constants.UsernamePattern)
@@ -46,7 +57,42 @@ func Load(getenv func(string) string) (Config, error) {
 	if !validOrigin(cfg.PublicOrigin) {
 		return Config{}, fmt.Errorf("PUBLIC_ORIGIN must be http(s)://host[:port] with no path")
 	}
+	if err := loadPush(&cfg, getenv); err != nil {
+		return Config{}, err
+	}
+	var err error
+	if cfg.Ntfy, cfg.NtfyEnabled, err = ntfy.LoadConfig(getenv); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// loadPush: both VAPID variables or neither (Web Push off); errors never echo a value.
+func loadPush(cfg *Config, getenv func(string) string) error {
+	key, subject, fake := getenv("VAPID_PRIVATE_KEY"), getenv("VAPID_SUBJECT"), getenv("HBT_ALLOW_FAKE_PUSH")
+	if fake != "" && fake != "1" {
+		return errors.New("HBT_ALLOW_FAKE_PUSH must be 1 or unset")
+	}
+	switch {
+	case key == "" && subject == "":
+		if fake == "1" {
+			return errors.New("HBT_ALLOW_FAKE_PUSH=1 requires VAPID_PRIVATE_KEY and VAPID_SUBJECT")
+		}
+		return nil
+	case subject == "":
+		return errors.New("VAPID_SUBJECT is required when VAPID_PRIVATE_KEY is set")
+	case key == "":
+		return errors.New("VAPID_PRIVATE_KEY is required when VAPID_SUBJECT is set")
+	}
+	k, err := push.ParsePrivateKey(key)
+	if err != nil {
+		return errors.New("VAPID_PRIVATE_KEY must be a P-256 private key in unpadded base64url")
+	}
+	if _, err := push.NewSigner(k, subject); err != nil {
+		return errors.New("VAPID_SUBJECT must be an https: URL with a host and no userinfo, query or fragment")
+	}
+	cfg.VAPIDKey, cfg.VAPIDSubject, cfg.AllowFakePush = k, subject, fake == "1"
+	return nil
 }
 
 func validOrigin(s string) bool {

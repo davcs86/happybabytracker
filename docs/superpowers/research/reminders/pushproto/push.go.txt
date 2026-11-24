@@ -1,0 +1,153 @@
+// Package push: RFC 8291 (aes128gcm) + RFC 8188 + RFC 8292 (VAPID, ES256), stdlib only.
+package push
+
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hkdf"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/asn1"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"io"
+	"math/big"
+	"net/url"
+	"time"
+)
+
+var b64 = base64.RawURLEncoding
+
+const (
+	recordSize     = 4096
+	MaxPlaintext   = recordSize - 16 - 1 - 86 // header is 86 bytes; RFC 8291 §4: push service must accept 4096 octets total
+)
+
+// Encrypt builds the aes128gcm request body. uaPub is the 65-byte p256dh, auth the 16-byte secret.
+// asPriv and salt are injectable so tests can use the RFC 8291 Appendix A vector.
+func Encrypt(plaintext, uaPub, auth []byte, asPriv *ecdh.PrivateKey, salt []byte) ([]byte, error) {
+	if len(plaintext) > MaxPlaintext {
+		return nil, errors.New("payload too large")
+	}
+	if len(auth) != 16 || len(salt) != 16 {
+		return nil, errors.New("bad auth secret or salt length")
+	}
+	uaKey, err := ecdh.P256().NewPublicKey(uaPub) // rejects anything but a valid uncompressed point
+	if err != nil {
+		return nil, err
+	}
+	secret, err := asPriv.ECDH(uaKey)
+	if err != nil {
+		return nil, err
+	}
+	asPub := asPriv.PublicKey().Bytes()
+	keyInfo := append(append([]byte("WebPush: info\x00"), uaPub...), asPub...)
+	ikm, err := hkdf.Key(sha256.New, secret, auth, string(keyInfo), 32)
+	if err != nil {
+		return nil, err
+	}
+	cek, err := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: aes128gcm\x00", 16)
+	if err != nil {
+		return nil, err
+	}
+	nonce, err := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: nonce\x00", 12)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(cek)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	out.Write(salt)
+	_ = binary.Write(&out, binary.BigEndian, uint32(recordSize))
+	out.WriteByte(byte(len(asPub)))
+	out.Write(asPub)
+	// Single, final record: plaintext || 0x02 (no further padding needed).
+	return gcm.Seal(out.Bytes(), nonce, append(append([]byte{}, plaintext...), 0x02), nil), nil
+}
+
+// NewSalt returns 16 random bytes.
+func NewSalt() ([]byte, error) {
+	s := make([]byte, 16)
+	_, err := io.ReadFull(rand.Reader, s)
+	return s, err
+}
+
+// GenerateVAPID returns the private scalar (32 bytes, base64url, no padding) and the 65-byte public key.
+func GenerateVAPID() (priv, pub string, err error) {
+	k, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		return "", "", err
+	}
+	return b64.EncodeToString(k.Bytes()), b64.EncodeToString(k.PublicKey().Bytes()), nil
+}
+
+// Signer signs VAPID JWTs.
+type Signer struct {
+	key     *ecdsa.PrivateKey
+	PubB64  string // the k= value and the applicationServerKey
+	Subject string
+}
+
+func NewSigner(privB64, subject string) (*Signer, error) {
+	d, err := b64.DecodeString(privB64)
+	if err != nil || len(d) != 32 {
+		return nil, errors.New("VAPID private key must be 32 bytes, base64url without padding")
+	}
+	k, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), d) // Go 1.25+
+	if err != nil {
+		return nil, err
+	}
+	ek, err := k.ECDH()
+	if err != nil {
+		return nil, err
+	}
+	return &Signer{key: k, PubB64: b64.EncodeToString(ek.PublicKey().Bytes()), Subject: subject}, nil
+}
+
+// Authorization returns the value of the Authorization header for an endpoint.
+func (s *Signer) Authorization(endpoint string, now time.Time) (string, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", errors.New("bad endpoint")
+	}
+	claims, _ := json.Marshal(map[string]any{
+		"aud": u.Scheme + "://" + u.Host,
+		"exp": now.Add(12 * time.Hour).Unix(), // RFC 8292: at most 24 h
+		"sub": s.Subject,
+	})
+	signing := b64.EncodeToString([]byte(`{"typ":"JWT","alg":"ES256"}`)) + "." + b64.EncodeToString(claims)
+	h := sha256.Sum256([]byte(signing))
+	der, err := ecdsa.SignASN1(rand.Reader, s.key, h[:])
+	if err != nil {
+		return "", err
+	}
+	sig, err := rawRS(der)
+	if err != nil {
+		return "", err
+	}
+	return "vapid t=" + signing + "." + b64.EncodeToString(sig) + ", k=" + s.PubB64, nil
+}
+
+// rawRS converts an ASN.1 DER ECDSA signature to the fixed 64-byte r||s form JWS ES256 requires.
+func rawRS(der []byte) ([]byte, error) {
+	var sig struct{ R, S *big.Int }
+	if rest, err := asn1.Unmarshal(der, &sig); err != nil || len(rest) != 0 {
+		return nil, errors.New("bad signature")
+	}
+	out := make([]byte, 64)
+	sig.R.FillBytes(out[:32])
+	sig.S.FillBytes(out[32:])
+	return out, nil
+}

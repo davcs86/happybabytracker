@@ -1,0 +1,139 @@
+package push
+
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/hkdf"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
+	"math/big"
+	"strings"
+	"testing"
+	"time"
+)
+
+func mustDec(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := b64.DecodeString(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// RFC 8291 Appendix A.
+func TestRFC8291Vector(t *testing.T) {
+	asPriv, err := ecdh.P256().NewPrivateKey(mustDec(t, "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	uaPub := mustDec(t, "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4")
+	got, err := Encrypt([]byte("When I grow up, I want to be a watermelon"), uaPub,
+		mustDec(t, "BTBZMqHH6r4Tts7J_aSIgg"), asPriv, mustDec(t, "DGv6ra1nlYgDCS1FRnbzlw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+	if b64.EncodeToString(got) != want {
+		t.Fatalf("body mismatch\n got %s\nwant %s", b64.EncodeToString(got), want)
+	}
+}
+
+// Independent receiver: decrypts a body for a freshly generated subscription key pair.
+func decrypt(t *testing.T, body []byte, uaPriv *ecdh.PrivateKey, auth []byte) []byte {
+	t.Helper()
+	salt, rs, idlen := body[:16], binary.BigEndian.Uint32(body[16:20]), int(body[20])
+	asPub, ct := body[21:21+idlen], body[21+idlen:]
+	if rs < 18 || idlen != 65 || len(ct) > int(rs) {
+		t.Fatalf("bad header rs=%d idlen=%d ct=%d", rs, idlen, len(ct))
+	}
+	k, _ := ecdh.P256().NewPublicKey(asPub)
+	secret, _ := uaPriv.ECDH(k)
+	info := append(append([]byte("WebPush: info\x00"), uaPriv.PublicKey().Bytes()...), asPub...)
+	ikm, _ := hkdf.Key(sha256.New, secret, auth, string(info), 32)
+	cek, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: aes128gcm\x00", 16)
+	nonce, _ := hkdf.Key(sha256.New, ikm, salt, "Content-Encoding: nonce\x00", 12)
+	blk, _ := aes.NewCipher(cek)
+	g, _ := cipher.NewGCM(blk)
+	pt, err := g.Open(nil, nonce, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt = bytes.TrimRight(pt, "\x00")
+	if pt[len(pt)-1] != 0x02 {
+		t.Fatal("missing final-record delimiter")
+	}
+	return pt[:len(pt)-1]
+}
+
+func TestRoundTripAndLimits(t *testing.T) {
+	ua, _ := ecdh.P256().GenerateKey(rand.Reader)
+	as, _ := ecdh.P256().GenerateKey(rand.Reader)
+	auth, salt := make([]byte, 16), make([]byte, 16)
+	rand.Read(auth)
+	rand.Read(salt)
+	msg := []byte(`{"v":1,"category":"medication","kid":"k1","title":"Medication due for Mia"}`)
+	body, err := Encrypt(msg, ua.PublicKey().Bytes(), auth, as, salt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decrypt(t, body, ua, auth); !bytes.Equal(got, msg) {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := Encrypt(make([]byte, MaxPlaintext), ua.PublicKey().Bytes(), auth, as, salt); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := Encrypt(make([]byte, MaxPlaintext), ua.PublicKey().Bytes(), auth, as, salt)
+	if len(b) != 4096 {
+		t.Fatalf("max body = %d, want 4096", len(b))
+	}
+	if _, err := Encrypt(make([]byte, MaxPlaintext+1), ua.PublicKey().Bytes(), auth, as, salt); err == nil {
+		t.Fatal("oversize accepted")
+	}
+	if _, err := Encrypt(msg, ua.PublicKey().Bytes()[:33], auth, as, salt); err == nil { // compressed form
+		t.Fatal("compressed key accepted")
+	}
+}
+
+func TestVAPID(t *testing.T) {
+	priv, pub, err := GenerateVAPID()
+	if err != nil || len(mustDec(t, priv)) != 32 || len(mustDec(t, pub)) != 65 || strings.ContainsAny(priv, "\"\\\n=+/") {
+		t.Fatal("bad generated key", err)
+	}
+	s, err := NewSigner(priv, "https://happybaby.private.example.org")
+	if err != nil || s.PubB64 != pub {
+		t.Fatalf("derive: %v", err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	h, err := s.Authorization("https://fcm.googleapis.com/fcm/send/abc", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest, ok := strings.CutPrefix(h, "vapid t=")
+	jwt, k, _ := strings.Cut(rest, ", k=")
+	if !ok || k != pub {
+		t.Fatal("header shape")
+	}
+	parts := strings.Split(jwt, ".")
+	sig := mustDec(t, parts[2])
+	if len(sig) != 64 {
+		t.Fatalf("sig len %d (DER?)", len(sig))
+	}
+	var claims map[string]any
+	json.Unmarshal(mustDec(t, parts[1]), &claims)
+	if claims["aud"] != "https://fcm.googleapis.com" || claims["sub"] != "https://happybaby.private.example.org" || int64(claims["exp"].(float64)) != now.Add(12*time.Hour).Unix() {
+		t.Fatalf("claims %v", claims)
+	}
+	pk := mustDec(t, pub)
+	ecpub := &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(pk[1:33]), Y: new(big.Int).SetBytes(pk[33:])}
+	h2 := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if !ecdsa.Verify(ecpub, h2[:], new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:])) {
+		t.Fatal("signature does not verify")
+	}
+}

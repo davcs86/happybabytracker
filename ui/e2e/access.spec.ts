@@ -6,7 +6,8 @@ import {
 	expectFieldError,
 	expectLanding,
 	expectNotFoundPage,
-	signIn
+	signIn,
+	untilHydrated
 } from './helpers.js';
 import {
 	ADMIN,
@@ -37,6 +38,7 @@ const grant = (page: Page, displayName: string) =>
 		.filter({ hasText: displayName });
 
 async function add(page: Page, username: string, role: 'Caregiver' | 'Guardian') {
+	await untilHydrated(page.getByLabel('Username'));
 	await page.getByLabel('Username').fill(username);
 	await page.getByLabel('Role', { exact: true }).selectOption({ label: role });
 	await page.getByRole('button', { name: 'Add', exact: true }).click();

@@ -11,6 +11,10 @@ import {
 	MODULES,
 	NURSING_SIDES,
 	PUMPING_SIDES,
+	SEVERITIES,
+	SYMPTOMS,
+	TEMP_METHODS,
+	TEMP_UNITS,
 	TIMELINE_TYPE,
 	TIMER_KINDS,
 	TRACKER_KINDS,
@@ -38,16 +42,20 @@ import type {
 	GrowthScore,
 	GrowthSourceInfo,
 	GrowthWeight,
+	DoseQuery,
 	Home,
 	HomeDue,
 	Kid,
 	KidInput,
 	ListQuery,
 	Meal,
+	Medication,
+	MedicationDose,
 	Milk,
 	ModuleId,
 	ModuleState,
 	NewSession,
+	NtfyState,
 	Nursing,
 	NursingSide,
 	Page,
@@ -55,11 +63,17 @@ import type {
 	ParentLink,
 	Pumping,
 	PumpingSideVolume,
+	PushDevice,
+	PushState,
+	PushSubscriptionInput,
 	Role,
+	Schedule,
 	Session,
 	SessionInfo,
 	SessionKind,
 	Sleep,
+	Symptom,
+	Temperature,
 	TimelineItem,
 	TimelineQuery,
 	TimerKind,
@@ -94,6 +108,7 @@ export type ApiResult<T> =
 
 type Endpoint =
 	| 'health'
+	| 'reminders_health'
 	| 'login'
 	| 'session'
 	| 'logout'
@@ -116,7 +131,20 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose'}`
+	| 'push_state'
+	| 'list_push_devices'
+	| 'upsert_push_device'
+	| 'rename_push_device'
+	| 'delete_push_device'
+	| 'set_push_optin'
+	| 'clear_push_optin'
+	| 'ntfy_state'
+	| 'enable_ntfy'
+	| 'regenerate_ntfy'
+	| 'disable_ntfy'
+	| 'set_ntfy_optin'
+	| 'clear_ntfy_optin'
 	| 'growth_curves'
 	| 'growth_sources'
 	| 'end_timer'
@@ -270,6 +298,7 @@ function toKid(v: unknown): Kid {
 		timeZone: string(k.time_zone),
 		growthSource: oneOf(k.growth_source, GROWTH_SOURCES),
 		vaccineSchema: stringOrNull(k.vaccine_schema),
+		reminderOverdueMinutes: int(k.reminder_overdue_minutes),
 		role: oneOf(k.role, ROLES)
 	};
 }
@@ -363,6 +392,29 @@ function toMeal(v: unknown): Meal {
 	};
 }
 
+function toTemperature(v: unknown): Temperature {
+	const o = object(v);
+	return {
+		cHundredths: int(o.c_hundredths),
+		fHundredths: int(o.f_hundredths),
+		typedUnit: oneOf(o.typed_unit, TEMP_UNITS)
+	};
+}
+
+function toSymptom(v: unknown): Symptom {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		at: string(o.at),
+		symptom: oneOf(o.symptom, SYMPTOMS),
+		severity: o.severity === null ? null : oneOf(o.severity, SEVERITIES),
+		otherText: stringOrNull(o.other_text),
+		temperature: nullOr(o.temperature, toTemperature),
+		method: o.method === null ? null : oneOf(o.method, TEMP_METHODS),
+		note: stringOrNull(o.note)
+	};
+}
+
 function toPumpingSideVolume(v: unknown): PumpingSideVolume {
 	const o = object(v);
 	return { side: oneOf(o.side, NURSING_SIDES), volume: toVolume(o.volume) };
@@ -424,7 +476,8 @@ const PARSERS: { [K in TrackerKind]: (v: unknown) => TrackerEntries[K] } = {
 	pumping: toPumping,
 	sleep: toSleep,
 	diapers: toDiaper,
-	meals: toMeal
+	meals: toMeal,
+	symptoms: toSymptom
 };
 
 function toPage<K extends TrackerKind>(kind: K, v: unknown): Page<TrackerEntries[K]> {
@@ -502,6 +555,15 @@ function toVaccineAge(v: unknown): VaccineAge {
 
 function toHomeDue(v: unknown): HomeDue {
 	const o = object(v);
+	if (o.kind === 'medication') {
+		const m = object(o.medication);
+		return {
+			kind: 'medication',
+			medication: { id: string(m.id), name: string(m.name) },
+			dueAt: string(o.due_at),
+			state: oneOf(o.state, ['due', 'overdue'])
+		};
+	}
 	return {
 		kind: oneOf(o.kind, ['vaccine']),
 		from: toVaccineAge(o.from),
@@ -612,6 +674,85 @@ function toAdministration(v: unknown): Administration {
 	};
 }
 
+function toSchedule(v: unknown): Schedule {
+	const o = object(v);
+	switch (o.kind) {
+		case 'none':
+			return { kind: 'none' };
+		case 'times':
+			return { kind: 'times', times: array(o.times, string) };
+		case 'every':
+			return { kind: 'every', hours: int(o.hours) };
+		default:
+			throw new ShapeError();
+	}
+}
+
+function toMedication(v: unknown): Medication {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		name: string(o.name),
+		dose: string(o.dose),
+		schedule: toSchedule(o.schedule),
+		startAt: string(o.start_at),
+		endOn: stringOrNull(o.end_on),
+		active: boolean(o.active),
+		note: stringOrNull(o.note),
+		lastDose: nullOr(o.last_dose, (d) => {
+			const dose = object(d);
+			return {
+				id: string(dose.id),
+				givenAt: string(dose.given_at),
+				amount: stringOrNull(dose.amount)
+			};
+		}),
+		nextDue: nullOr(o.next_due, (d) => ({ dueAt: string(object(d).due_at) })),
+		doseCount: int(o.dose_count)
+	};
+}
+
+function toMedicationDose(v: unknown): MedicationDose {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		medication: string(o.medication),
+		givenAt: string(o.given_at),
+		amount: stringOrNull(o.amount),
+		note: stringOrNull(o.note)
+	};
+}
+
+function toPushState(v: unknown): PushState {
+	const o = object(v);
+	if (!boolean(o.enabled)) return { enabled: false };
+	const publicKey = string(o.public_key);
+	if (publicKey === '') throw new ShapeError();
+	return { enabled: true, publicKey };
+}
+
+// Only these four fields are read: an endpoint or key in a reply is never copied out.
+function toPushDevice(v: unknown): PushDevice {
+	const o = object(v);
+	return {
+		id: string(o.id),
+		label: string(o.label),
+		createdAt: string(o.created_at),
+		kids: array(o.kids, string)
+	};
+}
+
+function toNtfyState(v: unknown): NtfyState {
+	const o = object(v);
+	if (!boolean(o.enabled)) return { enabled: false, hasTopic: boolean(o.has_topic) };
+	return {
+		enabled: true,
+		server: string(o.server),
+		topic: stringOrNull(o.topic),
+		kids: array(o.kids, string)
+	};
+}
+
 function toGrowthWeight(v: unknown): GrowthWeight {
 	const o = object(v);
 	return {
@@ -719,12 +860,13 @@ function curvesQuery(q: CurvesQuery): string {
 	return `?${p}`;
 }
 
-function queryString(q: TimelineQuery): string {
+function queryString(q: TimelineQuery & { medication?: string }): string {
 	const p = new URLSearchParams();
 	if (q.from !== undefined) p.set('from', q.from);
 	if (q.to !== undefined) p.set('to', q.to);
 	if (q.limit !== undefined) p.set('limit', String(q.limit));
 	if (q.cursor !== undefined) p.set('cursor', q.cursor);
+	if (q.medication !== undefined) p.set('medication', q.medication);
 	if (q.types?.length) p.set('types', q.types.join(','));
 	const s = p.toString();
 	return s === '' ? '' : `?${s}`;
@@ -738,7 +880,10 @@ const kidBody = (k: KidInput) => ({
 	gestation_days: k.gestationDays,
 	time_zone: k.timeZone,
 	...(k.growthSource === undefined ? {} : { growth_source: k.growthSource }),
-	...(k.vaccineSchema === undefined ? {} : { vaccine_schema: k.vaccineSchema })
+	...(k.vaccineSchema === undefined ? {} : { vaccine_schema: k.vaccineSchema }),
+	...(k.reminderOverdueMinutes === undefined
+		? {}
+		: { reminder_overdue_minutes: k.reminderOverdueMinutes })
 });
 
 const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' } as const;
@@ -842,6 +987,7 @@ export function createApi(
 
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
+		remindersHealth: () => call<null>('reminders_health', 'GET', '/healthz/reminders', null),
 		login: (username: string, password: string) =>
 			call('login', 'POST', '/v1/session', toNewSession, { username, password }),
 		session: () => call('session', 'GET', '/v1/session', toSession),
@@ -951,6 +1097,124 @@ export function createApi(
 						)
 					)
 			};
+		},
+		// input is the API's own JSON body, as the medication form builds it.
+		medications: {
+			list: (kidId: string) =>
+				withId(kidId, (k) =>
+					call('list_medication', 'GET', `/v1/kids/${k}/medications`, (b) =>
+						list(b, 'medications', toMedication)
+					)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_medication', 'GET', `/v1/kids/${k}/medications/${i}`, toMedication)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_medication', 'POST', `/v1/kids/${k}/medications`, toMedication, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('update_medication', 'PATCH', `/v1/kids/${k}/medications/${i}`, toMedication, input)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_medication', 'DELETE', `/v1/kids/${k}/medications/${i}`, null)
+				)
+		},
+		// input is the API's own JSON body; query.medication filters to one course.
+		doses: {
+			list: (kidId: string, query: DoseQuery = {}) =>
+				known(query.medication === undefined || ID_PATTERN.test(query.medication), () =>
+					withId(kidId, (k) =>
+						call(
+							'list_dose',
+							'GET',
+							`/v1/kids/${k}/medication-doses${queryString(query)}`,
+							(b) => ({
+								items: list(b, 'doses', toMedicationDose),
+								nextCursor: stringOrNull(object(b).next_cursor)
+							})
+						)
+					)
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_dose', 'GET', `/v1/kids/${k}/medication-doses/${i}`, toMedicationDose)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_dose', 'POST', `/v1/kids/${k}/medication-doses`, toMedicationDose, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call(
+						'update_dose',
+						'PATCH',
+						`/v1/kids/${k}/medication-doses/${i}`,
+						toMedicationDose,
+						input
+					)
+				),
+			remove: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call<null>('delete_dose', 'DELETE', `/v1/kids/${k}/medication-doses/${i}`, null)
+				)
+		},
+		// A write answers 409 with code push_unavailable while Web Push is off; list and removal still work.
+		push: {
+			state: () => call('push_state', 'GET', '/v1/push', toPushState),
+			devices: () =>
+				call('list_push_devices', 'GET', '/v1/me/push-devices', (b) =>
+					list(b, 'devices', toPushDevice)
+				),
+			// The only call that carries the endpoint and keys, and only in its body.
+			upsertDevice: (input: PushSubscriptionInput) =>
+				call(
+					'upsert_push_device',
+					'PUT',
+					'/v1/me/push-devices',
+					(b) => toPushDevice(object(b).device),
+					{
+						endpoint: input.endpoint,
+						keys: { p256dh: input.keys.p256dh, auth: input.keys.auth },
+						...(input.label === undefined ? {} : { label: input.label })
+					}
+				),
+			renameDevice: (id: string, label: string) =>
+				withId(id, (i) =>
+					call(
+						'rename_push_device',
+						'PATCH',
+						`/v1/me/push-devices/${i}`,
+						(b) => toPushDevice(object(b).device),
+						{ label }
+					)
+				),
+			removeDevice: (id: string) =>
+				withId(id, (i) =>
+					call<null>('delete_push_device', 'DELETE', `/v1/me/push-devices/${i}`, null)
+				),
+			optIn: (kidId: string, deviceId: string) =>
+				withKidEntry(kidId, deviceId, (k, d) =>
+					call<null>('set_push_optin', 'PUT', `/v1/kids/${k}/push-devices/${d}`, null)
+				),
+			optOut: (kidId: string, deviceId: string) =>
+				withKidEntry(kidId, deviceId, (k, d) =>
+					call<null>('clear_push_optin', 'DELETE', `/v1/kids/${k}/push-devices/${d}`, null)
+				)
+		},
+		// A write answers 409 with code ntfy_unavailable while ntfy is off; the topic never reaches a log.
+		ntfy: {
+			state: () => call('ntfy_state', 'GET', '/v1/me/ntfy', toNtfyState),
+			enable: () => call('enable_ntfy', 'PUT', '/v1/me/ntfy', toNtfyState),
+			regenerate: () => call('regenerate_ntfy', 'POST', '/v1/me/ntfy/regenerate', toNtfyState),
+			disable: () => call<null>('disable_ntfy', 'DELETE', '/v1/me/ntfy', null),
+			optIn: (kidId: string) =>
+				withId(kidId, (k) => call<null>('set_ntfy_optin', 'PUT', `/v1/kids/${k}/ntfy`, null)),
+			optOut: (kidId: string) =>
+				withId(kidId, (k) => call<null>('clear_ntfy_optin', 'DELETE', `/v1/kids/${k}/ntfy`, null))
 		},
 		// at is an RFC 3339 instant; left out it is now.
 		endTimer: <K extends TimerKind>(kind: K, kidId: string, id: string, at?: string) =>

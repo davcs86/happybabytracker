@@ -1,6 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { formatAge, todayIn } from '../src/lib/format.js';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn,
+	untilHydrated
+} from './helpers.js';
 import { ANA, CLEO, DAN, IVY, LEO, MIA, receivedRequests, resetStub, stubAs } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -133,6 +139,7 @@ test('editing only the note sends no measure; clearing the head sends null', asy
 	const path = apiPath(IVY.id, row.id);
 	await signIn(page, ANA);
 	await page.goto(entryUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Date')).toHaveValue(addDays(TODAY, -3));
 	await expect(field(page, 'Kilograms')).toHaveValue('9.2');
 	await expect(field(page, 'Length or height')).toHaveValue('74.5');
@@ -145,6 +152,7 @@ test('editing only the note sends no measure; clearing the head sends null', asy
 	expect(await written('PATCH', path)).toEqual({ note: 'only the note' });
 
 	await page.goto(entryUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Head circumference'));
 	await field(page, 'Head circumference').fill('');
 	await save(page);
 	await onGrowth(page, IVY.id, 'weight');
@@ -166,6 +174,7 @@ test('flipping a unit resends the value in the new unit; a blank text after a fl
 	const path = apiPath(IVY.id, row.id);
 	await signIn(page, ANA);
 	await page.goto(entryUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Weight unit').selectOption('lb');
 	await expect(field(page, 'Pounds')).toBeVisible();
 	await expect(field(page, 'Pounds')).not.toHaveValue('');
@@ -179,6 +188,7 @@ test('flipping a unit resends the value in the new unit; a blank text after a fl
 	});
 
 	await page.goto(entryUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Head circumference'));
 	await field(page, 'Head circumference unit').selectOption('in');
 	await field(page, 'Head circumference').fill('');
 	await save(page);
@@ -249,6 +259,7 @@ test('a caregiver can add and edit', async ({ page }) => {
 	expect(added).toMatchObject({ weight: { grams: 13400 } });
 
 	await page.goto(entryUrl(LEO.id, added?.id));
+	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('by the caregiver');
 	await save(page);
 	await onGrowth(page, LEO.id, 'weight');
@@ -284,6 +295,7 @@ test('kid settings offer who and cdc; saving cdc changes the growth page’s sou
 }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}/settings`);
+	await untilHydrated(field(page, 'Name'));
 	const select = field(page, 'Growth chart source');
 	await expect(select).toHaveValue('who');
 	await expect(select.locator('option')).toHaveCount(2);
@@ -376,10 +388,17 @@ test('a preterm kid before the due date says before expected term, never a zero 
 	await expectAccessible(page);
 });
 
-test('the Growth tile leads the 24+ band and is gone with the module off', async ({ page }) => {
+test('the Growth tile follows Sickness and Medication in the 24+ band and is gone with the module off', async ({
+	page
+}) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${LEO.id}`);
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Growth', 'Vaccination']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Sickness',
+		'Medication',
+		'Growth',
+		'Vaccination'
+	]);
 	await expect(quickLog(page).getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
 		'href',
 		newUrl(LEO.id)
@@ -392,7 +411,11 @@ test('the Growth tile leads the 24+ band and is gone with the module off', async
 	);
 	await page.reload();
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
-	await expect(quickLog(page).getByRole('listitem')).toHaveText(['Vaccination']);
+	await expect(quickLog(page).getByRole('listitem')).toHaveText([
+		'Sickness',
+		'Medication',
+		'Vaccination'
+	]);
 });
 
 test.describe('without JavaScript', () => {

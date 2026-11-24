@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,23 +18,24 @@ import (
 )
 
 type kidView struct {
-	ID             string  `json:"id"`
-	Name           string  `json:"name"`
-	BirthDate      string  `json:"birth_date"`
-	Sex            string  `json:"sex"`
-	GestationWeeks *int    `json:"gestation_weeks"`
-	GestationDays  *int    `json:"gestation_days"`
-	TimeZone       string  `json:"time_zone"`
-	GrowthSource   string  `json:"growth_source"`
-	VaccineSchema  *string `json:"vaccine_schema"`
-	Role           string  `json:"role"`
+	ID                     string  `json:"id"`
+	Name                   string  `json:"name"`
+	BirthDate              string  `json:"birth_date"`
+	Sex                    string  `json:"sex"`
+	GestationWeeks         *int    `json:"gestation_weeks"`
+	GestationDays          *int    `json:"gestation_days"`
+	TimeZone               string  `json:"time_zone"`
+	GrowthSource           string  `json:"growth_source"`
+	VaccineSchema          *string `json:"vaccine_schema"`
+	ReminderOverdueMinutes int     `json:"reminder_overdue_minutes"`
+	Role                   string  `json:"role"`
 }
 
 func newKidView(k model.Kid, role model.Role) kidView {
 	return kidView{
 		ID: k.ID, Name: k.Name, BirthDate: k.BirthDate, Sex: k.Sex,
 		GestationWeeks: k.GestationWeeks, GestationDays: k.GestationDays, TimeZone: k.TimeZone,
-		GrowthSource: k.GrowthSource, VaccineSchema: k.VaccineSchema, Role: string(role),
+		GrowthSource: k.GrowthSource, VaccineSchema: k.VaccineSchema, ReminderOverdueMinutes: k.ReminderOverdueMinutes, Role: string(role),
 	}
 }
 
@@ -48,16 +50,44 @@ func (o *optionalInt) UnmarshalJSON(b []byte) error {
 	return json.Unmarshal(b, &o.V)
 }
 
+// reminderMinutes keeps the raw value so a wrong type answers 422 at apply, not decodeJSON's 400.
+type reminderMinutes struct {
+	Set bool
+	Raw json.RawMessage
+}
+
+func (m *reminderMinutes) UnmarshalJSON(b []byte) error {
+	m.Set = true
+	m.Raw = append(m.Raw[:0], b...)
+	return nil
+}
+
+// apply returns the body's value, or cur when the key is absent; it answers 422 itself and is false for null,
+// a non-integer or a value outside the range.
+func (m reminderMinutes) apply(w http.ResponseWriter, cur int) (int, bool) {
+	if !m.Set {
+		return cur, true
+	}
+	var n int
+	if bytes.Equal(m.Raw, []byte("null")) || json.Unmarshal(m.Raw, &n) != nil ||
+		n < constants.MinReminderOverdueMinutes || n > constants.MaxReminderOverdueMinutes {
+		respondInvalid(w, "reminder_overdue_minutes")
+		return 0, false
+	}
+	return n, true
+}
+
 // kidInput is the body of POST and PATCH; on PATCH an absent key keeps the stored value.
 type kidInput struct {
-	Name           *string        `json:"name"`
-	BirthDate      *string        `json:"birth_date"`
-	Sex            *string        `json:"sex"`
-	GestationWeeks optionalInt    `json:"gestation_weeks"`
-	GestationDays  optionalInt    `json:"gestation_days"`
-	TimeZone       *string        `json:"time_zone"`
-	GrowthSource   *string        `json:"growth_source"`
-	VaccineSchema  optionalString `json:"vaccine_schema"`
+	Name                   *string         `json:"name"`
+	BirthDate              *string         `json:"birth_date"`
+	Sex                    *string         `json:"sex"`
+	GestationWeeks         optionalInt     `json:"gestation_weeks"`
+	GestationDays          optionalInt     `json:"gestation_days"`
+	TimeZone               *string         `json:"time_zone"`
+	GrowthSource           *string         `json:"growth_source"`
+	VaccineSchema          optionalString  `json:"vaccine_schema"`
+	ReminderOverdueMinutes reminderMinutes `json:"reminder_overdue_minutes"`
 }
 
 func (in kidInput) mergeOnto(k model.Kid) model.Kid {
@@ -94,7 +124,7 @@ func kidLocation(name string) (*time.Location, bool) {
 }
 
 // invalidKidField names the first failing field in the order name, birth_date, sex, gestation, time_zone, growth_source;
-// "" when valid. vaccine_schema follows it (newSchemaOK).
+// "" when valid. vaccine_schema follows it (newSchemaOK), then reminder_overdue_minutes (reminderMinutes.apply).
 func invalidKidField(k model.Kid, now time.Time) string {
 	if n := utf8.RuneCountInString(k.Name); n < constants.KidNameMinLen || n > constants.KidNameMaxLen {
 		return "name"
@@ -147,12 +177,16 @@ func (d Deps) createKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := d.Now()
-	kid := in.mergeOnto(model.Kid{GrowthSource: string(growth.SourceWHO)})
+	kid := in.mergeOnto(model.Kid{GrowthSource: string(growth.SourceWHO), ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes})
 	if field := invalidKidField(kid, now); field != "" {
 		respondInvalid(w, field)
 		return
 	}
 	if !newSchemaOK(w, in, nil) {
+		return
+	}
+	var ok bool
+	if kid.ReminderOverdueMinutes, ok = in.ReminderOverdueMinutes.apply(w, kid.ReminderOverdueMinutes); !ok {
 		return
 	}
 	kid, err := d.Store.CreateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)
@@ -221,6 +255,9 @@ func (d Deps) updateKid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !newSchemaOK(w, in, stored.VaccineSchema) {
+		return
+	}
+	if kid.ReminderOverdueMinutes, ok = in.ReminderOverdueMinutes.apply(w, kid.ReminderOverdueMinutes); !ok {
 		return
 	}
 	err := d.Store.UpdateKid(r.Context(), kid, PrincipalFrom(r.Context()).ParentID, now)

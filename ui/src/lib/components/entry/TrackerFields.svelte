@@ -5,6 +5,7 @@
 	import NursingFields from '#lib/components/entry/NursingFields.svelte';
 	import PumpingFields from '#lib/components/entry/PumpingFields.svelte';
 	import SleepFields from '#lib/components/entry/SleepFields.svelte';
+	import SymptomFields from '#lib/components/entry/SymptomFields.svelte';
 	import type { EntryStage, EntryValues } from '#lib/entry-edit.js';
 	import type { TrackerKind } from '#lib/types.js';
 
@@ -31,6 +32,8 @@
 	<MealFields {values} {error} />
 {:else if kind === 'pumping'}
 	<PumpingFields {values} {error} />
+{:else if kind === 'symptoms'}
+	<SymptomFields {values} {error} />
 {:else if kind === 'sleep'}
 	<SleepFields {stage} {values} {error} />
 {:else}

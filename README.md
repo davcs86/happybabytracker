@@ -22,7 +22,11 @@ What a parent can do so far:
   percentile against the kid's growth source and drawn on charts (see "Growth" below).
 - Vaccination: recorded doses shown against a national schedule a guardian chooses for the kid, with a
   soft "Due" list on the home (see "Vaccination" below).
-- Installable from the browser (a web app manifest and icons); online only, no service worker.
+- Sickness and medication: symptoms (a fever with its temperature) on the timeline, medication courses
+  with a schedule, logged doses, and reminders on the home's Due list and, when the server has a channel
+  configured, on opted-in devices (see "Sickness, medication and reminders" below).
+- Installable from the browser (a web app manifest and icons); online only. The service worker handles
+  install, push and notification clicks only: it caches nothing and there is no offline page.
 
 Modules and their defaults by age (whole months from the birth date, in the kid's zone):
 
@@ -32,7 +36,7 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | `milestones` | later plan | on | on | off |
 | `growth` | built | on | on | on |
 | `vaccination` | built | on | on | on |
-| `sickness`, `medication` | later plans | on | on | on |
+| `sickness`, `medication` | built | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -168,6 +172,38 @@ An after weight below the before weight is stored as typed, with no estimate and
 Weigh-ins are not growth measurements: they stay with their session and never reach the Growth page, a
 score or a chart. The app records and displays; it never interprets a weight, a gain or a loss.
 
+## Sickness, medication and reminders
+
+- Symptoms (module `sickness`): congestion, cough, fever, vomiting, diarrhea, constipation, rash, ear pain,
+  sore throat, poor appetite, unusually sleepy, or other with a short text, each with an optional severity.
+  A fever carries its temperature (°C or °F, the parent's preference, up to two decimals) and how it was
+  taken. Symptoms are on the timeline like the other trackers.
+- Medication (module `medication`): a course has a name, a dose text, a start, an optional last day and a
+  schedule: as needed, fixed times of day, or every N hours on a fixed grid from the start. The grid is
+  never moved to the last dose logged and the app never suggests an interval. "Log dose now" on the
+  Medication page records a dose; doses are not on the timeline. With the module off the page stays
+  reachable and says reminders are paused.
+- Reminders: each due occurrence of an active scheduled course is listed on the kid's home Due list (first,
+  before vaccines) and as "Next due" on the Medication page, read from the same rows the sender uses. A
+  missed dose shows `overdue` until the kid's "Show a missed dose as overdue for (minutes)" setting runs
+  out (guardians, on the kid's settings page; 5 to 1440, default 60) or the course's next occurrence is
+  due, whichever comes first. A dose logged from 30 minutes before a due time marks that occurrence done.
+- What a reminder sends: only "Medication due for <kid's name>", opening the kid's Medication page. It
+  never names the medication, the dose or a note. It goes only to devices or ntfy topics a parent opted in
+  for that kid, while that parent is enabled and has access, and never later than 30 minutes after the due
+  time.
+- Channels, both optional and independent: Web Push (on when both `VAPID_*` variables are set) and ntfy (on
+  when `NTFY_URL` is set). With neither, reminders still show on the Due list and the Medication page. Each
+  parent turns them on under Account, Notifications: Web Push per device, choosing the kids; ntfy as one
+  generated topic per parent. On iPhone and iPad, Web Push needs the app added to the Home Screen first.
+  Signing out does not stop either channel on that phone or browser: turn it off there first (both sections
+  say so). A new ntfy topic is created only after a confirm; a topic stored earlier while ntfy is off can
+  be removed there.
+- ntfy keeps each message in its cache (72 hours on the edge's server), so the kid's name rests on the
+  ntfy server in plain text for that long; the Notifications page says so at the top of its ntfy section.
+
+Operating reminders (health answers, a missing reminder, turning Web Push on): `docs/runbooks/reminders.md`.
+
 ## Configuration
 
 API (`ghcr.io/davcs86/happybabytracker-api`):
@@ -179,10 +215,22 @@ API (`ghcr.io/davcs86/happybabytracker-api`):
 | `INTERNAL_API_TOKEN` | Shared with the UI, at least 32 characters (secret) |
 | `PUBLIC_ORIGIN` | The app's origin, `http(s)://host[:port]` with no path; used in invite and reset links |
 | `DATA_DIR` | SQLite directory, default `/data` (the only writable path) |
+| `VAPID_PRIVATE_KEY` | Optional; P-256 private key for Web Push, 43 characters of unpadded base64url (secret) |
+| `VAPID_SUBJECT` | Optional; the `https:` URL sent to the push services (the app's origin). Both VAPID variables or neither: neither turns Web Push off |
+| `HBT_ALLOW_FAKE_PUSH` | `1` (with both VAPID variables) records pushes in memory instead of sending them, served at `GET /v1/_test/pushes`; tests and smoke only, never in production |
+| `NTFY_URL` | Optional; the ntfy server the API publishes to, `http(s)://host[:port]`. Unset turns ntfy off |
+| `NTFY_TOPIC_PREFIX` | Required with `NTFY_URL`; 1–32 of `a-z0-9-` |
+| `NTFY_TOKEN` | Optional ntfy access token (secret) |
+| `NTFY_PUBLIC_URL` | Optional `https:` server address shown to parents when it differs from `NTFY_URL` |
 
-The process refuses to start on a missing or invalid value (only `DATA_DIR` has a default) and names
-the variable, never its value. It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
-two concurrent password hashes stay within the edge's 96m container limit and the 60 MiB memory ceiling.
+The process refuses to start on a missing or invalid value and names the variable, never its value. Only
+`DATA_DIR` has a default. The VAPID and `NTFY_*` variables are optional, but any value that is set must be
+valid: the two VAPID variables come both or neither, `HBT_ALLOW_FAKE_PUSH` is `1` or unset and needs both
+VAPID variables, and every other `NTFY_*` variable needs `NTFY_URL`. For example, it refuses only
+`VAPID_PRIVATE_KEY` or only `VAPID_SUBJECT`, a malformed key, a subject that is not an `https:` URL,
+`HBT_ALLOW_FAKE_PUSH=1` without VAPID, and `NTFY_TOKEN` without `NTFY_URL`.
+It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
+two concurrent password hashes stay within the edge's 96m container limit and the 64 MiB memory ceiling.
 Changing `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `INTERNAL_API_TOKEN` ends every admin session at the next
 start; parent sessions are kept.
 
@@ -200,10 +248,10 @@ Because of the last row, the origin and client address come from `X-Forwarded-Pr
 `X-Forwarded-Host` and `X-Forwarded-For`: put the UI behind a reverse proxy that sends all three. The
 session cookie is `Secure`, so the public origin must be `https`.
 
-The `VAPID_*` and `NTFY_*` variables of the design arrive with a later plan; nothing reads them yet.
-
-Health, all through the UI: `GET /healthz` (the UI), `GET /healthz/api` (the API's `/healthz`, 200 while
-its database answers).
+Health, all through the UI: `GET /healthz` (the UI), `GET /healthz/api` (the API's `/healthz`, 200 only
+while its database answers and the reminder worker has ticked within the last 60 seconds) and
+`GET /healthz/reminders` (the API's, 503 while a reminder delivery is stuck or one failed or expired in the
+last 15 minutes; 200 with no channel configured). What each answer means: `docs/runbooks/reminders.md`.
 
 ## Run locally
 
@@ -269,7 +317,8 @@ Memory readings: the smoke's step 10 reads each container's cgroup high-water ma
 (`memory.max_usage_in_bytes`), which includes page cache, so it varies between runs. Three runs on
 2026-11-23 with all three vaccination schedules loaded read API 46, 46 and 48 MiB for the first process
 (9–10 MiB after the restart, 46 MiB after the login burst) and UI 120, 55 and 55 MiB, against ceilings of
-60 and 140 MiB; an earlier run read API 58 MiB.
+60 and 140 MiB; an earlier run read API 58 MiB. A plan-6 run read a 61 MiB transient for the first API
+process, so the owner raised the API ceiling to 64 MiB on 2026-11-24 (the edge's container limit is 96m).
 
 ## Release
 
@@ -278,6 +327,12 @@ Merging to `main` deploys nothing. CI builds both images, smoke-tests them toget
 moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints both `@sha256:…`
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
+
+Deploy and rollback: both images ship together (the bump PR pins both). Migration 0006 (sickness,
+medication, reminders) is forward-only: an older API refuses a database whose schema is newer than its
+own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
+the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the deploy. A rollback
+is both pins back plus a restore of the last `edge-backup` archive; anything written since it is lost.
 
 ## Third-party data
 

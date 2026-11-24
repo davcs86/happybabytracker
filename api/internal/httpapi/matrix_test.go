@@ -13,6 +13,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -57,6 +58,7 @@ var matrixWant = map[Access][actorCount]want{
 // declared class cannot make its own expectations pass.
 var routeClasses = map[string]Access{
 	"GET /healthz":                                        Open,
+	"GET /healthz/reminders":                              Open,
 	"POST /v1/session":                                    Internal,
 	"GET /v1/session":                                     Session,
 	"DELETE /v1/session":                                  Session,
@@ -71,6 +73,20 @@ var routeClasses = map[string]Access{
 	"POST /v1/me/password":                                Parent,
 	"GET /v1/me/sessions":                                 Parent,
 	"DELETE /v1/me/sessions/{session}":                    Parent,
+	"GET /v1/push":                                        Parent,
+	"GET /v1/me/push-devices":                             Parent,
+	"PUT /v1/me/push-devices":                             Parent,
+	"PATCH /v1/me/push-devices/{device}":                  Parent,
+	"DELETE /v1/me/push-devices/{device}":                 Parent,
+	"PUT /v1/kids/{kid}/push-devices/{device}":            Caregiver,
+	"DELETE /v1/kids/{kid}/push-devices/{device}":         Caregiver,
+	"GET /v1/_test/pushes":                                Internal,
+	"GET /v1/me/ntfy":                                     Parent,
+	"PUT /v1/me/ntfy":                                     Parent,
+	"POST /v1/me/ntfy/regenerate":                         Parent,
+	"DELETE /v1/me/ntfy":                                  Parent,
+	"PUT /v1/kids/{kid}/ntfy":                             Caregiver,
+	"DELETE /v1/kids/{kid}/ntfy":                          Caregiver,
 	"GET /v1/growth-sources":                              Parent,
 	"GET /v1/vaccine-schemas":                             Parent,
 	"GET /v1/vaccine-catalogue":                           Parent,
@@ -121,6 +137,21 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/growth/{entry}":                   Caregiver,
 	"PATCH /v1/kids/{kid}/growth/{entry}":                 Caregiver,
 	"DELETE /v1/kids/{kid}/growth/{entry}":                Caregiver,
+	"GET /v1/kids/{kid}/symptoms":                         Caregiver,
+	"POST /v1/kids/{kid}/symptoms":                        Caregiver,
+	"GET /v1/kids/{kid}/symptoms/{entry}":                 Caregiver,
+	"PATCH /v1/kids/{kid}/symptoms/{entry}":               Caregiver,
+	"DELETE /v1/kids/{kid}/symptoms/{entry}":              Caregiver,
+	"GET /v1/kids/{kid}/medications":                      Caregiver,
+	"POST /v1/kids/{kid}/medications":                     Caregiver,
+	"GET /v1/kids/{kid}/medications/{entry}":              Caregiver,
+	"PATCH /v1/kids/{kid}/medications/{entry}":            Caregiver,
+	"DELETE /v1/kids/{kid}/medications/{entry}":           Caregiver,
+	"GET /v1/kids/{kid}/medication-doses":                 Caregiver,
+	"POST /v1/kids/{kid}/medication-doses":                Caregiver,
+	"GET /v1/kids/{kid}/medication-doses/{entry}":         Caregiver,
+	"PATCH /v1/kids/{kid}/medication-doses/{entry}":       Caregiver,
+	"DELETE /v1/kids/{kid}/medication-doses/{entry}":      Caregiver,
 	"GET /v1/kids/{kid}/vaccines":                         Caregiver,
 	"GET /v1/kids/{kid}/vaccinations":                     Caregiver,
 	"POST /v1/kids/{kid}/vaccinations":                    Caregiver,
@@ -163,11 +194,13 @@ type fixture struct {
 	kit                                           *kit
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
-	growth, administration                        string
+	growth, administration, symptom, medication   string
+	dose                                          string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
 	sid                                           [actorCount]string
+	device                                        [actorCount]string // x, c and g only
 }
 
 // matrixParams is the only list of path parameters the matrix can fill.
@@ -179,6 +212,12 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 	"module":         func(*fixture, Route, actor) string { return "bottles" },
 	"administration": func(f *fixture, _ Route, _ actor) string { return f.administration },
 	"line":           func(*fixture, Route, actor) string { return "hepatitis_b-1" },
+	"device": func(f *fixture, _ Route, a actor) string {
+		if f.device[a] == "" {
+			return f.device[aG]
+		}
+		return f.device[a]
+	},
 	"parent": func(f *fixture, rt Route, a actor) string {
 		if rt.Access == Caregiver && (a == aC || a == aG) {
 			return f.parent[aC].ID
@@ -201,6 +240,12 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.nursing
 		case strings.Contains(rt.Pattern, "/growth/{entry}"):
 			return f.growth
+		case strings.Contains(rt.Pattern, "/symptoms/"):
+			return f.symptom
+		case strings.Contains(rt.Pattern, "/medications/"):
+			return f.medication
+		case strings.Contains(rt.Pattern, "/medication-doses/"):
+			return f.dose
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -251,7 +296,7 @@ func newMatrixFixture(t *testing.T) *fixture {
 
 	schema := "us"
 	kid, err := k.Store.CreateKid(ctx, model.Kid{Name: "Kid K", BirthDate: "2026-03-04", Sex: "female", TimeZone: "UTC", GrowthSource: "who",
-		VaccineSchema: &schema}, f.parent[aG].ID, k.now)
+		VaccineSchema: &schema, ReminderOverdueMinutes: constants.DefaultReminderOverdueMinutes}, f.parent[aG].ID, k.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,6 +349,43 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.growth, f.administration = measurement.ID, dose.ID
+	symptom, err := k.Store.CreateSymptom(ctx, kid.ID, f.parent[aG].ID, model.Symptom{At: k.now, Symptom: "cough"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.symptom = symptom.ID
+	medication, err := k.Store.CreateMedication(ctx, kid.ID, f.parent[aG].ID, model.Medication{Name: "Amoxicillin", Dose: "2.5 ml", Active: true, StartAt: k.now,
+		Schedule: schedule.Schedule{Kind: schedule.KindTimes, Times: []string{"08:00", "20:00"}}}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.medication = medication.ID
+	given, err := k.Store.CreateDose(ctx, kid.ID, f.parent[aG].ID, model.MedicationDose{MedicationID: medication.ID, GivenAt: k.now}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.dose = given.ID
+	p256dh, authKey := testSubscriptionKeys()
+	for _, a := range []actor{aX, aC, aG} {
+		dev, _, err := k.Store.UpsertDevice(ctx, f.parent[a].ID, "https://push.example.com/"+a.String(), p256dh, authKey, "Phone", k.now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.device[a] = dev.ID
+		if a != aX {
+			if err := k.Store.SetPushOptin(ctx, kid.ID, f.parent[a].ID, dev.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, _, err := k.Store.SetNtfyTopic(ctx, f.parent[a].ID, k.Cfg.Ntfy.TopicPrefix, false, k.now); err != nil {
+			t.Fatal(err)
+		}
+		if a != aX {
+			if err := k.Store.SetNtfyOptin(ctx, kid.ID, f.parent[a].ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 
 	invitee, err := k.Store.CreateParent(ctx, "newbie", "Newbie", k.now)
 	if err != nil {

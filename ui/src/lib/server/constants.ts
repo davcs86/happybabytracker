@@ -19,3 +19,7 @@ export const VACCINE_LINE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 export const NOT_FOUND_MESSAGE = 'Not found';
 export const FAILURE_MESSAGE = 'Something went wrong, try again';
 export const UNREACHABLE_MESSAGE = 'The app cannot reach its server, try again soon';
+// Holds this browser's push device id (an id, not a secret) so a form can name the device without JavaScript.
+export const PUSH_DEVICE_COOKIE = 'hbt_push_device';
+// Renewed on each visit that re-sends the subscription; a lapsed cookie only stops the automatic re-send.
+export const PUSH_DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;

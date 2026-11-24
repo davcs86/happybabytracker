@@ -3,12 +3,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,7 +20,10 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/ntfy"
+	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
+	"github.com/davcs86/happybabytracker/api/internal/testlog"
 )
 
 const (
@@ -40,14 +45,26 @@ var testHash = sync.OnceValue(func() string {
 })
 
 type kit struct {
-	t       *testing.T
-	Store   *store.Store
-	Cfg     config.Config
-	Limiter *auth.Limiter
-	Log     *bytes.Buffer
-	Handler http.Handler
-	now     time.Time
+	t        *testing.T
+	Store    *store.Store
+	Cfg      config.Config
+	Limiter  *auth.Limiter
+	Log      *bytes.Buffer
+	Handler  http.Handler
+	now      time.Time
+	Push     push.Sender
+	Recorder *push.Recorder
+	Resolver push.Resolver
 }
+
+// testVAPID is one P-256 pair per test binary; the kit runs with Web Push on and the fake sender.
+var testVAPID = sync.OnceValue(func() *ecdsa.PrivateKey {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+	return k
+})
 
 func newKit(t *testing.T) *kit {
 	t.Helper()
@@ -71,7 +88,32 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 		Log: &bytes.Buffer{},
 		now: t0,
 	}
+	k.Cfg.VAPIDKey, k.Cfg.VAPIDSubject, k.Cfg.AllowFakePush = testVAPID(), "https://example.test", true
+	k.Recorder = &push.Recorder{}
+	k.Push = k.Recorder
+	k.Cfg.Ntfy, k.Cfg.NtfyEnabled = ntfy.Config{URL: testNtfyURL, TopicPrefix: "hbt-test"}, true
 	k.Limiter = auth.NewLimiter(constants.LoginAttemptsPerMinute, k.clock)
+	k.Handler = NewHandler(k.deps())
+	return k
+}
+
+const testNtfyURL = "http://ntfy:2586"
+
+// newKitNoNtfy is the kit without NTFY_URL: ntfy off, Web Push unchanged.
+func newKitNoNtfy(t *testing.T) *kit {
+	t.Helper()
+	k := newKit(t)
+	k.Cfg.Ntfy, k.Cfg.NtfyEnabled = ntfy.Config{}, false
+	k.Handler = NewHandler(k.deps())
+	return k
+}
+
+// newKitNoPush is the kit with neither VAPID variable set: Web Push off, no fake, no test route.
+func newKitNoPush(t *testing.T) *kit {
+	t.Helper()
+	k := newKit(t)
+	k.Cfg.VAPIDKey, k.Cfg.VAPIDSubject, k.Cfg.AllowFakePush = nil, "", false
+	k.Recorder, k.Push = nil, nil
 	k.Handler = NewHandler(k.deps())
 	return k
 }
@@ -79,10 +121,15 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 func (k *kit) clock() time.Time { return k.now }
 
 func (k *kit) deps() Deps {
-	return Deps{
-		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock,
-		Log: slog.New(slog.NewJSONHandler(k.Log, nil)),
+	d := Deps{
+		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock, LastTick: k.clock,
+		Log:  slog.New(slog.NewJSONHandler(k.Log, nil)),
+		Push: k.Push, Resolver: k.Resolver, PushRecorder: k.Recorder,
 	}
+	if k.Cfg.VAPIDKey != nil {
+		d.VAPIDPublicKey = push.PublicKey(k.Cfg.VAPIDKey)
+	}
+	return d
 }
 
 // addParent creates a parent with the shared test password; the username must already be normalised.
@@ -214,29 +261,9 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 
 var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
 
-// logLeaks names each field of a JSON log line outside allowedLogFields, and each string field carrying a banned
-// value; request_id, time and duration_ms are random or measured, so they are never matched.
+// logLeaks is testlog.Leaks with this package's allowlist.
 func logLeaks(line string, banned ...string) []string {
-	var fields map[string]any
-	if err := json.Unmarshal([]byte(line), &fields); err != nil {
-		return []string{"not JSON: " + err.Error()}
-	}
-	var out []string
-	for key, v := range fields {
-		if !slices.Contains(allowedLogFields, key) {
-			out = append(out, "unexpected field "+key)
-		}
-		text, isText := v.(string)
-		if !isText || key == "request_id" || key == "time" || key == "duration_ms" {
-			continue
-		}
-		for _, b := range banned {
-			if strings.Contains(text, b) {
-				out = append(out, key+" carries "+b)
-			}
-		}
-	}
-	return out
+	return testlog.Leaks(line, allowedLogFields, banned...)
 }
 
 // wantCleanLog checks that log holds want lines and that none of them leaks.

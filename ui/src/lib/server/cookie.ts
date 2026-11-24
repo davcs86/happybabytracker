@@ -4,8 +4,11 @@ import {
 	KID_COOKIE,
 	KID_COOKIE_MAX_AGE_S,
 	PARENT_SESSION_MAX_AGE_S,
+	PUSH_DEVICE_COOKIE,
+	PUSH_DEVICE_COOKIE_MAX_AGE_S,
 	SESSION_COOKIE
 } from './constants';
+import { notificationsPath } from '../paths';
 import type { SessionKind } from '../types';
 
 const ATTRIBUTES = { path: '/', httpOnly: true, secure: true, sameSite: 'strict' } as const;
@@ -32,4 +35,18 @@ export function setKidCookie(cookies: Cookies, kidId: string): void {
 
 export function clearKidCookie(cookies: Cookies): void {
 	cookies.delete(KID_COOKIE, { ...ATTRIBUTES });
+}
+
+// Holds a push device id only, and only the notifications page and its subscribe route read it.
+const PUSH_DEVICE_ATTRIBUTES = { ...ATTRIBUTES, path: notificationsPath } as const;
+
+export function setPushDeviceCookie(cookies: Cookies, deviceId: string): void {
+	cookies.set(PUSH_DEVICE_COOKIE, deviceId, {
+		...PUSH_DEVICE_ATTRIBUTES,
+		maxAge: PUSH_DEVICE_COOKIE_MAX_AGE_S
+	});
+}
+
+export function clearPushDeviceCookie(cookies: Cookies): void {
+	cookies.delete(PUSH_DEVICE_COOKIE, { ...PUSH_DEVICE_ATTRIBUTES });
 }

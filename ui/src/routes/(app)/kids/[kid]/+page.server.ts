@@ -28,6 +28,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		running: home.data.running,
 		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
 		due: home.data.due,
+		todayDate: today,
 		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')
 	};
 };

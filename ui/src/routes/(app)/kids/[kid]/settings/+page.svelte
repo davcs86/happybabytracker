@@ -34,6 +34,7 @@
 	zones={data.zones}
 	sources={data.sources}
 	schedules={data.schedules}
+	mode="settings"
 	submitLabel="Save"
 	action="?/save"
 />

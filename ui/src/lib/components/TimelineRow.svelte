@@ -12,7 +12,7 @@
 		item: TimelineItem;
 		kidId: string;
 		zone: string;
-		units: Pick<Units, 'weight' | 'volume'>;
+		units: Pick<Units, 'weight' | 'volume' | 'temp'>;
 	} = $props();
 
 	const href = $derived(

@@ -6,6 +6,7 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { DISPLAY_NAME_MAX_LEN, MIN_PASSWORD_LEN } from '#lib/constants.js';
 	import { formatInstant } from '#lib/format.js';
+	import { notificationsPath } from '#lib/paths.js';
 	import { passwordProblem } from '#lib/password.js';
 	import type { Units } from '#lib/types.js';
 	import type { PageProps } from './$types';
@@ -103,6 +104,10 @@
 </svelte:head>
 
 <h1 class="mb-4 text-xl font-semibold">Account</h1>
+<p class="mb-6 text-sm">
+	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the path helper, absolute like the other links to pages without JavaScript -->
+	<a href={notificationsPath} class="underline">Notifications</a>
+</p>
 
 <section aria-labelledby="profile-heading" class="flex max-w-md flex-col gap-3">
 	<h2 id="profile-heading" class="font-semibold">Profile</h2>

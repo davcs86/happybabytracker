@@ -120,6 +120,48 @@ const (
 	// A mixed-unit until must lead from by this many mean days, so the window is non-empty for every birth date.
 	VaccineMinMixedUnitGapDays = 4
 
+	MaxMedicationsPerKid     = 50
+	MaxMedicationDosesPerKid = 5000
+	MaxScheduleTimes         = 12
+	MinEveryHours            = 1
+	MaxEveryHours            = 168
+	MaxScheduleOccurrences   = 1000 // Occurrences returns the earliest this many, truncated silently.
+	MedicationTextMaxLen     = 80
+	SymptomOtherMaxLen       = 80
+	MinTempCHundredths       = 3000
+	MaxTempCHundredths       = 4500
+
+	DefaultReminderOverdueMinutes = 60
+	MinReminderOverdueMinutes     = 5
+	MaxReminderOverdueMinutes     = 1440
+
+	PushDevicesPerParent = 10
+	PushLabelMaxLen      = 40
+	PushEndpointMaxLen   = 2048
+	DefaultPushLabel     = "This device" // a new device's name when the upsert sends none
+
+	ReminderTick        = 30 * time.Second
+	ReminderExpiry      = 30 * time.Minute
+	DoseDoneLead        = 30 * time.Minute
+	ReminderHealthStale = 15 * time.Minute
+	WorkerStaleAfter    = 60 * time.Second
+	// A settle outlives the worker's cancelled context by at most this, so a send cut off by shutdown is still stored.
+	ReminderSettleTimeout = 5 * time.Second
+
+	PushTTLMax                 = 3600 * time.Second
+	PushTimeout                = 10 * time.Second
+	PushJWTLifetime            = 12 * time.Hour
+	PushResponseMaxBytes       = 4096
+	PushResponseHeaderMaxBytes = 8192
+	PushIdleConnTimeout        = 30 * time.Second
+	DeliveryConcurrency        = 8
+
+	NtfyTimeout          = 10 * time.Second
+	NtfyTopicRandomLen   = 22
+	NtfyPrefixPattern    = `^[a-z0-9-]{1,32}$`
+	NtfyMessageMaxBytes  = 4096
+	NtfyResponseMaxBytes = 4096
+
 	DefaultAddr    = ":9210"
 	DefaultDataDir = "/data"
 
@@ -137,3 +179,6 @@ const (
 
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
 var VaccineSchedules = []string{"us", "uk", "mx"}
+
+// ReminderRetryDelays lists the wait after each failed send attempt, in order.
+var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}

@@ -1,7 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { todayIn } from '../src/lib/format.js';
 import { formatDayHeading } from '../src/lib/timeline.js';
-import { expectAccessible, expectFieldError, expectNotFoundPage, signIn } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectNotFoundPage,
+	signIn,
+	untilHydrated
+} from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -110,7 +116,7 @@ test('the filter form shows the kid’s dates and every enabled tracker, ticked'
 	await page.goto(timelineUrl(RANGE));
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(DAY1);
 	await expect(page.getByLabel('To', { exact: true })).toHaveValue(DAY2);
-	for (const name of ['Bottle', 'Nursing', 'Pumping', 'Sleep', 'Diaper', 'Solids']) {
+	for (const name of ['Bottle', 'Nursing', 'Pumping', 'Sleep', 'Diaper', 'Solids', 'Symptom']) {
 		await expect(box(page, name)).toBeChecked();
 	}
 	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
@@ -134,6 +140,7 @@ test('unticking a tracker hides its entries, ticking it again brings them back',
 	await seedTwoDays(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
 
 	await box(page, 'Bottle').uncheck();
@@ -159,6 +166,7 @@ test('a switched-off module’s entries stay hidden until its box is ticked', as
 	);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Diaper')).toBeChecked();
 	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
@@ -225,6 +233,7 @@ test('Older carries a narrowed filter to the next page', async ({ page }) => {
 	});
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${PAGE_DAY}&to=${PAGE_DAY}`));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await box(page, 'Bottle').uncheck();
 	await show(page);
 	await page.waitForURL(/types=/);
@@ -282,6 +291,7 @@ test('a row opens its edit page, and saving returns to the timeline with the cha
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
 	await page.getByRole('link', { name: '11:30 Diaper wet' }).click();
+	await untilHydrated(page.getByLabel('Note', { exact: true }));
 	await expect(page).toHaveURL(`/kids/${MIA.id}/log/diapers/${diaper.id}`);
 	await page.getByRole('radio', { name: 'Both' }).check();
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -354,6 +364,75 @@ test.describe('without JavaScript', () => {
 		await expect(entries(page, DAY2)).toHaveCount(3);
 		await expect(box(page, 'Sleep')).not.toBeChecked();
 	});
+});
+
+// A fever, a cough and an other symptom, with a diaper between them, on one day.
+async function seedSymptoms(api: Api) {
+	const fever = await seed(api, 'symptoms', {
+		at: `${DAY1}T09:12:00Z`,
+		symptom: 'fever',
+		temperature: { unit: 'c', amount: 3840 },
+		method: 'ear'
+	});
+	await seed(api, 'symptoms', {
+		at: `${DAY1}T10:30:00Z`,
+		symptom: 'cough',
+		severity: 'moderate',
+		note: 'at night'
+	});
+	await seed(api, 'diapers', { at: `${DAY1}T11:30:00Z`, kind: 'wet' });
+	await seed(api, 'symptoms', { at: `${DAY1}T12:00:00Z`, symptom: 'other', other_text: 'hiccups' });
+	return { fever };
+}
+
+test('symptoms read in the parent unit, and a row opens the symptom edit page', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const { fever } = await seedSymptoms(api);
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(RANGE));
+	await expect(entries(page, DAY1)).toHaveText([
+		'12:00 Other: hiccups',
+		'11:30 Diaper wet',
+		/^10:30 Cough, moderate\s+at night$/,
+		'09:12 Fever 38.4 °C (ear)'
+	]);
+	await expectAccessible(page);
+
+	expect((await api('PATCH', '/v1/me', { units: { temp: 'f' } })).status).toBe(200);
+	await page.goto(timelineUrl(RANGE));
+	await expect(entries(page, DAY1).last()).toHaveText('09:12 Fever 101.12 °F (ear)');
+	await expect(page.getByRole('link', { name: /^09:12 Fever/ })).toHaveAttribute(
+		'href',
+		`/kids/${MIA.id}/log/symptoms/${fever.id}`
+	);
+	await page.getByRole('link', { name: /^09:12 Fever/ }).click();
+	await expect(page).toHaveURL(`/kids/${MIA.id}/log/symptoms/${fever.id}`);
+	await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+});
+
+test('the Symptom box narrows the timeline to symptoms, and unticking it hides them', async ({
+	page
+}) => {
+	await seedSymptoms(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`${RANGE}&types=symptom`));
+	await expect(box(page, 'Symptom')).toBeChecked();
+	await expect(box(page, 'Diaper')).not.toBeChecked();
+	await expect(entries(page, DAY1)).toHaveText([
+		'12:00 Other: hiccups',
+		/^10:30 Cough, moderate/,
+		'09:12 Fever 38.4 °C (ear)'
+	]);
+
+	await page.goto(timelineUrl(RANGE));
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await box(page, 'Symptom').uncheck();
+	await show(page);
+	await page.waitForURL(/types=/);
+	await expect(box(page, 'Symptom')).not.toBeChecked();
+	await expect(entries(page, DAY1)).toHaveText(['11:30 Diaper wet']);
 });
 
 test('a sleep that ends the next day marks its end', async ({ page }) => {

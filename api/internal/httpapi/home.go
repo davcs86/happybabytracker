@@ -7,6 +7,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -17,16 +18,35 @@ type runningView struct {
 	Nursing *nursingView `json:"nursing"`
 }
 
-const vaccinationModule model.Module = "vaccination"
+const (
+	vaccinationModule model.Module = "vaccination"
+	medicationModule  model.Module = "medication"
+)
 
-// dueKindVaccine is the Kind of a due entry that stands for a vaccine visit.
-const dueKindVaccine = "vaccine"
+// The Kind of a due entry: a vaccine visit or a medication reminder.
+const (
+	dueKindVaccine    = "vaccine"
+	dueKindMedication = "medication"
+)
 
-type dueView struct {
+type dueVaccineView struct {
 	Kind   string  `json:"kind"`
 	From   ageJSON `json:"from"`
 	Status string  `json:"status"`
 	Count  int     `json:"count"`
+}
+
+type dueMedicationRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// dueMedicationView never carries the dose or any notification text.
+type dueMedicationView struct {
+	Kind       string           `json:"kind"`
+	Medication dueMedicationRef `json:"medication"`
+	DueAt      string           `json:"due_at"`
+	State      string           `json:"state"`
 }
 
 type homeView struct {
@@ -36,13 +56,13 @@ type homeView struct {
 	Modules            []moduleView   `json:"modules"`
 	Running            runningView    `json:"running"`
 	Today              daySummaryView `json:"today"`
-	Due                []dueView      `json:"due"`
+	Due                []any          `json:"due"`
 }
 
 // vaccineDue lists the vaccine visits that are due or overdue on today; empty when the module is off, no schedule
 // is chosen or the chosen one is no longer shipped. It answers 503 only when a schedule would be judged.
-func (d Deps) vaccineDue(w http.ResponseWriter, r *http.Request, kid model.Kid, states []store.ModuleState, loc *time.Location, now time.Time) ([]dueView, bool) {
-	out := []dueView{}
+func (d Deps) vaccineDue(w http.ResponseWriter, r *http.Request, kid model.Kid, states []store.ModuleState, loc *time.Location, now time.Time) ([]dueVaccineView, bool) {
+	out := []dueVaccineView{}
 	on := slices.ContainsFunc(states, func(s store.ModuleState) bool { return s.Module == vaccinationModule && s.Enabled })
 	if !on || kid.VaccineSchema == nil {
 		return out, true
@@ -60,7 +80,27 @@ func (d Deps) vaccineDue(w http.ResponseWriter, r *http.Request, kid model.Kid, 
 		return nil, false
 	}
 	for _, g := range e.Due() {
-		out = append(out, dueView{Kind: dueKindVaccine, From: newAgeJSON(g.From), Status: string(g.Status), Count: g.Count})
+		out = append(out, dueVaccineView{Kind: dueKindVaccine, From: newAgeJSON(g.From), Status: string(g.Status), Count: g.Count})
+	}
+	return out, true
+}
+
+// medicationDue lists the kid's due and overdue medication reminders (Open value 25); empty when the module is off.
+func (d Deps) medicationDue(w http.ResponseWriter, r *http.Request, kid model.Kid, states []store.ModuleState, loc *time.Location, now time.Time) ([]any, bool) {
+	out := []any{}
+	if !slices.ContainsFunc(states, func(s store.ModuleState) bool { return s.Module == medicationModule && s.Enabled }) {
+		return out, true
+	}
+	entries, err := d.Store.DueEntries(r.Context(), kid.ID, time.Duration(kid.ReminderOverdueMinutes)*time.Minute, now, schedule.DayEnd(loc, now))
+	if !entryOK(w, err) {
+		return nil, false
+	}
+	for _, e := range entries {
+		state := "overdue"
+		if now.Before(e.DueAt) {
+			state = "due"
+		}
+		out = append(out, dueMedicationView{Kind: dueKindMedication, Medication: dueMedicationRef{e.MedicationID, e.Name}, DueAt: instantString(e.DueAt), State: state})
 	}
 	return out, true
 }
@@ -102,8 +142,15 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v.Today = newDaySummaryView(days[0])
-	if v.Due, ok = d.vaccineDue(w, r, kid, km.States, loc, now); !ok {
+	if v.Due, ok = d.medicationDue(w, r, kid, km.States, loc, now); !ok {
 		return
+	}
+	vaccines, ok := d.vaccineDue(w, r, kid, km.States, loc, now)
+	if !ok {
+		return
+	}
+	for _, e := range vaccines {
+		v.Due = append(v.Due, e)
 	}
 	respondJSON(w, http.StatusOK, v)
 }

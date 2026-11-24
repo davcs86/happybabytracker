@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kidValues, readKidForm, scheduleOptions } from './kid-form';
+import { KID_FIELD_MESSAGES, kidValues, readKidForm, scheduleOptions } from './kid-form';
 import type { VaccineSchemaInfo } from '../types';
 
 const form = (fields: Record<string, string>) => {
@@ -26,6 +26,80 @@ describe('readKidForm growth source', () => {
 	});
 });
 
+describe('readKidForm overdue minutes', () => {
+	const typed = (text: string, original = '60') =>
+		readKidForm(
+			form({ ...kid, reminder_overdue_minutes: text, reminder_overdue_minutes_original: original })
+		);
+
+	it('sends the changed value, accepting both ends of the range', () => {
+		expect(typed('15').input).toMatchObject({ reminderOverdueMinutes: 15 });
+		expect(typed(' 5 ').input).toMatchObject({ reminderOverdueMinutes: 5 });
+		expect(typed('1440').input).toMatchObject({ reminderOverdueMinutes: 1440 });
+	});
+
+	it('refuses blank, non-integer and out-of-range text on its field with the typed value kept', () => {
+		for (const text of ['', '  ', '4', '1441', '0', '-15', '60.5', '1e2', '15 min']) {
+			const r = typed(text);
+			expect(r.input, text).toBeNull();
+			expect(r.field, text).toBe('reminder_overdue_minutes');
+			expect(r.values.reminderOverdue).toBe(text.trim());
+			expect(r.values.reminderOverdueOriginal).toBe('60');
+		}
+		expect(KID_FIELD_MESSAGES.reminder_overdue_minutes).toBe('Enter minutes from 5 to 1440');
+	});
+
+	it('sends nothing when unchanged, even a stored value outside the range', () => {
+		expect(typed('60').input).not.toHaveProperty('reminderOverdueMinutes');
+		expect(typed('2000', '2000').input).not.toHaveProperty('reminderOverdueMinutes');
+		expect(typed('2000', '2000').field).toBeNull();
+	});
+
+	it('sends nothing for a form without the field', () => {
+		const r = readKidForm(form(kid));
+		expect(r.input).not.toHaveProperty('reminderOverdueMinutes');
+		expect(r.values.reminderOverdue).toBe('');
+	});
+
+	it('refuses a blank value that arrives without its original', () => {
+		const r = readKidForm(form({ ...kid, reminder_overdue_minutes: '' }));
+		expect(r.field).toBe('reminder_overdue_minutes');
+		expect(r.input).toBeNull();
+	});
+
+	it('validates a value that arrives without its original', () => {
+		expect(readKidForm(form({ ...kid, reminder_overdue_minutes: '15' })).input).toMatchObject({
+			reminderOverdueMinutes: 15
+		});
+		expect(readKidForm(form({ ...kid, reminder_overdue_minutes: '4' })).field).toBe(
+			'reminder_overdue_minutes'
+		);
+	});
+});
+
+describe('kidValues overdue minutes', () => {
+	it('shows the stored minutes and remembers them as the original; a new kid has neither', () => {
+		const stored = {
+			id: 'k-1',
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC',
+			growthSource: 'who',
+			vaccineSchema: null,
+			reminderOverdueMinutes: 90,
+			role: 'guardian'
+		} as const;
+		expect(kidValues(stored)).toMatchObject({
+			reminderOverdue: '90',
+			reminderOverdueOriginal: '90'
+		});
+		expect(kidValues()).toMatchObject({ reminderOverdue: '', reminderOverdueOriginal: '' });
+	});
+});
+
 describe('kidValues growth source', () => {
 	it("defaults a new kid to who and shows a stored kid's own source", () => {
 		expect(kidValues().growthSource).toBe('who');
@@ -39,6 +113,7 @@ describe('kidValues growth source', () => {
 			timeZone: 'UTC',
 			growthSource: 'cdc',
 			vaccineSchema: null,
+			reminderOverdueMinutes: 60,
 			role: 'guardian'
 		} as const;
 		expect(kidValues(stored).growthSource).toBe('cdc');
@@ -70,6 +145,7 @@ describe('kidValues vaccine schedule', () => {
 			timeZone: 'UTC',
 			growthSource: 'who',
 			vaccineSchema: 'us',
+			reminderOverdueMinutes: 60,
 			role: 'guardian'
 		} as const;
 		expect(kidValues(stored).vaccineSchema).toBe('us');

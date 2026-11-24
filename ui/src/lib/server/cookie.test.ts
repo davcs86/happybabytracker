@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Cookies } from '@sveltejs/kit';
 import {
 	clearKidCookie,
+	clearPushDeviceCookie,
 	clearSessionCookie,
 	sessionCookieOptions,
 	setKidCookie,
+	setPushDeviceCookie,
 	setSessionCookie
 } from './cookie';
 
@@ -36,6 +38,25 @@ describe('session cookie', () => {
 		const cookies = fakeCookies();
 		clearSessionCookie(cookies);
 		expect(cookies.delete).toHaveBeenCalledWith('hbt_session', hardened);
+	});
+});
+
+describe('push device cookie', () => {
+	const scoped = { ...hardened, path: '/account/notifications' };
+
+	it('is set as hbt_push_device with the device id only, scoped to the notifications page', () => {
+		const cookies = fakeCookies();
+		setPushDeviceCookie(cookies, 'd-1');
+		expect(cookies.set).toHaveBeenCalledWith('hbt_push_device', 'd-1', {
+			...scoped,
+			maxAge: 365 * 24 * 60 * 60
+		});
+	});
+
+	it('is cleared with the same path and attributes', () => {
+		const cookies = fakeCookies();
+		clearPushDeviceCookie(cookies);
+		expect(cookies.delete).toHaveBeenCalledWith('hbt_push_device', scoped);
 	});
 });
 

@@ -1,6 +1,7 @@
 import {
 	BOTTLE_CONTENTS,
 	GRAMS_PER_KG,
+	HUNDREDTHS_PER_DEGREE,
 	HUNDREDTHS_PER_FLOZ,
 	HUNDREDTHS_PER_OZ,
 	MAX_SESSION_HOURS,
@@ -16,6 +17,7 @@ import { instantToLocalInput } from './time-zone';
 import type {
 	GrowthWeight,
 	Session,
+	Temperature,
 	TrackerEntries,
 	TrackerKind,
 	Units,
@@ -36,10 +38,10 @@ const MS_PER_SECOND = 1000;
 // The minutes a finished session's seconds pre-fill; never rounded up, so an unchanged edit fits its span.
 export const floorMinutes = (seconds: number) => Math.floor(seconds / SECONDS_PER_MINUTE);
 
-// The route matcher admits only the six tracker names, so a path parameter that got here is one.
+// The route matcher admits only the seven tracker names, so a path parameter that got here is one.
 export const trackerOf = (param: string) => param as TrackerKind;
 
-const POINT_KINDS: readonly TrackerKind[] = ['bottles', 'diapers', 'meals'];
+const POINT_KINDS: readonly TrackerKind[] = ['bottles', 'diapers', 'meals', 'symptoms'];
 
 // The time the timeline files an entry under.
 export function entryInstant(kind: TrackerKind, entry: Entry): string {
@@ -70,13 +72,18 @@ export function volumeText(v: Pick<Volume, 'ml' | 'floz_hundredths'>, unit: Volu
 		: String(Number((v.floz_hundredths / HUNDREDTHS_PER_FLOZ).toFixed(2)));
 }
 
-type FormUnits = Pick<Units, 'weight' | 'volume'>;
+type FormUnits = Pick<Units, 'weight' | 'volume' | 'temp'>;
 
 // What a form shows its amounts in; a page without a signed-in parent's preference is metric.
 export const formUnits = (session: Session | null | undefined): FormUnits => ({
 	weight: session?.parent?.units.weight ?? 'kg',
-	volume: session?.parent?.units.volume ?? 'ml'
+	volume: session?.parent?.units.volume ?? 'ml',
+	temp: session?.parent?.units.temp ?? 'c'
 });
+
+// A temperature as the API's column for the unit, whichever unit it was typed in; the form reads it back.
+export const temperatureText = (t: Temperature, unit: Units['temp']): string =>
+	decimal(unit === 'c' ? t.cHundredths : t.fHundredths, HUNDREDTHS_PER_DEGREE);
 
 // The two weigh-ins of a nursing form, each a unit and the texts that unit makes active (see growth-form).
 export const WEIGHT_NAMES = ['weight_before', 'weight_after'] as const;
@@ -115,6 +122,17 @@ export function createValues(
 			return { at, kind: '', note: '' };
 		case 'meals':
 			return { at, what: '', reaction: '', note: '' };
+		case 'symptoms':
+			return {
+				at,
+				symptom: '',
+				severity: '',
+				other_text: '',
+				temperature: '',
+				temperature_unit: units.temp,
+				method: '',
+				note: ''
+			};
 		case 'pumping':
 			return {
 				started_at: at,
@@ -280,6 +298,22 @@ export function editValues(
 				...instantValues('at', e.at, zone),
 				what: e.what,
 				reaction: e.reaction ?? '',
+				...note
+			};
+		}
+		case 'symptoms': {
+			const e = entry as TrackerEntries['symptoms'];
+			return {
+				...instantValues('at', e.at, zone),
+				...withOriginal('symptom', e.symptom),
+				...withOriginal('severity', e.severity ?? ''),
+				...withOriginal('other_text', e.otherText ?? ''),
+				...withOriginal(
+					'temperature',
+					e.temperature ? temperatureText(e.temperature, units.temp) : ''
+				),
+				...withOriginal('temperature_unit', units.temp),
+				...withOriginal('method', e.method ?? ''),
 				...note
 			};
 		}

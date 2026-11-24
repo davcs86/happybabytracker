@@ -7,6 +7,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/config"
+	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -30,17 +31,26 @@ type Route struct {
 }
 
 type Deps struct {
-	Store   *store.Store
-	Cfg     config.Config
-	Limiter *auth.Limiter
-	Now     func() time.Time
-	Log     *slog.Logger
+	Store          *store.Store
+	Cfg            config.Config
+	Limiter        *auth.Limiter
+	Now            func() time.Time
+	LastTick       func() time.Time // the reminder worker's last finished tick; required
+	Log            *slog.Logger
+	Push           push.Sender    // nil when Web Push is off
+	Resolver       push.Resolver  // registration's DNS check; unused under HBT_ALLOW_FAKE_PUSH
+	VAPIDPublicKey string         // empty when Web Push is off
+	PushRecorder   *push.Recorder // nil unless HBT_ALLOW_FAKE_PUSH=1
 }
 
 // Routes is the only place routes are declared.
 func Routes(d Deps) []Route {
-	return []Route{
-		{http.MethodGet, "/healthz", Open, Health(d.Store)},
+	if d.LastTick == nil {
+		panic("httpapi: Deps.LastTick is required")
+	}
+	routes := []Route{
+		{http.MethodGet, "/healthz", Open, Health(d.Store, d.Now, d.LastTick)},
+		{http.MethodGet, "/healthz/reminders", Open, RemindersHealth(d.Store, d.Now)},
 		{http.MethodPost, "/v1/session", Internal, d.login},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
 		{http.MethodDelete, "/v1/session", Session, d.logout},
@@ -58,6 +68,16 @@ func Routes(d Deps) []Route {
 		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},
 		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
+
+		{http.MethodGet, "/v1/push", Parent, d.pushState},
+		{http.MethodGet, "/v1/me/push-devices", Parent, d.listDevices},
+		{http.MethodPut, "/v1/me/push-devices", Parent, d.upsertDevice},
+		{http.MethodPatch, "/v1/me/push-devices/{device}", Parent, d.renameDevice},
+		{http.MethodDelete, "/v1/me/push-devices/{device}", Parent, d.deleteDevice},
+		{http.MethodGet, "/v1/me/ntfy", Parent, d.ntfyState},
+		{http.MethodPut, "/v1/me/ntfy", Parent, d.setNtfyTopic(false)},
+		{http.MethodPost, "/v1/me/ntfy/regenerate", Parent, d.setNtfyTopic(true)},
+		{http.MethodDelete, "/v1/me/ntfy", Parent, d.deleteNtfyTopic},
 
 		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
 		{http.MethodGet, "/v1/vaccine-schemas", Parent, d.vaccineSchemas},
@@ -118,6 +138,24 @@ func Routes(d Deps) []Route {
 		{http.MethodPatch, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.updateGrowth},
 		{http.MethodDelete, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.deleteGrowth},
 
+		{http.MethodGet, "/v1/kids/{kid}/symptoms", Caregiver, d.listSymptoms},
+		{http.MethodPost, "/v1/kids/{kid}/symptoms", Caregiver, d.createSymptom},
+		{http.MethodGet, "/v1/kids/{kid}/symptoms/{entry}", Caregiver, d.getSymptom},
+		{http.MethodPatch, "/v1/kids/{kid}/symptoms/{entry}", Caregiver, d.updateSymptom},
+		{http.MethodDelete, "/v1/kids/{kid}/symptoms/{entry}", Caregiver, d.deleteSymptom},
+
+		{http.MethodGet, "/v1/kids/{kid}/medications", Caregiver, d.listMedications},
+		{http.MethodPost, "/v1/kids/{kid}/medications", Caregiver, d.createMedication},
+		{http.MethodGet, "/v1/kids/{kid}/medications/{entry}", Caregiver, d.getMedication},
+		{http.MethodPatch, "/v1/kids/{kid}/medications/{entry}", Caregiver, d.updateMedication},
+		{http.MethodDelete, "/v1/kids/{kid}/medications/{entry}", Caregiver, d.deleteMedication},
+
+		{http.MethodGet, "/v1/kids/{kid}/medication-doses", Caregiver, d.listDoses},
+		{http.MethodPost, "/v1/kids/{kid}/medication-doses", Caregiver, d.createDose},
+		{http.MethodGet, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.getDose},
+		{http.MethodPatch, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.updateDose},
+		{http.MethodDelete, "/v1/kids/{kid}/medication-doses/{entry}", Caregiver, d.deleteDose},
+
 		{http.MethodGet, "/v1/kids/{kid}/vaccines", Caregiver, d.kidVaccines},
 		{http.MethodGet, "/v1/kids/{kid}/vaccinations", Caregiver, d.listVaccinations},
 		{http.MethodPost, "/v1/kids/{kid}/vaccinations", Caregiver, d.createVaccination},
@@ -133,10 +171,22 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/modules", Caregiver, d.listModules},
 		{http.MethodPut, "/v1/kids/{kid}/modules/{module}", Guardian, d.setModule},
 		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},
+		{http.MethodPut, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.setOptin},
+		{http.MethodDelete, "/v1/kids/{kid}/push-devices/{device}", Caregiver, d.clearOptin},
+		{http.MethodPut, "/v1/kids/{kid}/ntfy", Caregiver, d.setNtfyOptin},
+		{http.MethodDelete, "/v1/kids/{kid}/ntfy", Caregiver, d.clearNtfyOptin},
 	}
+	if d.PushRecorder != nil {
+		routes = append(routes, Route{http.MethodGet, "/v1/_test/pushes", Internal, d.testPushes})
+	}
+	return routes
 }
 
+// NewHandler panics when real Web Push is wired without the resolver registration needs: a boot error, not a request one.
 func NewHandler(d Deps) http.Handler {
+	if d.Push != nil && !d.Cfg.AllowFakePush && d.Resolver == nil {
+		panic("httpapi: Web Push needs a resolver")
+	}
 	return newMux(d, Routes(d))
 }
 

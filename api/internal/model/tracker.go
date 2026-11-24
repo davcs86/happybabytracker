@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
@@ -37,11 +38,59 @@ type Diaper struct {
 	Kind string
 }
 
+// Symptom is one symptom at a time. Temperature and Method are both set exactly when Symptom is "fever";
+// OtherText is set exactly when it is "other".
+type Symptom struct {
+	Entry
+	At          time.Time
+	Symptom     string
+	Severity    *string
+	OtherText   *string
+	Temperature *units.Temperature
+	Method      *string
+}
+
 type Meal struct {
 	Entry
 	At       time.Time
 	What     string
 	Reaction *string
+}
+
+// Medication is a course. Its Schedule's Times are sorted; EndOn is a kid-local date (inclusive). LastDose, NextDue
+// and DoseCount are filled by the store's reads and ignored by its writes.
+type Medication struct {
+	Entry
+	schedule.Schedule
+	Name, Dose string
+	StartAt    time.Time
+	EndOn      *string
+	Active     bool
+	LastDose   *LastDose
+	NextDue    *time.Time
+	DoseCount  int
+}
+
+// LastDose is the course's most recent dose.
+type LastDose struct {
+	ID      string
+	GivenAt time.Time
+	Amount  *string
+}
+
+// MedicationDose is one dose given from the course MedicationID, which never changes after creation.
+type MedicationDose struct {
+	Entry
+	MedicationID string
+	GivenAt      time.Time
+	Amount       *string
+}
+
+// Reminder is one materialised occurrence of a scheduled course; State is pending, done, expired or cancelled.
+type Reminder struct {
+	ID, KidID, MedicationID string
+	DueAt                   time.Time
+	State                   string
 }
 
 // PumpingSide is one side's share of an advanced pumping session.
@@ -206,6 +255,16 @@ func CanonicalContents(in []string) ([]string, bool) {
 
 // DiaperKinds lists every diaper kind.
 var DiaperKinds = []string{"wet", "dirty", "both", "dry"}
+
+// Symptoms lists every symptom name.
+var Symptoms = []string{"congestion", "cough", "fever", "vomiting", "diarrhea", "constipation", "rash", "ear_pain",
+	"sore_throat", "poor_appetite", "unusually_sleepy", "other"}
+
+// Severities lists every symptom severity.
+var Severities = []string{"mild", "moderate", "severe"}
+
+// TempMethods lists every temperature-taking method.
+var TempMethods = []string{"oral", "rectal", "axillary", "ear", "forehead", "other"}
 
 // NursingSides lists every nursing side.
 var NursingSides = []string{"left", "right"}

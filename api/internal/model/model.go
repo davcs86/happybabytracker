@@ -56,6 +56,7 @@ type Kid struct {
 	GestationWeeks, GestationDays      *int
 	GrowthSource                       string  // a growth.Source: "who" or "cdc"
 	VaccineSchema                      *string // a vaccines schedule id; nil until a guardian chooses one
+	ReminderOverdueMinutes             int     // minutes after a due time before a reminder counts as overdue
 }
 
 // Administration is one vaccination visit's dose: one stored row per antigen, sharing ID; Antigens are sorted.
@@ -83,4 +84,17 @@ type KidWithRole struct {
 type Grant struct {
 	ParentID, Username, DisplayName string
 	Role                            Role
+}
+
+// PushDevice is a parent's Web Push subscription as the API shows it: never the endpoint or the keys.
+type PushDevice struct {
+	ID, Label string
+	CreatedAt time.Time
+	Kids      []string // kids the device is opted in for that the parent still holds a grant on
+}
+
+// NtfyTopic is a parent's ntfy topic; it is shown only to that parent.
+type NtfyTopic struct {
+	Topic string
+	Kids  []string // kids opted in that the parent still holds a grant on
 }

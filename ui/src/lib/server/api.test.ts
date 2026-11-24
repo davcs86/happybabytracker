@@ -168,6 +168,17 @@ describe('createApi requests and shapes', () => {
 		await createApi(env, asFetch(f)).health();
 		expect(f.mock.calls[0][0]).toBe('http://api:9210/healthz');
 	});
+
+	it('reports the reminders health status without reading a body', async () => {
+		const f = mockFetch(async () => json({ status: 'ok' }));
+		expect(await createApi(env, asFetch(f)).remindersHealth()).toEqual({ ok: true, data: null });
+		expect(f.mock.calls[0][0]).toBe('http://api:9210/healthz/reminders');
+		const bad = createApi(
+			env,
+			asFetch(mockFetch(async () => json({ status: 'unavailable' }, 503)))
+		);
+		expect(await bad.remindersHealth()).toMatchObject({ ok: false, status: 503 });
+	});
 });
 
 describe('createApi failure mapping', () => {
@@ -355,6 +366,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		time_zone: 'Europe/Madrid',
 		growth_source: 'cdc',
 		vaccine_schema: null,
+		reminder_overdue_minutes: 60,
 		role: 'caregiver'
 	};
 	const KID = {
@@ -367,6 +379,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		timeZone: 'Europe/Madrid',
 		growthSource: 'cdc',
 		vaccineSchema: null,
+		reminderOverdueMinutes: 60,
 		role: 'caregiver'
 	};
 	const PARENT_WIRE = {
@@ -452,6 +465,42 @@ describe('createApi admin, account, kid and access calls', () => {
 		expect(sent(f, 1).body).toMatchObject({ vaccine_schema: 'us' });
 		expect(sent(f, 2).body).toHaveProperty('vaccine_schema', null);
 		expect(sent(f, 3).body).not.toHaveProperty('vaccine_schema');
+	});
+
+	it('reads the overdue minutes and sends them only when the input has them', async () => {
+		const f = mockFetch(async () => json({ ...KID_WIRE, reminder_overdue_minutes: 90 }));
+		const api = createApi(env, asFetch(f), SESSION);
+		const input = {
+			name: 'Mia',
+			birthDate: '2026-07-08',
+			sex: 'female',
+			gestationWeeks: null,
+			gestationDays: null,
+			timeZone: 'UTC'
+		};
+		expect(await api.getKid('k-1')).toMatchObject({
+			ok: true,
+			data: { reminderOverdueMinutes: 90 }
+		});
+		await api.updateKid('k-1', { ...input, reminderOverdueMinutes: 15 });
+		await api.createKid({ ...input, reminderOverdueMinutes: 15 });
+		await api.updateKid('k-1', input);
+		expect(sent(f, 1).body).toMatchObject({ reminder_overdue_minutes: 15 });
+		expect(sent(f, 2).body).toMatchObject({ reminder_overdue_minutes: 15 });
+		expect(sent(f, 3).body).not.toHaveProperty('reminder_overdue_minutes');
+	});
+
+	it.each([
+		['missing', undefined],
+		['null', null],
+		['a string', '60'],
+		['a fraction', 60.5]
+	])('refuses a kid whose overdue minutes are %s', async (_name, value) => {
+		const f = mockFetch(async () => json({ ...KID_WIRE, reminder_overdue_minutes: value }));
+		expect(await createApi(env, asFetch(f), SESSION).getKid('k-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
 	});
 
 	it('deletes a kid with confirm_name', async () => {
@@ -742,6 +791,28 @@ describe('createApi tracker calls', () => {
 		sleep: {
 			wire: { id: 'e1', started_at: T0, ended_at: null, note: null },
 			entry: { id: 'e1', startedAt: T0, endedAt: null, note: null }
+		},
+		symptoms: {
+			wire: {
+				id: 'e1',
+				at: T0,
+				symptom: 'fever',
+				severity: 'mild',
+				other_text: null,
+				temperature: { c_hundredths: 3840, f_hundredths: 10112, typed_unit: 'c' },
+				method: 'ear',
+				note: null
+			},
+			entry: {
+				id: 'e1',
+				at: T0,
+				symptom: 'fever',
+				severity: 'mild',
+				otherText: null,
+				temperature: { cHundredths: 3840, fHundredths: 10112, typedUnit: 'c' },
+				method: 'ear',
+				note: null
+			}
 		},
 		nursing: {
 			wire: {
@@ -1208,7 +1279,8 @@ describe('createApi tracker calls', () => {
 			['pumping', 'pumping'],
 			['sleep', 'sleep'],
 			['diaper', 'diapers'],
-			['meal', 'meals']
+			['meal', 'meals'],
+			['symptom', 'symptoms']
 		] as const;
 
 		it('maps every timeline type to its route name and keeps the entry', async () => {
@@ -1303,6 +1375,12 @@ describe('createApi tracker calls', () => {
 			today: DAY,
 			due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }]
 		};
+		const MED_DUE_WIRE = {
+			kind: 'medication',
+			medication: { id: 'm-1', name: 'Ibuprofen' },
+			due_at: T1,
+			state: 'overdue'
+		};
 
 		it('reads the home model, a running timer and an idle one', async () => {
 			const f = respond(HOME);
@@ -1319,6 +1397,24 @@ describe('createApi tracker calls', () => {
 				}
 			});
 			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/home');
+		});
+
+		it('reads a medication entry beside a vaccine group, in the API order', async () => {
+			const f = respond({ ...HOME, due: [MED_DUE_WIRE, ...HOME.due] });
+			expect(await api(f).home(KID)).toMatchObject({
+				ok: true,
+				data: {
+					due: [
+						{
+							kind: 'medication',
+							medication: { id: 'm-1', name: 'Ibuprofen' },
+							dueAt: T1,
+							state: 'overdue'
+						},
+						{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }
+					]
+				}
+			});
 		});
 
 		it('reads a running nursing session with its weight and no estimate', async () => {
@@ -1357,7 +1453,23 @@ describe('createApi tracker calls', () => {
 			['a due entry of an unknown kind', { ...HOME, due: [{ ...HOME.due[0], kind: 'medicine' }] }],
 			['a due entry that is upcoming', { ...HOME, due: [{ ...HOME.due[0], status: 'upcoming' }] }],
 			['a due entry in hours', { ...HOME, due: [{ ...HOME.due[0], from: { n: 4, unit: 'h' } }] }],
-			['a fractional due count', { ...HOME, due: [{ ...HOME.due[0], count: 1.5 }] }]
+			['a fractional due count', { ...HOME, due: [{ ...HOME.due[0], count: 1.5 }] }],
+			[
+				'a medication entry with an unknown state',
+				{ ...HOME, due: [{ ...MED_DUE_WIRE, state: 'upcoming' }] }
+			],
+			[
+				'a medication entry without its course',
+				{ ...HOME, due: [{ ...MED_DUE_WIRE, medication: null }] }
+			],
+			[
+				'a medication entry whose course has no name',
+				{ ...HOME, due: [{ ...MED_DUE_WIRE, medication: { id: 'm-1' } }] }
+			],
+			[
+				'a medication entry without a due time',
+				{ ...HOME, due: [{ ...MED_DUE_WIRE, due_at: undefined }] }
+			]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
 		});
@@ -2033,5 +2145,717 @@ describe('createApi vaccination calls', () => {
 		expect(logged()).not.toContain('a-secret');
 		expect(logged()).not.toContain('LOT-SECRET');
 		expect(logged()).not.toContain('hib-9');
+	});
+});
+
+describe('createApi symptom shapes', () => {
+	const KID = 'k-1';
+	const T0 = '2026-11-20T10:00:00Z';
+	const FEVER = {
+		id: 'e1',
+		at: T0,
+		symptom: 'fever',
+		severity: null,
+		other_text: null,
+		temperature: { c_hundredths: 3840, f_hundredths: 10112, typed_unit: 'f' },
+		method: 'oral',
+		note: null
+	};
+	const COUGH = { ...FEVER, symptom: 'cough', temperature: null, method: null };
+	const api = (body: unknown) =>
+		createApi(env, asFetch(mockFetch(async () => json(body))), SESSION);
+
+	it('reads a fever with its temperature and a cough without one', async () => {
+		expect(await api(FEVER).tracker('symptoms').get(KID, 'e1')).toEqual({
+			ok: true,
+			data: {
+				id: 'e1',
+				at: T0,
+				symptom: 'fever',
+				severity: null,
+				otherText: null,
+				temperature: { cHundredths: 3840, fHundredths: 10112, typedUnit: 'f' },
+				method: 'oral',
+				note: null
+			}
+		});
+		expect(await api(COUGH).tracker('symptoms').get(KID, 'e1')).toMatchObject({
+			ok: true,
+			data: { symptom: 'cough', temperature: null, method: null }
+		});
+	});
+
+	it.each([
+		['an unknown symptom', { ...FEVER, symptom: 'teething' }],
+		['an unknown severity', { ...FEVER, severity: 'awful' }],
+		['an unknown method', { ...FEVER, method: 'toe' }],
+		['a missing method', { ...FEVER, method: undefined }],
+		[
+			'a fractional temperature',
+			{ ...FEVER, temperature: { ...FEVER.temperature, c_hundredths: 1.5 } }
+		],
+		[
+			'a temperature in kelvin',
+			{ ...FEVER, temperature: { ...FEVER.temperature, typed_unit: 'k' } }
+		],
+		['a temperature that is not an object', { ...FEVER, temperature: 38 }],
+		['a missing other text', { ...FEVER, other_text: undefined }]
+	])('maps %s to error', async (_name, body) => {
+		expect(await api(body).tracker('symptoms').get(KID, 'e1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a symptom list with a malformed entry to error', async () => {
+		const bad = api({ symptoms: [FEVER, { ...FEVER, at: 5 }], next_cursor: null });
+		expect(await bad.tracker('symptoms').list(KID)).toMatchObject({ ok: false, reason: 'error' });
+	});
+});
+
+describe('createApi medication and dose calls', () => {
+	const KID = 'k-1';
+	const T0 = '2026-11-20T10:00:00Z';
+	const T1 = '2026-11-20T20:00:00Z';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+
+	const COURSE_WIRE = {
+		id: 'm-1',
+		name: 'Ibuprofen',
+		dose: '2.5 ml',
+		schedule: { kind: 'times', times: ['08:00', '20:00'] },
+		start_at: T0,
+		end_on: '2026-11-30',
+		active: true,
+		note: null,
+		last_dose: { id: 'd-1', given_at: T0, amount: null },
+		next_due: { due_at: T1 },
+		dose_count: 3
+	};
+	const COURSE = {
+		id: 'm-1',
+		name: 'Ibuprofen',
+		dose: '2.5 ml',
+		schedule: { kind: 'times', times: ['08:00', '20:00'] },
+		startAt: T0,
+		endOn: '2026-11-30',
+		active: true,
+		note: null,
+		lastDose: { id: 'd-1', givenAt: T0, amount: null },
+		nextDue: { dueAt: T1 },
+		doseCount: 3
+	};
+	const DOSE_WIRE = { id: 'd-1', medication: 'm-1', given_at: T0, amount: '2.5 ml', note: null };
+	const DOSE = { id: 'd-1', medication: 'm-1', givenAt: T0, amount: '2.5 ml', note: null };
+
+	it('lists, gets, creates, updates and removes a course', async () => {
+		const f = mockFetch(async (u, init) =>
+			init?.method === 'DELETE'
+				? new Response(null, { status: 204 })
+				: json(
+						init?.method === 'GET' && u.endsWith('/medications')
+							? { medications: [COURSE_WIRE] }
+							: COURSE_WIRE
+					)
+		);
+		const m = api(f).medications;
+		expect(await m.list(KID)).toEqual({ ok: true, data: [COURSE] });
+		expect(await m.get(KID, 'm-1')).toEqual({ ok: true, data: COURSE });
+		expect(await m.create(KID, { name: 'Ibuprofen' })).toEqual({ ok: true, data: COURSE });
+		expect(await m.update(KID, 'm-1', { note: null })).toEqual({ ok: true, data: COURSE });
+		expect(await m.remove(KID, 'm-1')).toEqual({ ok: true, data: null });
+		expect([0, 1, 2, 3, 4].map((i) => sent(f, i))).toEqual([
+			{ url: 'http://api:9210/v1/kids/k-1/medications', method: 'GET', body: undefined },
+			{ url: 'http://api:9210/v1/kids/k-1/medications/m-1', method: 'GET', body: undefined },
+			{
+				url: 'http://api:9210/v1/kids/k-1/medications',
+				method: 'POST',
+				body: { name: 'Ibuprofen' }
+			},
+			{
+				url: 'http://api:9210/v1/kids/k-1/medications/m-1',
+				method: 'PATCH',
+				body: { note: null }
+			},
+			{ url: 'http://api:9210/v1/kids/k-1/medications/m-1', method: 'DELETE', body: undefined }
+		]);
+	});
+
+	it('reads the three schedule kinds and a course with no dose, no next due and no end', async () => {
+		const bare = {
+			...COURSE_WIRE,
+			end_on: null,
+			last_dose: null,
+			next_due: null,
+			dose_count: 0
+		};
+		for (const [schedule, want] of [
+			[{ kind: 'none' }, { kind: 'none' }],
+			[
+				{ kind: 'every', hours: 6 },
+				{ kind: 'every', hours: 6 }
+			],
+			[
+				{ kind: 'times', times: ['08:00'] },
+				{ kind: 'times', times: ['08:00'] }
+			]
+		] as const) {
+			const r = await api(respond({ ...bare, schedule })).medications.get(KID, 'm-1');
+			expect(r).toMatchObject({
+				ok: true,
+				data: { schedule: want, endOn: null, lastDose: null, nextDue: null, doseCount: 0 }
+			});
+		}
+	});
+
+	it.each([
+		['an unknown schedule kind', { ...COURSE_WIRE, schedule: { kind: 'weekly' } }],
+		['times without a list', { ...COURSE_WIRE, schedule: { kind: 'times' } }],
+		['times that are not strings', { ...COURSE_WIRE, schedule: { kind: 'times', times: [8] } }],
+		['every without hours', { ...COURSE_WIRE, schedule: { kind: 'every' } }],
+		['fractional hours', { ...COURSE_WIRE, schedule: { kind: 'every', hours: 1.5 } }],
+		['a missing schedule', { ...COURSE_WIRE, schedule: undefined }],
+		['an active flag that is a string', { ...COURSE_WIRE, active: 'yes' }],
+		['a missing dose count', { ...COURSE_WIRE, dose_count: undefined }],
+		['a fractional dose count', { ...COURSE_WIRE, dose_count: 1.5 }],
+		['a last dose without an id', { ...COURSE_WIRE, last_dose: { given_at: T0, amount: null } }],
+		['a next due that is not an object', { ...COURSE_WIRE, next_due: T1 }],
+		['a missing next due', { ...COURSE_WIRE, next_due: undefined }]
+	])('maps a course with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).medications.get(KID, 'm-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a course list without its key, or with a bad course, to error', async () => {
+		for (const body of [{ items: [] }, { medications: [{ ...COURSE_WIRE, name: 4 }] }]) {
+			expect(await api(respond(body)).medications.list(KID)).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		}
+	});
+
+	it('lists doses with the query, the course filter and the cursor', async () => {
+		const f = respond({ doses: [DOSE_WIRE], next_cursor: 'c_-1' });
+		const r = await api(f).doses.list(KID, {
+			medication: 'm-1',
+			from: T0,
+			to: T1,
+			limit: 5,
+			cursor: 'a/b'
+		});
+		expect(r).toEqual({ ok: true, data: { items: [DOSE], nextCursor: 'c_-1' } });
+		expect(sent(f)).toEqual({
+			url: `http://api:9210/v1/kids/k-1/medication-doses?from=${encodeURIComponent(T0)}&to=${encodeURIComponent(T1)}&limit=5&cursor=a%2Fb&medication=m-1`,
+			method: 'GET',
+			body: undefined
+		});
+		const all = respond({ doses: [], next_cursor: null });
+		await api(all).doses.list(KID);
+		expect(sent(all).url).toBe('http://api:9210/v1/kids/k-1/medication-doses');
+	});
+
+	it('gets, creates, updates and removes a dose', async () => {
+		const f = mockFetch(async (_u, init) =>
+			init?.method === 'DELETE' ? new Response(null, { status: 204 }) : json(DOSE_WIRE, 200)
+		);
+		const d = api(f).doses;
+		expect(await d.get(KID, 'd-1')).toEqual({ ok: true, data: DOSE });
+		expect(await d.create(KID, { medication: 'm-1' })).toEqual({ ok: true, data: DOSE });
+		expect(await d.update(KID, 'd-1', { amount: null })).toEqual({ ok: true, data: DOSE });
+		expect(await d.remove(KID, 'd-1')).toEqual({ ok: true, data: null });
+		expect([0, 1, 2, 3].map((i) => sent(f, i))).toEqual([
+			{ url: 'http://api:9210/v1/kids/k-1/medication-doses/d-1', method: 'GET', body: undefined },
+			{
+				url: 'http://api:9210/v1/kids/k-1/medication-doses',
+				method: 'POST',
+				body: { medication: 'm-1' }
+			},
+			{
+				url: 'http://api:9210/v1/kids/k-1/medication-doses/d-1',
+				method: 'PATCH',
+				body: { amount: null }
+			},
+			{
+				url: 'http://api:9210/v1/kids/k-1/medication-doses/d-1',
+				method: 'DELETE',
+				body: undefined
+			}
+		]);
+	});
+
+	it.each([
+		['a missing medication', { ...DOSE_WIRE, medication: undefined }],
+		['a given time that is a number', { ...DOSE_WIRE, given_at: 5 }],
+		['an amount that is a number', { ...DOSE_WIRE, amount: 2.5 }],
+		['a missing note', { ...DOSE_WIRE, note: undefined }]
+	])('maps a dose with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).doses.get(KID, 'd-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a dose list without its key to error', async () => {
+		expect(await api(respond({ items: [], next_cursor: null })).doses.list(KID)).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('a refused write names its field and code', async () => {
+		const f = respond({ error: 'invalid', field: 'medication' }, 422);
+		expect(await api(f).doses.create(KID, {})).toEqual({
+			ok: false,
+			status: 422,
+			reason: 'invalid',
+			code: 'invalid',
+			field: 'medication'
+		});
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond({});
+		const { medications, doses } = api(f);
+		for (const r of [
+			await medications.list('a/b'),
+			await medications.get(KID, '..?x'),
+			await medications.get('a/b', 'm-1'),
+			await medications.create('', {}),
+			await medications.update(KID, 'a b', {}),
+			await medications.remove('a/b', 'm-1'),
+			await doses.list('a/b'),
+			await doses.list(KID, { medication: '../x' }),
+			await doses.get(KID, '..?x'),
+			await doses.create('', {}),
+			await doses.update(KID, 'a b', {}),
+			await doses.remove('a/b', 'd-1')
+		]) {
+			expect(r).toEqual({ ok: false, status: 404, reason: 'not_found' });
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a course or dose call by its endpoint name only', async () => {
+		await api(respond({ error: 'invalid', field: 'name' }, 422)).medications.update(
+			KID,
+			'm-secret',
+			{ name: 'Secret syrup' }
+		);
+		await api(respond({ error: 'invalid', field: 'amount' }, 422)).doses.create(KID, {
+			amount: '99 ml secret'
+		});
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'update_medication', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'create_dose', status: 422 }
+		]);
+		expect(logged()).not.toContain('m-secret');
+		expect(logged()).not.toContain('Secret syrup');
+		expect(logged()).not.toContain('99 ml');
+	});
+});
+
+describe('createApi push device and ntfy calls', () => {
+	const KID = 'k-1';
+	const DEVICE = 'dev-1';
+	const ENDPOINT = 'https://push.example/secret-endpoint-token';
+	const P256DH = 'BP-secret-p256dh-key';
+	const AUTH = 'secret-auth-key';
+	const TOPIC = 'hbt-SecretTopic0123456789ab';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const URL_ = 'http://api:9210';
+
+	const DEVICE_WIRE = {
+		id: DEVICE,
+		label: 'Ana phone',
+		created_at: '2026-11-23T10:00:00Z',
+		kids: [KID]
+	};
+	const DEVICE_VIEW = {
+		id: DEVICE,
+		label: 'Ana phone',
+		createdAt: '2026-11-23T10:00:00Z',
+		kids: [KID]
+	};
+	const INPUT = { endpoint: ENDPOINT, keys: { p256dh: P256DH, auth: AUTH }, label: 'Ana phone' };
+
+	describe('Web Push state', () => {
+		it('reads {enabled:false} as off', async () => {
+			const f = respond({ enabled: false });
+			expect(await api(f).push.state()).toEqual({ ok: true, data: { enabled: false } });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/push`, method: 'GET', body: undefined });
+		});
+
+		it('reads the public key when on', async () => {
+			expect(await api(respond({ enabled: true, public_key: 'BKey-_09' })).push.state()).toEqual({
+				ok: true,
+				data: { enabled: true, publicKey: 'BKey-_09' }
+			});
+		});
+
+		it.each([
+			['no enabled', {}],
+			['a string enabled', { enabled: 'yes' }],
+			['on without a key', { enabled: true }],
+			['on with an empty key', { enabled: true, public_key: '' }],
+			['on with a numeric key', { enabled: true, public_key: 5 }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).push.state()).toMatchObject({ ok: false, reason: 'error' });
+		});
+
+		it('maps a 503 to unavailable', async () => {
+			expect(await api(respond({ error: 'unavailable' }, 503)).push.state()).toMatchObject({
+				ok: false,
+				status: 503,
+				reason: 'unavailable'
+			});
+		});
+	});
+
+	describe('devices', () => {
+		it('lists the parent devices with their kids', async () => {
+			const f = respond({ devices: [DEVICE_WIRE, { ...DEVICE_WIRE, id: 'dev-2', kids: [] }] });
+			expect(await api(f).push.devices()).toEqual({
+				ok: true,
+				data: [DEVICE_VIEW, { ...DEVICE_VIEW, id: 'dev-2', kids: [] }]
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices`,
+				method: 'GET',
+				body: undefined
+			});
+		});
+
+		it.each([
+			['no devices key', { items: [] }],
+			['a device without kids', { devices: [{ ...DEVICE_WIRE, kids: undefined }] }],
+			['a device with a numeric kid', { devices: [{ ...DEVICE_WIRE, kids: [5] }] }],
+			['a device without a label', { devices: [{ ...DEVICE_WIRE, label: undefined }] }],
+			['a device without a time', { devices: [{ ...DEVICE_WIRE, created_at: 5 }] }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).push.devices()).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		});
+
+		it('never returns an endpoint or a key the API should not have sent', async () => {
+			const wire = { ...DEVICE_WIRE, endpoint: ENDPOINT, keys: { p256dh: P256DH, auth: AUTH } };
+			const r = await api(respond({ devices: [wire] })).push.devices();
+			expect(r).toEqual({ ok: true, data: [DEVICE_VIEW] });
+			expect(JSON.stringify(r)).not.toContain('secret');
+		});
+
+		it('upserts with exactly the endpoint, the keys and the label in the body', async () => {
+			const f = respond({ device: DEVICE_WIRE }, 201);
+			const extra = { ...INPUT, expirationTime: 5, keys: { ...INPUT.keys, other: 'x' } };
+			expect(await api(f).push.upsertDevice(extra)).toEqual({ ok: true, data: DEVICE_VIEW });
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices`,
+				method: 'PUT',
+				body: INPUT
+			});
+			expect(Object.keys(sent(f).body)).toEqual(['endpoint', 'keys', 'label']);
+			expect(Object.keys(sent(f).body.keys)).toEqual(['p256dh', 'auth']);
+		});
+
+		it('sends no label key when none is given', async () => {
+			const f = respond({ device: DEVICE_WIRE }, 200);
+			const { endpoint, keys } = INPUT;
+			expect(await api(f).push.upsertDevice({ endpoint, keys })).toEqual({
+				ok: true,
+				data: DEVICE_VIEW
+			});
+			expect(Object.keys(sent(f).body)).toEqual(['endpoint', 'keys']);
+		});
+
+		it('reads the id of a device that moved (201) and of an existing one (200) alike', async () => {
+			const moved = { ...DEVICE_WIRE, id: 'dev-new', kids: [] };
+			expect(await api(respond({ device: moved }, 201)).push.upsertDevice(INPUT)).toEqual({
+				ok: true,
+				data: { ...DEVICE_VIEW, id: 'dev-new', kids: [] }
+			});
+			expect(await api(respond({ device: DEVICE_WIRE }, 200)).push.upsertDevice(INPUT)).toEqual({
+				ok: true,
+				data: DEVICE_VIEW
+			});
+		});
+
+		it('maps an upsert response without its device to error', async () => {
+			expect(await api(respond(DEVICE_WIRE, 201)).push.upsertDevice(INPUT)).toMatchObject({
+				ok: false,
+				reason: 'error'
+			});
+		});
+
+		it.each(['endpoint', 'keys', 'label'])('names the refused %s field', async (field) => {
+			const f = respond({ error: 'invalid', field }, 422);
+			expect(await api(f).push.upsertDevice(INPUT)).toEqual({
+				ok: false,
+				status: 422,
+				reason: 'invalid',
+				code: 'invalid',
+				field
+			});
+		});
+
+		it('maps 409 push_unavailable to a conflict that carries the code', async () => {
+			const f = respond({ error: 'push_unavailable' }, 409);
+			expect(await api(f).push.upsertDevice(INPUT)).toEqual({
+				ok: false,
+				status: 409,
+				reason: 'conflict',
+				code: 'push_unavailable'
+			});
+		});
+
+		it('maps 409 limit to a conflict that carries the code', async () => {
+			expect(await api(respond({ error: 'limit' }, 409)).push.upsertDevice(INPUT)).toMatchObject({
+				ok: false,
+				reason: 'conflict',
+				code: 'limit'
+			});
+		});
+
+		it('renames a device with only the label', async () => {
+			const f = respond({ device: { ...DEVICE_WIRE, label: 'Kitchen' } });
+			expect(await api(f).push.renameDevice(DEVICE, 'Kitchen')).toEqual({
+				ok: true,
+				data: { ...DEVICE_VIEW, label: 'Kitchen' }
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices/${DEVICE}`,
+				method: 'PATCH',
+				body: { label: 'Kitchen' }
+			});
+			expect(
+				await api(respond({ error: 'push_unavailable' }, 409)).push.renameDevice(DEVICE, 'x')
+			).toMatchObject({ ok: false, reason: 'conflict', code: 'push_unavailable' });
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.renameDevice(DEVICE, 'x')
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+
+		it('removes a device, which still works with Web Push off', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).push.removeDevice(DEVICE)).toEqual({ ok: true, data: null });
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/push-devices/${DEVICE}`,
+				method: 'DELETE',
+				body: undefined
+			});
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.removeDevice(DEVICE)
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+
+		it('opts a device in and out for a kid', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).push.optIn(KID, DEVICE)).toEqual({ ok: true, data: null });
+			expect(await api(f).push.optOut(KID, DEVICE)).toEqual({ ok: true, data: null });
+			expect([0, 1].map((i) => sent(f, i))).toEqual([
+				{
+					url: `${URL_}/v1/kids/${KID}/push-devices/${DEVICE}`,
+					method: 'PUT',
+					body: undefined
+				},
+				{
+					url: `${URL_}/v1/kids/${KID}/push-devices/${DEVICE}`,
+					method: 'DELETE',
+					body: undefined
+				}
+			]);
+		});
+
+		it('maps an opt-in refused for Web Push off, and a device or kid that is not theirs', async () => {
+			expect(
+				await api(respond({ error: 'push_unavailable' }, 409)).push.optIn(KID, DEVICE)
+			).toMatchObject({ ok: false, status: 409, reason: 'conflict', code: 'push_unavailable' });
+			expect(await api(respond({ error: 'not_found' }, 404)).push.optIn(KID, DEVICE)).toMatchObject(
+				{ ok: false, status: 404, reason: 'not_found' }
+			);
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).push.optOut(KID, DEVICE)
+			).toMatchObject({ ok: false, status: 404, reason: 'not_found' });
+		});
+	});
+
+	describe('ntfy', () => {
+		const NTFY_WIRE = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
+		const NTFY_VIEW = { enabled: true, server: 'https://ntfy.example', topic: TOPIC, kids: [KID] };
+
+		it.each([true, false])('reads off with has_topic %s, and never a topic', async (hasTopic) => {
+			const f = respond({ enabled: false, has_topic: hasTopic, topic: TOPIC });
+			expect(await api(f).ntfy.state()).toEqual({ ok: true, data: { enabled: false, hasTopic } });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'GET', body: undefined });
+		});
+
+		it('reads the server, the topic and the kids when on', async () => {
+			expect(await api(respond(NTFY_WIRE)).ntfy.state()).toEqual({ ok: true, data: NTFY_VIEW });
+		});
+
+		it('reads a null topic as turned off for this parent', async () => {
+			expect(await api(respond({ ...NTFY_WIRE, topic: null, kids: [] })).ntfy.state()).toEqual({
+				ok: true,
+				data: { ...NTFY_VIEW, topic: null, kids: [] }
+			});
+		});
+
+		it.each([
+			['no enabled', {}],
+			['off without has_topic', { enabled: false }],
+			['off with a string has_topic', { enabled: false, has_topic: 'true' }],
+			['on without a server', { ...NTFY_WIRE, server: undefined }],
+			['on without a topic key', { ...NTFY_WIRE, topic: undefined }],
+			['a numeric topic', { ...NTFY_WIRE, topic: 5 }],
+			['on without kids', { ...NTFY_WIRE, kids: undefined }],
+			['a numeric kid', { ...NTFY_WIRE, kids: [5] }]
+		])('maps %s to error', async (_name, body) => {
+			expect(await api(respond(body)).ntfy.state()).toMatchObject({ ok: false, reason: 'error' });
+		});
+
+		it('turns on with PUT, whether the topic is new (201) or kept (200)', async () => {
+			const created = respond(NTFY_WIRE, 201);
+			expect(await api(created).ntfy.enable()).toEqual({ ok: true, data: NTFY_VIEW });
+			expect(sent(created)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'PUT', body: undefined });
+			expect(await api(respond(NTFY_WIRE, 200)).ntfy.enable()).toEqual({
+				ok: true,
+				data: NTFY_VIEW
+			});
+		});
+
+		it('regenerates with POST', async () => {
+			const f = respond({ ...NTFY_WIRE, topic: 'hbt-New' });
+			expect(await api(f).ntfy.regenerate()).toEqual({
+				ok: true,
+				data: { ...NTFY_VIEW, topic: 'hbt-New' }
+			});
+			expect(sent(f)).toEqual({
+				url: `${URL_}/v1/me/ntfy/regenerate`,
+				method: 'POST',
+				body: undefined
+			});
+			expect(await api(respond({ error: 'not_found' }, 404)).ntfy.regenerate()).toMatchObject({
+				ok: false,
+				status: 404,
+				reason: 'not_found'
+			});
+		});
+
+		it('turns off with DELETE', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).ntfy.disable()).toEqual({ ok: true, data: null });
+			expect(sent(f)).toEqual({ url: `${URL_}/v1/me/ntfy`, method: 'DELETE', body: undefined });
+		});
+
+		it('opts a kid in and out', async () => {
+			const f = respond(null, 204);
+			expect(await api(f).ntfy.optIn(KID)).toEqual({ ok: true, data: null });
+			expect(await api(f).ntfy.optOut(KID)).toEqual({ ok: true, data: null });
+			expect([0, 1].map((i) => sent(f, i))).toEqual([
+				{ url: `${URL_}/v1/kids/${KID}/ntfy`, method: 'PUT', body: undefined },
+				{ url: `${URL_}/v1/kids/${KID}/ntfy`, method: 'DELETE', body: undefined }
+			]);
+		});
+
+		it('maps 409 ntfy_unavailable to a conflict that carries the code on every write', async () => {
+			const refused = () => respond({ error: 'ntfy_unavailable' }, 409);
+			for (const r of [
+				await api(refused()).ntfy.enable(),
+				await api(refused()).ntfy.regenerate(),
+				await api(refused()).ntfy.optIn(KID)
+			]) {
+				expect(r).toEqual({
+					ok: false,
+					status: 409,
+					reason: 'conflict',
+					code: 'ntfy_unavailable'
+				});
+			}
+		});
+
+		it('maps a kid or topic that is not theirs to not_found', async () => {
+			const f = () => respond({ error: 'not_found' }, 404);
+			expect(await api(f()).ntfy.optIn(KID)).toMatchObject({ ok: false, reason: 'not_found' });
+			expect(await api(f()).ntfy.optOut(KID)).toMatchObject({ ok: false, reason: 'not_found' });
+			expect(await api(f()).ntfy.disable()).toMatchObject({ ok: false, reason: 'not_found' });
+		});
+	});
+
+	it('an id outside the pattern is not_found without a request', async () => {
+		const f = respond({});
+		const { push, ntfy } = api(f);
+		for (const r of [
+			await push.renameDevice('a/b', 'x'),
+			await push.removeDevice('..?x'),
+			await push.optIn('a/b', DEVICE),
+			await push.optIn(KID, '..?x'),
+			await push.optOut('', DEVICE),
+			await push.optOut(KID, 'a b'),
+			await ntfy.optIn('a/b'),
+			await ntfy.optOut('')
+		]) {
+			expect(r).toEqual({ ok: false, status: 404, reason: 'not_found' });
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a call by its endpoint name only: never an endpoint, key, topic or label', async () => {
+		await api(respond({ error: 'invalid', field: 'keys' }, 422)).push.upsertDevice({
+			...INPUT,
+			label: 'Secret label'
+		});
+		await api(respond({ error: 'push_unavailable' }, 409)).push.optIn(KID, DEVICE);
+		await api(respond({ error: 'ntfy_unavailable' }, 409)).ntfy.enable();
+		await api(respond({ ...{ enabled: true, server: 's', topic: TOPIC }, kids: 5 })).ntfy.state();
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'upsert_push_device', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'set_push_optin', status: 409 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'enable_ntfy', status: 409 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'ntfy_state', status: 200 }
+		]);
+		for (const secret of [ENDPOINT, P256DH, AUTH, TOPIC, 'Secret label', 'secret']) {
+			expect(logged()).not.toContain(secret);
+		}
+	});
+
+	it('a failed upsert returns no endpoint, key or label', async () => {
+		for (const f of [
+			respond({ error: 'invalid', field: 'endpoint' }, 422),
+			respond({ error: 'push_unavailable' }, 409),
+			respond('not json', 500),
+			mockFetch(async () => {
+				throw new Error(`boom ${ENDPOINT} ${P256DH} ${AUTH}`);
+			})
+		]) {
+			const r = await api(f).push.upsertDevice(INPUT);
+			expect(r.ok).toBe(false);
+			for (const secret of [ENDPOINT, P256DH, AUTH]) {
+				expect(JSON.stringify(r)).not.toContain(secret);
+				expect(logged()).not.toContain(secret);
+			}
+		}
 	});
 });

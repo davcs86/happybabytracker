@@ -5,7 +5,8 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	submit
+	submit,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -185,6 +186,7 @@ test('dismissing a visit’s last open line folds it under Completed; undo unfol
 	await seed(api, { given_on: TODAY, antigens: ['measles'] });
 	await signIn(page, ANA);
 	await page.goto(pageUrl(IVY.id));
+	await untilHydrated(page.getByLabel('Due before'));
 	const twelve = group(page, '12-month vaccines');
 	await expect(twelve.getByRole('heading', { level: 2 })).toHaveText(/Due/);
 	const hib = line(twelve, `${HIB}, dose 2`);
@@ -214,6 +216,7 @@ test('dismiss-before dismisses the older lines and says how many', async ({ page
 	await onSchedule(api);
 	await signIn(page, ANA);
 	await page.goto(pageUrl(IVY.id));
+	await untilHydrated(page.getByLabel('Due before'));
 	const form = page.getByRole('region', { name: 'Dismiss older lines' });
 	await form.getByRole('button', { name: 'Dismiss lines' }).click();
 	await expectFieldError(form.getByLabel('Due before'), 'Enter a date');
@@ -330,12 +333,14 @@ test('editing only the note sends {note}; clearing the lot sends null', async ({
 	const path = apiPath(IVY.id, row.id);
 	await signIn(page, ANA);
 	await page.goto(editUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('left arm');
 	await save(page);
 	await onPage(page);
 	expect(await written('PATCH', path)).toEqual({ note: 'left arm' });
 
 	await page.goto(editUrl(IVY.id, row.id));
+	await untilHydrated(field(page, 'Lot number'));
 	await expect(field(page, 'Note')).toHaveValue('left arm');
 	await field(page, 'Lot number').fill('');
 	await save(page);

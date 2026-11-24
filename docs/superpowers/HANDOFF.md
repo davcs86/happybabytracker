@@ -1,6 +1,6 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-23 at the end of plan 5.1 (advanced bottle, nursing and pumping logging). Read this first
+Updated 2026-11-23 at the end of plan 6, app side (sickness, medication, reminders, Web Push, ntfy). Read this first
 in a new session, then the design and the plan of the next item.
 
 ## State
@@ -13,8 +13,9 @@ in a new session, then the design and the plan of the next item.
 | Plan 3, daily trackers | `docs/superpowers/plans/2026-11-22-daily-trackers.md` | done, merged to `main` (PR #4) |
 | Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done, merged to `main` (PR #6) |
 | Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done, merged to `main` (PR #7) |
-| Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done on branch `ccr-174d8c4e-jjczdt`; its PR goes to `main`, merged only with the owner's go-ahead |
-| Plan 6, sickness, medication, reminders, Web Push, ntfy | not in this repository yet | a draft and its research exist outside this branch and will be added by a later PR; ask the owner. Plan 5.1 takes migration 0005, so the draft's migration becomes 0006 when it is rebased |
+| Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done, merged to `main` (PR #8) |
+| Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #9 to `main`, merged only with the owner's go-ahead) |
+| Plan 6, edge side | `davcs86/homelab-edge`, not written | the VAPID PR, then the ntfy plan; see "What to do next" |
 | Plan 7, milestones and PDF export | not written | see "Order of work" below |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
@@ -23,17 +24,31 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. The owner reviews plan 5.1's PR (from `ccr-174d8c4e-jjczdt` to `main`, merged only with the owner's
-   go-ahead) and decides whether to merge it. After the merge, CI publishes both images. The edge's
-   `bump-happybabytracker` PR then changes the two pins, and a deploy makes plan 5.1 live. Plan 5.1 changes `api/` and `ui/` sources only (no Dockerfile or dependency
-   change) and nothing else on the edge: no new variable, volume or notice file. Whether plan 5's own bump
-   and deploy happened is not recorded here.
-2. Plan 6 (sickness, medication, the reminder worker, Web Push, ntfy): ask the owner for the draft and
-   its research, settle its open values with the owner, and add it to `docs/superpowers/plans/` in its
-   own PR from `main` after plan 5.1's PR. Its draft migration is renumbered 0006 when it is rebased. The
-   home read model's `due` list is where medication joins: each entry already carries `kind`
-   (`"vaccine"` today), so plan 6 adds `kind: "medication"` entries without a breaking change.
-3. Start implementation only when the owner asks for it.
+1. The owner reviews plan 6's PR #9 (from `ccr-174d8c4e-jjczdt` to `main`, merged only with the owner's
+   go-ahead). After the merge, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
+   two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and `ui/` sources only (no Dockerfile or
+   dependency change; migration 0006 runs at the API's start) and deploys with the edge unchanged: no
+   `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in the app (the home Due
+   list and the Medication page). Migration 0006 is forward-only (an older API refuses the newer schema,
+   and the previous UI rejects the home list's medication entries): take an `edge-backup` archive right
+   before the deploy; a rollback is both pins back plus a restore of that archive, losing what was
+   written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
+   alive (503 after 60 seconds without a tick): point the edge's alert runbook at
+   `docs/runbooks/reminders.md` for that answer.
+2. **Edge, Web Push:** whenever the owner wants Web Push on (before or after the plan-6 bump), a PR in
+   `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
+   literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
+   `api.env`, both or neither, with asserts (43 base64url characters), flips its
+   `test_vapid_is_not_rendered_in_plan_2` and updates the edge runbook's section 7 and `docs/decisions.md`.
+   Outbound 443 from the API container was checked at the DigitalOcean firewall and the compose network
+   on 2026-11-23; host-level egress is not.
+3. **Edge, ntfy:** after the owner answers E1 and E2 (plan 6, "Questions for the owner"), an edge plan
+   following `docs/superpowers/research/reminders/ntfy-and-edge.md`: a network shared by ntfy and the API
+   only, `happybabytracker_ntfy_enabled` (shipping `false`) and the prefix, a write-only ntfy user and
+   token, the `NTFY_*` rendering, the Gatus `/healthz/reminders` probe (after plan 6 is deployed); then a
+   flip PR once the owner subscribes a phone. Operating notes for both channels:
+   `docs/runbooks/reminders.md`.
+4. Then plan 7 (milestones and PDF export): write it just before it is built, when the owner asks.
 
 ## Owner decisions in plan 3 (do not reopen)
 
@@ -116,6 +131,42 @@ simple forms and every older entry are unchanged. Its open values are in the pla
   line only, not on the home, the daily summaries or per-source daily totals.
 - Weigh-ins are not growth measurements: no growth row, no score, no chart.
 
+## Owner decisions in plan 6 (do not reopen)
+
+The owner's answers of 2026-11-23, recorded verbatim in the plan ("Questions for the owner: answered"):
+
+- Web Push with VAPID is optional, both variables or neither; this supersedes "Web Push with VAPID is always
+  required" (see the decision below). A small edge PR rendering the two VAPID variables may merge before or
+  after the plan-6 bump.
+- Deleting a course deletes its doses, behind a confirm that names the dose count.
+- Doses are not on the timeline; symptoms are.
+- Overdue window: a guardian-only kid setting, `reminder_overdue_minutes`, default 60, range 5 to 1440; a
+  missed dose stays `overdue` on the home Due list until its due time plus that many minutes or the course's
+  next occurrence, whichever comes first.
+- A disabled parent's push devices, ntfy topic and opt-ins are deleted in the same transaction as the
+  disable.
+- One browser, two parents: the device moves to the parent who registers it last; the other parent's
+  opt-ins for it are deleted.
+- No offline page and no fetch handler: the service worker handles install, push and notificationclick
+  only. Spec 11's offline page is deliberately not built.
+
+The owner's answers of 2026-11-24 (after the final review):
+
+- The smoke's API memory ceiling is 64 MiB (raised from 60 MiB); the UI's stays 140 MiB.
+- `MaxScheduleOccurrences` = 1000 (the schedule engine lists at most the earliest 1000 occurrences of a
+  course per call) is owner-ratified.
+- ntfy's "New topic" sits behind a confirm (the app's `<details>` pattern) that says the current topic
+  stops working, the new one must be added in the ntfy app again, and that signing out of this app does
+  not stop notifications on this phone or browser; the same sign-out sentence shows once as a note in the
+  ntfy section, and a Web Push variant (naming only "Turn off on this device") once in the Web Push section.
+- Turning notifications on again for a browser the API already knows keeps the name the parent chose,
+  even without the `hbt_push_device` cookie: the device upsert's `label` is optional (absent or null keeps
+  the stored name; a new device is "This device").
+- `GET /v1/me/ntfy` carries `has_topic`; while ntfy is off it is `{"enabled":false,"has_topic":<bool>}`
+  (never the topic), and the page then offers to remove a topic stored earlier.
+- The Medication link and pages stay reachable with the module off. The owner chose option A on 2026-11-24: the
+  Medication page then says "Medication is off for <kid>: reminders are paused." (a guardian also gets a link to Modules).
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
@@ -123,8 +174,9 @@ simple forms and every older entry are unchanged. Its open values are in the pla
 3. Daily trackers, timeline, modules, age-adaptive home, PWA install — done.
 4. Growth — done.
 5. Vaccination — done (PR #7, merged).
-5.1. Advanced bottle, nursing and pumping logging — done on its branch; its PR goes to `main`, merged only with the owner's go-ahead.
-6. Sickness, medication, the reminder worker, Web Push, the ntfy channel; then the edge's ntfy switch.
+5.1. Advanced bottle, nursing and pumping logging — done (PR #8, merged).
+6. Sickness, medication, the reminder worker, Web Push, the ntfy channel — app side done on its branch (PR #9);
+   then the edge's VAPID PR and the edge's ntfy plan and switch.
 7. Milestones and PDF export.
 
 One plan per item, each its own PR, each written just before it is built.
@@ -170,7 +222,9 @@ log.
 - Reminders are for medication only in this phase. "Every N hours" is a fixed clock grid and is never
   recomputed from the last dose logged.
 - Notification text is generic: "<Category> due for <kid's name>". It never names the medication.
-- Web Push with VAPID is always required. The VAPID subject is an `https:` URL: the app's own origin.
+- Web Push with VAPID is **optional** (owner, 2026-11-23; this supersedes the earlier "Web Push with VAPID is always
+  required"). With `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` unset the API starts with Web Push off; setting only one of
+  them is a start error. When set, the VAPID subject is an `https:` URL: the app's own origin.
 - ntfy is an optional second channel, on only when `NTFY_URL` is set, one generated topic per parent.
   Nothing in this repository may depend on `homelab-edge`; a fork runs against any ntfy server or none.
   On the edge it is behind one inventory switch, `happybabytracker_ntfy_enabled`.
@@ -179,9 +233,15 @@ log.
 
 ## Things found during design that are easy to trip on
 
-- **Nothing reads the VAPID or `NTFY_*` variables yet.** Plan 6 adds them, and VAPID becomes
-  required at start then. The edge already generates and stores `happybabytracker_vapid_private_key`
-  but does not render it into the API's environment yet; plan 6 must add that before it deploys.
+- **The edge does not render the VAPID or `NTFY_*` variables yet.** Plan 6 reads them, both channels
+  optional (VAPID both or neither; owner, 2026-11-23). The edge already generates and stores
+  `happybabytracker_vapid_private_key`; an edge PR that renders it turns Web Push on, and plan 6 can deploy
+  before it. Rotating that key later stops every registered device until each parent turns
+  notifications off and on again on it (`docs/runbooks/reminders.md`).
+- **CI runs Playwright's headless shell; local runs use full Chromium** (`PW_CHROMIUM_PATH`). Reproduce a
+  CI-only e2e failure locally with `PW_CHROMIUM_PATH` pointing at the headless shell under
+  `/opt/pw-browsers/chromium_headless_shell-*`. A Playwright filter such as `home` matches the whole repo
+  path (it also picks specs in `home/` directories or with `home` anywhere in the path): pass file paths.
 - **Tailnet grants are per port, not per name.** Anyone allowed to reach `tag:edge:443` reaches every
   `*.private` service. This is why other parents are not given tailnet access now.
 - **A `*.private` name is wired in four places** in `homelab-edge` (rule EDGE-07): the hostname
@@ -202,7 +262,11 @@ log.
   since plan 4 it scores a measurement under both growth sources, and since plan 5 it records, edits
   and deletes a 6-in-1 dose against the real US schedule and switches the kid to the UK schedule, and
   since plan 5.1 it logs and edits an advanced bottle, pumping session and weighed nursing session through
-  the real forms and checks that none adds to the Growth page.
+  the real forms and checks that none adds to the Growth page. Since plan 6 it logs symptoms and a
+  medication course with no channel configured (the Due list turns `overdue`), then restarts the API with
+  the fake push sender and a per-run VAPID key and checks one generic push to the one opted-in device; its
+  steps 4k and 4l are the first to call the unpublished API directly, from a container on the smoke
+  network.
 
 ## Not yet verified (verify in the plan that needs it)
 
@@ -212,8 +276,39 @@ log.
   not legal advice.
 - The AAP guidance on corrected age: its page was blocked during plan 4's research, so the rule has not
   been checked against AAP's own text.
-- Installing the app on a real phone (plan 3 checks the manifest, icons and head links only; there is
-  no service worker until plan 6).
+- Installing the app on a real phone (plan 3 checks the manifest, icons and head links only).
+- Plan 6, on a real phone only: a displayed notification. The e2e service-worker test checks what the
+  worker passes to `showNotification` and what a `notificationclick` does with synthetic events, not a
+  displayed notification (Playwright's headless shell never displays one, whatever the grant). After the
+  first deploy with Web Push on: a due reminder shows "Medication due for <name>" and tapping it opens or
+  focuses the kid's Medication page (`docs/runbooks/reminders.md`, "Manual check").
+- Plan 6, iOS: Apple's acceptance of the tailnet-only `https:` VAPID subject, delivery, the module service
+  worker on iOS Safari 17+, a notification click into the Home Screen app and that app's separate login.
+  iOS needs the Home Screen app; only a real iPhone can show these.
+- Plan 6: real delivery through FCM, Mozilla autopush and Apple (tests and smoke use a fake push sender).
+- Plan 6: ntfy publishing from the API container's address with `behind-proxy: true` and no
+  `X-Forwarded-For` (the edge's existing publishers publish from `127.0.0.1`), and host-level egress from
+  the API container on the edge beyond the DigitalOcean firewall rules.
+- Plan 6, gaps by design: a renewed browser subscription (endpoint change) keeps its kids and label only if
+  the Notifications page is visited before the next reminder is sent; if a send reaches the dead endpoint
+  first (push service 404 or 410), the worker deletes that device and its opt-ins and the new subscription
+  registers with no kids (there is no `pushsubscriptionchange` handler). After a VAPID key rotation every
+  device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page, opened on such a
+  device, says "Turn notifications off and on again on this device.": the parent uses "Turn off on this
+  device" and turns it on again, which resubscribes under the new key. Signing out of the app does not
+  unsubscribe the device or stop ntfy: both the Web Push and the ntfy sections say so (on a shared tablet,
+  use "Turn off on this device" or "Turn off ntfy" first).
+- Plan 6, known edge: when a course is edited minutes after an early dose, the done row of the older
+  schedule counts as the course's latest past row, so it can hide an overdue entry of the new schedule
+  from the home Due list for up to the kid's overdue minutes.
+- Plan 6, smoke: the push assertion sees only the title, path and tag (the test route decodes only those);
+  the payload's other fields are covered by the Go tests, so the smoke is not proof that nothing else
+  leaks. The API's memory ceiling is 64 MiB (owner, 2026-11-24): one smoke run on 2026-11-23 read a
+  61 MiB peak for the first API process (a transient during password hashing; other runs 46–55 MiB)
+  against the former 60 MiB ceiling. The edge's container limit is 96m; the UI ceiling stays 140 MiB.
+- Plan 6, PR notes: medication entries of the home `due` list carry `state`, vaccine entries `status`;
+  medication entries come before vaccine ones; only the first page of doses is reachable from the UI for
+  edit and delete.
 - Mexico's reuse terms: shipping a facts-only transcription is the owner's reading of the gob.mx terms
   and of the Ley Federal del Derecho de Autor, art. 14. Not confirmed by the Secretaría de Salud.
 - The US January 2026 revision: it is reported stayed by a court, by secondary sources only. CDC's own
@@ -250,9 +345,10 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker` after plan 5.1's PR (advanced logging) is merged. Read
-> `docs/superpowers/HANDOFF.md`, then the design. Ask the owner for the plan 6 draft (sickness,
-> medication, reminders, Web Push, ntfy) and its research, settle its open values with the owner, and
-> execute it with subagent-driven development on a new branch from `main`. `davcs86/commsgun` is the
-> reference to mirror; attach it read-only. Plan 6 changes `davcs86/homelab-edge` (the VAPID key in the
-> API's environment, the ntfy switch) in its own PR there.
+> Start from `main` of `davcs86/happybabytracker` after plan 6's PR #9 is merged. Read
+> `docs/superpowers/HANDOFF.md`, then the design. For the edge: in `davcs86/homelab-edge`, under its
+> `CLAUDE.md`, write the VAPID PR when the owner wants Web Push on, and the ntfy plan once the owner has
+> answered E1 and E2 (plan 6), from `docs/superpowers/research/reminders/ntfy-and-edge.md`. For the app:
+> ask the owner before writing plan 7 (milestones and PDF export), settle its open values with the owner,
+> and execute it with subagent-driven development on a new branch from `main`. `davcs86/commsgun` is the
+> reference to mirror; attach it read-only.

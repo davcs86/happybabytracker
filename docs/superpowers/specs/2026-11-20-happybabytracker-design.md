@@ -434,7 +434,8 @@ object; the timeline filtered to sickness shows the course **(call)**.
 
 - The API holds a VAPID key pair (the private key from SOPS; the public key is derived and served to
   the UI) and a VAPID subject, which is an `https:` URL **(owner)**: the app's own origin **(call)**.
-  The API refuses to start unless the subject begins with `https:`. `davcs86/xstockstrat` already
+  Web Push is optional: both VAPID variables set, or neither (Web Push off). When they are set, the API
+  refuses to start unless the subject is an `https:` URL **(owner, 2026-11-23)**. `davcs86/xstockstrat` already
   sends Web Push this way (`services/xstockstrat-notify/src/fanout/webPush.ts`); its push TTL of one
   hour and 10-second send timeout are the starting values here **(call)**.
 - A parent turns notifications on **per device**, and on that device chooses the kids to be reminded
@@ -455,15 +456,19 @@ object; the timeline filtered to sickness shows the course **(call)**.
   sent late **(call)**. A dose logged for that medication from 30 minutes before the due time until
   the next occurrence marks that occurrence done; a dose logged before the push goes out cancels it
   **(call)**. The home screen's "Due" list and each course's "next due" read the same `reminders`
-  rows, so the list and the pushes never disagree.
+  rows, so the list and the pushes never disagree. A missed dose stays `overdue` on the Due list until
+  its due time plus the kid's `reminder_overdue_minutes` (a guardian's kid setting, 5 to 1440, default
+  60) or the course's next occurrence, whichever comes first **(owner, 2026-11-23)**.
 - On iOS the settings screen explains that notifications need the app added to the home screen.
-- The service worker handles install and push only. It caches no kid data; without a connection the
-  app shows an offline page **(owner: online-only)**.
+- The service worker handles install, push and notificationclick only, with no fetch handler **(owner,
+  2026-11-23)**. It caches no kid data **(owner: online-only)**. The offline page planned here is
+  deliberately not built (owner, 2026-11-23).
 
 ### 11.1 ntfy (optional second channel)
 
 - ntfy is on when `NTFY_URL` is set, and absent from the UI and the worker when it is not. Web Push
-  does not depend on it and is always on **(owner)**.
+  does not depend on it, and is on only when both VAPID variables are set **(owner, 2026-11-23,
+  superseding "always on")**.
 - One topic **per parent** **(owner)**. When a parent turns ntfy on in account settings, the API
   generates `<NTFY_TOPIC_PREFIX>-<22 random base62 characters>` **(call)**, stores it, and the screen
   shows the server address (`NTFY_PUBLIC_URL`, or `NTFY_URL` when that is unset) and the topic to
@@ -481,9 +486,9 @@ object; the timeline filtered to sickness shows the course **(call)**.
 - The app does not manage who may **read** a topic. On an open ntfy server the unguessable topic is
   the protection; on a server that denies by default, read access is the server operator's to grant.
 - ntfy keeps a message in its cache (72 hours on the edge's server), so the kid's name rests there in
-  plaintext for that long. The settings screen says so next to the switch **(call)**.
-- `GET /healthz/reminders` covers both channels: an occurrence stuck on either one for more than 15
-  minutes turns it 503.
+  plaintext for that long. The settings screen says so at the top of its ntfy section **(call)**.
+- `GET /healthz/reminders` covers both channels: a delivery of a due reminder on either one still
+  pending or sending 15 minutes after its due time turns it 503 (13.1).
 
 ## 12. PDF export
 
@@ -505,8 +510,8 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 |---|---|
 | `ADMIN_USERNAME`, `ADMIN_PASSWORD` | the seeded admin (secret; password at least 16 characters) |
 | `INTERNAL_API_TOKEN` | shared with the UI container (secret, at least 32 characters) |
-| `VAPID_PRIVATE_KEY` | P-256 private key for Web Push (secret) |
-| `VAPID_SUBJECT` | the `https:` subject sent to the push services; on the edge, the app's origin |
+| `VAPID_PRIVATE_KEY` | optional; P-256 private key for Web Push (secret) |
+| `VAPID_SUBJECT` | optional; the `https:` subject sent to the push services; on the edge, the app's origin |
 | `PUBLIC_ORIGIN` | the app's origin, used in invite and reset links and as the push click target |
 | `DATA_DIR` | SQLite directory, default `/data`, the only writable path |
 | `HBT_ALLOW_FAKE_PUSH` | `1` sends pushes to an in-memory recorder (tests and smoke only) |
@@ -516,13 +521,16 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 | `NTFY_PUBLIC_URL` | optional; the server address shown to parents when it differs from `NTFY_URL` |
 
 The process refuses to start on a missing or too-short secret, an invalid VAPID key or an invalid
-origin; the VAPID variables are always required **(owner)**. It also refuses `NTFY_URL` without a
-prefix, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, and any other `NTFY_*` variable set while
-`NTFY_URL` is not.
+origin. The VAPID variables are optional, both or neither (neither turns Web Push off) **(owner,
+2026-11-23, superseding "the VAPID variables are always required")**; one of them without the other,
+an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
+prefix, a prefix outside 1–32 of `a-z0-9-`, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, an `NTFY_TOKEN`
+with a space, control or non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
 
 Health: `GET /healthz` is 200 while the database answers and the worker has ticked within 60 seconds.
-`GET /healthz/reminders` is 503 when a reminder has been due and unsent for more than 15 minutes
-**(call)**.
+`GET /healthz/reminders` is 503 when a delivery of a due reminder is still pending or sending 15 minutes
+after its due time, or a delivery failed or expired within the last 15 minutes **(call)**; with no channel
+configured it is 200.
 
 ### 13.2 UI (`ui/`, image `ghcr.io/davcs86/happybabytracker-ui`)
 

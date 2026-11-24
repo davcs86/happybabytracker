@@ -11,8 +11,8 @@ import {
 } from './timeline';
 import type { ModuleId, ModuleState, TimelineItem, TrackerKind } from './types';
 
-const METRIC = { weight: 'kg', volume: 'ml' } as const;
-const IMPERIAL = { weight: 'lb', volume: 'floz' } as const;
+const METRIC = { weight: 'kg', volume: 'ml', temp: 'c' } as const;
+const IMPERIAL = { weight: 'lb', volume: 'floz', temp: 'f' } as const;
 const vol = (ml: number, hundredths: number) => ({
 	ml,
 	floz_hundredths: hundredths,
@@ -103,7 +103,7 @@ describe('timelineLine', () => {
 	it('names a bottle with its volume in the parent unit and its contents', () => {
 		const b = bottle('2026-10-14T13:05:00Z', ['breast_milk', 'formula']);
 		expect(timelineLine(b, 'UTC', METRIC)).toBe('13:05 Bottle 120 ml, breast milk + formula');
-		expect(timelineLine(b, 'UTC', { weight: 'kg', volume: 'floz' })).toBe(
+		expect(timelineLine(b, 'UTC', { weight: 'kg', volume: 'floz', temp: 'c' })).toBe(
 			'13:05 Bottle 4.06 fl oz, breast milk + formula'
 		);
 		expect(timelineLine(bottle('2026-10-14T13:05:00Z', ['cow_milk', 'other']), 'UTC', METRIC)).toBe(
@@ -179,6 +179,73 @@ describe('timelineLine', () => {
 			}) as TimelineItem;
 		expect(timelineLine(meal(null), 'UTC', METRIC)).toBe('12:15 Solids: pear');
 		expect(timelineLine(meal('liked it'), 'UTC', METRIC)).toBe('12:15 Solids: pear · liked it');
+	});
+});
+
+describe('timelineLine symptoms', () => {
+	const symptom = (over: Record<string, unknown>): TimelineItem =>
+		({
+			kind: 'symptoms',
+			at: '2026-10-14T09:12:00Z',
+			entry: {
+				id: 'y1',
+				at: '2026-10-14T09:12:00Z',
+				symptom: 'cough',
+				severity: null,
+				otherText: null,
+				temperature: null,
+				method: null,
+				note: null,
+				...over
+			}
+		}) as TimelineItem;
+	const fever = (over: Record<string, unknown> = {}) =>
+		symptom({
+			symptom: 'fever',
+			temperature: { cHundredths: 3840, fHundredths: 10112, typedUnit: 'c' },
+			method: 'ear',
+			...over
+		});
+
+	it('names a fever with its temperature in the parent unit and its method', () => {
+		expect(timelineLine(fever(), 'UTC', METRIC)).toBe('09:12 Fever 38.4 °C (ear)');
+		expect(timelineLine(fever(), 'UTC', IMPERIAL)).toBe('09:12 Fever 101.12 °F (ear)');
+	});
+
+	it('shows the column of the parent unit, so a temperature typed in °F reads back exactly', () => {
+		const typedF = fever({
+			temperature: { cHundredths: 3850, fHundredths: 10130, typedUnit: 'f' }
+		});
+		expect(timelineLine(typedF, 'UTC', IMPERIAL)).toBe('09:12 Fever 101.3 °F (ear)');
+	});
+
+	it('writes the method as the form names it', () => {
+		expect(timelineLine(fever({ method: 'axillary' }), 'UTC', METRIC)).toBe(
+			'09:12 Fever 38.4 °C (armpit)'
+		);
+	});
+
+	it('names any other symptom, with its severity after a comma', () => {
+		expect(timelineLine(symptom({}), 'UTC', METRIC)).toBe('09:12 Cough');
+		expect(timelineLine(symptom({ severity: 'moderate' }), 'UTC', METRIC)).toBe(
+			'09:12 Cough, moderate'
+		);
+		expect(timelineLine(symptom({ symptom: 'ear_pain', severity: 'mild' }), 'UTC', METRIC)).toBe(
+			'09:12 Ear pain, mild'
+		);
+		expect(timelineLine(fever({ severity: 'severe' }), 'UTC', METRIC)).toBe(
+			'09:12 Fever 38.4 °C (ear), severe'
+		);
+	});
+
+	it('shows the text of an other symptom', () => {
+		expect(timelineLine(symptom({ symptom: 'other', otherText: 'hiccups' }), 'UTC', METRIC)).toBe(
+			'09:12 Other: hiccups'
+		);
+	});
+
+	it('shows the clock of the kid zone', () => {
+		expect(timelineLine(symptom({}), 'Europe/Madrid', METRIC)).toBe('11:12 Cough');
 	});
 });
 

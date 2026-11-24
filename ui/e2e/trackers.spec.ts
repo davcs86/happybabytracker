@@ -5,7 +5,8 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	submit
+	submit,
+	untilHydrated
 } from './helpers.js';
 import {
 	ANA,
@@ -201,6 +202,7 @@ for (const c of CASES) {
 		expect(page.url()).toContain(`?from=${day(when)}&to=${day(when)}`);
 
 		await page.goto(entryUrl(c.kind, created.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByRole('heading', { name: /^Edit /, level: 1 })).toBeVisible();
 		await expect(field(page, 'Note')).toHaveValue('first note');
 		await expectAccessible(page);
@@ -268,6 +270,7 @@ test('editing only the note sends no volume and no time; an edited amount sends 
 	const path = `/v1/kids/${MIA.id}/bottles/${bottle.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('bottles', bottle.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Volume')).toHaveValue('126');
 	await field(page, 'Note').fill('only the note');
 	await save(page);
@@ -279,6 +282,7 @@ test('editing only the note sends no volume and no time; an edited amount sends 
 	expect(kept.at).toBe(bottle.at);
 
 	await page.goto(entryUrl('bottles', bottle.id));
+	await untilHydrated(field(page, 'Volume'));
 	await field(page, 'Volume').fill('130');
 	await save(page);
 	await onTimeline(page);
@@ -372,6 +376,7 @@ test('a time in the skipped hour of a Madrid night saves an hour later, in the k
 	expect(stored.at).toBe('2026-03-29T01:30:00Z');
 
 	await page.goto(entryUrl('diapers', stored.id, LEO.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Time')).toHaveValue('2026-03-29T03:30');
 	await field(page, 'Note').fill('after the change');
 	await save(page);
@@ -392,6 +397,7 @@ for (const [who, role] of [
 		const diaper = await seed(api, 'diapers', { at: minute(-10), kind: 'wet' }, LEO.id);
 		await signIn(page, who);
 		await page.goto(entryUrl('diapers', diaper.id, LEO.id));
+		await untilHydrated(field(page, 'Note'));
 		await page.getByRole('radio', { name: 'Dirty' }).check();
 		await save(page);
 		await onTimeline(page);
@@ -418,6 +424,7 @@ test('a finished nursing edit keeps the stored seconds unless a side is changed'
 	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Note'));
 	await expect(field(page, 'Left minutes')).toHaveValue('12');
 	await expect(field(page, 'Right minutes')).toHaveValue('1');
 	await expect(page.locator('input[name="left_seconds_original"]')).toHaveValue('723');
@@ -436,6 +443,7 @@ test('a finished nursing edit keeps the stored seconds unless a side is changed'
 	});
 
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Left minutes'));
 	await field(page, 'Left minutes').fill('10');
 	await save(page);
 	await onTimeline(page);
@@ -450,6 +458,7 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 	const nursing = await seed(api, 'nursing', { started_at: startedAt, side: 'right' });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await expect(field(page, 'Started at')).toHaveValue(inUtc(startedAt));
 	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 	await expect(page.getByLabel('Right minutes')).toHaveCount(0);
@@ -473,12 +482,13 @@ test('a running nursing edit has no minutes and no side; an end time ends it', a
 });
 
 // The timer is ended elsewhere between the page loading and the save; the page then shows the finished form.
-async function openStaleNursingEdit(page: Page) {
+async function openStaleNursingEdit(page: Page, scripted: boolean) {
 	const api = await stubAs(ANA);
 	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
 	const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	if (scripted) await untilHydrated(field(page, 'Note'));
 	await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 	expect((await api('POST', `${path}/end`, {})).status).toBe(200);
 	const [ended] = await rows(api, 'nursing');
@@ -503,8 +513,8 @@ async function expectFreshForm(page: Page, right: number) {
 	await expect(field(page, 'Right minutes')).toHaveValue(String(Math.floor(right / 60)));
 }
 
-async function staleNursingEdit(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEdit(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await field(page, 'Note').fill('after the end');
 	await save(page);
 	await onTimeline(page);
@@ -516,8 +526,8 @@ async function staleNursingEdit(page: Page) {
 }
 
 // Later failures keep the finished form: the field error needs its minutes input.
-async function staleNursingEditThenInvalid(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEditThenInvalid(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await field(page, 'Left minutes').fill('abc');
 	await save(page);
 	await expectFieldError(field(page, 'Left minutes'), 'whole minutes');
@@ -532,8 +542,8 @@ async function staleNursingEditThenInvalid(page: Page) {
 	expect((await rows(api, 'nursing'))[0]).toMatchObject({ right_seconds: right, note: 'fixed' });
 }
 
-async function staleNursingEditThenUnavailable(page: Page) {
-	const { api, path, right } = await openStaleNursingEdit(page);
+async function staleNursingEditThenUnavailable(page: Page, scripted = true) {
+	const { api, path, right } = await openStaleNursingEdit(page, scripted);
 	await setScenario('patch_unavailable');
 	await field(page, 'Note').fill('unsent');
 	await save(page);
@@ -565,6 +575,7 @@ test('a failed save on a running nursing page stays on the running form', async 
 	const nursing = await seed(api, 'nursing', { started_at: minute(-20), side: 'right' });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('nursing', nursing.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await field(page, 'Ended at').fill(inUtc(minute(60)));
 	await save(page);
 	await expectFieldError(field(page, 'Ended at'), 'after the start');
@@ -580,6 +591,7 @@ test('a timer over 24 hours says how to fix it; an end within 24 hours of the st
 	const sleep = await seed(api, 'sleep', { started_at: start });
 	await signIn(page, ANA);
 	await page.goto(entryUrl('sleep', sleep.id));
+	await untilHydrated(field(page, 'Ended at'));
 	await expect(
 		page.getByText('A timer can last at most 24 hours; set the end time or delete it')
 	).toBeVisible();
@@ -654,6 +666,7 @@ for (const kind of ['sleep', 'nursing'] as const) {
 		const entry = await seed(api, kind, body);
 		await signIn(page, ANA);
 		await page.goto(entryUrl(kind, entry.id));
+		await untilHydrated(field(page, 'Ended at'));
 		await field(page, 'Ended at').fill('');
 		await save(page);
 		await expectFieldError(field(page, 'Ended at'), 'A finished session cannot be re-opened');
@@ -701,7 +714,7 @@ test.describe('without JavaScript', () => {
 
 	for (const [name, run] of staleTests) {
 		test(`a nursing edit opened while the timer ran ${name}`, async ({ page }) => {
-			await run(page);
+			await run(page, false);
 		});
 	}
 
@@ -824,6 +837,7 @@ test.describe('the advanced bottle form', () => {
 		expect(body).not.toHaveProperty('contents');
 
 		await page.goto(entryUrl('bottles', created.id));
+		await untilHydrated(field(page, 'Formula volume'));
 		await expect(page.getByRole('link', { name: 'Use one total' })).toBeVisible();
 		await expect(field(page, 'Breast milk volume')).toHaveValue('60');
 		await expect(field(page, 'Formula volume')).toHaveValue('90');
@@ -854,6 +868,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id));
+		await untilHydrated(field(page, 'Note'));
 		await field(page, 'Note').fill('only the note');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -989,6 +1004,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id) + '?advanced=0');
+		await untilHydrated(field(page, 'Volume'));
 		await field(page, 'Volume').fill('140');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1011,6 +1027,7 @@ test.describe('the advanced bottle form', () => {
 		await expect(field(page, 'Breast milk volume')).toHaveCount(0);
 		await expect(page.getByText('Saving one total replaces the volumes per source')).toHaveCount(0);
 		await page.getByRole('link', { name: SIMPLE_LINK }).click();
+		await untilHydrated(field(page, 'Breast milk volume'));
 		await expect(page).toHaveURL(new RegExp(`/${bottle.id}\\${ADVANCED}$`));
 		await expect(page.getByRole('checkbox', { name: 'Formula', exact: true })).toBeChecked();
 		await expect(field(page, 'Formula volume')).toHaveValue('');
@@ -1048,6 +1065,7 @@ test.describe('the advanced bottle form', () => {
 		});
 		await signIn(page, ANA);
 		await page.goto(entryUrl('bottles', bottle.id));
+		await untilHydrated(field(page, 'Breast milk volume'));
 		await page.getByRole('checkbox', { name: 'Other', exact: true }).check();
 		await saveAndWait(page);
 		await expectFieldError(
@@ -1320,6 +1338,7 @@ test.describe('the nursing weigh-ins', () => {
 
 		const [made] = await rows(api, 'nursing');
 		await page.goto(entryUrl('nursing', made.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(weight(page, BEFORE).getByLabel('Pounds')).toHaveValue('7');
 		await expect(weight(page, BEFORE).getByLabel('Ounces')).toHaveValue('8');
 		await expect(weight(page, AFTER).getByLabel('Pounds')).toHaveValue('7');
@@ -1379,6 +1398,7 @@ test.describe('the nursing weigh-ins', () => {
 		const [made] = await rows(api, 'nursing');
 		const path = `/v1/kids/${MIA.id}/nursing/${made.id}`;
 		await page.goto(entryUrl('nursing', made.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await kilograms(page, AFTER).fill('');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1408,6 +1428,7 @@ test.describe('the nursing weigh-ins', () => {
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
 		await page.getByRole('link', { name: HIDE_LINK }).click();
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByRole('link', { name: WEIGH_LINK })).toBeVisible();
 		await expect(page.getByRole('group', { name: BEFORE })).toHaveCount(0);
 		await field(page, 'Note').fill('plain edit');
@@ -1439,6 +1460,7 @@ test.describe('the nursing weigh-ins', () => {
 		expect((await rows(api, 'nursing'))[0].ended_at).not.toBeNull();
 
 		await page.goto(entryUrl('nursing', started.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await expect(kilograms(page, BEFORE)).toHaveValue('3.4');
 		await expect(kilograms(page, AFTER)).toHaveValue('');
 		await expect(page.getByText(/Weight gain|No estimate/)).toHaveCount(0);
@@ -1520,6 +1542,7 @@ test.describe('the nursing weigh-ins', () => {
 		const [started] = await rows(api, 'nursing', LEO.id);
 		expect(started).toMatchObject({ weight_before: { grams: 4100 } });
 		await page.goto(entryUrl('nursing', started.id, LEO.id));
+		await untilHydrated(kilograms(page, AFTER));
 		await kilograms(page, AFTER).fill('4.15');
 		await saveAndWait(page);
 		await page.waitForURL(/\/timeline/);
@@ -1541,6 +1564,7 @@ test.describe('the nursing weigh-ins', () => {
 		const path = `/v1/kids/${MIA.id}/nursing/${nursing.id}`;
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByLabel('Left minutes')).toHaveCount(0);
 		expect((await api('POST', `${path}/end`, {})).status).toBe(200);
 		await field(page, 'Note').fill('typed while running');
@@ -1580,6 +1604,7 @@ test.describe('the nursing weigh-ins', () => {
 			);
 		await signIn(page, ANA);
 		await page.goto(entryUrl('nursing', nursing.id));
+		await untilHydrated(field(page, 'Note'));
 		await expect(page.getByText(/^Weight gain 60 g/)).toBeVisible();
 		expect(await overflows()).toBe(false);
 		await field(page, 'Weight before unit').selectOption('lb');
@@ -1731,6 +1756,7 @@ test.describe('the advanced pumping form', () => {
 		expect(body).not.toHaveProperty('side');
 
 		await page.goto(entryUrl('pumping', created.id));
+		await untilHydrated(field(page, 'Right volume'));
 		await expect(page.getByRole('link', { name: ONE_TOTAL })).toBeVisible();
 		await expect(field(page, 'Left volume')).toHaveValue('60');
 		await expect(field(page, 'Right volume')).toHaveValue('50');
@@ -1764,6 +1790,7 @@ test.describe('the advanced pumping form', () => {
 		expect(body.sides).toEqual({ unit: 'ml', amounts: { left: 60 } });
 
 		await page.goto(entryUrl('pumping', created.id));
+		await untilHydrated(field(page, 'Right volume'));
 		await expect(field(page, 'Left volume')).toHaveValue('60');
 		await expect(field(page, 'Right volume')).toHaveValue('');
 		await expect(page.getByText('Total: 60 ml')).toBeVisible();
@@ -1782,6 +1809,7 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id));
+		await untilHydrated(field(page, 'Note'));
 		await field(page, 'Note').fill('only the note');
 		await saveAndWait(page);
 		await onTimeline(page);
@@ -1916,6 +1944,8 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id) + '?advanced=0');
+		// Filled before hydration, the total is appended to the SSR one; Svelte drops this attribute after it.
+		await expect(field(page, 'Volume')).not.toHaveAttribute('value');
 		await field(page, 'Volume').fill('90');
 		await page.getByRole('radio', { name: 'Left' }).check();
 		await saveAndWait(page);
@@ -1932,6 +1962,7 @@ test.describe('the advanced pumping form', () => {
 		const session = await seed(api, 'pumping', pumped({ left: 60, right: 50 }));
 		await signIn(page, ANA);
 		await page.goto(entryUrl('pumping', session.id));
+		await untilHydrated(field(page, 'Left volume'));
 		await field(page, 'Left volume').fill('abc');
 		await saveAndWait(page);
 		await expectFieldError(field(page, 'Left volume'), SIDES_MESSAGE);
@@ -1963,6 +1994,7 @@ test.describe('the advanced pumping form', () => {
 		await expect(field(page, 'Left volume')).toHaveCount(0);
 		await expect(page.getByText(SIDES_HINT)).toHaveCount(0);
 		await page.getByRole('link', { name: SIDES_LINK }).click();
+		await untilHydrated(field(page, 'Left volume'));
 		await expect(page).toHaveURL(new RegExp(`/${session.id}\\${ADVANCED}$`));
 		await expect(field(page, 'Left volume')).toHaveValue('');
 		await expect(page.getByText('Total: 0 ml')).toBeVisible();
@@ -2091,5 +2123,521 @@ test.describe('the advanced pumping form without JavaScript', () => {
 		await page.getByRole('link', { name: ONE_TOTAL }).click();
 		await expect(field(page, 'Volume')).toBeVisible();
 		await expect(field(page, 'Left volume')).toHaveCount(0);
+	});
+});
+
+// The sickness tracker: a symptom, and for a fever its temperature and method. Every save waits for its response.
+const SYMPTOM_PATH = `/v1/kids/${MIA.id}/symptoms`;
+const TEMP_MESSAGE = 'Enter a temperature from 30 to 45 °C (86 to 113 °F), with up to two decimals';
+const pick = (page: Page, symptom: string) => field(page, 'Symptom').selectOption(symptom);
+// Hydration overwrites a control changed before it; Svelte drops the SSR value attribute after it.
+const hydrated = (page: Page) => expect(field(page, 'Temperature')).not.toHaveAttribute('value');
+const fever = (over: Row = {}): Row => ({
+	at: minute(-10),
+	symptom: 'fever',
+	temperature: { unit: 'c', amount: 3840 },
+	method: 'ear',
+	...over
+});
+const setUnits = async (api: Api, temp: 'c' | 'f') =>
+	expect((await api('PATCH', '/v1/me', { units: { temp } })).status).toBe(200);
+const symptomOverflows = (page: Page) =>
+	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+
+test.describe('the sickness tracker', () => {
+	test('a fever is logged with its temperature and method, and read back in °F by an imperial parent', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await setUnits(api, 'f');
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Left minutes')).toHaveCount(0);
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await expect(field(page, 'Method')).toBeHidden();
+		await expect(field(page, 'Other symptom')).toBeHidden();
+		await expect(page.getByRole('radio', { name: 'Not set' })).toBeChecked();
+		await expectAccessible(page);
+
+		await pick(page, 'fever');
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await expect(field(page, 'Other symptom')).toBeHidden();
+		await expectAccessible(page);
+		await field(page, 'Temperature').fill('101,3');
+		await field(page, 'Method').selectOption('ear');
+		await field(page, 'Note').fill('fussy');
+		await saveAndWait(page);
+		await onTimeline(page);
+
+		expect(await written('POST', SYMPTOM_PATH)).toMatchObject({
+			symptom: 'fever',
+			temperature: { unit: 'f', amount: 10130 },
+			method: 'ear',
+			note: 'fussy'
+		});
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({
+			symptom: 'fever',
+			method: 'ear',
+			temperature: { f_hundredths: 10130, typed_unit: 'f' }
+		});
+		await expect(
+			page.getByRole('link', { name: /^\d\d:\d\d Fever 101\.3 °F \(ear\)/ })
+		).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toHaveValue('101.3');
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await expect(field(page, 'Method')).toHaveValue('ear');
+		await expectAccessible(page);
+
+		await setUnits(api, 'c');
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Temperature')).toHaveValue('38.5');
+		await expect(field(page, 'Temperature unit')).toHaveValue('c');
+	});
+
+	test('a Celsius fever reads back in °F, and editing only the note keeps what was typed', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await setUnits(api, 'f');
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
+		await expect(field(page, 'Temperature')).toHaveValue('101.12');
+		await expect(field(page, 'Temperature unit')).toHaveValue('f');
+		await field(page, 'Note').fill('warm');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({ note: 'warm' });
+		const [kept] = await rows(api, 'symptoms');
+		expect(kept.temperature).toEqual({ c_hundredths: 3840, f_hundredths: 10112, typed_unit: 'c' });
+		expect(kept.at).toBe(made.at);
+		await expect(page.getByRole('link', { name: /Fever 101\.12 °F \(ear\)/ })).toBeVisible();
+	});
+
+	test('a changed temperature is sent alone, with its unit', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
+		await field(page, 'Temperature').fill('39');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			temperature: { unit: 'c', amount: 3900 },
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			method: 'ear',
+			temperature: { c_hundredths: 3900 }
+		});
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
+		await field(page, 'Method').selectOption('oral');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			method: 'oral',
+			note: null
+		});
+	});
+
+	test('a cough with a severity is logged with no temperature, and the severity can be cleared', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'cough');
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await page.getByRole('radio', { name: 'Moderate' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		const body = await written('POST', SYMPTOM_PATH);
+		expect(body).toMatchObject({ symptom: 'cough', severity: 'moderate' });
+		for (const key of ['temperature', 'method', 'other_text']) expect(body).not.toHaveProperty(key);
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({ symptom: 'cough', severity: 'moderate', temperature: null });
+		await expect(page.getByRole('link', { name: /^\d\d:\d\d Cough, moderate/ })).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
+		await expect(page.getByRole('radio', { name: 'Moderate' })).toBeChecked();
+		await expectAccessible(page);
+		await page.getByRole('radio', { name: 'Not set' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({
+			severity: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0].severity).toBeNull();
+	});
+
+	test('other requires its text, and keeps what was typed until it has it', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'other');
+		await expect(field(page, 'Other symptom')).toBeVisible();
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await field(page, 'Note').fill('kept');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Other symptom'), 'Enter what the symptom is');
+		await expect(field(page, 'Symptom')).toHaveValue('other');
+		await expect(field(page, 'Note')).toHaveValue('kept');
+		await expectAccessible(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Other symptom').fill('hiccups');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'other',
+			other_text: 'hiccups',
+			note: 'kept'
+		});
+		await expect(page.getByRole('link', { name: /^\d\d:\d\d Other: hiccups/ })).toBeVisible();
+	});
+
+	test('a temperature out of range keeps every typed value, on the amount and its unit', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('50');
+		await field(page, 'Method').selectOption('rectal');
+		await field(page, 'Note').fill('keep me');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
+		await expect(field(page, 'Temperature unit')).toHaveAttribute('aria-invalid', 'true');
+		await expect(field(page, 'Temperature unit')).toHaveAccessibleDescription(TEMP_MESSAGE);
+		await expect(page.getByRole('alert')).toHaveText(TEMP_MESSAGE);
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toHaveValue('50');
+		await expect(field(page, 'Method')).toHaveValue('rectal');
+		await expect(field(page, 'Note')).toHaveValue('keep me');
+		await expectAccessible(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Temperature').fill('38,5');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0].temperature).toMatchObject({
+			c_hundredths: 3850,
+			typed_unit: 'c'
+		});
+	});
+
+	test('text that is not a temperature is refused by the form, never sent', async ({ page }) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'fever');
+		await field(page, 'Method').selectOption('oral');
+		for (const typed of ['1e3', '0x10', '--1', '38.456', '']) {
+			await field(page, 'Temperature').fill(typed);
+			await saveAndWait(page);
+			await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
+			await expect(field(page, 'Temperature')).toHaveValue(typed);
+			if (typed !== '') await expect(page.getByRole('alert')).not.toContainText(typed);
+		}
+		expect(await rows(api, 'symptoms')).toEqual([]);
+		const posts = (await receivedRequests()).filter(
+			(r) => r.method === 'POST' && r.path === SYMPTOM_PATH
+		);
+		expect(posts).toEqual([]);
+	});
+
+	test('a fever without a method is refused on the method', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('38');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Method'), 'Choose how the temperature was taken');
+		await expect(field(page, 'Temperature')).toHaveValue('38');
+		await expectAccessible(page);
+	});
+
+	test('no symptom chosen is refused on the symptom', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Symptom'), 'Choose a symptom');
+		await expectAccessible(page);
+	});
+
+	test('a fever edited into a cough, then a fever, then other, then a cough sends the nulls each time', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		const path = `${SYMPTOM_PATH}/${made.id}`;
+		const edit = async () => {
+			await page.goto(entryUrl('symptoms', made.id));
+			await hydrated(page);
+			await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+		};
+		await signIn(page, ANA);
+
+		await edit();
+		await pick(page, 'cough');
+		await page.getByRole('radio', { name: 'Mild' }).check();
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'cough',
+			severity: 'mild',
+			temperature: null,
+			method: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			severity: 'mild',
+			temperature: null,
+			method: null
+		});
+
+		await edit();
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('39');
+		await field(page, 'Method').selectOption('oral');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'fever',
+			temperature: { unit: 'c', amount: 3900 },
+			method: 'oral',
+			note: null
+		});
+
+		await edit();
+		await pick(page, 'other');
+		await field(page, 'Other symptom').fill('hiccups');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'other',
+			other_text: 'hiccups',
+			temperature: null,
+			method: null,
+			note: null
+		});
+
+		await edit();
+		await expect(field(page, 'Other symptom')).toHaveValue('hiccups');
+		await pick(page, 'cough');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', path)).toEqual({
+			symptom: 'cough',
+			other_text: null,
+			note: null
+		});
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			other_text: null,
+			temperature: null
+		});
+	});
+
+	test('a symptom is deleted behind the confirm', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const made = await seed(api, 'symptoms', fever());
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await hydrated(page);
+		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
+		await page.getByText('Delete this entry', { exact: true }).click();
+		await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+		await onTimeline(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+	});
+
+	for (const [who, role] of [
+		[ANA, 'caregiver'],
+		[CLEO, 'guardian']
+	] as const) {
+		test(`a ${role} can log, edit and delete a fever`, async ({ page }) => {
+			const api = await stubAs(CLEO);
+			await signIn(page, who);
+			await page.goto(logUrl('symptoms', LEO.id));
+			await hydrated(page);
+			await pick(page, 'fever');
+			await field(page, 'Temperature').fill('38.2');
+			await field(page, 'Method').selectOption('forehead');
+			await saveAndWait(page);
+			await onTimeline(page);
+			const [made] = await rows(api, 'symptoms', LEO.id);
+			expect(made).toMatchObject({ symptom: 'fever', method: 'forehead' });
+			expect(made.temperature).toMatchObject({ c_hundredths: 3820 });
+
+			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await hydrated(page);
+			await field(page, 'Temperature').fill('38.6');
+			await saveAndWait(page);
+			await onTimeline(page);
+			expect(((await rows(api, 'symptoms', LEO.id))[0].temperature as Row).c_hundredths).toBe(3860);
+
+			await page.goto(entryUrl('symptoms', made.id, LEO.id));
+			await hydrated(page);
+			await page.getByText('Delete this entry', { exact: true }).click();
+			await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+			await onTimeline(page);
+			expect(await rows(api, 'symptoms', LEO.id)).toEqual([]);
+		});
+	}
+
+	test('a parent without a grant, an unknown kid, an unknown entry and another kid’s entry get the same 404 page', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const mine = await seed(api, 'symptoms', fever());
+		const others = await seed(await stubAs(CLEO), 'symptoms', fever(), LEO.id);
+		await signIn(page, DAN);
+		const unknown = await expectNotFoundPage(page, logUrl('symptoms', 'k-unknown'));
+		expect(await expectNotFoundPage(page, logUrl('symptoms'))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', mine.id))).toBe(unknown);
+
+		await page.context().clearCookies();
+		await signIn(page, ANA);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', 'e-000000009999'))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('symptoms', others.id))).toBe(unknown);
+		expect(await expectNotFoundPage(page, entryUrl('diapers', mine.id))).toBe(unknown);
+	});
+
+	test('the Sickness tile of a kid over 24 months opens the symptom form, not another', async ({
+		page
+	}) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(`/kids/${LEO.id}`);
+		await page.getByRole('link', { name: 'Sickness', exact: true }).click();
+		await expect(page).toHaveURL(`/kids/${LEO.id}/log/symptoms`);
+		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
+		await expect(field(page, 'Symptom')).toBeVisible();
+		await expect(field(page, 'Left minutes')).toHaveCount(0);
+		await expectAccessible(page);
+	});
+
+	test('a long other text and a long note do not overflow the page at phone width', async ({
+		page
+	}, testInfo) => {
+		test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
+		const api = await stubAs(ANA);
+		const longText = 'w'.repeat(80);
+		const made = await seed(api, 'symptoms', {
+			at: minute(-10),
+			symptom: 'other',
+			other_text: longText,
+			note: 'n'.repeat(200)
+		});
+		await signIn(page, ANA);
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Other symptom')).toHaveValue(longText);
+		expect(await symptomOverflows(page)).toBe(false);
+
+		await page.goto(logUrl('symptoms'));
+		await hydrated(page);
+		await pick(page, 'other');
+		await field(page, 'Other symptom').fill(longText);
+		await field(page, 'Note').fill('n'.repeat(200));
+		expect(await symptomOverflows(page)).toBe(false);
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('101.12');
+		await field(page, 'Temperature unit').selectOption('f');
+		expect(await symptomOverflows(page)).toBe(false);
+
+		const date = day(String(made.at));
+		await page.goto(`/kids/${MIA.id}/timeline?from=${date}&to=${date}`);
+		await expect(page.getByRole('link', { name: new RegExp(`Other: ${longText}`) })).toBeVisible();
+		expect(await symptomOverflows(page)).toBe(false);
+	});
+});
+
+test.describe('the sickness tracker without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('create a fever, fail on the method, fix it, edit it into a cough and delete it', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await expect(field(page, 'Temperature')).toBeHidden();
+		await pick(page, 'fever');
+		await field(page, 'Temperature').fill('38,4');
+		await field(page, 'Note').fill('no script');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Method'), 'Choose how the temperature was taken');
+		await expect(field(page, 'Symptom')).toHaveValue('fever');
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature')).toHaveValue('38,4');
+		await expect(field(page, 'Note')).toHaveValue('no script');
+		expect(await rows(api, 'symptoms')).toEqual([]);
+
+		await field(page, 'Method').selectOption('ear');
+		await saveAndWait(page);
+		await onTimeline(page);
+		const [made] = await rows(api, 'symptoms');
+		expect(made).toMatchObject({ symptom: 'fever', method: 'ear', note: 'no script' });
+		expect(made.temperature).toMatchObject({ c_hundredths: 3840, typed_unit: 'c' });
+		await expect(page.getByText(/Fever 38\.4 °C \(ear\)/)).toBeVisible();
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(field(page, 'Temperature')).toBeVisible();
+		await expect(field(page, 'Temperature')).toHaveValue('38.4');
+		await field(page, 'Note').fill('edited');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect(await written('PATCH', `${SYMPTOM_PATH}/${made.id}`)).toEqual({ note: 'edited' });
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await pick(page, 'cough');
+		await saveAndWait(page);
+		await onTimeline(page);
+		expect((await rows(api, 'symptoms'))[0]).toMatchObject({
+			symptom: 'cough',
+			temperature: null,
+			method: null
+		});
+
+		await page.goto(entryUrl('symptoms', made.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this entry' })).toBeHidden();
+		await page.getByText('Delete this entry', { exact: true }).click();
+		await submit(page.getByRole('button', { name: 'Yes, delete this entry' }));
+		await onTimeline(page);
+		expect(await rows(api, 'symptoms')).toEqual([]);
+	});
+
+	test('other shows its text field and requires it', async ({ page }) => {
+		await stubAs(ANA);
+		await signIn(page, ANA);
+		await page.goto(logUrl('symptoms'));
+		await pick(page, 'other');
+		await saveAndWait(page);
+		await expectFieldError(field(page, 'Other symptom'), 'Enter what the symptom is');
+		await expect(field(page, 'Other symptom')).toBeVisible();
 	});
 });
