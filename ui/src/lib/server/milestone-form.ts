@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { MILESTONE_TEXT_MAX, NOTE_MAX_LEN } from '../constants';
+import { milestonesPath } from '../paths';
 import { todayInOrUtc } from '../time-zone';
 import type { EntryBody, MilestoneEntry } from '../types';
 import { MILESTONE_ITEM_PATTERN } from './constants';
@@ -128,6 +129,15 @@ export function milestoneEditValues(e: MilestoneEntry): MilestoneFormValues {
 	return { ...shown, ...originals };
 }
 
+// The query opens the item's list without JavaScript; item is a checked id, which needs no escaping.
+export const milestoneReachedPath = (kidId: string, item: string) =>
+	`${milestonesPath(kidId)}?open=${item}#item-${item}`;
+
+export function readOpenItem(url: URL): string | null {
+	const item = url.searchParams.get('open');
+	return item !== null && MILESTONE_ITEM_PATTERN.test(item) ? item : null;
+}
+
 export const MILESTONE_REACHED_MESSAGE = 'Already marked as reached';
 export const MILESTONE_LIMIT_MESSAGE = 'This child has the maximum number of recorded milestones';
 
@@ -145,7 +155,7 @@ export function milestoneFieldFailure<T extends object>(
 	});
 }
 
-// A refused field lands on its input, either conflict on the form, anything else as failAction decides.
+// Only a field in MILESTONE_FIELD_MESSAGES may land on an input; any other refusal stays off the inputs.
 export function milestoneApiFailure<T extends object>(
 	values: MilestoneFormValues,
 	r: ApiFailure,

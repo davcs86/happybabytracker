@@ -1067,12 +1067,18 @@ export function createApi(
 		const endpoint = 'export_pdf';
 		let res: Response;
 		let raw: unknown = undefined;
+		// The timeout bounds the wait for the headers and a refusal's body only; the PDF streams after it.
+		const timeout = new AbortController();
+		const timer = setTimeout(
+			() => timeout.abort(new DOMException('export timed out', 'TimeoutError')),
+			EXPORT_TIMEOUT_MS
+		);
 		try {
 			res = await fetchFn(`${base}/v1/kids/${kidId}/export`, {
 				method: 'POST',
 				headers: requestHeaders('application/pdf', true),
 				body: JSON.stringify(input),
-				signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS)
+				signal: timeout.signal
 			});
 			if (!res.ok) {
 				raw = await res.json().catch((e: unknown) => {
@@ -1082,6 +1088,8 @@ export function createApi(
 		} catch (e) {
 			logFailure(endpoint, isAbort(e) ? 'timeout' : 'network');
 			return { ok: false, status: 0, reason: 'unavailable' };
+		} finally {
+			clearTimeout(timer);
 		}
 		if (!res.ok) return refused(endpoint, res.status, raw);
 		const contentType = res.headers.get('content-type') ?? '';

@@ -3199,12 +3199,44 @@ describe('createApi export', () => {
 		expect(logSpy).not.toHaveBeenCalled();
 	});
 
-	it('applies EXPORT_TIMEOUT_MS (25000), not the 5000 ms of every other call', async () => {
-		const spy = vi.spyOn(AbortSignal, 'timeout');
-		const f = mockFetch(async () => pdf().res);
-		await createApi(env, asFetch(f), SESSION).exportPdf(KID, INPUT);
-		expect(spy.mock.calls).toEqual([[25000]]);
-		expect(f.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+	it('aborts at EXPORT_TIMEOUT_MS (25000) while the headers have not arrived', async () => {
+		vi.useFakeTimers();
+		try {
+			const spy = vi.spyOn(AbortSignal, 'timeout');
+			const f = mockFetch(
+				(_u, init) =>
+					new Promise((_resolve, reject) =>
+						init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+					)
+			);
+			let settled = false;
+			const r = createApi(env, asFetch(f), SESSION)
+				.exportPdf(KID, INPUT)
+				.finally(() => (settled = true));
+			await vi.advanceTimersByTimeAsync(24_999);
+			expect(settled).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(await r).toEqual({ ok: false, status: 0, reason: 'unavailable' });
+			expect(spy).not.toHaveBeenCalled();
+			expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toMatchObject({ status: 'timeout' });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('stops the timer once the headers arrive, so the body streams past it', async () => {
+		vi.useFakeTimers();
+		try {
+			const f = mockFetch(async () => pdf().res);
+			const r = await createApi(env, asFetch(f), SESSION).exportPdf(KID, INPUT);
+			await vi.advanceTimersByTimeAsync(2 * 25_000);
+			expect(f.mock.calls[0][1]?.signal?.aborted).toBe(false);
+			expect(r.ok).toBe(true);
+			if (!r.ok) return;
+			expect(await new Response(r.body).text()).toBe('%PDF-1.4 stub');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('maps a 422 to invalid with its field, and a 503 to unavailable with its code', async () => {

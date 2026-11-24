@@ -14,6 +14,15 @@
 	const shown = $derived(current ?? m.checklists.find((c) => c.position === 'next') ?? null);
 	const marker = (age: number) =>
 		age !== shown?.ageMonths ? null : current ? 'Current list for this age' : 'Next list';
+	// A refused mark of a listed item is told in its row; any other message stays at the top.
+	const failed = $derived(
+		form?.message &&
+			form.values?.item &&
+			m.catalogShown &&
+			m.checklists.some((c) => c.items.some((i) => i.id === form.values?.item))
+			? { item: form.values.item, message: form.message }
+			: null
+	);
 </script>
 
 <svelte:head>
@@ -51,7 +60,7 @@
 	</p>
 {/if}
 
-{#if form?.message}
+{#if form?.message && !failed}
 	<p class="{ERROR_CLASS} mb-4" role="alert">{form.message}</p>
 {/if}
 
@@ -68,7 +77,13 @@
 		<div class="flex flex-col gap-2">
 			<!-- Keyed by kid too: each list's open state belongs to one kid's page. -->
 			{#each m.checklists as checklist (`${data.kid.id}:${checklist.ageMonths}`)}
-				<Checklist kidId={data.kid.id} {checklist} marker={marker(checklist.ageMonths)} />
+				<Checklist
+					kidId={data.kid.id}
+					{checklist}
+					marker={marker(checklist.ageMonths)}
+					target={failed?.item ?? data.open}
+					{failed}
+				/>
 			{/each}
 		</div>
 	</section>

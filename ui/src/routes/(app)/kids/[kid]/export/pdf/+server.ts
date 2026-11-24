@@ -35,6 +35,10 @@ export const POST: RequestHandler = async ({ request, locals, params }) => {
 	}
 	return new Response(r.body, {
 		status: 200,
-		headers: { 'content-type': r.contentType, 'content-disposition': r.disposition }
+		headers: {
+			'content-type': r.contentType,
+			'content-disposition': r.disposition,
+			'x-content-type-options': 'nosniff'
+		}
 	});
 };

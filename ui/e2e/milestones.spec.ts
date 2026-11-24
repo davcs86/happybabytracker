@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { MILESTONE_TEXT_MAX } from '../src/lib/constants.js';
+import { MILESTONE_TEXT_MAX, NOTE_MAX_LEN } from '../src/lib/constants.js';
 import { todayIn } from '../src/lib/format.js';
 import { reachedLabel } from '../src/lib/milestones.js';
 import {
@@ -117,6 +117,17 @@ async function onPage(page: Page, kid: { id: string; name: string }) {
 		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
 	).toBeVisible();
 }
+// A one-tap mark returns to the item: its list named in the query, the row in the fragment.
+async function onItem(page: Page, kid: { id: string; name: string }, id: string) {
+	await page.waitForURL(
+		(u) => u.pathname === pageUrl(kid.id) && u.search === `?open=${id}` && u.hash === `#item-${id}`
+	);
+	await expect(
+		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
+	).toBeVisible();
+}
+// Hydration rewrites each list's open state: toggle a list only after it.
+const hydrated = (page: Page) => untilHydrated(page.locator('main input[name="item"]').first());
 const stored = async (api: Api, kid: string) => {
 	const v = (await api('GET', apiPath(kid))).body;
 	const items = (v.checklists as { items: { id: string; reached: Row | null }[] }[]).flatMap(
@@ -206,16 +217,23 @@ test('an item in a later and one in an earlier list are each marked reached', as
 	const cleo = await stubAs(CLEO);
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
+	await hydrated(page);
 	for (const [title, id] of [
 		['By 3 years', '36m-cg-stub-1'],
 		['By 2 months', '2m-mp-stub-1']
 	]) {
 		await submit(reachButton(await open(page, title), id));
-		await onPage(page, NELL);
-		const row = item(await open(page, title), id);
+		await onItem(page, NELL, id);
+		await expect(list(page, title)).toHaveAttribute('open', '');
+		const row = item(list(page, title), id);
+		await expect(row).toBeInViewport();
 		await expect(row).toContainText(reachedLabel(TODAY));
 		await expect(reachButton(row, id)).toHaveCount(0);
 		expect((await stored(cleo, NELL.id)).reached(id)).toMatchObject({ reached_on: TODAY });
+	}
+	// The lists the reader opened stay open across both marks.
+	for (const title of ['By 3 years', 'By 2 months', 'By 9 months']) {
+		await expect(list(page, title)).toHaveAttribute('open', '');
 	}
 });
 
@@ -224,7 +242,7 @@ test('the one-tap Reached form records today and shows the date', async ({ page 
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
 	await submit(reachButton(page, '9m-se-stub-1'));
-	await onPage(page, NELL);
+	await onItem(page, NELL, '9m-se-stub-1');
 	expect(await written('POST', apiPath(NELL.id))).toEqual({
 		item: '9m-se-stub-1',
 		reached_on: TODAY
@@ -240,12 +258,25 @@ test('the one-tap Reached form records today and shows the date', async ({ page 
 	await expectAccessible(page);
 });
 
+test('a refused one-tap mark shows its message in the item’s row', async ({ page }) => {
+	const cleo = await stubAs(CLEO);
+	const id = '9m-mp-stub-1';
+	await signIn(page, CLEO);
+	await page.goto(pageUrl(NELL.id));
+	await seed(cleo, NELL.id, { item: id });
+	await submit(reachButton(page, id));
+	await expect(item(page, id).getByRole('alert')).toHaveText('Already marked as reached');
+	await expect(page.getByRole('alert')).toHaveCount(1);
+	await expectAccessible(page);
+});
+
 test('a kid at 4 years 11 months: 4 years current, 5 years reachable; a retired row keeps its text', async ({
 	page
 }) => {
 	await stubAs(CLEO);
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(OTTO.id));
+	await hydrated(page);
 	await expect(summaries(page)).toHaveCount(12);
 	await expect(list(page, 'By 4 years')).toHaveAttribute('open', '');
 	await expect(list(page, 'By 4 years').locator(':scope > summary')).toHaveText(
@@ -253,7 +284,7 @@ test('a kid at 4 years 11 months: 4 years current, 5 years reachable; a retired 
 	);
 	await expect(list(page, 'By 5 years').locator(':scope > summary')).toHaveText('By 5 years');
 	await submit(reachButton(await open(page, 'By 5 years'), '60m-se-stub-1'));
-	await onPage(page, OTTO);
+	await onItem(page, OTTO, '60m-se-stub-1');
 	await expect(item(await open(page, 'By 5 years'), '60m-se-stub-1')).toContainText(
 		reachedLabel(TODAY)
 	);
@@ -540,7 +571,7 @@ test('a caregiver marks, edits, undoes and adds milestones', async ({ page }) =>
 	await page.goto(pageUrl(NELL.id));
 	await onPage(page, NELL);
 	await submit(reachButton(page, '9m-se-stub-1'));
-	await onPage(page, NELL);
+	await onItem(page, NELL, '9m-se-stub-1');
 	await editLink(item(page, '9m-se-stub-1'), itemText('9m-se-stub-1')).click();
 	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('with Ana');
@@ -559,6 +590,13 @@ test('a caregiver marks, edits, undoes and adds milestones', async ({ page }) =>
 	await save(page);
 	await onPage(page, NELL);
 	await expect(custom(page)).toContainText('Claps');
+
+	await editLink(custom(page), 'Claps').click();
+	await page.getByText('Delete this milestone', { exact: true }).click();
+	await submit(page.getByRole('button', { name: 'Yes, delete this milestone' }));
+	await onPage(page, NELL);
+	await expect(custom(page).getByRole('listitem')).toHaveCount(0);
+	expect((await stored(ana, NELL.id)).view.custom).toEqual([]);
 });
 
 test('no grant, an unknown kid and another kid’s entry get the same 404 page', async ({ page }) => {
@@ -619,7 +657,7 @@ test('a 200-character unbroken custom text does not overflow at phone width', as
 	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
 	const cleo = await stubAs(CLEO);
 	const text = 'w'.repeat(MILESTONE_TEXT_MAX);
-	const row = await seed(cleo, NELL.id, { text, note: 'n'.repeat(200) });
+	const row = await seed(cleo, NELL.id, { text, note: 'n'.repeat(NOTE_MAX_LEN) });
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
 	await expect(custom(page).getByRole('listitem')).toContainText(text);
@@ -651,8 +689,17 @@ test.describe('without JavaScript', () => {
 		await expect(page).toHaveURL(/#list-9$/);
 
 		await submit(reachButton(page, '9m-se-stub-1'));
-		await onPage(page, NELL);
+		await onItem(page, NELL, '9m-se-stub-1');
 		await expect(item(page, '9m-se-stub-1')).toContainText(reachedLabel(TODAY));
+
+		// A mark in a list the server rendered closed comes back with that list open at the row.
+		await expect(list(page, 'By 3 years')).not.toHaveAttribute('open', '');
+		await list(page, 'By 3 years').locator(':scope > summary').click();
+		await submit(reachButton(list(page, 'By 3 years'), '36m-cg-stub-1'));
+		await onItem(page, NELL, '36m-cg-stub-1');
+		await expect(list(page, 'By 3 years')).toHaveAttribute('open', '');
+		await expect(item(page, '36m-cg-stub-1')).toBeInViewport();
+		await expect(item(page, '36m-cg-stub-1')).toContainText(reachedLabel(TODAY));
 
 		await page.goto(newUrl(NELL.id, '9m-lc-stub-1'));
 		await field(page, 'Date reached').fill(addDays(TODAY, 1));
@@ -666,6 +713,13 @@ test.describe('without JavaScript', () => {
 		await save(page);
 		await onPage(page, NELL);
 		await expect(item(page, '9m-lc-stub-1')).toContainText(reachedLabel(addDays(TODAY, -2)));
+
+		await editLink(item(page, '9m-lc-stub-1'), itemText('9m-lc-stub-1')).click();
+		await expect(field(page, 'Date reached')).toHaveValue(addDays(TODAY, -2));
+		await field(page, 'Date reached').fill(addDays(TODAY, -3));
+		await save(page);
+		await onPage(page, NELL);
+		await expect(item(page, '9m-lc-stub-1')).toContainText(reachedLabel(addDays(TODAY, -3)));
 
 		await custom(page).getByRole('link', { name: 'Add a milestone' }).click();
 		await field(page, 'Milestone').fill('Stacks blocks');
@@ -685,6 +739,20 @@ test.describe('without JavaScript', () => {
 		await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
 		await onPage(page, NELL);
 		await expect(reachButton(page, '9m-se-stub-1')).toBeVisible();
+	});
+
+	test('a refused Reached opens its list and shows the message in the item’s row', async ({
+		page
+	}) => {
+		const cleo = await stubAs(CLEO);
+		const id = '36m-cg-stub-1';
+		await signIn(page, CLEO);
+		await page.goto(pageUrl(NELL.id));
+		await list(page, 'By 3 years').locator(':scope > summary').click();
+		await seed(cleo, NELL.id, { item: id });
+		await submit(reachButton(list(page, 'By 3 years'), id));
+		await expect(list(page, 'By 3 years')).toHaveAttribute('open', '');
+		await expect(item(page, id).getByRole('alert')).toHaveText('Already marked as reached');
 	});
 
 	test('the off note and its link are rendered by the server', async ({ page }) => {

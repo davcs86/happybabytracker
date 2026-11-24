@@ -1,6 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MILESTONE_AGES, MILESTONE_DOMAINS } from './constants';
 import { checklistTitle, domainLabel, reachedLabel } from './milestones';
+import { EXPORT_MESSAGES } from './server/export-form';
+import {
+	MILESTONE_FIELD_MESSAGES,
+	MILESTONE_LIMIT_MESSAGE,
+	MILESTONE_REACHED_MESSAGE
+} from './server/milestone-form';
 
 // The plan's Global Constraints: none of these is written by the app.
 const DENYLIST = [
@@ -98,6 +106,32 @@ describe('wording', () => {
 			...MILESTONE_AGES.map(checklistTitle),
 			...MILESTONE_DOMAINS.map(domainLabel),
 			reachedLabel('2026-03-04')
+		];
+		expect(all.flatMap(judged)).toEqual([]);
+	});
+
+	it('keeps the milestone and export messages, page titles and page words free of them', () => {
+		const kid = resolve(import.meta.dirname, '../routes/(app)/kids/[kid]');
+		const files = [
+			resolve(kid, 'milestones/+page.svelte'),
+			resolve(kid, 'milestones/new/+page.svelte'),
+			resolve(kid, 'milestones/[entry]/+page.svelte'),
+			resolve(kid, 'export/+page.svelte'),
+			resolve(import.meta.dirname, 'components/milestones/Checklist.svelte'),
+			resolve(import.meta.dirname, 'components/milestones/MilestoneFields.svelte')
+		];
+		const markup = files.map((f) =>
+			readFileSync(f, 'utf8')
+				.replace(/<script[\s\S]*?<\/script>/g, '')
+				.replace(/<!--[\s\S]*?-->/g, '')
+		);
+		expect(markup.filter((m) => m.includes('<title'))).toHaveLength(4);
+		const all = [
+			...Object.values(MILESTONE_FIELD_MESSAGES),
+			MILESTONE_REACHED_MESSAGE,
+			MILESTONE_LIMIT_MESSAGE,
+			...Object.values(EXPORT_MESSAGES),
+			...markup
 		];
 		expect(all.flatMap(judged)).toEqual([]);
 	});

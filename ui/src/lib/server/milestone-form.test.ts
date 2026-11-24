@@ -7,7 +7,9 @@ import {
 	milestoneCreateValues,
 	milestoneEditValues,
 	milestoneFieldFailure,
-	readMilestoneForm
+	milestoneReachedPath,
+	readMilestoneForm,
+	readOpenItem
 } from './milestone-form';
 
 const CREATE = { kind: 'create' } as const;
@@ -285,5 +287,22 @@ describe('milestoneApiFailure', () => {
 		expect(milestoneFieldFailure(values, 'note', {}, 'x')).toMatchObject({
 			data: { message: 'x' }
 		});
+	});
+});
+
+describe('milestoneReachedPath and readOpenItem', () => {
+	it('returns to the marked item with its list named in the query', () => {
+		expect(milestoneReachedPath('k-1', '9m-se-calms-down')).toBe(
+			'/kids/k-1/milestones?open=9m-se-calms-down#item-9m-se-calms-down'
+		);
+	});
+
+	it('reads only a well-formed item id from the query', () => {
+		const at = (search: string) => readOpenItem(new URL(`http://x/kids/k-1/milestones${search}`));
+		expect(at('?open=9m-se-calms-down')).toBe('9m-se-calms-down');
+		expect(at('')).toBeNull();
+		expect(at('?open=')).toBeNull();
+		expect(at('?open=9m-xx-a')).toBeNull();
+		expect(at('?open=%3Cb%3E')).toBeNull();
 	});
 });

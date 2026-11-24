@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test, type Download, type Page } from '@playwright/test';
 import { EXPORT_MODULES, MODULE_LABEL } from '../src/lib/constants.js';
 import { todayIn } from '../src/lib/format.js';
+import { EXPORT_DEFAULT_DAYS } from '../src/lib/server/constants.js';
 import { expectAccessible, expectNotFoundPage, signIn, untilHydrated } from './helpers.js';
 import {
 	ADMIN,
@@ -79,7 +80,7 @@ test('every module is listed; a switched-off one is unticked under its sub-headi
 	await expect(offGroup(page).getByRole('checkbox')).toHaveCount(1);
 	await expect(offGroup(page).getByRole('checkbox', { name: 'Pumping' })).not.toBeChecked();
 	const today = todayIn(IVY.timeZone);
-	await expect(from(page)).toHaveValue(addDays(today, -29));
+	await expect(from(page)).toHaveValue(addDays(today, 1 - EXPORT_DEFAULT_DAYS));
 	await expect(to(page)).toHaveValue(today);
 	await expect(to(page)).toHaveAttribute('max', today);
 	await expect(from(page)).toHaveAttribute('min', IVY.birthDate);
@@ -102,7 +103,9 @@ test('submitting downloads the file named by its dates, with exactly the ticked 
 	await page.goto(pageUrl(IVY.id));
 	const today = todayIn(IVY.timeZone);
 	const { download: d, pdf } = await download(page);
-	expect(d.suggestedFilename()).toBe(`happybabytracker-${addDays(today, -29)}-${today}.pdf`);
+	expect(d.suggestedFilename()).toBe(
+		`happybabytracker-${addDays(today, 1 - EXPORT_DEFAULT_DAYS)}-${today}.pdf`
+	);
 	expect(pdf.startsWith('%PDF-1.')).toBe(true);
 	expect(sentModules(pdf)).toEqual([...EXPORT_MODULES]);
 	await expect(page).toHaveURL(new RegExp(`${pageUrl(IVY.id)}$`));
@@ -129,6 +132,7 @@ test('a direct POST streams the PDF with its headers, modules in a fixed order',
 		`attachment; filename="happybabytracker-${addDays(today, -6)}-${today}.pdf"`
 	);
 	expect(headers['cache-control']).toBe('no-store');
+	expect(headers['x-content-type-options']).toBe('nosniff');
 	const body = (await response.body()).toString('latin1');
 	expect(body.startsWith('%PDF-1.')).toBe(true);
 	expect(sentModules(body)).toEqual(['bottles', 'growth']);
@@ -204,7 +208,9 @@ test('a caregiver can export', async ({ page }) => {
 	await page.goto(pageUrl(LEO.id));
 	const today = todayIn(LEO.timeZone);
 	const { download: d, pdf } = await download(page);
-	expect(d.suggestedFilename()).toBe(`happybabytracker-${addDays(today, -29)}-${today}.pdf`);
+	expect(d.suggestedFilename()).toBe(
+		`happybabytracker-${addDays(today, 1 - EXPORT_DEFAULT_DAYS)}-${today}.pdf`
+	);
 	expect(sentModules(pdf)?.length).toBeGreaterThan(0);
 });
 

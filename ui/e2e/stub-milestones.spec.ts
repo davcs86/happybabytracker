@@ -152,7 +152,8 @@ test('the 5th birthday hides the lists and lists reached rows; the day before sh
 		(await cleo('POST', path(PIA.id), { item: '2m-se-stub-1', reached_on: utcToday() })).status
 	).toBe(201);
 
-	await moveStubClock(-DAY);
+	// On 29 February Pia's 5th birthday was the 28th, so the day before it is two days back.
+	await moveStubClock(md === '-02-29' ? -2 * DAY : -DAY);
 	const before = await view(PIA.id);
 	expect(before.catalog_shown).toBe(true);
 	expect(before.age.basis_months).toBe(59);

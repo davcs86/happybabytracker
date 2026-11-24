@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { MILESTONE_DOMAINS } from '#lib/constants.js';
 	import { checklistTitle, domainLabel, reachedLabel } from '#lib/milestones.js';
@@ -8,14 +9,23 @@
 	import type { MilestoneChecklist } from '#lib/types.js';
 
 	// marker names the open list: the current one, or the next one before the first list age.
+	// target's list renders open, so a page without JavaScript shows the item it returns to.
 	let {
 		kidId,
 		checklist,
-		marker
-	}: { kidId: string; checklist: MilestoneChecklist; marker: string | null } = $props();
+		marker,
+		target,
+		failed
+	}: {
+		kidId: string;
+		checklist: MilestoneChecklist;
+		marker: string | null;
+		target: string | null;
+		failed: { item: string; message: string } | null;
+	} = $props();
 
-	// The reader's own open and closed lists outlive a reload of the data after a mark.
-	let open = $state(untrack(() => marker !== null));
+	// Set once: a reload of the data after a mark must not close a list the reader opened.
+	let open = $state(untrack(() => marker !== null || checklist.items.some((i) => i.id === target)));
 </script>
 
 <details id="list-{checklist.ageMonths}" class="rounded-lg border p-3" bind:open>
@@ -28,8 +38,11 @@
 			<h3 class="mt-3 mb-2 text-sm font-semibold">{domainLabel(domain)}</h3>
 			<ul class="flex flex-col gap-2">
 				{#each items as item (item.id)}
-					<li class="flex flex-col gap-1 text-sm [overflow-wrap:anywhere]">
+					<li id="item-{item.id}" class="flex flex-col gap-1 text-sm [overflow-wrap:anywhere]">
 						<span>{item.text}</span>
+						{#if failed?.item === item.id}
+							<p class={ERROR_CLASS} role="alert">{failed.message}</p>
+						{/if}
 						{#if item.reached}
 							<span class="flex flex-wrap gap-x-3">
 								{reachedLabel(item.reached.reachedOn)}

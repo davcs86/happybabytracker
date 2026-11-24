@@ -7,12 +7,14 @@ import { setKidCookie } from '#lib/server/cookie.js';
 import {
 	milestoneApiFailure,
 	milestoneFieldFailure,
-	readMilestoneForm
+	milestoneReachedPath,
+	readMilestoneForm,
+	readOpenItem
 } from '#lib/server/milestone-form.js';
 import { failPage } from '#lib/server/outcome.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params, cookies }) => {
+export const load: PageServerLoad = async ({ locals, params, cookies, url }) => {
 	const [kid, home, milestones, modules] = await Promise.all([
 		locals.api.getKid(params.kid),
 		locals.api.home(params.kid),
@@ -28,6 +30,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies }) => {
 		kid: kid.data,
 		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		milestones: milestones.data,
+		open: readOpenItem(url),
 		// The off note is advisory: a failed modules call shows no note.
 		milestonesOff: modules.ok && modules.data.some((m) => m.module === 'milestones' && !m.enabled)
 	};
@@ -46,6 +49,12 @@ export const actions: Actions = {
 		if (!input) return milestoneFieldFailure(values, field!, extra, message);
 		const r = await locals.api.milestones.create(kid.data.id, input);
 		if (!r.ok) return milestoneApiFailure(values, r, extra);
-		redirect(303, milestonesPath(kid.data.id));
+		const item = input.item;
+		redirect(
+			303,
+			typeof item === 'string'
+				? milestoneReachedPath(kid.data.id, item)
+				: milestonesPath(kid.data.id)
+		);
 	}
 };

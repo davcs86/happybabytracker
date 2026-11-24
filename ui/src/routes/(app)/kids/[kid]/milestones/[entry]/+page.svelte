@@ -66,8 +66,7 @@
 	</div>
 </form>
 
-<!-- Two steps without JavaScript: the button exists only inside the opened details.
-     A failure reopens it, so its message shows after a full-page POST too. -->
+<!-- The delete message renders only inside the details, so a failed delete must reopen them. -->
 <details class="mt-6 max-w-md rounded-lg border p-3" open={!!del?.message}>
 	<summary class="cursor-pointer text-sm font-medium">{words.summary}</summary>
 	<form method="POST" action="?/delete" class="mt-3 flex flex-col gap-3" use:enhance>
