@@ -197,3 +197,6 @@ const MaxMilestonesPerKid = 1000
 
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
+// ExportFallbackRune replaces, in an export, each rune the embedded fonts cannot print and each invalid byte.
+const ExportFallbackRune = '?'
