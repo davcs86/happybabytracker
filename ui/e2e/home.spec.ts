@@ -64,6 +64,7 @@ test('a kid under 12 months: Bottle, Nursing, Diaper, Sleep, then the rest; link
 		'Sleep',
 		'Pumping',
 		'Feeding',
+		'Milestones',
 		'Growth',
 		'Vaccination',
 		'Sickness',
@@ -92,6 +93,7 @@ test('a 13-month kid starts with Feeding', async ({ page }) => {
 		'Diaper',
 		'Nursing',
 		'Pumping',
+		'Milestones',
 		'Growth',
 		'Vaccination',
 		'Sickness',
@@ -147,10 +149,34 @@ test('the Vaccination tile opens the Vaccines page in every band and hides with 
 		'Sleep',
 		'Pumping',
 		'Feeding',
+		'Milestones',
 		'Growth',
 		'Sickness',
 		'Medication'
 	]);
+});
+
+test('the Milestones tile opens the Milestones page and hides with the module off', async ({
+	page
+}) => {
+	await signIn(page, ANA);
+	const tile = quickLog(page).getByRole('link', { name: 'Milestones', exact: true });
+	await expect(tile).toHaveAttribute('href', `/kids/${MIA.id}/milestones`);
+	await expectAccessible(page);
+	await tile.click();
+	await expect(
+		page.getByRole('heading', { name: `Milestones for ${MIA.name}`, level: 1 })
+	).toBeVisible();
+
+	const ana = await stubAs(ANA);
+	expect(
+		(await ana('PUT', `/v1/kids/${MIA.id}/modules/milestones`, { enabled: false })).status
+	).toBe(204);
+	await page.goto(`/kids/${MIA.id}`);
+	await expect(
+		quickLog(page).getByRole('link', { name: 'Vaccination', exact: true })
+	).toBeVisible();
+	await expect(tile).toHaveCount(0);
 });
 
 test('Due lists each visit with its status as text, linked to the Vaccines page', async ({
@@ -405,6 +431,7 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Diaper',
 		'Pumping',
 		'Feeding',
+		'Milestones',
 		'Growth',
 		'Vaccination',
 		'Sickness',
@@ -425,6 +452,7 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 		'Sleep',
 		'Pumping',
 		'Feeding',
+		'Milestones',
 		'Growth',
 		'Vaccination',
 		'Sickness',
@@ -600,6 +628,7 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		'Sleep',
 		'Pumping',
 		'Feeding',
+		'Milestones',
 		'Growth',
 		'Vaccination',
 		'Sickness',

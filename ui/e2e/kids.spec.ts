@@ -102,6 +102,10 @@ test('the kid home shows name and age; only guardians get settings, access and m
 			`/kids/${MIA.id}/${path}`
 		);
 	}
+	await expect(page.getByRole('link', { name: `Milestones for ${MIA.name}` })).toHaveAttribute(
+		'href',
+		`/kids/${MIA.id}/milestones`
+	);
 	await expect(switcherOf(page).getByRole('link')).toHaveText([MIA.name, LEO.name, IVY.name]);
 	await expectAccessible(page);
 
@@ -109,6 +113,10 @@ test('the kid home shows name and age; only guardians get settings, access and m
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByText(ageOf(LEO))).toBeVisible();
 	await expect(page.getByRole('link', { name: /Settings|Access|Modules/ })).toHaveCount(0);
+	await expect(page.getByRole('link', { name: `Milestones for ${LEO.name}` })).toHaveAttribute(
+		'href',
+		`/kids/${LEO.id}/milestones`
+	);
 	await expectAccessible(page);
 });
 

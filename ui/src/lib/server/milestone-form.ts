@@ -1,8 +1,10 @@
+import { fail } from '@sveltejs/kit';
 import { MILESTONE_TEXT_MAX, NOTE_MAX_LEN } from '../constants';
 import { todayInOrUtc } from '../time-zone';
-import type { EntryBody } from '../types';
+import type { EntryBody, MilestoneEntry } from '../types';
 import { MILESTONE_ITEM_PATTERN } from './constants';
 import { ENTRY_FIELD_MESSAGES } from './entry-failure';
+import { failAction, type ApiFailure } from './outcome';
 
 const KEPT = ['text', 'reached_on', 'note'] as const;
 type Original = `${(typeof KEPT)[number]}_original`;
@@ -111,4 +113,50 @@ export function readMilestoneForm(
 	return 'field' in r
 		? { values, input: null, field: r.field, message: MILESTONE_FIELD_MESSAGES[r.field] }
 		: { values, input: r.input, field: null, message: null };
+}
+
+export const milestoneCreateValues = (today: string, item?: string): MilestoneFormValues =>
+	item ? { item, reached_on: today, note: '' } : { text: '', reached_on: today, note: '' };
+
+export function milestoneEditValues(e: MilestoneEntry): MilestoneFormValues {
+	const shown = {
+		...(e.item === null ? { text: e.text } : {}),
+		reached_on: e.reachedOn,
+		note: e.note ?? ''
+	};
+	const originals = Object.fromEntries(Object.entries(shown).map(([k, v]) => [`${k}_original`, v]));
+	return { ...shown, ...originals };
+}
+
+export const MILESTONE_REACHED_MESSAGE = 'Already marked as reached';
+export const MILESTONE_LIMIT_MESSAGE = 'This child has the maximum number of recorded milestones';
+
+export function milestoneFieldFailure<T extends object>(
+	values: MilestoneFormValues,
+	field: string,
+	extra: T,
+	message: string | null = null
+) {
+	return fail(422, {
+		...extra,
+		values,
+		field,
+		message: message ?? MILESTONE_FIELD_MESSAGES[field]
+	});
+}
+
+// A refused field lands on its input, either conflict on the form, anything else as failAction decides.
+export function milestoneApiFailure<T extends object>(
+	values: MilestoneFormValues,
+	r: ApiFailure,
+	extra: T
+) {
+	if (r.reason === 'invalid' && r.field && Object.hasOwn(MILESTONE_FIELD_MESSAGES, r.field)) {
+		return milestoneFieldFailure(values, r.field, extra);
+	}
+	if (r.reason === 'conflict' && (r.code === 'already_reached' || r.code === 'limit')) {
+		const message = r.code === 'limit' ? MILESTONE_LIMIT_MESSAGE : MILESTONE_REACHED_MESSAGE;
+		return fail(409, { ...extra, values, field: null as string | null, message });
+	}
+	return failAction(r, { ...extra, values, field: null as string | null });
 }

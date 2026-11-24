@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MILESTONE_FIELD_MESSAGES, readMilestoneForm } from './milestone-form';
+import {
+	MILESTONE_FIELD_MESSAGES,
+	MILESTONE_REACHED_MESSAGE,
+	MILESTONE_LIMIT_MESSAGE,
+	milestoneApiFailure,
+	milestoneCreateValues,
+	milestoneEditValues,
+	milestoneFieldFailure,
+	readMilestoneForm
+} from './milestone-form';
 
 const CREATE = { kind: 'create' } as const;
 const EDIT_ITEM = { kind: 'edit', custom: false } as const;
@@ -189,5 +198,92 @@ describe('readMilestoneForm edit', () => {
 		const rest: Record<string, string> = { ...fields };
 		delete rest[`${field}_original`];
 		expect(readMilestoneForm(form(rest), mode, UTC)).toMatchObject({ input: null, field });
+	});
+});
+
+describe('milestoneCreateValues and milestoneEditValues', () => {
+	it('prefills today, with the item when one is chosen and an empty text otherwise', () => {
+		expect(milestoneCreateValues('2026-11-24', '9m-se-stub-1')).toEqual({
+			item: '9m-se-stub-1',
+			reached_on: '2026-11-24',
+			note: ''
+		});
+		expect(milestoneCreateValues('2026-11-24')).toEqual({
+			text: '',
+			reached_on: '2026-11-24',
+			note: ''
+		});
+	});
+
+	it('shows the stored row with its originals; only a custom row has a text', () => {
+		const row = { id: 'm1', reachedOn: '2026-11-01', note: null };
+		expect(milestoneEditValues({ ...row, item: '9m-se-stub-1', text: 'Stub item' })).toEqual({
+			reached_on: '2026-11-01',
+			note: '',
+			reached_on_original: '2026-11-01',
+			note_original: ''
+		});
+		const custom = milestoneEditValues({ ...row, item: null, text: 'Waves bye', note: 'x' });
+		expect(custom).toEqual({
+			text: 'Waves bye',
+			reached_on: '2026-11-01',
+			note: 'x',
+			text_original: 'Waves bye',
+			reached_on_original: '2026-11-01',
+			note_original: 'x'
+		});
+		// What the page shows, unchanged, sends nothing.
+		expect(
+			readMilestoneForm(form(custom as Record<string, string>), EDIT_CUSTOM, UTC)
+		).toMatchObject({ input: {}, field: null });
+	});
+});
+
+describe('milestoneApiFailure', () => {
+	const values = milestoneCreateValues('2026-11-24', '9m-se-stub-1');
+	it('lands a refused field on its input and each conflict on the form', () => {
+		expect(
+			milestoneApiFailure(
+				values,
+				{ ok: false, status: 422, reason: 'invalid', field: 'reached_on' },
+				{}
+			)
+		).toMatchObject({
+			status: 422,
+			data: { values, field: 'reached_on', message: MILESTONE_FIELD_MESSAGES.reached_on }
+		});
+		expect(
+			milestoneApiFailure(
+				values,
+				{ ok: false, status: 409, reason: 'conflict', code: 'already_reached' },
+				{ form: 'reach' }
+			)
+		).toMatchObject({
+			status: 409,
+			data: { form: 'reach', values, field: null, message: MILESTONE_REACHED_MESSAGE }
+		});
+		expect(
+			milestoneApiFailure(values, { ok: false, status: 409, reason: 'conflict', code: 'limit' }, {})
+		).toMatchObject({
+			status: 409,
+			data: { values, field: null, message: MILESTONE_LIMIT_MESSAGE }
+		});
+		expect(MILESTONE_REACHED_MESSAGE).toBe('Already marked as reached');
+		expect(MILESTONE_LIMIT_MESSAGE).toBe(
+			'This child has the maximum number of recorded milestones'
+		);
+		expect(
+			milestoneApiFailure(values, { ok: false, status: 503, reason: 'unavailable' }, {})
+		).toMatchObject({ status: 503, data: { values, field: null } });
+	});
+
+	it('a field failure carries the field message unless one is given', () => {
+		expect(milestoneFieldFailure(values, 'note', {})).toMatchObject({
+			status: 422,
+			data: { values, field: 'note', message: MILESTONE_FIELD_MESSAGES.note }
+		});
+		expect(milestoneFieldFailure(values, 'note', {}, 'x')).toMatchObject({
+			data: { message: 'x' }
+		});
 	});
 });

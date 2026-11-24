@@ -1,9 +1,10 @@
 import { MODULE_LABEL, MODULES, QUICK_LOG_FIRST, TRACKER_ROUTE } from './constants';
-import { growthNewPath, medicationPath, vaccinesPath } from './paths';
+import { growthNewPath, medicationPath, milestonesPath, vaccinesPath } from './paths';
 import type { AgeBand, Home, ModuleId, ModuleState, TrackerKind } from './types';
 
 // Modules whose entry point is a page of their own rather than a tracker's log form.
 export const PAGE_ROUTE: Partial<Record<ModuleId, (kidId: string) => string>> = {
+	milestones: milestonesPath,
 	growth: growthNewPath,
 	vaccination: vaccinesPath,
 	medication: medicationPath

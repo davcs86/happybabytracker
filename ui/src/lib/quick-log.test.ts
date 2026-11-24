@@ -23,6 +23,7 @@ describe('quickLog', () => {
 			'Sleep',
 			'Pumping',
 			'Feeding',
+			'Milestones',
 			'Growth',
 			'Vaccination',
 			'Sickness',
@@ -38,6 +39,7 @@ describe('quickLog', () => {
 			'Diaper',
 			'Nursing',
 			'Pumping',
+			'Milestones',
 			'Growth',
 			'Vaccination',
 			'Sickness',
@@ -56,7 +58,8 @@ describe('quickLog', () => {
 			'Pumping',
 			'Diaper',
 			'Sleep',
-			'Feeding'
+			'Feeding',
+			'Milestones'
 		]);
 		expect(labels('24+', ['vaccination', 'growth', 'sleep', 'bottles'])).toEqual([
 			'Growth',
@@ -80,6 +83,7 @@ describe('quickLog', () => {
 			['diapers', 'diapers'],
 			['nursing', 'nursing'],
 			['pumping', 'pumping'],
+			['milestones', null],
 			['growth', null],
 			['vaccination', null],
 			['sickness', 'symptoms'],
@@ -107,9 +111,14 @@ describe('quickLog', () => {
 		expect(PAGE_ROUTE.medication?.('k-1')).toBe('/kids/k-1/medication');
 	});
 
-	it('never lists a module without a tracker or a page in this build', () => {
-		const kinds = new Set<string>(quickLog('0-11', states(), none).map((e) => e.module));
-		expect(kinds.has('milestones')).toBe(false);
+	it('milestones opens the Milestones page, never a tracker route', () => {
+		expect(TRACKER_ROUTE.milestones).toBeUndefined();
+		expect(PAGE_ROUTE.milestones?.('k-1')).toBe('/kids/k-1/milestones');
+	});
+
+	it('leaves out milestones while the module is off, as at 24+ by default', () => {
+		const on = MODULES.filter((m) => m !== 'milestones');
+		expect(labels('24+', on)).not.toContain('Milestones');
 	});
 
 	it('a running timer replaces its own start button only', () => {
@@ -120,6 +129,7 @@ describe('quickLog', () => {
 			'Diaper',
 			'Pumping',
 			'Feeding',
+			'Milestones',
 			'Growth',
 			'Vaccination',
 			'Sickness',
