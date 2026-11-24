@@ -1,12 +1,16 @@
 package milestones
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
 	"slices"
 	"sync"
 )
+
+//go:embed data/cdc.csv
+var dataFS embed.FS
 
 const catalogFile = "data/cdc.csv"
 
@@ -36,7 +40,7 @@ func Load() error {
 	return loadErr
 }
 
-func load() error { return errors.New("milestones: no embedded catalog file") }
+func load() error { return loadFrom(dataFS) }
 
 func loadFrom(fsys fs.FS) error {
 	f, err := fsys.Open(catalogFile)

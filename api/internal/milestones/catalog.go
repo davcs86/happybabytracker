@@ -65,6 +65,8 @@ const (
 	reasonAge          = "not one of the catalog ages"
 	reasonDomain       = "unknown domain"
 	reasonControl      = "contains a control character"
+	reasonUTF8         = "not valid UTF-8"
+	reasonIDDomain     = "domain code does not match the domain column"
 	reasonSourceURL    = "not under " + sourcePrefix
 	reasonRetired      = "not empty or a YYYY-MM-DD date"
 )
@@ -81,6 +83,7 @@ var (
 	itemHeader     = []string{"id", "age_months", "domain", "text", "source_url", "retired"}
 	domains        = []Domain{DomainSocialEmotional, DomainLanguage, DomainCognitive, DomainMovement}
 	idPattern      = regexp.MustCompile(`^[0-9]{1,2}m-(se|lc|cg|mp)-[a-z0-9-]{1,48}$`)
+	domainCodes    = map[Domain]string{DomainSocialEmotional: "se", DomainLanguage: "lc", DomainCognitive: "cg", DomainMovement: "mp"}
 	reasonTextLong = fmt.Sprintf("longer than %d characters", constants.MilestoneCatalogTextMaxLen)
 )
 
@@ -196,8 +199,12 @@ func parseItem(name string, row csvRow, seen map[string]bool) (Item, error) {
 		return Item{}, col(0, reasonIDAge)
 	case !slices.Contains(domains, it.Domain):
 		return Item{}, col(2, reasonDomain)
+	case !strings.HasPrefix(it.ID, f[1]+"m-"+domainCodes[it.Domain]+"-"):
+		return Item{}, col(0, reasonIDDomain)
 	case it.Text == "":
 		return Item{}, col(3, reasonEmpty)
+	case !utf8.ValidString(it.Text):
+		return Item{}, col(3, reasonUTF8)
 	case utf8.RuneCountInString(it.Text) > constants.MilestoneCatalogTextMaxLen:
 		return Item{}, col(3, reasonTextLong)
 	case strings.ContainsFunc(it.Text, unicode.IsControl):
