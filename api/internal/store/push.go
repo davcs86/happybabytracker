@@ -15,9 +15,8 @@ type PushTarget struct {
 	ID, ParentID, Endpoint, P256dh, Auth string
 }
 
-// UpsertDevice: created is false only for parentID's own endpoint; another parent's is deleted with its opt-ins and stored
-// under a new id. An empty label keeps the stored one, or is DefaultPushLabel on create. ErrConflict at PushDevicesPerParent;
-// ErrNotFound for a disabled parent.
+// UpsertDevice: created is false only for parentID's own endpoint; another's moves under a new id without its opt-ins.
+// An empty label keeps the stored one (DefaultPushLabel on create). ErrConflict at PushDevicesPerParent; ErrNotFound if disabled.
 func (s *Store) UpsertDevice(ctx context.Context, parentID, endpoint, p256dh, auth, label string, now time.Time) (d model.PushDevice, created bool, err error) {
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var enabled int

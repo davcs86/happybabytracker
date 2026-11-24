@@ -685,6 +685,9 @@ test.describe('ntfy', () => {
 		expect(fresh).not.toBe(state.topic);
 		await expect(ntfy.getByText(fresh)).toBeVisible();
 		await expect(ntfy.getByText(state.topic)).toHaveCount(0);
+		// A second tap would replace the topic just subscribed to.
+		await expect(confirm).toBeHidden();
+		await expectAccessible(page);
 
 		await submit(ntfy.getByRole('button', { name: 'Turn off ntfy' }));
 		await expect(ntfy.getByText(fresh)).toHaveCount(0);
