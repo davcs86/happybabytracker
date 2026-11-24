@@ -180,5 +180,11 @@ const (
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
 var VaccineSchedules = []string{"us", "uk", "mx"}
 
+// MilestoneCatalogTextMaxLen caps one catalog item's text, in characters.
+const MilestoneCatalogTextMaxLen = 200
+
+// MilestoneCatalogAges lists the checklist ages, in months, a catalog item may carry.
+var MilestoneCatalogAges = []int{2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60}
+
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
