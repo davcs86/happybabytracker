@@ -168,6 +168,7 @@ var routeClasses = map[string]Access{
 	"POST /v1/kids/{kid}/vaccine-dismissals":              Guardian,
 	"GET /v1/kids/{kid}/timeline":                         Caregiver,
 	"GET /v1/kids/{kid}/summary":                          Caregiver,
+	"POST /v1/kids/{kid}/export":                          Caregiver,
 	"GET /v1/kids/{kid}/modules":                          Caregiver,
 	"PUT /v1/kids/{kid}/modules/{module}":                 Guardian,
 	"GET /v1/kids/{kid}/home":                             Caregiver,

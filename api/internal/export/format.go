@@ -243,12 +243,12 @@ func FormatInstant(t time.Time, loc *time.Location) string {
 	return fmt.Sprintf("%s %c%02d:%02d", out, sign, off/secondsPerHour, off%secondsPerHour/secondsPerMinute)
 }
 
-// Text maps each run of newlines and tabs to one space; other control runes are left for the font layer.
+// Text maps each run of newlines and tabs to one space; other control runes and invalid bytes are left for the font layer.
 func Text(s string) string {
 	var b strings.Builder
 	inRun := false
-	for _, r := range s {
-		if r == '\r' || r == '\n' || r == '\t' {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c == '\r' || c == '\n' || c == '\t' {
 			if !inRun {
 				b.WriteByte(' ')
 			}
@@ -256,7 +256,7 @@ func Text(s string) string {
 			continue
 		}
 		inRun = false
-		b.WriteRune(r)
+		b.WriteByte(s[i])
 	}
 	return b.String()
 }

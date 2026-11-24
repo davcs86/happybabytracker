@@ -314,6 +314,7 @@ func TestText(t *testing.T) {
 		{"leading and trailing runs become a space, nothing is trimmed", "\na\n", " a "},
 		{"other control runes are untouched", "a\x00b\x07c\x0bd", "a\x00b\x07c\x0bd"},
 		{"non-Latin text is untouched", "Ω\nЖ", "Ω Ж"},
+		{"an invalid byte is kept for the encoder", "a\xffb\n\xc3", "a\xffb \xc3"},
 	} {
 		if got := Text(c.in); got != c.want {
 			t.Errorf("%s: %q = %q, want %q", c.name, c.in, got, c.want)

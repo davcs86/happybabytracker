@@ -87,7 +87,11 @@ func (s *Store) Growth(ctx context.Context, kidID, id string) (model.Growth, err
 
 // ListGrowth returns all of the kid's measurements, newest first by (measured_on, id); never nil.
 func (s *Store) ListGrowth(ctx context.Context, kidID string) ([]model.Growth, error) {
-	rows, err := s.r.QueryContext(ctx,
+	return listGrowth(ctx, s.r, kidID)
+}
+
+func listGrowth(ctx context.Context, q querier, kidID string) ([]model.Growth, error) {
+	rows, err := q.QueryContext(ctx,
 		`SELECT `+growthColumns+` FROM growth_measurements WHERE kid_id = ? ORDER BY measured_on DESC, id DESC LIMIT ?`,
 		kidID, constants.MaxGrowthPerKid)
 	if err != nil {

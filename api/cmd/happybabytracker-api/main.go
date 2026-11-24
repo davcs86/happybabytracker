@@ -18,6 +18,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/export/fonts"
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
 	"github.com/davcs86/happybabytracker/api/internal/milestones"
@@ -128,7 +129,10 @@ func prepare(ctx context.Context, st *store.Store, cfg config.Config) error {
 	if err := vaccines.Load(); err != nil {
 		return err
 	}
-	return milestones.Load()
+	if err := milestones.Load(); err != nil {
+		return err
+	}
+	return fonts.Load()
 }
 
 func run(ctx context.Context, getenv func(string) string, stdout io.Writer) error {

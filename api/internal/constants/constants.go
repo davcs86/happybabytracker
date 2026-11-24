@@ -180,6 +180,9 @@ const (
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
 var VaccineSchedules = []string{"us", "uk", "mx"}
 
+// ExportModules lists the module ids an export accepts, in model.Modules order.
+var ExportModules = []string{"bottles", "nursing", "pumping", "diapers", "sleep", "feeding", "milestones", "growth", "vaccination"}
+
 // MilestoneCatalogTextMaxLen caps one catalog item's text, in characters.
 const MilestoneCatalogTextMaxLen = 200
 
@@ -210,6 +213,14 @@ const (
 	ExportFontSizeBody       = 9
 	ExportFontSizeHeading    = 12
 	ExportFontSizeSmall      = 7
+)
+
+// Export limits: inclusive kid-local days per export, printed rows per section and in all, exports at once.
+const (
+	ExportMaxDays           = 93
+	ExportMaxRowsPerSection = 3000
+	ExportMaxRows           = 6000
+	MaxConcurrentExports    = 1
 )
 
 // ExportMaxBytes caps one rendered export; a larger document is refused, not truncated.
