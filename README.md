@@ -195,6 +195,8 @@ score or a chart. The app records and displays; it never interprets a weight, a 
   when `NTFY_URL` is set). With neither, reminders still show on the Due list and the Medication page. Each
   parent turns them on under Account, Notifications: Web Push per device, choosing the kids; ntfy as one
   generated topic per parent. On iPhone and iPad, Web Push needs the app added to the Home Screen first.
+  Signing out does not stop either channel on that phone or browser: turn it off there first. A new ntfy
+  topic is created only after a confirm; a topic stored earlier while ntfy is off can be removed there.
 - ntfy keeps each message in its cache (72 hours on the edge's server), so the kid's name rests on the
   ntfy server in plain text for that long; the Notifications page says so at the top of its ntfy section.
 

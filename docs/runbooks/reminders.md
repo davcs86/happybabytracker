@@ -64,8 +64,8 @@ Known gaps by design:
   subscription. If a send reaches the dead endpoint first (the push service answers 404 or 410), the
   worker deletes that device and its opt-ins, and the renewed subscription registers with no kids. The
   parent ticks the kids again. There is no `pushsubscriptionchange` handler.
-- A stale ntfy topic cannot be seen in the app while ntfy is off; it is removed by a direct
-  `DELETE /v1/me/ntfy` for that parent.
+- Signing out of the app does not unsubscribe a browser or stop ntfy on a phone: the parent turns them
+  off first ("Turn off on this device", "Turn off ntfy"); the Notifications page says so.
 
 ## Turning Web Push on
 

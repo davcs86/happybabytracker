@@ -155,6 +155,16 @@ The owner's answers of 2026-11-24 (after the final review):
 - The smoke's API memory ceiling is 64 MiB (raised from 60 MiB); the UI's stays 140 MiB.
 - `MaxScheduleOccurrences` = 1000 (the schedule engine lists at most the earliest 1000 occurrences of a
   course per call) is owner-ratified.
+- ntfy's "New topic" sits behind a confirm (the app's `<details>` pattern) that says the current topic
+  stops working, the new one must be added in the ntfy app again, and that signing out of this app does
+  not stop notifications on this phone or browser; the same sign-out sentence shows once as a note in the
+  ntfy section.
+- Turning notifications on again for a browser the API already knows keeps the name the parent chose,
+  even without the `hbt_push_device` cookie: the device upsert's `label` is optional (absent or null keeps
+  the stored name; a new device is "This device").
+- `GET /v1/me/ntfy` carries `has_topic`; while ntfy is off it is `{"enabled":false,"has_topic":<bool>}`
+  (never the topic), and the page then offers to remove a topic stored earlier.
+- The Medication link stays visible with the module off (no change; the owner asked for an explanation).
 
 ## Order of work (design section 16)
 
@@ -284,9 +294,9 @@ log.
   registers with no kids (there is no `pushsubscriptionchange` handler). After a VAPID key rotation every
   device stops delivering (401 or 403 are kept as `failed`, not deleted) and the page, opened on such a
   device, says "Turn notifications off and on again on this device.": the parent uses "Turn off on this
-  device" and turns it on again, which resubscribes under the new key. A stale ntfy topic cannot be seen
-  while ntfy is off (a direct `DELETE /v1/me/ntfy` removes it). Signing out of the app does not
-  unsubscribe the device: on a shared tablet, use "Turn off on this device" first.
+  device" and turns it on again, which resubscribes under the new key. Signing out of the app does not
+  unsubscribe the device or stop ntfy: the Notifications page says so (on a shared tablet, use "Turn off
+  on this device" or "Turn off ntfy" first).
 - Plan 6, known edge: when a course is edited minutes after an early dose, the done row of the older
   schedule counts as the course's latest past row, so it can hide an overdue entry of the new schedule
   from the home Due list for up to the kid's overdue minutes.
