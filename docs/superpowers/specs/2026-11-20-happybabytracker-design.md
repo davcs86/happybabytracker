@@ -247,7 +247,8 @@ The 5.1 fingerprint and its `meta` row are dropped. From the first start of this
 SOPS changes nothing: rotation is the CLI's `reset-password`.
 
 **CLI.** The API binary also runs `admin <verb>`, on the edge as `docker compose -f {{ edge_root }}/compose.yml run --rm
--T happybabytracker-api admin <verb>` (homelab-edge EDGE-03), any password on stdin and at least 16 characters:
+-T happybabytracker-api admin <verb>` (homelab-edge EDGE-03), any password on stdin and at least 16 characters. A verb
+opens the store as the API does (`store.Open`, which applies pending migrations), so `create` works on a fresh volume:
 
 - `create <username>`: only while `admins` is empty;
 - `reset-password <username>`: sets the admin's local password and deletes that admin's sessions;
@@ -300,12 +301,15 @@ relying-party settings, the UI shows no SSO button, its login page in `oidc` say
 
 **The flow.** The start writes a transaction cookie `hbt_oidc` (`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10
 minutes, in `ui/src/lib/server/constants.ts`), AEAD-encrypted with a key derived from `SESSION_SEAL_KEY` **(call)**. It
-holds the PKCE (S256) verifier, `state`, `nonce`, the purpose and its binding: for `link` the session token's hash, for
+holds the PKCE (S256) verifier, `state`, `nonce`, the purpose, `next` for `login`, and the purpose's binding: for `link` the session token's hash, for
 `invite` the raw invite token. `link` and `invite` send `prompt=login` (SSO spec § 3, S17); `login` does not. The
 callback checks `state` against the cookie, exchanges the code, and validates the ID token (`alg` RS256 from the
 issuer's JWKS, `iss`, `aud`, `exp`, `nonce`). It then answers **200**, never a redirect, so the next step is a
 same-origin navigation that carries the `SameSite=Strict` session cookie, whatever site the IdP is on **(call)**:
 
+- an IdP error in the callback (`error=access_denied` for a person outside the group, or any other) or a failed check
+  clears `hbt_oidc` and answers the login page (or the invite or account page the flow started from) with "Single
+  sign-on did not complete"; nothing reaches the API **(call)**.
 - `login`: calls `POST /v1/session/oidc {iss, sub}`, sets the session cookie, and answers a page that continues to
   `next` (the admin home for an admin) by meta refresh, with a Continue link.
 - `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, iss, sub, label}` (same attributes, the
@@ -319,7 +323,8 @@ checks that the session cookie's token hashes to the bound hash and calls `POST 
 
 **The label.** `preferred_username` comes with the `profile` scope, which the edge's `happybabytracker` client is
 registered with (SSO spec § 4.6). The UI reads it from the ID token, else from one userinfo call with the access token;
-it is shown on the confirmation only, never stored, sent to the API or logged. Without it the label is "the single
+it lives only inside the encrypted `hbt_oidc` cookie until the confirmation, and is never stored by the API, sent
+to it or logged. Without it the label is "the single
 sign-on account you just signed in with" **(call)**.
 
 **API side.** `POST /v1/session/oidc` looks `(iss, sub)` up in `identities`, then in `admin_identities`, and issues a
@@ -344,7 +349,8 @@ is no password), redeemable by password in `local` or `both`.
 **Unlink.** The admin removes a parent's OIDC identities (`POST /v1/admin/parents/{parent}/unlink-sso`, 204; 404
 `not_found` for an unknown parent), for an IdP account that was recreated or a wrong link; the admin's own go through
 the CLI's `unlink-sso`. Parents cannot unlink themselves **(call)**. The parent view of `GET /v1/session` and the
-admin's parent list gain `sso_linked` (a boolean), so the UI shows Link SSO or Unlink **(call)**.
+admin's parent list gain `sso_linked` (a boolean), so the UI shows Link SSO or Unlink; the admin view of
+`GET /v1/session` gains `username` and `sso_linked` for the admin's own Link SSO page **(call)**.
 
 **Offboarding and notifications (owner, 2026-11-24).** Signing out does not stop reminders (11), and the IdP's removal
 of a person is invisible to the app: it stops new SSO logins only, and a live parent session slides for 30 days (5.3).
@@ -379,7 +385,8 @@ other actions share the path), `POST /account/link-sso` and `POST /admin/account
 start shares the `/invite/{token}` path and falls in the same zones.
 
 **Logs and OTEL.** No `sub` or `preferred_username` in a log or an error (Rule 5) **(call)**; refusals log their code.
-The callback's query (`code`, `state`) is scrubbed from OTEL like `/invite/*` and `/reset/*`.
+The callback's whole query (`code`, `state`, `error`, `error_description`) is dropped from OTEL like `/invite/*` and
+`/reset/*`.
 
 **Tests the builder adds.** Every new route and its refusal in each mode, per the table above, including that a
 password redemption refused in `oidc` and an SSO redemption refused in `local` leave the token usable; the import
@@ -393,6 +400,13 @@ request each deleting sessions, push subscriptions and the ntfy topic; the UI's 
 set and of `OIDC_AUTO_PROVISION`; the conformance cases of the SSO spec § 3 (bad `state`, wrong `iss`/`aud`, expired
 token, unlinked `sub`, replayed code, link while another IdP session is live) against a stub issuer; no `sub`, label or
 token in captured logs.
+
+The access matrix (`matrix_test.go`) runs with `AUTH_MODE=both`, so no route answers `mode_refused` there; its fixture
+seeds an `admins` row and gives the admin session that `admin_id`. Every new JSON handler decodes its body before the
+mode and re-auth checks (the matrix's decode-first expectation), and the per-mode refusals are tested apart from the
+matrix. Smoke assertion 8 changes: restarting the API with a different `ADMIN_PASSWORD` keeps the old password working
+and logs one warning; then the CLI's `reset-password` refuses and clears the old admin cookie, and the new password
+logs in.
 
 ## 6. Data
 
