@@ -88,6 +88,9 @@ const (
 	ZScoreDecimals     = 2
 	PercentileDecimals = 1
 	BMIDecimals        = 2
+	// Percentiles outside [PercentileShownMin, PercentileShownMax] print as a bound (ui/src/lib/constants.ts PERCENTILE_SHOWN).
+	PercentileShownMin = 0.1
+	PercentileShownMax = 99.9
 
 	BandSecondStartMonths = 12
 	BandThirdStartMonths  = 24
@@ -180,5 +183,64 @@ const (
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
 var VaccineSchedules = []string{"us", "uk", "mx"}
 
+// ExportModules lists the module ids an export accepts, in model.Modules order.
+var ExportModules = []string{"bottles", "nursing", "pumping", "diapers", "sleep", "feeding", "milestones", "growth", "vaccination",
+	"sickness", "medication"}
+
+// MilestoneCatalogTextMaxLen caps one catalog item's text, in characters.
+const MilestoneCatalogTextMaxLen = 200
+
+// MilestoneCatalogAges lists the checklist ages, in months, a catalog item may carry.
+var MilestoneCatalogAges = []int{2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60}
+
+// MilestoneCatalogSlugMaxLen caps the slug after `<age>m-<domain>-` in a catalog item id.
+const MilestoneCatalogSlugMaxLen = 48
+
+// MilestoneCatalogUntilYears is the age in whole years from which the checklists are no longer shown.
+const MilestoneCatalogUntilYears = 5
+
+// MilestoneTextMaxLen caps a custom milestone's text, in characters after trimming.
+const MilestoneTextMaxLen = 200
+
+// MaxMilestonesPerKid caps a kid's reached milestones, catalog and custom together.
+const MaxMilestonesPerKid = 1000
+
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
+
+// ExportFallbackRune replaces, in an export, each rune the embedded fonts cannot print and each invalid byte.
+const ExportFallbackRune = '?'
+
+// Export page geometry: A4, with everything inside the top ExportPageHeightUsableMM so it prints on US Letter.
+const (
+	ExportPageWidthMM        = 210
+	ExportPageHeightMM       = 297
+	ExportPageHeightUsableMM = 279.4
+	ExportMarginMM           = 12
+	ExportFontSizeBody       = 9
+	ExportFontSizeHeading    = 12
+	ExportFontSizeSmall      = 7
+	// Target tick counts of a growth chart's axes, as ui/src/lib/growth-chart.ts X_TICKS and Y_TICKS.
+	ExportChartXTicks = 6
+	ExportChartYTicks = 5
+)
+
+// Export limits: inclusive kid-local days per export, printed rows per section and in all, renders at once.
+const (
+	ExportMaxDays           = 93
+	ExportMaxRowsPerSection = 3000
+	ExportMaxRows           = 6000
+	MaxConcurrentExports    = 1
+)
+
+// MaxConcurrentExportWrites caps finished exports being downloaded; each holds up to ExportMaxBytes.
+const MaxConcurrentExportWrites = 2
+
+// ExportMaxBytes caps one rendered export; a larger document is refused, not truncated.
+const ExportMaxBytes = 4 << 20
+
+// The export PDF's fixed metadata; no author is written.
+const (
+	ExportProducer = "happybabytracker"
+	ExportTitle    = "happybabytracker export"
+)

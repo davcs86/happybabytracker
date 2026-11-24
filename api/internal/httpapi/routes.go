@@ -166,8 +166,15 @@ func Routes(d Deps) []Route {
 		{http.MethodDelete, "/v1/kids/{kid}/vaccine-dismissals/{line}", Guardian, d.clearDismissal},
 		{http.MethodPost, "/v1/kids/{kid}/vaccine-dismissals", Guardian, d.dismissBefore},
 
+		{http.MethodGet, "/v1/kids/{kid}/milestones", Caregiver, d.kidMilestones},
+		{http.MethodPost, "/v1/kids/{kid}/milestones", Caregiver, d.createMilestone},
+		{http.MethodGet, "/v1/kids/{kid}/milestones/{entry}", Caregiver, d.getMilestone},
+		{http.MethodPatch, "/v1/kids/{kid}/milestones/{entry}", Caregiver, d.updateMilestone},
+		{http.MethodDelete, "/v1/kids/{kid}/milestones/{entry}", Caregiver, d.deleteMilestone},
+
 		{http.MethodGet, "/v1/kids/{kid}/timeline", Caregiver, d.timeline},
 		{http.MethodGet, "/v1/kids/{kid}/summary", Caregiver, d.summary},
+		{http.MethodPost, "/v1/kids/{kid}/export", Caregiver, d.export},
 		{http.MethodGet, "/v1/kids/{kid}/modules", Caregiver, d.listModules},
 		{http.MethodPut, "/v1/kids/{kid}/modules/{module}", Guardian, d.setModule},
 		{http.MethodGet, "/v1/kids/{kid}/home", Caregiver, d.home},

@@ -1,7 +1,7 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-23 at the end of plan 6, app side (sickness, medication, reminders, Web Push, ntfy). Read this first
-in a new session, then the design and the plan of the next item.
+Updated 2026-11-24 at the end of plan 7 (milestones and PDF export). Read this first in a new session, then the
+design and the plan of the next item.
 
 ## State
 
@@ -14,9 +14,9 @@ in a new session, then the design and the plan of the next item.
 | Plan 4, growth | `docs/superpowers/plans/2026-11-22-growth.md` | done, merged to `main` (PR #6) |
 | Plan 5, vaccination | `docs/superpowers/plans/2026-11-22-vaccination.md` | done, merged to `main` (PR #7) |
 | Plan 5.1, advanced logging | `docs/superpowers/plans/2026-11-23-advanced-logging.md` | done, merged to `main` (PR #8) |
-| Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #9 to `main`, merged only with the owner's go-ahead) |
+| Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done, merged to `main` (PR #9) |
 | Plan 6, edge side | `davcs86/homelab-edge`, not written | the VAPID PR, then the ntfy plan; see "What to do next" |
-| Plan 7, milestones and PDF export | not written | see "Order of work" below |
+| Plan 7, milestones and PDF export | `docs/superpowers/plans/2026-11-23-milestones-pdf-export.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #10 to `main`, merged only with the owner's go-ahead); open owner items under "What to do next" |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -24,17 +24,16 @@ what a new session needs to start correctly.
 
 ## What to do next
 
-1. The owner reviews plan 6's PR #9 (from `ccr-174d8c4e-jjczdt` to `main`, merged only with the owner's
-   go-ahead). After the merge, CI publishes both images; the edge's `bump-happybabytracker` PR changes the
-   two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and `ui/` sources only (no Dockerfile or
-   dependency change; migration 0006 runs at the API's start) and deploys with the edge unchanged: no
-   `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in the app (the home Due
-   list and the Medication page). Migration 0006 is forward-only (an older API refuses the newer schema,
-   and the previous UI rejects the home list's medication entries): take an `edge-backup` archive right
-   before the deploy; a rollback is both pins back plus a restore of that archive, losing what was
-   written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
-   alive (503 after 60 seconds without a tick): point the edge's alert runbook at
-   `docs/runbooks/reminders.md` for that answer.
+1. Plan 6 is merged (PR #9); CI publishes both images on the merge (not checked in this session); the edge's
+   `bump-happybabytracker` PR changes the two pins and a deploy makes plan 6 live. Plan 6 changes `api/` and
+   `ui/` sources only (no Dockerfile or dependency change; migration 0006 runs at the API's start) and deploys
+   with the edge unchanged: no `VAPID_*` and no `NTFY_*`, so both channels are off and reminders show only in
+   the app (the home Due list and the Medication page). Migration 0006 is forward-only (an older API refuses
+   the newer schema, and the previous UI rejects the home list's medication entries): take an `edge-backup`
+   archive right before the deploy; a rollback is both pins back plus a restore of that archive, losing what
+   was written since. The edge's existing Gatus probe of `/healthz/api` now also means the reminder worker is
+   alive (503 after 60 seconds without a tick): point the edge's alert runbook at `docs/runbooks/reminders.md`
+   for that answer.
 2. **Edge, Web Push:** whenever the owner wants Web Push on (before or after the plan-6 bump), a PR in
    `davcs86/homelab-edge` renders `VAPID_PRIVATE_KEY` (the stored `happybabytracker_vapid_private_key`, a
    literal secret read, EDGE-08) and `VAPID_SUBJECT` (`https://` + the app's private hostname) into
@@ -48,7 +47,38 @@ what a new session needs to start correctly.
    token, the `NTFY_*` rendering, the Gatus `/healthz/reminders` probe (after plan 6 is deployed); then a
    flip PR once the owner subscribes a phone. Operating notes for both channels:
    `docs/runbooks/reminders.md`.
-4. Then plan 7 (milestones and PDF export): write it just before it is built, when the owner asks.
+4. **Plan 7** (PR #10): the owner reviews it, with `docs/milestones/cdc.md` (the catalog's review document), and
+   merges it. It changes `api/` and `ui/` sources, the embedded catalog and fonts, a new Go module
+   (`codeberg.org/go-pdf/fpdf` v0.12.0) and the API Dockerfile (licence files and label); no npm change. Merging
+   deploys nothing: the edge still needs its `bump-happybabytracker` PR merged and a deploy, and nothing else on
+   the edge changes. Migration `0007_milestones.sql` runs at the API's start and is forward-only (an older API
+   refuses the newer schema): take an `edge-backup` archive right before the deploy; a rollback is both pins
+   back plus a restore of that archive. Open owner items, in the order they matter:
+   1. **Spec 13.3 amendment.** The sentence on what URLs carry gained a clause for the export page's validation
+      redirect (`error`: a field name or `busy`; `modules`: enumerated module ids). The owner may veto it; the cost
+      is that the export form loses the ticked modules after a validation error.
+   2. **The screening note.** The catalog shows CDC's sentence "Learn the Signs. Act Early. materials are not a
+      substitute for standardized, validated developmental screening tools." as the ten age pages word it
+      (Open value 12). The 6- and 9-month pages put the campaign name in straight double quotes, and the checklist
+      sentence of CDC's PDF is not on the HTML pages. The owner reads the wording in `docs/milestones/cdc.md`
+      (`screening_note`).
+   3. **CDC reuse.** That the AAP co-developed text of the 2022 checklists is covered by CDC's public-domain
+      reuse is unconfirmed: the checklist pages carry no licence statement and the AAP article was not read. Not
+      legal advice; CDC was not contacted.
+   4. **Vaccination statuses in the PDF** describe the end of the chosen range (ruling T13-2: as of
+      `min(to, today)`, printed as "Statuses as of <date>."), not today as the plan said, so a past range cannot
+      print "Overdue" for a dose given since. The change back is one line.
+   5. **Export failures in the UI.** Every failure that is not a field error (an API 503, a timeout, a network
+      error) shows the "busy" message. A separate `error=unavailable` would need the 13.3 clause to name it.
+   6. **The WHO licence line in the PDF** is printed without the tail that points at repository files: it reads
+      "CC BY-NC-SA 3.0 IGO" with the legalcode link, and the adaptation disclaimer paragraph still prints.
+   7. **Memory.** The export in its own API process after the login burst read 46 MiB in the smoke against the
+      64 MiB ceiling (one process of one run; not measured in the edge's 96m container).
+   8. **e2e.** The UI tasks' Playwright specs were not run locally (owner instruction of 2026-11-24); CI on the
+      PR is their verification.
+   The parked minor findings are listed in the PR description; the five of item 29 were fixed since (the
+      singular overflow line, curve labels a line apart, a slow download no longer holds the render slot,
+      dismissals counted only when made by the end of the as-of day, and four smoke checks).
 
 ## Owner decisions in plan 3 (do not reopen)
 
@@ -167,6 +197,30 @@ The owner's answers of 2026-11-24 (after the final review):
 - The Medication link and pages stay reachable with the module off. The owner chose option A on 2026-11-24: the
   Medication page then says "Medication is off for <kid>: reminders are paused." (a guardian also gets a link to Modules).
 
+## Owner decisions in plan 7 (do not reopen)
+
+The owner's answers of 2026-11-23 (recorded in the plan, "Owner answers"):
+
+1. PDF library: `codeberg.org/go-pdf/fpdf` v0.12.0, pinned in `go.mod` and `go.sum`.
+2. Catalog: all twelve CDC "Learn the Signs. Act Early." lists, 2 months to 5 years, transcribed verbatim from
+   the HTML age pages under CDC's four reuse conditions.
+3. Export: at most 93 days, filterable by module (one box per module; the API answers 422 `modules` on an
+   unknown or empty selection). A switched-off module can be ticked and is exported.
+4. Names in other scripts: an embedded Noto Sans 2.015 (Regular and Bold, SIL OFL 1.1) with its `LICENSE` and
+   `NOTICE`; Latin, Greek and Cyrillic print, anything else prints as `?`.
+5. Module default visibility unchanged (on at 0 to 23 months, off from 24); the full catalog until the 5th
+   birthday; whether the module stays on after the default is the guardian's decision.
+
+Defaults taken as accepted on 2026-11-24 (an assumption: the controller's reading of the owner's "Start plan 7",
+not an explicit answer; the owner may still correct it): growth, vaccination and milestones print the whole
+record up to the range's end (trackers only the range); A4 with content that also prints on Letter; sickness and
+medication are in the export.
+
+Smoke: steps 4m (the Milestones page against the real catalog) and 4n (the PDF export without JavaScript, the
+module filter, refusals and access); the smoke also measures the export in its own API process (the ceilings stay
+64 and 140 MiB). Migration `0007_milestones.sql` (`milestones_reached`) is forward-only. The runbook for the
+catalog: `docs/runbooks/updating-milestone-catalog.md`.
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
@@ -175,9 +229,10 @@ The owner's answers of 2026-11-24 (after the final review):
 4. Growth — done.
 5. Vaccination — done (PR #7, merged).
 5.1. Advanced bottle, nursing and pumping logging — done (PR #8, merged).
-6. Sickness, medication, the reminder worker, Web Push, the ntfy channel — app side done on its branch (PR #9);
+6. Sickness, medication, the reminder worker, Web Push, the ntfy channel — app side done (PR #9, merged);
    then the edge's VAPID PR and the edge's ntfy plan and switch.
-7. Milestones and PDF export.
+7. Milestones and PDF export — done on its branch (draft PR #10); the owner's review and merge, then the edge's
+   bump PR and a deploy.
 
 One plan per item, each its own PR, each written just before it is built.
 
@@ -266,7 +321,8 @@ log.
   medication course with no channel configured (the Due list turns `overdue`), then restarts the API with
   the fake push sender and a per-run VAPID key and checks one generic push to the one opted-in device; its
   steps 4k and 4l are the first to call the unpublished API directly, from a container on the smoke
-  network.
+  network. Since plan 7 it marks milestones through the real catalog (4m) and downloads PDFs through the
+  UI's export route, reading their text without a PDF viewer (4n).
 
 ## Not yet verified (verify in the plan that needs it)
 
@@ -330,6 +386,33 @@ log.
 - The owner's observation that weight loss after nursing is associated with latching problems is not
   encoded anywhere: the app shows no estimate in that case and says nothing about it.
 
+## Not yet verified: plan 7
+
+- CDC reuse: "Use of Agency Materials" and a training page ("Reproducible (no copyright)") support
+  public-domain reuse; the checklist pages carry no licence statement and the 2022 revision was written with
+  AAP, whose article was not read (403). Not legal advice; CDC was not contacted.
+- Pronouns are CDC's own (verbatim); whether one is "substantive content" is avoided, not settled. That the 2026
+  page updates changed nothing but pronouns was checked for the 2-month and 4-year pages only.
+- The 159-item count comes from the PDF's bullet glyphs and the pre-flight's parse of the HTML pages; the
+  transcription confirmed it on its own day.
+- Corrected age: CDC names no age at which correction stops for milestones; the second birthday is the app's rule.
+- WHO ShareAlike: whether it reaches a PDF that prints derived percentiles was not checked.
+- OFL: the FAQ says a document made with the font is not bound by the OFL and embedding a subset is allowed;
+  whether an fpdf subset is a "Modified Version" is not settled. Not legal advice.
+- Font source: the files come from a `main` branch of `notofonts/notofonts.github.io`, not a tagged release;
+  their bytes are pinned by SHA-256.
+- Shaping: fpdf ignores GSUB and GPOS, so a letter plus a separate combining accent may be badly positioned;
+  precomposed letters print correctly. CJK, Arabic, Hebrew, Indic and emoji print as `?`.
+- fpdf v0.12.0 panics on a rune above U+FFFF (found by experiment, no upstream issue checked); the encoder
+  prevents it.
+- Memory: the export was measured in its own API process after the login burst in the smoke (46 MiB), not in the
+  edge's 96m container with `GOMEMLIMIT=40MiB`; gopdf was not built or measured.
+- iOS: the download behaviour of an installed PWA (share sheet or viewer) was not tested on a device.
+- Midnight DST: the flaw listed above (`kidtime.CorrectedBirthDate` and `AgeMonths` in zones whose DST starts at
+  midnight) also reaches the milestone age basis; not fixed here.
+- e2e specs of the UI tasks (milestones pages, export page, stub parity) were not run locally (owner instruction
+  of 2026-11-24); CI verifies them.
+
 ## How to verify a plan is done
 
 ```sh
@@ -345,10 +428,10 @@ request. Report the output; do not report "should pass".
 
 ## Prompt to start the next session
 
-> Start from `main` of `davcs86/happybabytracker` after plan 6's PR #9 is merged. Read
+> Start from `main` of `davcs86/happybabytracker` after plan 7's PR #10 is merged. Read
 > `docs/superpowers/HANDOFF.md`, then the design. For the edge: in `davcs86/homelab-edge`, under its
 > `CLAUDE.md`, write the VAPID PR when the owner wants Web Push on, and the ntfy plan once the owner has
-> answered E1 and E2 (plan 6), from `docs/superpowers/research/reminders/ntfy-and-edge.md`. For the app:
-> ask the owner before writing plan 7 (milestones and PDF export), settle its open values with the owner,
-> and execute it with subagent-driven development on a new branch from `main`. `davcs86/commsgun` is the
-> reference to mirror; attach it read-only.
+> answered E1 and E2 (plan 6), from `docs/superpowers/research/reminders/ntfy-and-edge.md`. For the app,
+> every item of the design is built: ask the owner what comes next, write that plan just before it is built,
+> settle its open values with the owner, and execute it with subagent-driven development on a new branch
+> from `main`. `davcs86/commsgun` is the reference to mirror; attach it read-only.

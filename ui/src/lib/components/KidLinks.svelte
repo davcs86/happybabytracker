@@ -13,6 +13,12 @@
 	<a href={resolve('/(app)/kids/[kid]/medication', { kid: kid.id })} class="underline"
 		>Medication<span class="sr-only"> for {kid.name}</span></a
 	>
+	<a href={resolve('/(app)/kids/[kid]/milestones', { kid: kid.id })} class="underline"
+		>Milestones<span class="sr-only"> for {kid.name}</span></a
+	>
+	<a href={resolve('/(app)/kids/[kid]/export', { kid: kid.id })} class="underline"
+		>Export PDF<span class="sr-only"> for {kid.name}</span></a
+	>
 	{#if kid.role === 'guardian'}
 		<a href={resolve('/(app)/kids/[kid]/settings', { kid: kid.id })} class="underline"
 			>Settings<span class="sr-only"> for {kid.name}</span></a

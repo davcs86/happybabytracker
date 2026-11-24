@@ -54,7 +54,9 @@ export const SCENARIOS = [
 	// Web Push or ntfy not configured on the server (the edge's default): writes answer 409.
 	'push_off',
 	'ntfy_off',
-	'channels_off'
+	'channels_off',
+	// Every export slot taken: a valid export answers 503 busy.
+	'export_busy'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -158,6 +160,7 @@ type State = {
 	modules: Map<string, boolean>;
 	medications: CourseStub[];
 	doses: DoseStub[];
+	milestones: MilestoneStub[];
 	reminders: ReminderStub[];
 	pushDevices: PushDeviceStub[];
 	// By parent id.
@@ -180,6 +183,13 @@ export const IVY = {
 	timeZone: 'UTC'
 } as const;
 const DEFAULT_UNITS: Units = { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' };
+
+// Cleo guards these alone; their birth dates follow the stub clock whenever the state is built (start, /__reset).
+export const NELL = { id: 'k-nell', name: 'Nell', timeZone: 'UTC' } as const;
+export const OTTO = { id: 'k-otto', name: 'Otto', timeZone: 'UTC' } as const;
+export const PIA = { id: 'k-pia', name: 'Pia', timeZone: 'UTC' } as const;
+export const REMY = { id: 'k-remy', name: 'Remy', timeZone: 'UTC' } as const;
+export const SAMI = { id: 'k-sami', name: 'Sami', timeZone: 'UTC' } as const;
 
 function account(id: string, username: string, displayName: string, password: string | null) {
 	return {
@@ -229,6 +239,31 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		reminderOverdueMinutes: REMINDER_OVERDUE.default,
 		seq: 3
 	};
+	const today = todayIn('UTC');
+	const relative = (
+		k: { id: string; name: string; timeZone: string },
+		birthDate: string,
+		seq: number,
+		gestationWeeks: number | null = null
+	): KidRow => ({
+		...k,
+		birthDate,
+		sex: 'male',
+		gestationWeeks,
+		gestationDays: gestationWeeks === null ? null : 0,
+		growthSource: 'who',
+		vaccineSchema: null,
+		reminderOverdueMinutes: REMINDER_OVERDUE.default,
+		seq
+	});
+	const milestoneKids = [
+		relative(NELL, monthsBefore(today, 9), 4),
+		relative(OTTO, monthsBefore(today, 59), 5),
+		relative(PIA, yearsBefore(today, MILESTONE_CATALOG_UNTIL_YEARS), 6),
+		relative(REMY, monthsBefore(today, 3), 7, 32),
+		relative(SAMI, monthsBefore(today, 30), 8)
+	];
+	const otto = milestoneKids[1];
 	return {
 		parents: new Map([ana, bo, cleo, dan, dee].map((p) => [p.id, p])),
 		sessions: new Map(),
@@ -240,12 +275,13 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false }],
 			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false }]
 		]),
-		kids: new Map([mia, leo, ivy].map((k) => [k.id, k])),
+		kids: new Map([mia, leo, ivy, ...milestoneKids].map((k) => [k.id, k])),
 		grants: [
 			{ kidId: mia.id, parentId: ana.id, role: 'guardian' },
 			{ kidId: leo.id, parentId: cleo.id, role: 'guardian' },
 			{ kidId: leo.id, parentId: ana.id, role: 'caregiver' },
-			{ kidId: ivy.id, parentId: ana.id, role: 'guardian' }
+			{ kidId: ivy.id, parentId: ana.id, role: 'guardian' },
+			...milestoneKids.map((k) => ({ kidId: k.id, parentId: cleo.id, role: 'guardian' as const }))
 		],
 		entries: {
 			bottles: [],
@@ -259,9 +295,22 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		growth: leoGrowth(),
 		vaccinations: [],
 		dismissals: new Map(),
-		modules: new Map(),
+		// A guardian keeps milestones on for the two kids past 24 months; Sami keeps the default (off).
+		modules: new Map([OTTO, PIA].map((k) => [`${k.id}:milestones`, true])),
 		medications: [],
 		doses: [],
+		// A row whose item a catalog update retired, recorded long before any band lookback.
+		milestones: [
+			{
+				kidId: otto.id,
+				id: 'ms-retired',
+				item: STUB_RETIRED_ITEM,
+				text: null,
+				reachedOn: addMonths(otto.birthDate, 4),
+				note: null,
+				createdAt: midnight(addMonths(otto.birthDate, 4), otto.timeZone)
+			}
+		],
 		reminders: [],
 		pushDevices: [],
 		ntfyTopics: new Map(),
@@ -901,6 +950,7 @@ const routes: RouteDef[] = [
 			state.kids.delete(id);
 			state.grants = state.grants.filter((g) => g.kidId !== id);
 			state.medications = state.medications.filter((m) => m.kidId !== id);
+			state.milestones = state.milestones.filter((m) => m.kidId !== id);
 			state.doses = state.doses.filter((d) => d.kidId !== id);
 			state.reminders = state.reminders.filter((r) => r.kidId !== id);
 			for (const o of [...state.pushDevices, ...state.ntfyTopics.values()]) dropKid(o, id);
@@ -1065,6 +1115,7 @@ const FLOZ_DENOMINATOR = 10000 * 100;
 const PAGE_DEFAULT = 50;
 const PAGE_MAX = 100;
 const SUMMARY_MAX_DAYS = 93;
+const EXPORT_MAX_DAYS = 93;
 const BAND_SECOND_MONTHS = 12;
 const BAND_THIRD_MONTHS = 24;
 const OVERRIDE_LOOKBACK_S = 60 * 24 * 3600;
@@ -1116,6 +1167,13 @@ function monthsBefore(date: string, n: number): string {
 	const [y, m, d] = date.split('-').map(Number);
 	const lastDay = new Date(Date.UTC(y, m - 1 - n + 1, 0)).getUTCDate();
 	return new Date(Date.UTC(y, m - 1 - n, Math.min(d, lastDay))).toISOString().slice(0, 10);
+}
+
+// The same day n years earlier; 29 February has no such day, so it takes the 28th.
+function yearsBefore(date: string, n: number): string {
+	const [y, m, d] = date.split('-').map(Number);
+	const day = m === 2 && d === 29 ? 28 : d;
+	return `${String(y - n).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 // AgeMonths in kidtime.go: whole calendar months, never negative.
@@ -1851,12 +1909,18 @@ function moduleStates(state: State, kid: KidRow) {
 	for (const m of MODULES) {
 		const stored = `${kid.id}:${m}`;
 		const tracker = TRACKER_KEYS.find((k) => MODULE_OF[k] === m);
-		if (state.modules.has(stored) || moduleEnabledByDefault(m, band) || !tracker) continue;
-		const recent = state.entries[tracker].some((r) => {
-			if (r.kidId !== kid.id) return false;
-			const t = unix(r.view[SPECS[tracker].timeKey]);
-			return (t >= since && t <= now()) || (SPECS[tracker].timer && r.view.ended_at === null);
-		});
+		const tracked = tracker !== undefined || m === 'milestones';
+		if (state.modules.has(stored) || moduleEnabledByDefault(m, band) || !tracked) continue;
+		// Milestones count by when a mark was recorded (created_at), not the date it names.
+		const recent = tracker
+			? state.entries[tracker].some((r) => {
+					if (r.kidId !== kid.id) return false;
+					const t = unix(r.view[SPECS[tracker].timeKey]);
+					return (t >= since && t <= now()) || (SPECS[tracker].timer && r.view.ended_at === null);
+				})
+			: state.milestones.some(
+					(r) => r.kidId === kid.id && r.createdAt >= since && r.createdAt <= now()
+				);
 		if (recent) state.modules.set(stored, true);
 	}
 	return MODULES.map((m) => {
@@ -3779,12 +3843,331 @@ const ntfyRoutes: RouteDef[] = [
 	}
 ];
 
+// Milestones: the Go handlers (httpapi/milestones.go) in memory, over a stub catalog.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const MILESTONE_TEXT_MAX_LEN = 200;
+const MAX_MILESTONES_PER_KID = 1000;
+const MILESTONE_CATALOG_UNTIL_YEARS = 5;
+const MONTHS_PER_YEAR = 12;
+const MILESTONE_CATALOG_AGES = [2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60];
+const MILESTONE_DOMAIN_CODES: Record<string, string> = {
+	social_emotional: 'se',
+	language_communication: 'lc',
+	cognitive: 'cg',
+	movement_physical: 'mp'
+};
+
+type StubMilestoneItem = {
+	id: string;
+	age: number;
+	domain: string;
+	text: string;
+	retired: boolean;
+};
+type MilestoneStub = {
+	kidId: string;
+	id: string;
+	// Exactly one of item and text is set.
+	item: string | null;
+	text: string | null;
+	reachedOn: string;
+	note: string | null;
+	createdAt: number;
+};
+
+// A STUB, not CDC data: invented provenance, ids and text (one item per age and domain, plus one retired item).
+// No test may read a number or a wording from it as if it were the real catalog.
+const STUB_MILESTONE_CATALOG = {
+	id: 'stub',
+	name: 'Stub milestone checklists',
+	authority: 'Stub authority',
+	edition: 'Stub edition',
+	retrieved: '2026-01-01',
+	origin_url: 'https://example.invalid/stub-milestones',
+	licence: 'Stub licence',
+	attribution: 'Stub attribution, not reference data.',
+	screening_note: 'Stub screening note.'
+};
+const STUB_RETIRED_ITEM = '4m-cg-stub-retired';
+const STUB_MILESTONE_ITEMS: StubMilestoneItem[] = [
+	...MILESTONE_CATALOG_AGES.flatMap((age) =>
+		Object.entries(MILESTONE_DOMAIN_CODES).map(([domain, code]) => ({
+			id: `${age}m-${code}-stub-1`,
+			age,
+			domain,
+			text: `Stub item ${age}m-${code}-1`,
+			retired: false
+		}))
+	),
+	{
+		id: STUB_RETIRED_ITEM,
+		age: 4,
+		domain: 'cognitive',
+		text: 'Stub item 4m-cg-retired',
+		retired: true
+	}
+];
+const stubItem = (id: unknown) => STUB_MILESTONE_ITEMS.find((it) => it.id === id);
+
+// Positions in milestones/window.go: current is the largest age at or below the basis, next the smallest above.
+function milestonePositions(basis: number): Map<number, string> {
+	const below = MILESTONE_CATALOG_AGES.filter((a) => a <= basis);
+	const current = below.length ? below[below.length - 1] : -1;
+	const next = MILESTONE_CATALOG_AGES.find((a) => a > basis) ?? -1;
+	return new Map(
+		MILESTONE_CATALOG_AGES.map((a) => [
+			a,
+			a === current ? 'current' : a === next ? 'next' : a < basis ? 'earlier' : 'later'
+		])
+	);
+}
+
+// AgeBasisFor: the corrected age while kidtime corrects (preterm, before the 2nd birthday), else chronological.
+function milestoneAge(kid: KidRow, today: string) {
+	const chronological = ageMonths(kid.birthDate, today);
+	const correction = correctionOn(kid, today);
+	const corrected = correction > 0 ? ageMonths(addDays(kid.birthDate, correction), today) : null;
+	return {
+		chronological_months: chronological,
+		corrected_months: corrected,
+		basis_months: corrected ?? chronological
+	};
+}
+
+// listMilestones: reached_on DESC, id DESC.
+const milestonesOf = (state: State, kidId: string) =>
+	state.milestones
+		.filter((m) => m.kidId === kidId)
+		.sort((a, b) =>
+			a.reachedOn === b.reachedOn ? (a.id < b.id ? 1 : -1) : a.reachedOn < b.reachedOn ? 1 : -1
+		);
+
+// newMilestonesView: the catalog's omitted provenance never appears.
+function milestonesView(state: State, kid: KidRow) {
+	const today = todayIn(kid.timeZone);
+	const age = milestoneAge(kid, today);
+	const shown = today < addMonths(kid.birthDate, MILESTONE_CATALOG_UNTIL_YEARS * MONTHS_PER_YEAR);
+	const custom: Body[] = [];
+	const retired: Body[] = [];
+	const reachedRows: Body[] = [];
+	const reached = new Map<string, Body>();
+	for (const m of milestonesOf(state, kid.id)) {
+		const base = { id: m.id, reached_on: m.reachedOn, note: m.note };
+		if (m.text !== null) {
+			custom.push({ id: m.id, text: m.text, reached_on: m.reachedOn, note: m.note });
+			continue;
+		}
+		const it = stubItem(m.item) as StubMilestoneItem;
+		if (it.retired)
+			retired.push({ id: m.id, item: it.id, text: it.text, reached_on: m.reachedOn, note: m.note });
+		else if (shown) reached.set(it.id, base);
+		else {
+			reachedRows.push({
+				id: m.id,
+				item: it.id,
+				age_months: it.age,
+				domain: it.domain,
+				text: it.text,
+				reached_on: m.reachedOn,
+				note: m.note
+			});
+		}
+	}
+	const positions = milestonePositions(age.basis_months);
+	return {
+		catalog: STUB_MILESTONE_CATALOG,
+		age,
+		catalog_shown: shown,
+		checklists: shown
+			? MILESTONE_CATALOG_AGES.map((a) => ({
+					age_months: a,
+					position: positions.get(a),
+					items: STUB_MILESTONE_ITEMS.filter((it) => it.age === a && !it.retired).map((it) => ({
+						id: it.id,
+						domain: it.domain,
+						text: it.text,
+						reached: reached.get(it.id) ?? null
+					}))
+				}))
+			: [],
+		custom,
+		retired,
+		reached: reachedRows
+	};
+}
+
+const milestoneView = (m: MilestoneStub) => ({
+	id: m.id,
+	item: m.item,
+	text: m.text ?? stubItem(m.item)?.text,
+	reached_on: m.reachedOn,
+	note: m.note
+});
+
+const MILESTONE_FIELDS: Record<string, FieldKind> = {
+	item: 'string',
+	text: 'string',
+	reached_on: 'string',
+	note: 'string'
+};
+
+// mergeOnto in milestones.go: item or text, reached_on, note; absent keeps, null clears only the note.
+function mergeMilestone(m: MilestoneStub, body: Body, kid: KidRow): string {
+	if (m.id === '') {
+		if ('item' in body === 'text' in body) return 'item';
+		if ('item' in body) {
+			const it = stubItem(body.item);
+			if (body.item === null || !it || it.retired) return 'item';
+			m.item = it.id;
+		}
+	} else if ('item' in body || ('text' in body && m.text === null)) {
+		return 'item';
+	}
+	if ('text' in body) {
+		if (body.text === null) return 'text';
+		const text = (body.text as string).trim();
+		if (text === '' || runes(text) > MILESTONE_TEXT_MAX_LEN) return 'text';
+		m.text = text;
+	}
+	const stored = m.reachedOn;
+	if ('reached_on' in body) {
+		if (body.reached_on === null) return 'reached_on';
+		m.reachedOn = body.reached_on as string;
+	}
+	if (m.reachedOn === '' || m.reachedOn !== stored) {
+		if (
+			!validDate(m.reachedOn) ||
+			m.reachedOn > todayIn(kid.timeZone) ||
+			m.reachedOn < kid.birthDate
+		) {
+			return 'reached_on';
+		}
+	}
+	if ('note' in body) m.note = body.note as string | null;
+	if (m.note !== null && (m.note.trim() === '' || runes(m.note) > NOTE_MAX_LEN)) return 'note';
+	return '';
+}
+
+const milestoneOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.milestones.find((m) => m.kidId === kidId && m.id === id) : undefined;
+
+const milestoneRoutes: RouteDef[] = [
+	// The same answer whether the module is on or off.
+	kidRoute('GET', 'milestones', 'caregiver', (state, _req, res, kid) =>
+		send(res, 200, milestonesView(state, kid))
+	),
+	// createMilestone: the body, then the fields, then the cap before a second mark of one item.
+	kidRoute('POST', 'milestones', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, MILESTONE_FIELDS);
+		if (!body) return;
+		const m: MilestoneStub = {
+			kidId: kid.id,
+			id: '',
+			item: null,
+			text: null,
+			reachedOn: '',
+			note: null,
+			createdAt: now()
+		};
+		const field = mergeMilestone(m, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		const rows = state.milestones.filter((r) => r.kidId === kid.id);
+		if (rows.length >= MAX_MILESTONES_PER_KID) return error(res, 409, 'limit');
+		if (m.item !== null && rows.some((r) => r.item === m.item)) {
+			return error(res, 409, 'already_reached');
+		}
+		m.id = nextId(state, 'ms');
+		state.milestones.push(m);
+		send(res, 201, milestoneView(m));
+	}),
+	medicationEntryRoute('GET', 'milestones', {}, milestoneOf, (_state, res, _kid, m) =>
+		send(res, 200, milestoneView(m))
+	),
+	// updateMilestone validates the stored row with the patch applied, never the patch alone.
+	medicationEntryRoute(
+		'PATCH',
+		'milestones',
+		MILESTONE_FIELDS,
+		milestoneOf,
+		(_state, res, kid, m, body) => {
+			const merged = { ...m };
+			const field = mergeMilestone(merged, body, kid);
+			if (field) return error(res, 422, 'invalid', field);
+			Object.assign(m, merged);
+			send(res, 200, milestoneView(m));
+		}
+	),
+	medicationEntryRoute('DELETE', 'milestones', {}, milestoneOf, (state, res, _kid, m) => {
+		state.milestones = state.milestones.filter((r) => r !== m);
+		send(res, 204);
+	})
+];
+
+// A fixed, deterministic stand-in for the API's PDF: its one text line lists the modules as received.
+function stubPdf(modules: string[]): string {
+	const text = `BT /F1 12 Tf 72 770 Td (STUB EXPORT, NOT A REAL DOCUMENT. Modules: ${modules.join(',')}) Tj ET`;
+	return [
+		'%PDF-1.4',
+		'% happybabytracker stub export',
+		'1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+		'2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+		'3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >> endobj',
+		`4 0 obj << /Length ${text.length} >> stream`,
+		text,
+		'endstream endobj',
+		'trailer << /Root 1 0 R >>',
+		'%%EOF',
+		''
+	].join('\n');
+}
+
+// export in httpapi/export.go: decodeJSON, from, to (a 94-day span is to), modules, then the free slot.
+const exportRoutes: RouteDef[] = [
+	kidRoute('POST', 'export', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, { from: 'string', to: 'string', modules: 'raw' });
+		if (!body) return;
+		const from = (body.from as string | null) ?? '';
+		const to = (body.to as string | null) ?? '';
+		if (!validDate(from) || from < kid.birthDate) return error(res, 422, 'invalid', 'from');
+		const days = (Date.parse(to) - Date.parse(from)) / (DAY_S * 1000) + 1;
+		if (!validDate(to) || to < from || to > todayIn(kid.timeZone) || days > EXPORT_MAX_DAYS) {
+			return error(res, 422, 'invalid', 'to');
+		}
+		const modules = body.modules;
+		if (
+			!Array.isArray(modules) ||
+			modules.length === 0 ||
+			modules.some(
+				(m, i) =>
+					typeof m !== 'string' ||
+					!(MODULES as readonly string[]).includes(m) ||
+					modules.indexOf(m) !== i
+			)
+		) {
+			return error(res, 422, 'invalid', 'modules');
+		}
+		if (state.scenario === 'export_busy') return error(res, 503, 'busy');
+		const pdf = stubPdf(modules as string[]);
+		res.writeHead(200, {
+			'content-type': 'application/pdf',
+			'content-disposition': `attachment; filename="happybabytracker-${from}-${to}.pdf"`,
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
+			'content-length': String(Buffer.byteLength(pdf))
+		});
+		res.end(pdf);
+	})
+];
+
 routes.push(
 	...TRACKER_KEYS.flatMap(trackerRoutes),
 	...overviewRoutes,
 	...growthRoutes,
 	...vaccineRoutes,
 	...medicationRoutes,
+	...milestoneRoutes,
+	...exportRoutes,
 	...pushRoutes,
 	...ntfyRoutes
 );

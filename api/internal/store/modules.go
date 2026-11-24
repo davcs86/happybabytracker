@@ -35,12 +35,13 @@ type moduleTable struct {
 }
 
 var moduleTables = map[model.Module]moduleTable{
-	"bottles": {"bottle_feeds", "at", false},
-	"nursing": {"nursing_sessions", "started_at", true},
-	"pumping": {"pumping_sessions", "started_at", false},
-	"diapers": {"diapers", "at", false},
-	"sleep":   {"sleep_sessions", "started_at", true},
-	"feeding": {"meals", "at", false},
+	"bottles":    {"bottle_feeds", "at", false},
+	"nursing":    {"nursing_sessions", "started_at", true},
+	"pumping":    {"pumping_sessions", "started_at", false},
+	"diapers":    {"diapers", "at", false},
+	"sleep":      {"sleep_sessions", "started_at", true},
+	"feeding":    {"meals", "at", false},
+	"milestones": {"milestones_reached", "created_at", false},
 }
 
 // KidModules is a kid's age at a read and its module states in model.Modules order.

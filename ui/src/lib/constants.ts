@@ -6,6 +6,8 @@ import type {
 	GrowthSourceId,
 	LengthUnit,
 	Measure,
+	MilestoneDomain,
+	MilestonePosition,
 	ModuleId,
 	NursingSide,
 	PumpingSide,
@@ -135,6 +137,22 @@ export const VACCINE_UNIT_LABEL: Record<VaccineAgeUnit, { one: string }> = {
 	m: { one: 'month' },
 	y: { one: 'year' }
 };
+// Milestones (constants.go): MilestoneTextMaxLen, a custom milestone's text in characters after trimming.
+export const MILESTONE_TEXT_MAX = 200;
+// MilestoneCatalogAges: the checklist ages, in months.
+export const MILESTONE_AGES = [2, 4, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60] as const;
+export const MILESTONE_DOMAINS = [
+	'social_emotional',
+	'language_communication',
+	'cognitive',
+	'movement_physical'
+] as const satisfies readonly MilestoneDomain[];
+export const MILESTONE_POSITIONS = [
+	'earlier',
+	'current',
+	'next',
+	'later'
+] as const satisfies readonly MilestonePosition[];
 // The home shows at most this many due entries.
 export const HOME_DUE_MAX = 3;
 export const INVITE_VALIDITY = '72 hours';
@@ -259,6 +277,9 @@ export const MODULES = [
 	'sickness',
 	'medication'
 ] as const satisfies readonly ModuleId[];
+// Mirrors ExportMaxDays and ExportModules (constants.go): every module id, in MODULES order.
+export const EXPORT_MAX_DAYS = 93;
+export const EXPORT_MODULES = MODULES;
 export const MODULE_LABEL: Record<ModuleId, string> = {
 	bottles: 'Bottle',
 	nursing: 'Nursing',

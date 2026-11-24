@@ -25,6 +25,10 @@ What a parent can do so far:
 - Sickness and medication: symptoms (a fever with its temperature) on the timeline, medication courses
   with a schedule, logged doses, and reminders on the home's Due list and, when the server has a channel
   configured, on opted-in devices (see "Sickness, medication and reminders" below).
+- Milestones: CDC's developmental milestone checklists, with a date marked for each item reached and custom
+  milestones of your own (see "Milestones" below).
+- PDF export: one kid, a range of at most 93 days and the modules you choose, made as a PDF when you
+  download it (see "PDF export" below).
 - Installable from the browser (a web app manifest and icons); online only. The service worker handles
   install, push and notification clicks only: it caches nothing and there is no offline page.
 
@@ -33,7 +37,7 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | Module | Tracker | 0–11 | 12–23 | 24+ |
 |---|---|---|---|---|
 | `bottles`, `nursing`, `pumping`, `diapers`, `sleep`, `feeding` (solids) | built | on | on | off |
-| `milestones` | later plan | on | on | off |
+| `milestones` | built | on | on | off |
 | `growth` | built | on | on | on |
 | `vaccination` | built | on | on | on |
 | `sickness`, `medication` | built | on | on | on |
@@ -204,6 +208,67 @@ score or a chart. The app records and displays; it never interprets a weight, a 
 
 Operating reminders (health answers, a missing reminder, turning Web Push on): `docs/runbooks/reminders.md`.
 
+## Milestones
+
+The Milestones page (kid links, and a quick-log tile while the module is on) shows CDC's "Learn the Signs.
+Act Early." milestone checklists: twelve lists, from 2 months to 5 years, each with the four domains
+(social/emotional, language/communication, cognitive, movement/physical) and CDC's wording word for word. Every
+list can be opened; the one for the kid's age is marked "Current list for this age" and linked from the top of
+the page. Its age is the corrected age until the second birthday (the rule under "Growth") and the
+chronological age after; a kid younger than 2 months sees the 2-month list marked "Next list". The full
+catalog shows until the kid's 5th birthday; from then on the page lists only what was marked (including items
+CDC has since retired) and the custom milestones.
+
+A parent with access marks an item reached with a date (not in the future and not before the birth date) and
+an optional note, edits that date or note, or removes the mark. A custom milestone is free text of up to 200
+characters with a date. A kid holds at most 1000 marks, catalog and custom together. The app records and
+displays: it never says a kid is early, late, behind or on track, shows no age beside a mark and shows no count
+of what was not marked (the lists show every item so that it can be marked, and the PDF prints only what was
+marked). The milestones are not in the timeline or the home's Due list.
+
+The module default is unchanged: on at 0 to 23 months, off from 24 months. A guardian decides whether it stays
+on, on the Modules page; the first mark made for a kid past 24 months turns it on. With the module off the
+page stays reachable and says "Milestones are off for <kid name>."; a guardian also gets "Turn it on in
+Modules".
+
+CDC's conditions apply to the checklists: "Source: CDC, Learn the Signs. Act Early. milestone checklists. CDC
+does not endorse this application or its use of the material. The material is available free of charge at
+https://www.cdc.gov/act-early/milestones/index.html." is shown with them, together with CDC's sentence
+that the materials are not a substitute for standardized, validated developmental screening tools. CDC's
+introductory text, its questions for the doctor, "act early" boxes, tips and images are not included. The
+catalog is one CSV with a generated review table (`docs/milestones/cdc.md`; index in `docs/milestones/README.md`);
+how to update it: `docs/runbooks/updating-milestone-catalog.md`.
+
+## PDF export
+
+Any parent with access to a kid (guardian or caregiver) exports a PDF from "Export PDF" in the kid's links. The
+form takes a first and a last date (kid-local, at most 93 days, the last not in the future) and one box per
+module: all eleven, sickness and medication included. The modules switched on for the kid are ticked; a
+switched-off module is offered unticked under "Switched off for this child" and exports its data when ticked,
+because a switch never hides or deletes data. An empty or unknown selection is refused.
+
+The PDF holds the kid's profile, the chosen sections in module order and a footer with the time it was made.
+The daily trackers print their entries and daily totals for the range. Growth, vaccination and milestones are
+records: they print the kid's whole record up to the last date of the range. Growth lists each measurement with
+its score and percentile under the kid's source and a chart per measure, with the source's attribution and
+licence name and, for WHO, its adaptation disclaimer. Vaccination prints the schedule's attribution, each line's
+status as of the last date of the range ("Statuses as of <date>.", never later than today; a dismissal counts
+only if it was made by the end of that date) and the doses given.
+Milestones print CDC's attribution and no-endorsement sentence and what was marked, never what was not.
+Sickness prints the symptoms in the range and medication the courses that touch it with their doses. Values are
+in the requesting parent's units and times in the kid's time zone. A section stops at 3000 rows and the whole
+file at 6000, and a section cut short ends with a line "N more entries in this range are not shown. Export a
+shorter range to see them." ("1 more entry in this range is not shown. Export a shorter range to see it." for
+one; growth: "N more entries up to the end of the range are not shown. Export a range that ends earlier to see
+them.", and its singular).
+
+The file is made when it is downloaded and never stored. One export renders at a time, and a second request at
+the same moment is refused as busy; a rendered file then downloads without holding up the next render, with up
+to 2 downloads in flight, and a file rendered while 2 are downloading is refused as busy too, before any byte is
+sent. Latin (including its extended forms), Greek and
+Cyrillic text prints as typed with an embedded Noto Sans; other scripts and emoji appear as `?`, and the PDF then
+says so once. The page is A4 laid out to print at full size on US Letter too.
+
 ## Configuration
 
 API (`ghcr.io/davcs86/happybabytracker-api`):
@@ -328,11 +393,12 @@ moving tag `main`, labelled with `org.opencontainers.image.revision`) and prints
 references in the `images` job summary. The edge runs the digests pinned in `davcs86/homelab-edge`; a
 change is live only after those pins are changed there and the edge is deployed.
 
-Deploy and rollback: both images ship together (the bump PR pins both). Migration 0006 (sickness,
-medication, reminders) is forward-only: an older API refuses a database whose schema is newer than its
-own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
-the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the deploy. A rollback
-is both pins back plus a restore of the last `edge-backup` archive; anything written since it is lost.
+Deploy and rollback: both images ship together (the bump PR pins both). Migrations 0006 (sickness, medication,
+reminders) and 0007 (milestones) are forward-only: an older API refuses a database whose schema is newer than
+its own, and the previous UI rejects the home list's medication entries, so rolling back the UI alone breaks
+the home page of a kid whose Due list has a medication entry. Take an `edge-backup` archive right before the
+deploy. A rollback is both pins back plus a restore of the last `edge-backup` archive; anything written since
+it is lost.
 
 ## Third-party data
 
@@ -357,10 +423,24 @@ BAG's written consent, which has not been asked for.
 | `api/internal/vaccines/data/uk.csv` | UK Health Security Agency (UKHSA), Complete routine immunisation schedule from 1 September 2026 (updated 24 September 2026), England only, with the birth-date cohorts from UKHSA's MMRV and childhood schedule changes guidance (both updated 25 August 2026), retrieved 2026-11-22 | Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), © Crown copyright 2026: attribution; no logos, trade marks or third-party rights (the file names no trade names); no implied endorsement. This is a partial, simplified transcription and adaptation with dose numbers derived by counting: selective, risk-group, pregnancy and catch-up programmes and the items listed in the review document (`docs/vaccine-schedules/uk.md`) are not transcribed; see the UKHSA schedule for the full text | "Source: UKHSA, “Complete routine immunisation schedule from 1 September 2026” (updated 24 September 2026), https://www.gov.uk/government/publications/the-complete-routine-immunisation-schedule, with the birth-date cohorts from UKHSA's “MMRV vaccination: information for healthcare professionals” and “Childhood schedule changes 2025 and 2026: information for healthcare practitioners” (both updated 25 August 2026). Contains public sector information licensed under the Open Government Licence v3.0 (https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). This is a partial, simplified transcription and adaptation for England, with dose numbers derived by counting and without trade names: selective, risk-group, pregnancy and catch-up programmes and the items listed in the review document are not transcribed. It is not endorsed by UKHSA; see the UKHSA schedule for the full text." |
 | `api/internal/vaccines/data/mx.csv` | Secretaría de Salud, CeNSIA, Lineamientos Generales del Programa de Vacunación Universal 2026 (published 31 December 2025; measles amendment 18 February 2026), cross-checked with the PRONAM “Vacunación a lo largo de la vida”, 2a ed. (30 July 2026), consulted 2026-11-22 | No open licence: gob.mx publishes none on these documents. The gob.mx terms (https://www.gob.mx/terminos) say the portal's information is public unless indicated otherwise and require citing its URL and the date it was consulted (the same page also limits downloads to personal, non-commercial use). Only facts are transcribed (antigen, dose number, age), which the Ley Federal del Derecho de Autor, art. 14, excludes from protection together with administrative texts; no logos or prose are reproduced. This is a partial, simplified transcription: risk-group, pregnancy and catch-up lines, adolescent and adult lines other than HPV (Td included) and the items listed in the review document (`docs/vaccine-schedules/mx.md`) are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails. This is not legal advice | "Fuente: Secretaría de Salud, CeNSIA, “Lineamientos Generales del Programa de Vacunación Universal 2026” (31 de diciembre de 2025; enmienda del 18 de febrero de 2026), https://www.gob.mx/cms/uploads/attachment/file/1076033/LINEAMIENTOS_GENERALES_2026_rem.pdf (page: https://www.gob.mx/salud/censia/documentos/lineamientos-generales-pvu-2026), consultado el 22 de noviembre de 2026 (2026-11-22). This is a partial, simplified transcription of facts only (antigen, dose number and age), with dose numbers derived by counting and without brand names: selective, risk-group, pregnancy and catch-up lines, adolescent and adult lines other than HPV (Td included) and the items listed in the review document are not transcribed. It is not endorsed by the Secretaría de Salud and is not a copy of its publication; the official text prevails." |
 
+The API also embeds a milestone checklist catalog, transcribed verbatim from CDC's web pages, with a
+generated review table in `docs/milestones/cdc.md`. It is not covered by the MIT licence.
+
+| File | Authority and edition | Licence | Attribution |
+|---|---|---|---|
+| `api/internal/milestones/data/cdc.csv` | Centers for Disease Control and Prevention (CDC), Learn the Signs. Act Early. milestone checklists (2022 revision), web pages updated May 16, 2026, retrieved 2026-11-24 | Public domain, on CDC's conditions (https://www.cdc.gov/other/agencymaterials.html): attribution; no implied endorsement; no change to the substantive content; a note that the material is free on the CDC website. Only the milestone items of the twelve age pages are transcribed, word for word; no image is included, and the items listed in the review document are not transcribed | "Source: CDC, Learn the Signs. Act Early. milestone checklists. CDC does not endorse this application or its use of the material. The material is available free of charge at https://www.cdc.gov/act-early/milestones/index.html." |
+
+The API also links one Go library and embeds one font family, whose licences differ from the data's:
+
+| Component | Source | Licence |
+|---|---|---|
+| `codeberg.org/go-pdf/fpdf` v0.12.0 (the PDF writer) | https://codeberg.org/go-pdf/fpdf | MIT; its `LICENSE` is in the image under `/usr/share/doc/happybabytracker-api/fpdf/` |
+| Noto Sans 2.015, Regular and Bold (embedded in `api/internal/export/fonts/`) | Copyright 2022 The Noto Project Authors | SIL Open Font License 1.1; subsets are embedded in exported PDFs; licence in `api/internal/export/fonts/LICENSE` and in the image under `/usr/share/doc/happybabytracker-api/noto-sans/` |
+
 The published API image, `ghcr.io/davcs86/happybabytracker-api`, contains the WHO tables, which are
 licensed CC BY-NC-SA 3.0 IGO: non-commercial use only, share-alike, attribution. Bundling them is the
 owner's decision. The image carries the notices under `/usr/share/doc/happybabytracker-api/` and the
-licence label `MIT AND CC-BY-NC-SA-3.0-IGO`; the UI image holds no tables and stays `MIT`. The CC BY-NC-SA
+licence label `MIT AND CC-BY-NC-SA-3.0-IGO AND OFL-1.1`; the UI image holds no tables and stays `MIT`. The CC BY-NC-SA
 3.0 IGO terms apply to those tables wherever the image is redistributed, and a commercial use needs
 WHO's permission. WHO's pages for these files carry no licence statement of their own and link to WHO's
 website terms of use, which say that reproducing substantial portions needs WHO's prior written
