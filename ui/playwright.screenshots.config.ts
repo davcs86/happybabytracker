@@ -34,9 +34,11 @@ export default defineConfig({
 		deviceScaleFactor: 1,
 		locale: 'en-US',
 		timezoneId: 'UTC',
-		launchOptions: process.env.PW_CHROMIUM_PATH
-			? { executablePath: process.env.PW_CHROMIUM_PATH }
-			: {}
+		launchOptions: {
+			...(process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {}),
+			// Partial re-raster of just-typed inputs differs by a shade between runs.
+			args: ['--disable-partial-raster', '--disable-lcd-text', '--force-color-profile=srgb']
+		}
 	},
 	projects: [
 		{ name: 'mobile', use: { viewport: { width: 390, height: 844 } } },

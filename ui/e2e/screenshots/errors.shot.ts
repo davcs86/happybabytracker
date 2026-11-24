@@ -9,7 +9,7 @@ test('error pages', async ({ page }) => {
 		page,
 		'errors',
 		'01-404-unknown-kid',
-		'An unknown kid (or one without a grant): the 404 page in the app shell'
+		'An unknown kid (or one without a grant): the 404 page, outside the app shell'
 	);
 	await page.goto('/no-such-page');
 	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
@@ -26,6 +26,6 @@ test('error pages', async ({ page }) => {
 		page,
 		'errors',
 		'04-503-api-unavailable',
-		'The API is down, unavailable or slow: the 503 page, the session kept'
+		'The API is down, unavailable or slow: SvelteKit’s plain fallback 503 page, the session kept'
 	);
 });

@@ -44,7 +44,7 @@ test('schedules and dismissals', async ({ page }) => {
 		page,
 		'vaccines',
 		'02-us-schedule',
-		'United States (stub) at 13 months: given, overdue, due, upcoming, recurring, Other'
+		'United States (stub) at 13 months: due and upcoming visits, Completed folded, also available, every season, Other'
 	);
 	await openDetails(page, 'About this schedule');
 	await openDetails(page, 'What is not included');
