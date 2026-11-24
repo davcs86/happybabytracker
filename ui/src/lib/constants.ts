@@ -277,6 +277,9 @@ export const MODULES = [
 	'sickness',
 	'medication'
 ] as const satisfies readonly ModuleId[];
+// Mirrors ExportMaxDays and ExportModules (constants.go): every module id, in MODULES order.
+export const EXPORT_MAX_DAYS = 93;
+export const EXPORT_MODULES = MODULES;
 export const MODULE_LABEL: Record<ModuleId, string> = {
 	bottles: 'Bottle',
 	nursing: 'Nursing',

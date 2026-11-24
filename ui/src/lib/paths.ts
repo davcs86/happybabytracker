@@ -28,3 +28,5 @@ export const milestonesPath = (kidId: string) => `/kids/${kidId}/milestones`;
 export const milestoneNewPath = (kidId: string, item?: string) =>
 	`${milestonesPath(kidId)}/new${item ? `?item=${item}` : ''}`;
 export const milestoneEntryPath = (kidId: string, id: string) => `${milestonesPath(kidId)}/${id}`;
+export const exportPath = (kidId: string) => `/kids/${kidId}/export`;
+export const exportPdfPath = (kidId: string) => `${exportPath(kidId)}/pdf`;

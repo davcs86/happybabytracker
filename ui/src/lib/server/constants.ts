@@ -2,6 +2,12 @@ export const SESSION_COOKIE = 'hbt_session';
 export const PARENT_SESSION_MAX_AGE_S = 30 * 24 * 60 * 60;
 export const ADMIN_SESSION_MAX_AGE_S = 12 * 60 * 60;
 export const API_TIMEOUT_MS = 5000;
+// Under the API's 30 s WriteTimeout, so the API's own answer arrives first.
+export const EXPORT_TIMEOUT_MS = 25000;
+export const EXPORT_DEFAULT_DAYS = 30;
+// The only answer streamed to the browser: an attachment named by its two dates.
+export const EXPORT_DISPOSITION_PATTERN =
+	/^attachment; filename="happybabytracker-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.pdf"$/;
 export const MIN_INTERNAL_API_TOKEN = 32;
 export const MAX_PORT = 65535;
 // One-time tokens are 43 base64url characters; anything else never reaches the API path.

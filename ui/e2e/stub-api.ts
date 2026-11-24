@@ -54,7 +54,9 @@ export const SCENARIOS = [
 	// Web Push or ntfy not configured on the server (the edge's default): writes answer 409.
 	'push_off',
 	'ntfy_off',
-	'channels_off'
+	'channels_off',
+	// Every export slot taken: a valid export answers 503 busy.
+	'export_busy'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -1113,6 +1115,7 @@ const FLOZ_DENOMINATOR = 10000 * 100;
 const PAGE_DEFAULT = 50;
 const PAGE_MAX = 100;
 const SUMMARY_MAX_DAYS = 93;
+const EXPORT_MAX_DAYS = 93;
 const BAND_SECOND_MONTHS = 12;
 const BAND_THIRD_MONTHS = 24;
 const OVERRIDE_LOOKBACK_S = 60 * 24 * 3600;
@@ -4101,6 +4104,62 @@ const milestoneRoutes: RouteDef[] = [
 	})
 ];
 
+// A fixed, deterministic stand-in for the API's PDF: its one text line lists the modules as received.
+function stubPdf(modules: string[]): string {
+	const text = `BT /F1 12 Tf 72 770 Td (STUB EXPORT, NOT A REAL DOCUMENT. Modules: ${modules.join(',')}) Tj ET`;
+	return [
+		'%PDF-1.4',
+		'% happybabytracker stub export',
+		'1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+		'2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+		'3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >> endobj',
+		`4 0 obj << /Length ${text.length} >> stream`,
+		text,
+		'endstream endobj',
+		'trailer << /Root 1 0 R >>',
+		'%%EOF',
+		''
+	].join('\n');
+}
+
+// export in httpapi/export.go: decodeJSON, from, to (a 94-day span is to), modules, then the free slot.
+const exportRoutes: RouteDef[] = [
+	kidRoute('POST', 'export', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, { from: 'string', to: 'string', modules: 'raw' });
+		if (!body) return;
+		const from = (body.from as string | null) ?? '';
+		const to = (body.to as string | null) ?? '';
+		if (!validDate(from) || from < kid.birthDate) return error(res, 422, 'invalid', 'from');
+		const days = (Date.parse(to) - Date.parse(from)) / (DAY_S * 1000) + 1;
+		if (!validDate(to) || to < from || to > todayIn(kid.timeZone) || days > EXPORT_MAX_DAYS) {
+			return error(res, 422, 'invalid', 'to');
+		}
+		const modules = body.modules;
+		if (
+			!Array.isArray(modules) ||
+			modules.length === 0 ||
+			modules.some(
+				(m, i) =>
+					typeof m !== 'string' ||
+					!(MODULES as readonly string[]).includes(m) ||
+					modules.indexOf(m) !== i
+			)
+		) {
+			return error(res, 422, 'invalid', 'modules');
+		}
+		if (state.scenario === 'export_busy') return error(res, 503, 'busy');
+		const pdf = stubPdf(modules as string[]);
+		res.writeHead(200, {
+			'content-type': 'application/pdf',
+			'content-disposition': `attachment; filename="happybabytracker-${from}-${to}.pdf"`,
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
+			'content-length': String(Buffer.byteLength(pdf))
+		});
+		res.end(pdf);
+	})
+];
+
 routes.push(
 	...TRACKER_KEYS.flatMap(trackerRoutes),
 	...overviewRoutes,
@@ -4108,6 +4167,7 @@ routes.push(
 	...vaccineRoutes,
 	...medicationRoutes,
 	...milestoneRoutes,
+	...exportRoutes,
 	...pushRoutes,
 	...ntfyRoutes
 );

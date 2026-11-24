@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { MODULES, TRACKER_KINDS } from '../constants';
 import { createApi } from './api';
 import type { Env } from './env';
+import type { ExportInput } from '../types';
 
 const TOKEN = 'internal-' + 'x'.repeat(40);
 const SESSION = 'session-' + 's'.repeat(35);
@@ -3139,5 +3140,153 @@ describe('createApi milestone calls', () => {
 		]);
 		expect(logged()).not.toContain('r-secret');
 		expect(logged()).not.toContain('Secret words');
+	});
+});
+
+describe('createApi export', () => {
+	const KID = 'k-1';
+	const INPUT: ExportInput = {
+		from: '2026-11-01',
+		to: '2026-11-24',
+		modules: ['bottles', 'growth']
+	};
+	const DISPOSITION = 'attachment; filename="happybabytracker-2026-11-01-2026-11-24.pdf"';
+	const pdf = (headers: Record<string, string> = {}) => {
+		let pulled = false;
+		const body = new ReadableStream<Uint8Array>(
+			{
+				pull(c) {
+					pulled = true;
+					c.enqueue(new TextEncoder().encode('%PDF-1.4 stub'));
+					c.close();
+				}
+			},
+			{ highWaterMark: 0 }
+		);
+		const res = new Response(body, {
+			status: 200,
+			headers: {
+				'content-type': 'application/pdf',
+				'content-disposition': DISPOSITION,
+				'cache-control': 'no-store',
+				...headers
+			}
+		});
+		return { res, pulled: () => pulled };
+	};
+
+	it('posts the range and modules as JSON and hands back the body unread, with its headers', async () => {
+		const { res, pulled } = pdf();
+		const jsonSpy = vi.spyOn(res, 'json');
+		const f = mockFetch(async () => res);
+		const r = await createApi(env, asFetch(f), SESSION).exportPdf(KID, INPUT);
+		const [url, init] = f.mock.calls[0];
+		expect(url).toBe('http://api:9210/v1/kids/k-1/export');
+		expect(init?.method).toBe('POST');
+		expect(JSON.parse(String(init?.body))).toEqual(INPUT);
+		const h = new Headers(init?.headers);
+		expect(h.get('authorization')).toBe(`Bearer ${TOKEN}`);
+		expect(h.get('x-session-token')).toBe(SESSION);
+		expect(h.get('content-type')).toBe('application/json');
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.contentType).toBe('application/pdf');
+		expect(r.disposition).toBe(DISPOSITION);
+		expect(jsonSpy).not.toHaveBeenCalled();
+		expect(pulled()).toBe(false);
+		expect(r.body).toBe(res.body);
+		expect(await new Response(r.body).text()).toBe('%PDF-1.4 stub');
+		expect(logSpy).not.toHaveBeenCalled();
+	});
+
+	it('applies EXPORT_TIMEOUT_MS (25000), not the 5000 ms of every other call', async () => {
+		const spy = vi.spyOn(AbortSignal, 'timeout');
+		const f = mockFetch(async () => pdf().res);
+		await createApi(env, asFetch(f), SESSION).exportPdf(KID, INPUT);
+		expect(spy.mock.calls).toEqual([[25000]]);
+		expect(f.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+	});
+
+	it('maps a 422 to invalid with its field, and a 503 to unavailable with its code', async () => {
+		const respond = (body: unknown, status: number) =>
+			createApi(env, asFetch(mockFetch(async () => json(body, status))), SESSION);
+		expect(
+			await respond({ error: 'invalid', field: 'modules' }, 422).exportPdf(KID, INPUT)
+		).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'modules' });
+		expect(await respond({ error: 'busy' }, 503).exportPdf(KID, INPUT)).toEqual({
+			ok: false,
+			status: 503,
+			reason: 'unavailable',
+			code: 'busy'
+		});
+		expect(await respond({ error: 'not_found' }, 404).exportPdf(KID, INPUT)).toEqual({
+			ok: false,
+			status: 404,
+			reason: 'not_found',
+			code: 'not_found'
+		});
+	});
+
+	it('maps a network error and a timeout to unavailable', async () => {
+		for (const err of [new TypeError('fetch failed'), new DOMException('t', 'TimeoutError')]) {
+			const f = mockFetch(async () => {
+				throw err;
+			});
+			expect(await createApi(env, asFetch(f), SESSION).exportPdf(KID, INPUT)).toEqual({
+				ok: false,
+				status: 0,
+				reason: 'unavailable'
+			});
+		}
+	});
+
+	it.each([
+		['a JSON 200', { 'content-type': 'application/json' }],
+		['an HTML 200', { 'content-type': 'text/html' }],
+		['an inline disposition', { 'content-disposition': 'inline' }],
+		['a path in the name', { 'content-disposition': 'attachment; filename="../x.pdf"' }],
+		['no disposition', { 'content-disposition': '' }]
+	])('refuses %s as a shape error and never streams it', async (_name, headers) => {
+		const { res, pulled } = pdf(headers);
+		const r = await createApi(env, asFetch(mockFetch(async () => res)), SESSION).exportPdf(
+			KID,
+			INPUT
+		);
+		expect(r).toEqual({ ok: false, status: 200, reason: 'error' });
+		expect(pulled()).toBe(false);
+	});
+
+	it('answers 404 without a call for a kid id outside ID_PATTERN', async () => {
+		const f = mockFetch(async () => pdf().res);
+		expect(await createApi(env, asFetch(f), SESSION).exportPdf('a/b', INPUT)).toEqual({
+			ok: false,
+			status: 404,
+			reason: 'not_found'
+		});
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a fixed-shape line: never the range, a module or the kid', async () => {
+		await createApi(
+			env,
+			asFetch(mockFetch(async () => json({ error: 'invalid', field: 'to' }, 422))),
+			SESSION
+		).exportPdf('k-secret', INPUT);
+		await createApi(
+			env,
+			asFetch(
+				mockFetch(async () => {
+					throw new DOMException('timed out', 'TimeoutError');
+				})
+			),
+			SESSION
+		).exportPdf('k-secret', INPUT);
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'export_pdf', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'export_pdf', status: 'timeout' }
+		]);
+		for (const needle of ['k-secret', '2026-11-01', '2026-11-24', 'bottles', 'growth']) {
+			expect(logged()).not.toContain(needle);
+		}
 	});
 });

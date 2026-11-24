@@ -216,6 +216,8 @@ export type ModuleId =
 	| 'vaccination'
 	| 'sickness'
 	| 'medication';
+// The export's JSON body: kid-local dates, ids in EXPORT_MODULES order.
+export type ExportInput = { from: string; to: string; modules: ModuleId[] };
 export type ModuleState = {
 	module: ModuleId;
 	enabled: boolean;

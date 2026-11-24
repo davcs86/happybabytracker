@@ -1,4 +1,11 @@
-import { API_TIMEOUT_MS, ID_PATTERN, TOKEN_PATTERN, VACCINE_LINE_PATTERN } from './constants';
+import {
+	API_TIMEOUT_MS,
+	EXPORT_DISPOSITION_PATTERN,
+	EXPORT_TIMEOUT_MS,
+	ID_PATTERN,
+	TOKEN_PATTERN,
+	VACCINE_LINE_PATTERN
+} from './constants';
 import type { Env } from './env';
 import {
 	AGE_BANDS,
@@ -39,6 +46,7 @@ import type {
 	DaySummary,
 	Diaper,
 	EntryBody,
+	ExportInput,
 	Grant,
 	GrowthLength,
 	GrowthRow,
@@ -114,6 +122,10 @@ export type ApiResult<T> =
 	| { ok: true; data: T }
 	| { ok: false; status: number; reason: ApiReason; code?: string; field?: string };
 
+export type ExportResult =
+	| { ok: true; body: ReadableStream<Uint8Array>; contentType: string; disposition: string }
+	| Extract<ApiResult<never>, { ok: false }>;
+
 type Endpoint =
 	| 'health'
 	| 'reminders_health'
@@ -167,7 +179,8 @@ type Endpoint =
 	| 'vaccine_catalogue'
 	| 'set_dismissal'
 	| 'clear_dismissal'
-	| 'dismiss_before';
+	| 'dismiss_before'
+	| 'export_pdf';
 
 // Thrown by a wire-shape parser; the call becomes reason 'error'.
 class ShapeError extends Error {}
@@ -985,6 +998,17 @@ export function createApi(
 ) {
 	const base = env.apiBaseUrl.replace(/\/+$/, '');
 
+	function requestHeaders(accept: string, json: boolean): Record<string, string> {
+		const headers: Record<string, string> = {
+			authorization: `Bearer ${env.internalApiToken}`,
+			accept
+		};
+		if (json) headers['content-type'] = 'application/json';
+		if (session) headers['x-session-token'] = session;
+		if (clientAddress) headers['x-client-address'] = clientAddress;
+		return headers;
+	}
+
 	async function call<T>(
 		endpoint: Endpoint,
 		method: string,
@@ -992,14 +1016,7 @@ export function createApi(
 		parse: ((body: unknown) => T) | null,
 		body?: unknown
 	): Promise<ApiResult<T>> {
-		const headers: Record<string, string> = {
-			authorization: `Bearer ${env.internalApiToken}`,
-			accept: 'application/json'
-		};
-		if (body !== undefined) headers['content-type'] = 'application/json';
-		if (session) headers['x-session-token'] = session;
-		if (clientAddress) headers['x-client-address'] = clientAddress;
-
+		const headers = requestHeaders('application/json', body !== undefined);
 		let res: Response;
 		let raw: unknown = undefined;
 		let parsed = true;
@@ -1021,18 +1038,7 @@ export function createApi(
 			return { ok: false, status: 0, reason: 'unavailable' };
 		}
 
-		if (!res.ok) {
-			logFailure(endpoint, res.status);
-			const failure: ApiResult<T> = {
-				ok: false,
-				status: res.status,
-				reason: reasonFor(res.status)
-			};
-			const err = typeof raw === 'object' && raw !== null ? (raw as Wire) : {};
-			if (typeof err.error === 'string') failure.code = err.error;
-			if (res.status === 422 && typeof err.field === 'string') failure.field = err.field;
-			return failure;
-		}
+		if (!res.ok) return refused(endpoint, res.status, raw);
 		if (parse === null) return { ok: true, data: null as T };
 		try {
 			if (!parsed) throw new ShapeError();
@@ -1041,6 +1047,55 @@ export function createApi(
 			logFailure(endpoint, res.status);
 			return { ok: false, status: res.status, reason: 'error' };
 		}
+	}
+
+	function refused(endpoint: Endpoint, status: number, raw: unknown) {
+		logFailure(endpoint, status);
+		const failure: Extract<ApiResult<never>, { ok: false }> = {
+			ok: false,
+			status,
+			reason: reasonFor(status)
+		};
+		const err = typeof raw === 'object' && raw !== null ? (raw as Wire) : {};
+		if (typeof err.error === 'string') failure.code = err.error;
+		if (status === 422 && typeof err.field === 'string') failure.field = err.field;
+		return failure;
+	}
+
+	// A 200 is streamed unread, and only as a PDF attachment; a refusal's JSON is read as call() reads it.
+	async function exportPdf(kidId: string, input: ExportInput): Promise<ExportResult> {
+		const endpoint = 'export_pdf';
+		let res: Response;
+		let raw: unknown = undefined;
+		try {
+			res = await fetchFn(`${base}/v1/kids/${kidId}/export`, {
+				method: 'POST',
+				headers: requestHeaders('application/pdf', true),
+				body: JSON.stringify(input),
+				signal: AbortSignal.timeout(EXPORT_TIMEOUT_MS)
+			});
+			if (!res.ok) {
+				raw = await res.json().catch((e: unknown) => {
+					if (isAbort(e)) throw e;
+				});
+			}
+		} catch (e) {
+			logFailure(endpoint, isAbort(e) ? 'timeout' : 'network');
+			return { ok: false, status: 0, reason: 'unavailable' };
+		}
+		if (!res.ok) return refused(endpoint, res.status, raw);
+		const contentType = res.headers.get('content-type') ?? '';
+		const disposition = res.headers.get('content-disposition') ?? '';
+		if (
+			res.body === null ||
+			contentType !== 'application/pdf' ||
+			!EXPORT_DISPOSITION_PATTERN.test(disposition)
+		) {
+			await res.body?.cancel().catch(() => {});
+			logFailure(endpoint, res.status);
+			return { ok: false, status: res.status, reason: 'error' };
+		}
+		return { ok: true, body: res.body, contentType, disposition };
 	}
 
 	const tokenPath = (token: string) =>
@@ -1479,6 +1534,8 @@ export function createApi(
 					(b) => int(object(b).dismissed),
 					{ before, reason }
 				)
-			)
+			),
+		exportPdf: (kidId: string, input: ExportInput): Promise<ExportResult> =>
+			ID_PATTERN.test(kidId) ? exportPdf(kidId, input) : Promise.resolve(NOT_FOUND)
 	};
 }
