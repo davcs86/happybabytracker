@@ -231,6 +231,13 @@ type Growth struct {
 	Length, Head *units.Length
 }
 
+// Milestone is one reached milestone: exactly one of Item (a catalog id) and Text (a custom milestone) is set.
+type Milestone struct {
+	Entry
+	Item, Text *string
+	ReachedOn  string // YYYY-MM-DD in the kid's zone
+}
+
 // Bottle content names, in storage order.
 const (
 	ContentBreastMilk = "breast_milk"

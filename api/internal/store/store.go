@@ -19,6 +19,7 @@ const dbFile = "happybabytracker.db"
 var (
 	ErrNotFound     = errors.New("store: not found")
 	ErrConflict     = errors.New("store: conflict")
+	ErrDuplicate    = errors.New("store: duplicate")
 	ErrLastGuardian = errors.New("store: last guardian")
 	ErrForbidden    = errors.New("store: forbidden")
 	// ErrInvalidContents is a bottle whose contents are empty, repeat a name or name an unknown one.

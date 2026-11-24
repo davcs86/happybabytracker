@@ -304,3 +304,26 @@ func TestModulesWithNothingToWriteStayOnTheReadPool(t *testing.T) {
 		}
 	}
 }
+
+func TestMilestonesKeepModuleOnAt24Months(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	for _, c := range []struct {
+		days int
+		keep bool
+	}{{10, true}, {61, false}} {
+		k, loc, start := toddler(t, s, ana.ID)
+		recorded := start.Add(-time.Duration(c.days) * 24 * time.Hour)
+		if _, err := s.CreateMilestone(ctx, k.ID, ana.ID, itemMilestone("m2-social-1", "2025-01-20"), recorded); err != nil {
+			t.Fatal(err)
+		}
+		want := ModuleState{Module: "milestones", Enabled: c.keep, Default: false, Overridden: c.keep}
+		if st := mustModules(t, s, k.ID, loc, t0)["milestones"]; st != want {
+			t.Errorf("recorded %d days before the band: %+v, want %+v", c.days, st, want)
+		}
+		row, stored := storedModules(t, s, k.ID)["milestones"]
+		if stored != c.keep || (c.keep && row != (moduleRow{true, t0.Unix()})) {
+			t.Errorf("recorded %d days before the band: stored row %v (%v), want stored %v", c.days, row, stored, c.keep)
+		}
+	}
+}
