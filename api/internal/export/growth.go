@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -122,7 +123,7 @@ func growthItems(snap store.ExportSnapshot, req Request, b *budget) ([]item, err
 	if len(listed) > shown {
 		out = append(out, item{paragraph: strconv.Itoa(len(listed)-shown) + overflow})
 	}
-	out = append(out, item{paragraph: info.Attribution}, item{paragraph: licencePrefix + info.Licence})
+	out = append(out, item{paragraph: info.Attribution}, item{paragraph: licencePrefix + pdfLicence(info.Licence)})
 	for _, p := range growth.AdaptationDisclaimers(src, tables) {
 		out = append(out, item{paragraph: p})
 	}
@@ -336,4 +337,10 @@ func niceDomain(values []float64, target int) (float64, float64) {
 	step := niceStep(hi-lo, target)
 	d := stepDecimals(step)
 	return toFixed(math.Floor(lo/step)*step, d), toFixed(math.Ceil(hi/step)*step, d)
+}
+
+// pdfLicence keeps the licence line up to its first "; ": the rest names repository files the PDF does not carry.
+func pdfLicence(l string) string {
+	before, _, _ := strings.Cut(l, "; ")
+	return before
 }

@@ -133,18 +133,31 @@ func TestGrowthAttribution(t *testing.T) {
 	// Weight, length and BMI from the 2006 standards and head from hcfa: not the 2007 reference.
 	text := joined(pdfText(t, renderGrowth(t, growthKid("who", "female", "2026-08-01"),
 		[]model.Growth{measured(t, "a", "2026-10-29", 5000, 600, 400)}, metric, now, "2026-11-20")))
-	wantIn(t, "who", text, who.Attribution, "Licence: "+who.Licence, all[0], all[1])
-	wantNotIn(t, "who", text, all[2], "NOT MIT", "convert.py", "Source files", cdc.Attribution)
+	wantIn(t, "who", text, who.Attribution, "Licence: CC BY-NC-SA 3.0 IGO (https://creativecommons.org/licenses/by-nc-sa/3.0/igo/legalcode)", all[0], all[1])
+	wantNotIn(t, "who", text, all[2], "convert.py", "Source files", cdc.Attribution)
+	wantNoRepoText(t, "who", text)
 
 	older := joined(pdfText(t, renderGrowth(t, growthKid("who", "male", "2020-06-01"),
 		[]model.Growth{measured(t, "a", "2026-06-01", 20000, 1150, 510)}, metric, now, "2026-11-20")))
 	wantIn(t, "who at 6 years", older, all[2])
-	wantNotIn(t, "who at 6 years", older, all[0], all[1], "NOT MIT")
+	wantNotIn(t, "who at 6 years", older, all[0], all[1])
+	wantNoRepoText(t, "who at 6 years", older)
 
 	text = joined(pdfText(t, renderGrowth(t, growthKid("cdc", "female", "2026-08-01"),
 		[]model.Growth{measured(t, "a", "2026-10-29", 5000, 600, 400)}, metric, now, "2026-11-20")))
-	wantIn(t, "cdc", text, cdc.Attribution, "Licence: "+cdc.Licence)
-	wantNotIn(t, "cdc", text, "adaptation", "NOT MIT", who.Attribution)
+	wantIn(t, "cdc", text, cdc.Attribution, "Licence: public domain (U.S. Government work, https://www.cdc.gov/other/agencymaterials.html)")
+	wantNotIn(t, "cdc", text, "adaptation", who.Attribution)
+	wantNoRepoText(t, "cdc", text)
+}
+
+// repoText is the licence lines' repository references as whole words, in any case; the CC URL's "licenses" is not one.
+var repoText = regexp.MustCompile(`(?i)\b(not MIT|NOTICE|LICENSE|directory)\b`)
+
+func wantNoRepoText(t *testing.T, name, text string) {
+	t.Helper()
+	if m := repoText.FindString(text); m != "" {
+		t.Errorf("%s: %q present", name, m)
+	}
 }
 
 func TestGrowthUnscoredWording(t *testing.T) {
@@ -246,7 +259,7 @@ func TestGrowthNoJudgement(t *testing.T) {
 			text := joined(pdfText(t, renderGrowth(t, kid, rows, u, now, "2026-11-20")))
 			src := growth.Source(kid.GrowthSource)
 			info, _ := growth.SourceInfo(src)
-			exempt := append([]string{info.Attribution, "Licence: " + info.Licence}, growth.AdaptationDisclaimers(src, []string{"wfa-day", "hcfa-day", "wfa-month"})...)
+			exempt := append([]string{info.Attribution, licencePrefix + pdfLicence(info.Licence)}, growth.AdaptationDisclaimers(src, []string{"wfa-day", "hcfa-day", "wfa-month"})...)
 			for _, e := range exempt {
 				text = strings.ReplaceAll(text, e, "")
 			}
