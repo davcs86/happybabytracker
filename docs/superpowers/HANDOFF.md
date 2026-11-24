@@ -150,6 +150,10 @@ The owner's answers of 2026-11-23, recorded verbatim in the plan ("Questions for
 - No offline page and no fetch handler: the service worker handles install, push and notificationclick
   only. Spec 11's offline page is deliberately not built.
 
+The owner's answers of 2026-11-24 (after the final review):
+
+- The smoke's API memory ceiling is 64 MiB (raised from 60 MiB); the UI's stays 140 MiB.
+
 ## Order of work (design section 16)
 
 1. **Foundation** (this repo) — done.
@@ -286,11 +290,9 @@ log.
   from the home Due list for up to the kid's overdue minutes.
 - Plan 6, smoke: the push assertion sees only the title, path and tag (the test route decodes only those);
   the payload's other fields are covered by the Go tests, so the smoke is not proof that nothing else
-  leaks. The API's memory ceiling has thin headroom: one smoke run on 2026-11-23 read a 61 MiB peak for
-  the first API process (a transient during password hashing; other runs 46–55 MiB) against the 60 MiB
-  ceiling, so step 10 can flake. The ceiling is the owner's call, one of: raise it to 64 MiB (the
-  reviewer's recommendation; it touches `scripts/smoke.sh`, the README's memory lines and the API
-  Dockerfile's comment), or keep 60 MiB and treat a step-10 failure at 61 MiB as a known flake to re-run.
+  leaks. The API's memory ceiling is 64 MiB (owner, 2026-11-24): one smoke run on 2026-11-23 read a
+  61 MiB peak for the first API process (a transient during password hashing; other runs 46–55 MiB)
+  against the former 60 MiB ceiling. The edge's container limit is 96m; the UI ceiling stays 140 MiB.
 - Plan 6, PR notes: medication entries of the home `due` list carry `state`, vaccine entries `status`;
   medication entries come before vaccine ones; only the first page of doses is reachable from the UI for
   edit and delete.

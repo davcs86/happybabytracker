@@ -226,7 +226,7 @@ VAPID variables, and every other `NTFY_*` variable needs `NTFY_URL`. For example
 `VAPID_PRIVATE_KEY` or only `VAPID_SUBJECT`, a malformed key, a subject that is not an `https:` URL,
 `HBT_ALLOW_FAKE_PUSH=1` without VAPID, and `NTFY_TOKEN` without `NTFY_URL`.
 It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
-two concurrent password hashes stay within the edge's 96m container limit and the 60 MiB memory ceiling.
+two concurrent password hashes stay within the edge's 96m container limit and the 64 MiB memory ceiling.
 Changing `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `INTERNAL_API_TOKEN` ends every admin session at the next
 start; parent sessions are kept.
 
@@ -313,7 +313,8 @@ Memory readings: the smoke's step 10 reads each container's cgroup high-water ma
 (`memory.max_usage_in_bytes`), which includes page cache, so it varies between runs. Three runs on
 2026-11-23 with all three vaccination schedules loaded read API 46, 46 and 48 MiB for the first process
 (9–10 MiB after the restart, 46 MiB after the login burst) and UI 120, 55 and 55 MiB, against ceilings of
-60 and 140 MiB; an earlier run read API 58 MiB.
+60 and 140 MiB; an earlier run read API 58 MiB. A plan-6 run read a 61 MiB transient for the first API
+process, so the owner raised the API ceiling to 64 MiB on 2026-11-24 (the edge's container limit is 96m).
 
 ## Release
 

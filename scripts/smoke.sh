@@ -6,7 +6,7 @@ set -euo pipefail
 API_IMAGE="${1:?usage: smoke.sh <api-image> <ui-image>}"
 UI_IMAGE="${2:?usage: smoke.sh <api-image> <ui-image>}"
 
-API_MEM_LIMIT_MIB=60
+API_MEM_LIMIT_MIB=64
 UI_MEM_LIMIT_MIB=140
 UI_PORT="${SMOKE_UI_PORT:-9212}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

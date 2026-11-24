@@ -20,7 +20,7 @@ COPY --from=build /src/internal/growth/data/cdc/NOTICE /usr/share/doc/happybabyt
 COPY --from=build --chown=10001:10001 /out/data /data
 USER 10001:10001
 ENV DATA_DIR=/data
-# Two concurrent argon2 hashes (~38 MiB live) must stay under the 60 MiB ceiling in a 96m container.
+# Two concurrent argon2 hashes (~38 MiB live) must stay under the 64 MiB ceiling in a 96m container.
 ENV GOMEMLIMIT=40MiB
 VOLUME /data
 EXPOSE 9210
