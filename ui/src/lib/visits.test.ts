@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import type { VisitDetail } from './types';
-import { hasOutcome, visitRecordDate, visitRecordLines, visitWhen, visitWhenLong } from './visits';
+import {
+	hasOutcome,
+	visitDueWhen,
+	visitRecordDate,
+	visitRecordLines,
+	visitWhen,
+	visitWhenLong
+} from './visits';
 
 describe('visit dates', () => {
 	it('writes a row on the kid’s clock, not the server’s', () => {
 		expect(visitWhen('2026-12-03T18:30:00Z', 'America/Los_Angeles')).toBe('Thu 3 Dec 2026, 10:30');
 		expect(visitWhen('2026-12-03T23:30:00Z', 'Europe/Madrid')).toBe('Fri 4 Dec 2026, 00:30');
+	});
+
+	it('writes Home’s Due line without the year, on the kid’s clock', () => {
+		expect(visitDueWhen('2026-12-03T18:30:00Z', 'America/Los_Angeles')).toBe('Thu 3 Dec, 10:30');
+		expect(visitDueWhen('2026-12-31T23:30:00Z', 'Europe/Madrid')).toBe('Fri 1 Jan, 00:30');
 	});
 
 	it('writes the visit page’s line with the length', () => {

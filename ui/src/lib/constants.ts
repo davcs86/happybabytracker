@@ -14,6 +14,7 @@ import type {
 	Severity,
 	SymptomName,
 	TempMethod,
+	TimelineKind,
 	TimelineType,
 	TimerKind,
 	TrackerKind,
@@ -218,15 +219,18 @@ export const TRACKER_KINDS: readonly TrackerKind[] = [
 	'symptoms'
 ];
 export const TIMER_KINDS = ['sleep', 'nursing'] as const satisfies readonly TimerKind[];
+// The timeline's filter boxes, in this order.
+export const TIMELINE_KINDS: readonly TimelineKind[] = [...TRACKER_KINDS, 'visit'];
 // The one place the timeline's singular type names meet the route names that paths and TrackerKind use.
-export const TIMELINE_TYPE: Record<TrackerKind, TimelineType> = {
+export const TIMELINE_TYPE: Record<TimelineKind, TimelineType> = {
 	bottles: 'bottle',
 	nursing: 'nursing',
 	pumping: 'pumping',
 	sleep: 'sleep',
 	diapers: 'diaper',
 	meals: 'meal',
-	symptoms: 'symptom'
+	symptoms: 'symptom',
+	visit: 'visit'
 };
 export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> = {
 	bottles: { log: 'Log a bottle', edit: 'Edit bottle' },
@@ -246,6 +250,7 @@ export const TRACKER_LABEL: Record<TrackerKind, string> = {
 	meals: 'Solids',
 	symptoms: 'Symptom'
 };
+export const TIMELINE_LABEL: Record<TimelineKind, string> = { ...TRACKER_LABEL, visit: 'Visits' };
 // Longest range the summary endpoint answers (SummaryMaxDays), so a longer timeline range is refused here.
 export const SUMMARY_MAX_DAYS = 93;
 export const VOLUME_UNITS = ['ml', 'floz'] as const satisfies readonly VolumeUnit[];

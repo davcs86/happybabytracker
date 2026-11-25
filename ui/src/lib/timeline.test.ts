@@ -7,9 +7,18 @@ import {
 	readFilter,
 	shownModules,
 	timelineLine,
-	timelineSearch
+	timelineSearch,
+	visitTimelineLine
 } from './timeline';
-import type { ModuleId, ModuleState, TrackerTimelineItem, TrackerKind } from './types';
+import type {
+	ModuleId,
+	ModuleState,
+	TimelineItem,
+	TimelineKind,
+	TrackerTimelineItem,
+	TrackerKind,
+	VisitRow
+} from './types';
 
 const METRIC = { weight: 'kg', volume: 'ml', temp: 'c' } as const;
 const IMPERIAL = { weight: 'lb', volume: 'floz', temp: 'f' } as const;
@@ -291,6 +300,43 @@ describe('timelineLine pumping with sides', () => {
 	});
 });
 
+const visitItem = (startsAt: string, over: Partial<VisitRow> = {}): TimelineItem => ({
+	kind: 'visit',
+	at: startsAt,
+	entry: {
+		id: `v-${startsAt}`,
+		note: null,
+		startsAt,
+		durationMin: 30,
+		kind: 'sick',
+		status: 'past',
+		cancelledAt: null,
+		provider: null,
+		location: null,
+		outcomeNotes: null,
+		revision: 0,
+		linked: { growth: 0, vaccinations: 0, medications: 0 },
+		...over
+	} as VisitRow
+});
+
+describe('visitTimelineLine', () => {
+	it('names a visit by its kind, with Cancelled as its detail only when it is cancelled', () => {
+		expect(visitTimelineLine({ kind: 'sick', status: 'past' })).toEqual({
+			title: 'Sick visit',
+			detail: null
+		});
+		expect(visitTimelineLine({ kind: 'well_child', status: 'upcoming' })).toEqual({
+			title: 'Well-child visit',
+			detail: null
+		});
+		expect(visitTimelineLine({ kind: 'dental', status: 'cancelled' })).toEqual({
+			title: 'Dental visit',
+			detail: 'Cancelled'
+		});
+	});
+});
+
 describe('groupByDay', () => {
 	it('groups consecutive entries by the kid-local date and keeps the order', () => {
 		const items = [
@@ -308,6 +354,20 @@ describe('groupByDay', () => {
 			['2026-03-28', 2]
 		]);
 		expect(groupByDay([], 'UTC')).toEqual([]);
+	});
+
+	it('puts a visit under the kid-local day it starts on, among the tracker entries', () => {
+		const items = [
+			diaper('2026-03-29T21:30:00Z'),
+			visitItem('2026-03-28T23:30:00Z'),
+			diaper('2026-03-28T21:00:00Z')
+		];
+		expect(
+			groupByDay(items, 'Europe/Madrid').map((g) => [g.date, g.items.map((i) => i.kind)])
+		).toEqual([
+			['2026-03-29', ['diapers', 'visit']],
+			['2026-03-28', ['diapers']]
+		]);
 	});
 });
 
@@ -426,6 +486,19 @@ describe('readFilter', () => {
 		expect(none.query?.types).toBeUndefined();
 	});
 
+	it('reads the visit type like a tracker, after the trackers', () => {
+		const withVisits = { ...ctx, defaults: [...ALL, 'visit'] as TimelineKind[] };
+		expect(readFilter(params(''), withVisits).filter).toMatchObject({
+			kinds: [...ALL, 'visit'],
+			narrowed: false
+		});
+		const only = readFilter(params('types=visit'), withVisits);
+		expect(only.filter).toMatchObject({ kinds: ['visit'], narrowed: true });
+		expect(only.query?.types).toEqual(['visit']);
+		expect(readFilter(params('types=visit,bottle'), ctx).query?.types).toEqual(['bottle', 'visit']);
+		expect(readFilter(params('types=visits'), ctx).filter.kinds).toEqual(ALL);
+	});
+
 	it('passes the cursor on untouched', () => {
 		const r = readFilter(params('cursor=MTIzOmFiYw'), ctx);
 		expect(r.filter.cursor).toBe('MTIzOmFiYw');
@@ -449,6 +522,9 @@ describe('timelineSearch', () => {
 		).toBe('from=2026-10-14&to=2026-10-15&types=bottle&types=meal&cursor=a+b');
 		expect(timelineSearch(base, 'next')).toBe('from=2026-10-14&to=2026-10-15&cursor=next');
 		expect(timelineSearch({ ...base, cursor: 'old' }, null)).toBe('from=2026-10-14&to=2026-10-15');
+		expect(timelineSearch({ ...base, kinds: ['sleep', 'visit'], narrowed: true })).toBe(
+			'from=2026-10-14&to=2026-10-15&types=sleep&types=visit'
+		);
 	});
 });
 
@@ -472,7 +548,13 @@ describe('defaultKinds and shownModules', () => {
 		expect(defaultKinds([])).toEqual([]);
 	});
 
+	it('adds visits, last, while the Medical visits module is on', () => {
+		expect(defaultKinds([state('visits', true), state('sleep', true)])).toEqual(['sleep', 'visit']);
+		expect(defaultKinds([state('visits', false), state('sleep', true)])).toEqual(['sleep']);
+	});
+
 	it('maps shown trackers back to their modules', () => {
 		expect([...shownModules(['meals', 'sleep'])].sort()).toEqual(['feeding', 'sleep']);
+		expect([...shownModules(['visit', 'diapers'])].sort()).toEqual(['diapers', 'visits']);
 	});
 });

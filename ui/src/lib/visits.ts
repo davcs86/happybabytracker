@@ -1,16 +1,16 @@
 import { instantToLocalInput } from './time-zone';
 import type { Visit, VisitDetail, VisitLinks } from './types';
 
-type Style = { weekday?: 'short' | 'long'; month: 'short' | 'long' };
+type Style = { weekday?: 'short' | 'long'; month: 'short' | 'long'; year?: false };
 
 // date is YYYY-MM-DD; formatted in UTC so neither the server's zone nor the locale moves it.
-function formatDate(date: string, { weekday, month }: Style): string {
+function formatDate(date: string, { weekday, month, year }: Style): string {
 	const parts = new Intl.DateTimeFormat('en-US', {
 		timeZone: 'UTC',
 		...(weekday ? { weekday } : {}),
 		day: 'numeric',
 		month,
-		year: 'numeric'
+		...(year === false ? {} : { year: 'numeric' as const })
 	}).formatToParts(new Date(`${date}T00:00:00Z`));
 	const part = (type: string) => parts.find((p) => p.type === type)?.value;
 	return [weekday && part('weekday'), part('day'), part('month'), part('year')]
@@ -24,6 +24,12 @@ const local = (instant: string, zone: string) => instantToLocalInput(instant, zo
 export function visitWhen(startsAt: string, zone: string): string {
 	const [date, time] = local(startsAt, zone);
 	return `${formatDate(date, { weekday: 'short', month: 'short' })}, ${time}`;
+}
+
+// Home's Due line: "Thu 3 Dec, 10:30" on the kid's clock.
+export function visitDueWhen(startsAt: string, zone: string): string {
+	const [date, time] = local(startsAt, zone);
+	return `${formatDate(date, { weekday: 'short', month: 'short', year: false })}, ${time}`;
 }
 
 // The visit page: "Thursday 3 December 2026, 10:30 · 30 min".

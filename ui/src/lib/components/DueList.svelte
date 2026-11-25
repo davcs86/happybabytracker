@@ -1,14 +1,21 @@
 <script lang="ts">
+	import type { Component } from 'svelte';
 	import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
+	import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 	import SyringeIcon from '@lucide/svelte/icons/syringe';
 	import { SECTION_HEADING } from '#lib/components/home.js';
 	import type { DueLine } from '#lib/due.js';
 
 	let { lines }: { lines: DueLine[] } = $props();
 
+	const VISUAL: Record<DueLine['kind'], { chip: string; icon: Component }> = {
+		medication: { chip: 'tracker-symptom', icon: NotebookPenIcon },
+		vaccine: { chip: '[--h:235]', icon: SyringeIcon },
+		visit: { chip: '[--h:235]', icon: StethoscopeIcon }
+	};
+
 	// dueLines ends with one "N more on the … page" line per hidden kind; those are plain links.
 	const isMore = (line: DueLine) => /^\d+ more on the /.test(line.text);
-	const isMedication = (line: DueLine) => line.href.endsWith('/medication');
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- the path helpers keep an absolute path without JavaScript -->
@@ -25,18 +32,13 @@
 							>{line.text}</a
 						>
 					{:else}
+						{@const Icon = VISUAL[line.kind].icon}
 						<a
 							href={line.href}
 							class="flex min-h-14 items-center gap-3 rounded-xl border bg-card px-3 py-2 hover:bg-accent"
 						>
-							<span
-								class="tracker-chip size-9 {isMedication(line) ? 'tracker-symptom' : '[--h:235]'}"
-							>
-								{#if isMedication(line)}
-									<NotebookPenIcon aria-hidden="true" class="size-[18px]" />
-								{:else}
-									<SyringeIcon aria-hidden="true" class="size-[18px]" />
-								{/if}
+							<span class="tracker-chip size-9 {VISUAL[line.kind].chip}">
+								<Icon aria-hidden="true" class="size-[18px]" />
 							</span>
 							<span class="min-w-0 flex-1 text-sm font-semibold [overflow-wrap:anywhere]"
 								>{line.text}</span

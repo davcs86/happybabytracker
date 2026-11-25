@@ -66,7 +66,7 @@ export type TrackerKind =
 	'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals' | 'symptoms';
 
 export type TimelineType =
-	'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal' | 'symptom';
+	'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal' | 'symptom' | 'visit';
 
 export type VolumeUnit = Units['volume'];
 
@@ -234,6 +234,7 @@ export type TrackerTimelineItem = {
 	[K in TrackerKind]: { kind: K; at: string; entry: TrackerEntries[K] };
 }[TrackerKind];
 export type TimelineItem = TrackerTimelineItem | { kind: 'visit'; at: string; entry: VisitRow };
+export type TimelineKind = TimelineItem['kind'];
 
 export type ModuleId =
 	| 'bottles'
