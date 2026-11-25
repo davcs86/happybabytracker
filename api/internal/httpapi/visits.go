@@ -5,11 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
@@ -309,5 +311,119 @@ func (d Deps) deleteVisit(w http.ResponseWriter, r *http.Request) {
 	err := d.Store.DeleteVisit(r.Context(), r.PathValue("kid"), PrincipalFrom(r.Context()).ParentID, id, deleteLinked)
 	if entryOK(w, err) {
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// outcomeInput is the body of POST …/outcome; each block is the body its module's own POST takes.
+type outcomeInput struct {
+	Revision     *int                  `json:"revision"`
+	OutcomeNotes optionalString        `json:"outcome_notes"`
+	Growth       *growthInput          `json:"growth"`
+	Vaccinations []administrationInput `json:"vaccinations"`
+	Medications  []medicationInput     `json:"medications"`
+}
+
+// outcome validates in through the modules' own mergeOnto, dates defaulting to the visit's; the refused field is
+// named as growth.f, vaccinations[i].f or medications[i].f.
+func (in outcomeInput) outcome(v model.Visit, kid model.Kid, loc *time.Location, birth, now time.Time) (store.VisitOutcome, string) {
+	out := store.VisitOutcome{NotesSet: in.OutcomeNotes.Set, Notes: in.OutcomeNotes.V}
+	if out.NotesSet && (out.Notes == nil || !textOK(out.Notes, constants.VisitOutcomeNotesMaxLen)) {
+		return out, "outcome_notes"
+	}
+	day := v.StartsAt.In(loc).Format(time.DateOnly)
+	if in.Growth != nil {
+		g, f := in.Growth.mergeOnto(model.Growth{MeasuredOn: day}, kid, loc, now)
+		if f != "" {
+			return out, "growth." + f
+		}
+		out.Growth = &g
+	}
+	for i, a := range in.Vaccinations {
+		admin, f := a.mergeOnto(model.Administration{GivenOn: day}, kid.BirthDate, loc, now)
+		if f != "" {
+			return out, rowField("vaccinations", i, f)
+		}
+		out.Vaccinations = append(out.Vaccinations, admin)
+	}
+	for i, m := range in.Medications {
+		course, f := m.mergeOnto(model.Medication{StartAt: v.StartsAt, Active: true}, loc, birth, now)
+		if f != "" {
+			return out, rowField("medications", i, f)
+		}
+		out.Medications = append(out.Medications, course)
+	}
+	return out, ""
+}
+
+func rowField(section string, i int, field string) string {
+	return section + "[" + strconv.Itoa(i) + "]." + field
+}
+
+// noteOutcomeCounts hands the rows one outcome created to the request's one log line.
+func noteOutcomeCounts(w http.ResponseWriter, o store.VisitOutcome) {
+	if rec := recorder(w); rec != nil {
+		growth := 0
+		if o.Growth != nil {
+			growth = 1
+		}
+		rec.outcome = &[3]int{growth, len(o.Vaccinations), len(o.Medications)}
+	}
+}
+
+func (d Deps) recordOutcome(w http.ResponseWriter, r *http.Request) {
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	var in outcomeInput
+	if !decodeJSON(w, r, &in) {
+		return
+	}
+	switch {
+	case in.Revision == nil:
+		respondInvalid(w, "revision")
+		return
+	case !in.OutcomeNotes.Set && in.Growth == nil && len(in.Vaccinations) == 0 && len(in.Medications) == 0:
+		respondInvalid(w, "outcome")
+		return
+	case len(in.Vaccinations) > constants.MaxOutcomeVaccinations:
+		respondInvalid(w, "vaccinations")
+		return
+	case len(in.Medications) > constants.MaxOutcomeMedications:
+		respondInvalid(w, "medications")
+		return
+	}
+	if len(in.Vaccinations) > 0 && !schedulesLoaded(w) {
+		return
+	}
+	kid, loc, ok := d.growthKid(w, r)
+	if !ok {
+		return
+	}
+	birth, err := kidtime.ParseDate(kid.BirthDate, loc)
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	visit, err := d.Store.Visit(r.Context(), kid.ID, id)
+	if !entryOK(w, err) {
+		return
+	}
+	now := d.Now()
+	o, field := in.outcome(visit.Visit, kid, loc, birth, now)
+	if field != "" {
+		respondInvalid(w, field)
+		return
+	}
+	out, err := d.Store.RecordOutcome(r.Context(), kid.ID, PrincipalFrom(r.Context()).ParentID, id, *in.Revision, o, now)
+	var row *store.OutcomeRowError
+	switch {
+	case errors.As(err, &row) && errors.Is(err, store.ErrInvalidAntigens):
+		respondInvalid(w, rowField(row.Section, row.Index, "antigens"))
+	case errors.As(err, &row) && errors.Is(err, store.ErrInvalidSchedule):
+		respondInvalid(w, rowField(row.Section, row.Index, "schedule"))
+	case visitOK(w, err):
+		noteOutcomeCounts(w, o)
+		respondJSON(w, http.StatusOK, newVisitDetailView(out, now))
 	}
 }

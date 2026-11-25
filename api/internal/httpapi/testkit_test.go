@@ -259,7 +259,8 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 	}
 }
 
-var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
+var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide,
+	constants.LogFieldOutcomeGrowth, constants.LogFieldOutcomeVaccinations, constants.LogFieldOutcomeMedications}
 
 // logLeaks is testlog.Leaks with this package's allowlist.
 func logLeaks(line string, banned ...string) []string {

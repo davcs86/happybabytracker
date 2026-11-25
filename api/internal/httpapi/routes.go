@@ -142,6 +142,7 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.getVisit},
 		{http.MethodPatch, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.updateVisit},
 		{http.MethodDelete, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.deleteVisit},
+		{http.MethodPost, "/v1/kids/{kid}/visits/{entry}/outcome", Caregiver, d.recordOutcome},
 
 		{http.MethodGet, "/v1/kids/{kid}/symptoms", Caregiver, d.listSymptoms},
 		{http.MethodPost, "/v1/kids/{kid}/symptoms", Caregiver, d.createSymptom},

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -195,4 +196,131 @@ func TestVisitNotFoundParity(t *testing.T) {
 		}
 	}
 	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/visits", admin, nil), http.StatusForbidden, "forbidden")
+}
+
+func (k *kit) pastVisit(token, kid string, at time.Time) (path string, revision float64) {
+	k.t.Helper()
+	m := k.createVisit(token, kid, visitBody(map[string]any{"starts_at": ts(at)}))
+	return "/v1/kids/" + kid + "/visits/" + m["id"].(string), m["revision"].(float64)
+}
+
+func TestOutcomeRecordsLinkedRows(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	one, rev := k.pastVisit(bo, kid, t0.Add(-2*time.Hour))
+	body := map[string]any{"revision": rev, "outcome_notes": "Healthy",
+		"growth":       map[string]any{"weight": amountBody("kg", 6400), "length": amountBody("cm", 630)},
+		"vaccinations": []any{map[string]any{"antigens": []string{"polio", "tetanus"}}, map[string]any{"antigens": []string{"measles"}, "lot": "A1"}},
+		"medications":  []any{map[string]any{"name": "Amoxicillin", "dose": "2.5 ml", "schedule": map[string]any{"kind": "times", "times": []string{"08:00", "20:00"}}}}}
+	rec := k.do(http.MethodPost, one+"/outcome", bo, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("outcome: %d %q", rec.Code, rec.Body.String())
+	}
+	m := bodyMap(t, rec)
+	sameKeys(t, m, visitKeys...)
+	linked := m["linked"].(map[string]any)
+	if m["outcome_notes"] != "Healthy" || m["revision"] != rev+1 || len(linked["growth"].([]any)) != 1 ||
+		len(linked["vaccinations"].([]any)) != 2 || len(linked["medications"].([]any)) != 1 {
+		t.Fatalf("visit after the outcome: %v", m)
+	}
+	g := linked["growth"].([]any)[0].(map[string]any)
+	if g["measured_on"] != "2026-11-20" {
+		t.Errorf("growth date defaulted to %v, want the visit's kid-local date", g["measured_on"])
+	}
+	rows := bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/growth/"+g["id"].(string), ana, nil))
+	if rows["visit_id"] != m["id"] {
+		t.Errorf("the growth row's visit_id = %v", rows["visit_id"])
+	}
+	course := bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/medications/"+linked["medications"].([]any)[0].(map[string]any)["id"].(string), ana, nil))
+	if course["start_at"] != ts(t0.Add(-2*time.Hour)) || course["visit_id"] != m["id"] {
+		t.Errorf("the course: start %v, visit %v; want the visit's start and id", course["start_at"], course["visit_id"])
+	}
+	wantErr(t, k.do(http.MethodPost, one+"/outcome", bo, body), http.StatusConflict, "stale")
+	if n := len(bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/vaccinations", ana, nil))["vaccinations"].([]any)); n != 2 {
+		t.Errorf("vaccinations after a double submit: %d, want 2", n)
+	}
+	logs := k.Log.String()
+	if !strings.Contains(logs, `"`+constants.LogFieldOutcomeVaccinations+`":2`) || !strings.Contains(logs, `"`+constants.LogFieldOutcomeGrowth+`":1`) ||
+		!strings.Contains(logs, `"`+constants.LogFieldOutcomeMedications+`":1`) {
+		t.Errorf("the outcome's counts are not on its log line")
+	}
+	for _, line := range strings.Split(strings.TrimSpace(logs), "\n") {
+		if leaks := logLeaks(line, "Healthy", "Amoxicillin", "Dr. Lee", "12 Main St", "4-month check", "A1"); len(leaks) > 0 {
+			t.Errorf("log leaks %v: %s", leaks, line)
+		}
+	}
+}
+
+func TestOutcomeDefaultsUseKidDate(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	kid := k.createKid(ana, map[string]any{"time_zone": "America/Los_Angeles"})
+	one, rev := k.pastVisit(ana, kid, time.Date(2026, 11, 20, 6, 30, 0, 0, time.UTC))
+	rec := k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev, "growth": map[string]any{"weight": amountBody("kg", 6400)},
+		"vaccinations": []any{map[string]any{"antigens": []string{"polio"}}}})
+	m := bodyMap(t, rec)
+	linked := m["linked"].(map[string]any)
+	if rec.Code != http.StatusOK || linked["growth"].([]any)[0].(map[string]any)["measured_on"] != "2026-11-19" ||
+		linked["vaccinations"].([]any)[0].(map[string]any)["given_on"] != "2026-11-19" {
+		t.Errorf("06:30Z in Los Angeles: %d %v, want 2026-11-19", rec.Code, linked)
+	}
+}
+
+func TestOutcomeFieldPaths(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	one, rev := k.pastVisit(ana, kid, t0.Add(-time.Hour))
+	long := strings.Repeat("a", constants.VaccineLotMaxLen+1)
+	for _, c := range []struct {
+		field  string
+		module string
+		block  map[string]any
+		body   func(map[string]any) map[string]any
+	}{
+		{"growth.weight", "growth", map[string]any{"measured_on": "2026-11-20", "weight": amountBody("kg", 1)},
+			func(b map[string]any) map[string]any { return map[string]any{"growth": b} }},
+		{"growth.measurements", "growth", map[string]any{"measured_on": "2026-11-20"},
+			func(b map[string]any) map[string]any { return map[string]any{"growth": b} }},
+		{"vaccinations[1].lot", "vaccinations", map[string]any{"given_on": "2026-11-20", "antigens": []string{"polio"}, "lot": long},
+			func(b map[string]any) map[string]any {
+				return map[string]any{"vaccinations": []any{map[string]any{"antigens": []string{"polio"}}, b}}
+			}},
+		{"medications[0].schedule", "medications", map[string]any{"name": "X", "dose": "1", "schedule": map[string]any{"kind": "every", "hours": 0}},
+			func(b map[string]any) map[string]any { return map[string]any{"medications": []any{b}} }},
+	} {
+		own := k.do(http.MethodPost, "/v1/kids/"+kid+"/"+c.module, ana, c.block)
+		ownField := bodyMap(t, own)["field"]
+		rec := k.do(http.MethodPost, one+"/outcome", ana, withOverrides(c.body(c.block), map[string]any{"revision": rev}))
+		b := bodyMap(t, rec)
+		if rec.Code != http.StatusUnprocessableEntity || b["field"] != c.field || !strings.HasSuffix(c.field, "."+ownField.(string)) {
+			t.Errorf("%s: outcome %d %v, module's own POST field %v", c.field, rec.Code, b, ownField)
+		}
+	}
+	wantInvalid(t, k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"outcome_notes": "x"}), "revision")
+	wantInvalid(t, k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev}), "outcome")
+	many := make([]any, constants.MaxOutcomeVaccinations+1)
+	for i := range many {
+		many[i] = map[string]any{"antigens": []string{"polio"}}
+	}
+	wantInvalid(t, k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev, "vaccinations": many}), "vaccinations")
+	up := k.createVisit(ana, kid, visitBody(nil))
+	wantErr(t, k.do(http.MethodPost, "/v1/kids/"+kid+"/visits/"+up["id"].(string)+"/outcome", ana,
+		map[string]any{"revision": 0, "outcome_notes": "x"}), http.StatusConflict, "not_past")
+	wantUnknownField(t, k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev, "growth": map[string]any{"colour": "red"}}), "colour")
+}
+
+func TestOutcomeWithoutSchedules(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	one, rev := k.pastVisit(ana, kid, t0.Add(-time.Hour))
+	saved := loadVaccines
+	loadVaccines = func() error { return errors.New("vaccines: schedules unavailable") }
+	t.Cleanup(func() { loadVaccines = saved })
+	rec := k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev, "vaccinations": []any{map[string]any{"antigens": []string{"polio"}}}})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("vaccinations without schedules: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := k.do(http.MethodPost, one+"/outcome", ana, map[string]any{"revision": rev, "outcome_notes": "Healthy"}); rec.Code != http.StatusOK {
+		t.Errorf("notes without schedules: %d %q", rec.Code, rec.Body.String())
+	}
 }

@@ -173,11 +173,15 @@ const (
 	WriteTimeout      = 30 * time.Second
 	ShutdownTimeout   = 10 * time.Second
 
-	LogFieldCause    = "cause"
-	LogFieldSlide    = "slide"
-	SlideFailed      = "failed"
-	CauseSQLite      = "sqlite"
-	CauseOtherPrefix = "other:"
+	LogFieldCause = "cause"
+	LogFieldSlide = "slide"
+
+	LogFieldOutcomeGrowth       = "outcome_growth"
+	LogFieldOutcomeVaccinations = "outcome_vaccinations"
+	LogFieldOutcomeMedications  = "outcome_medications"
+	SlideFailed                 = "failed"
+	CauseSQLite                 = "sqlite"
+	CauseOtherPrefix            = "other:"
 )
 
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
