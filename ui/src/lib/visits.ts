@@ -1,4 +1,3 @@
-import { VISIT_KIND_LABEL } from './constants';
 import { instantToLocalInput } from './time-zone';
 import type { Visit, VisitDetail } from './types';
 
@@ -31,11 +30,6 @@ export function visitWhen(startsAt: string, zone: string): string {
 export function visitWhenLong(v: Pick<Visit, 'startsAt' | 'durationMin'>, zone: string): string {
 	const [date, time] = local(v.startsAt, zone);
 	return `${formatDate(date, { weekday: 'long', month: 'long' })}, ${time} · ${v.durationMin} min`;
-}
-
-// A list row's accessible name: "Well-child visit, 3 Dec 2026".
-export function visitRowName(v: Pick<Visit, 'kind' | 'startsAt'>, zone: string): string {
-	return `${VISIT_KIND_LABEL[v.kind]}, ${formatDate(local(v.startsAt, zone)[0], { month: 'short' })}`;
 }
 
 // A date of a linked record, YYYY-MM-DD: "3 Dec 2026".

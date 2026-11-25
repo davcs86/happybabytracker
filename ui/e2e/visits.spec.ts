@@ -1,7 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { VISIT_KIND_LABEL } from '../src/lib/constants.js';
 import { instantToLocalInput } from '../src/lib/time-zone.js';
 import type { VisitKind } from '../src/lib/types.js';
-import { visitRowName, visitWhenLong } from '../src/lib/visits.js';
+import { visitWhen, visitWhenLong } from '../src/lib/visits.js';
 import {
 	expectAccessible,
 	expectFieldError,
@@ -51,8 +52,11 @@ const written = async (method: string, path: string) => {
 const setVisits = (api: Api, kid: string, enabled: boolean) =>
 	api('PUT', `/v1/kids/${kid}/modules/visits`, { enabled });
 
-const rowName = (v: Row, kid: Kid = MIA) =>
-	visitRowName({ kind: v.kind as VisitKind, startsAt: String(v.starts_at) }, kid.timeZone);
+// A row is named by its visible text: the kind, the date and time, then the provider and the badge.
+const rowName = (v: Row, kid: Kid = MIA) => {
+	const start = `${VISIT_KIND_LABEL[v.kind as VisitKind]} ${visitWhen(String(v.starts_at), kid.timeZone)}`;
+	return new RegExp(`^${start.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`);
+};
 const group = (page: Page, name: 'Upcoming' | 'Past') =>
 	page.getByRole('list', { name, exact: true });
 const rowsOf = (page: Page, name: 'Upcoming' | 'Past') => group(page, name).getByRole('link');

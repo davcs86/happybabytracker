@@ -7,7 +7,7 @@
 	import { VISIT_KIND_LABEL, VISIT_STATUS_LABEL } from '#lib/constants.js';
 	import { visitNewPath, visitPath } from '#lib/paths.js';
 	import type { VisitRow } from '#lib/types.js';
-	import { visitRowName, visitWhen } from '#lib/visits.js';
+	import { visitWhen } from '#lib/visits.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -39,7 +39,6 @@
 				<!-- eslint-disable svelte/no-navigation-without-resolve -- the visit page's path helper, absolute like the other links to pages without JavaScript -->
 				<a
 					href={visitPath(data.kid.id, visit.id)}
-					aria-label={visitRowName(visit, zone)}
 					class="flex min-h-[60px] items-center gap-3 rounded-xl border bg-card px-3 py-2 hover:bg-accent"
 				>
 					<span class="tracker-chip [--h:235]"
