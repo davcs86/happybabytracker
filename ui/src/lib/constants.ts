@@ -184,6 +184,11 @@ export const VISIT_KIND_LABEL: Record<VisitKind, string> = {
 	emergency: 'Emergency visit',
 	other: 'Other visit'
 };
+export const VISIT_STATUS_LABEL: Record<VisitStatus, string> = {
+	upcoming: 'Upcoming',
+	past: 'Past',
+	cancelled: 'Cancelled'
+};
 // Mirrors DefaultVisitDurationMin, MinVisitDurationMin and MaxVisitDurationMin (constants.go), in minutes.
 export const DEFAULT_VISIT_DURATION_MIN = 30;
 export const VISIT_DURATION_MIN = { min: 5, max: 720 } as const;

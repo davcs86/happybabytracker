@@ -10,7 +10,8 @@
 		error,
 		hint = null,
 		required = false,
-		blank = null
+		blank = null,
+		labels = null
 	}: {
 		name: string;
 		legend: string;
@@ -21,10 +22,13 @@
 		required?: boolean;
 		// The label of one more radio with an empty value, for a field that can be left unset.
 		blank?: string | null;
+		// Each option's words; without it an option is shown capitalised.
+		labels?: Readonly<Record<string, string>> | null;
 	} = $props();
 
 	const id = $derived(`entry-${name}`);
-	const label = (option: string) => option.charAt(0).toUpperCase() + option.slice(1);
+	const label = (option: string) =>
+		labels?.[option] ?? option.charAt(0).toUpperCase() + option.slice(1);
 	const describedBy = $derived(
 		[hint ? `${id}-hint` : null, error(name) ? `${id}-error` : null].filter(Boolean).join(' ') ||
 			undefined

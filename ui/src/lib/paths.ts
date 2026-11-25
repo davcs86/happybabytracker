@@ -30,3 +30,8 @@ export const milestoneNewPath = (kidId: string, item?: string) =>
 export const milestoneEntryPath = (kidId: string, id: string) => `${milestonesPath(kidId)}/${id}`;
 export const exportPath = (kidId: string) => `/kids/${kidId}/export`;
 export const exportPdfPath = (kidId: string) => `${exportPath(kidId)}/pdf`;
+export const visitsPath = (kidId: string) => `/kids/${kidId}/visits`;
+export const visitNewPath = (kidId: string) => `${visitsPath(kidId)}/new`;
+export const visitPath = (kidId: string, id: string) => `${visitsPath(kidId)}/${id}`;
+export const visitEditPath = (kidId: string, id: string) => `${visitPath(kidId, id)}/edit`;
+export const visitOutcomePath = (kidId: string, id: string) => `${visitPath(kidId, id)}/outcome`;
