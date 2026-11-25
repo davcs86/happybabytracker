@@ -882,3 +882,28 @@ describe('course failures', () => {
 		).toMatchObject({ status: 500, data: { values, field: null } });
 	});
 });
+
+describe('readMedicationForm with a prefix', () => {
+	const behind = (fields: Posted) =>
+		Object.fromEntries(Object.entries(fields).map(([k, v]) => [`v1.${k}`, v]));
+
+	it('reads the names behind the prefix, the times, the box and originals included, and ignores the others', () => {
+		const block = {
+			...loadedCourse(),
+			kind: 'times',
+			times: ['09:00', '21:00'],
+			active: undefined
+		};
+		const r = readMedicationForm(
+			posted({ ...OK, ...behind(block) }),
+			{ kind: 'edit', zone: 'UTC' },
+			{ prefix: 'v1.' }
+		);
+		expect(r).toEqual(readMedicationForm(posted(block), { kind: 'edit', zone: 'UTC' }));
+		expect(r.values).toMatchObject({ times: ['09:00', '21:00'], active: false });
+		expect(r.input).toMatchObject({ schedule: { kind: 'times', times: ['09:00', '21:00'] } });
+		expect(
+			readMedicationForm(posted(behind(OK)), { kind: 'create', zone: 'UTC' }, { prefix: 'v1.' })
+		).toEqual(create(OK));
+	});
+});

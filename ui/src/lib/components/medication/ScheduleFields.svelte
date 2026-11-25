@@ -6,10 +6,13 @@
 
 	let {
 		values,
-		error
+		error,
+		prefix = ''
 	}: {
 		values: { kind: string; times: string[]; hours: string };
 		error: string | null;
+		// Prepended to every name and id, so several blocks share one form; values stay unprefixed.
+		prefix?: string;
 	} = $props();
 
 	const KINDS = [
@@ -18,7 +21,7 @@
 		['every', 'Every few hours']
 	] as const;
 	const SLOTS = Array.from({ length: MAX_SCHEDULE_TIMES }, (_, i) => i);
-	const ERROR_ID = 'course-schedule-error';
+	const ERROR_ID = $derived(`${prefix}course-schedule-error`);
 	// Native radios stay native; the dot is a token-coloured gradient so it works without JavaScript.
 	const RADIO_CLASS =
 		'size-5 shrink-0 appearance-none rounded-full border border-[color-mix(in_oklab,var(--foreground)_55%,var(--background))] bg-background shadow-xs checked:border-primary checked:bg-[radial-gradient(circle,var(--primary)_0_4.5px,transparent_5.5px)]';
@@ -26,13 +29,13 @@
 </script>
 
 <!-- CSS shows the fields of the chosen kind, so this works without JavaScript. -->
-<fieldset class="group flex min-w-0 flex-col gap-2">
-	<legend id="course-schedule-legend" class="mb-1 p-0 text-[13px] text-muted-foreground"
+<fieldset class="group/schedule flex min-w-0 flex-col gap-2">
+	<legend id="{prefix}course-schedule-legend" class="mb-1 p-0 text-[13px] text-muted-foreground"
 		>Schedule</legend
 	>
 	<div
 		role="radiogroup"
-		aria-labelledby="course-schedule-legend"
+		aria-labelledby="{prefix}course-schedule-legend"
 		aria-invalid={error ? 'true' : undefined}
 		aria-describedby={error ? ERROR_ID : undefined}
 		class="flex flex-col"
@@ -41,8 +44,8 @@
 			<label class="flex min-h-11 items-center gap-3 text-[15px]">
 				<input
 					type="radio"
-					id="course-kind-{kind}"
-					name="kind"
+					id="{prefix}course-kind-{kind}"
+					name="{prefix}kind"
 					value={kind}
 					checked={values.kind === kind}
 					class={RADIO_CLASS}
@@ -54,14 +57,14 @@
 	{#if error}<p id={ERROR_ID} class={ERROR_CLASS} role="alert">{error}</p>{/if}
 
 	<div
-		class="hidden grid-cols-2 gap-2.5 group-has-[#course-kind-times:checked]:grid sm:grid-cols-3"
+		class="hidden grid-cols-2 gap-2.5 group-has-[input[value=times]:checked]/schedule:grid sm:grid-cols-3"
 	>
 		{#each SLOTS as i (i)}
-			<Field id="course-time-{i}" label="Time {i + 1}">
+			<Field id="{prefix}course-time-{i}" label="Time {i + 1}">
 				{#snippet children(control)}
 					<Input
 						id={control.id}
-						name="times"
+						name="{prefix}times"
 						type="time"
 						value={values.times[i] ?? ''}
 						aria-invalid={invalid('times')}
@@ -71,16 +74,16 @@
 			</Field>
 		{/each}
 	</div>
-	<div class="hidden group-has-[#course-kind-every:checked]:block">
+	<div class="hidden group-has-[input[value=every]:checked]/schedule:block">
 		<Field
-			id="course-hours"
+			id="{prefix}course-hours"
 			label="Hours between doses"
 			hint="A whole number from {MIN_EVERY_HOURS} to {MAX_EVERY_HOURS}, counted from the start below"
 		>
 			{#snippet children(control)}
 				<Input
 					id={control.id}
-					name="hours"
+					name="{prefix}hours"
 					inputmode="numeric"
 					autocomplete="off"
 					value={values.hours}

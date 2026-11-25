@@ -472,3 +472,20 @@ describe('growthApiFailure', () => {
 		expect(r).toMatchObject({ input: null, field: 'weight', message: null });
 	});
 });
+
+describe('readGrowthForm with a prefix', () => {
+	const behind = (fields: Record<string, string>) =>
+		Object.fromEntries(Object.entries(fields).map(([k, v]) => [`v1.${k}`, v]));
+
+	it('reads the names behind the prefix, originals included, and ignores the unprefixed ones', () => {
+		const block = { ...loaded({ weight_kg: '3.2', length: '49.5' }), weight_kg: '3.4' };
+		const r = readGrowthForm(form({ ...blank, weight_kg: '9', ...behind(block) }), EDIT, {
+			prefix: 'v1.'
+		});
+		expect(r).toEqual(readGrowthForm(form(block), EDIT));
+		expect(r.input).toEqual({ weight: { unit: 'kg', amount: 3400 }, note: null });
+		expect(readGrowthForm(form(behind(blank)), CREATE, { prefix: 'v1.' })).toMatchObject({
+			field: 'measurements'
+		});
+	});
+});
