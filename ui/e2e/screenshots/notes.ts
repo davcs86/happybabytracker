@@ -1,0 +1,65 @@
+// The README's hand-written parts; index.ts writes the rest from the shots themselves.
+import type { Area } from './areas.ts';
+
+export const FIXTURES = (now: string): string[] => [
+	`All from \`ui/e2e/stub-api.ts\` (passwords are the stub's fake ones), as they stand on ${now.slice(0, 10)}:`,
+	'',
+	'| User | Role and kids |',
+	'|---|---|',
+	'| `admin` | the admin: only `/admin/parents` |',
+	'| `ana` (Ana) | guardian of Mia and Ivy (and of Noa, Uma, Oli and a long-named kid the shots add), caregiver of Leo; of Sami in one milestone shot |',
+	'| `cleo` (Cleo) | guardian of Leo, Nell, Otto, Pia, Remy and Sami |',
+	'| `dan` (Dan) | no kids |',
+	'| `bo` (Bo) | invited, no password yet (the invite link) |',
+	'| `dee` (Dee) | disabled |',
+	'',
+	'| Kid | Born | Age on the frozen day | Notes |',
+	'|---|---|---|---|',
+	'| Mia | 2026-07-08 | 4 months | UTC |',
+	'| Leo | 2024-08-20 | 2 years 3 months | born at 35 weeks 2 days, Europe/Madrid, growth rows from the stub |',
+	'| Ivy | 2025-10-24 | 13 months | UTC |',
+	'| Nell | 2026-02-24 | 9 months | milestones |',
+	'| Otto | 2021-12-24 | 4 years 11 months | milestones on, one retired milestone row |',
+	'| Pia | 2021-11-24 | 5th birthday | milestones on |',
+	'| Remy | 2026-08-24 | 3 months | born at 32 weeks |',
+	'| Sami | 2024-05-24 | 30 months | milestones off (the default past 24 months) |',
+	'| Noa, Uma, Oli, NNN… | added by the shots | 10 days; 14 days at 30 weeks; 7 years; 40 days | created through the stub API |',
+	'',
+	'Entries, measurements, doses and courses are seeded per test through the stub API (`seed.ts`);',
+	'every test starts from `/__reset`.'
+];
+
+export const ABOUT_AREAS: Record<Area, string> = {
+	auth: 'Sign-in, invite and password-reset pages, signed out.',
+	shell:
+		'The app shell: bottom bar on mobile, left column on desktop. Every other shot shows it too (guardian, caregiver and admin).',
+	home: 'Kid homes in every age band and role: quick log, running timers, Due, Today.',
+	trackers:
+		'Log and edit forms of every tracker (Ana, Mia), with their errors, advanced modes and units.',
+	timeline: 'The timeline: ranges, filters, paging, units and errors.',
+	growth: 'Growth charts, the measurement list and forms, both sources and preterm ages.',
+	vaccines: 'Vaccine schedules, dismissals and the vaccination forms.',
+	medication: 'Medication courses, doses and their forms.',
+	milestones: 'Milestone checklists by age, marks and custom milestones.',
+	export:
+		'The PDF export page and its refusals. The PDF itself (POST /kids/[kid]/export/pdf) is a download, not a page: nothing is captured for it.',
+	'kid-admin':
+		'Guardian pages: modules, settings, access and the new-kid form, with the caregiver 404s.',
+	account: 'The account page: profile, units, password and sessions.',
+	notifications: 'Web Push devices and ntfy, under every server configuration the stub offers.',
+	admin: 'The admin’s parents panel.',
+	errors: 'The 404 and 503 pages.'
+};
+
+export const NOT_CAPTURED: string[] = [
+	'**export-pdf**: the PDF is streamed as a download by `POST /kids/[kid]/export/pdf`; it is not a page.',
+	'Endpoints that are not pages: `/healthz`, `/healthz/api`, `/healthz/reminders`, `/account/notifications/subscribe`, `/logout` (a POST that lands on the sign-in page, `auth/01`).',
+	'The generic “Something went wrong” error page: the stub has no scenario that makes the UI answer a 5xx other than 503.',
+	'The `down` and `slow` API scenarios: they render the same 503 page as `unavailable` (`errors/04`).',
+	'The browser’s own notification permission prompt and a real push subscription: the headless browser cannot subscribe; “This device” is shown by registering a device through the stub and setting its device cookie.',
+	'The “browser cannot receive notifications” message: it needs a browser without Web Push.',
+	'Install / PWA prompts: the app shows no install UI of its own.',
+	'Caps that need hundreds of rows (the 21st medication course, the 501st vaccination): the same field-message pattern as the errors shown.',
+	'Deleting a kid, an entry, a course or a dose: each lands on a page already shown; the confirm steps are captured.',
+	'JavaScript off and dark mode: out of scope by decision.'
+];
