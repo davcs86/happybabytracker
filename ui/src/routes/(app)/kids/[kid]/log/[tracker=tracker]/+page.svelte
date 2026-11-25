@@ -12,10 +12,6 @@
 	const toggle = $derived(advancedToggle(data.kind, values.advanced === '1'));
 </script>
 
-<svelte:head>
-	<title>{title} · {data.kid.name} · happybabytracker</title>
-</svelte:head>
-
 <TrackerForm
 	kid={data.kid}
 	kind={data.kind}

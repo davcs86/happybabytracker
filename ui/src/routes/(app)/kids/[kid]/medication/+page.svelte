@@ -38,8 +38,11 @@
 			<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
 		</div>
 		{#if !data.medicationOff}
-			<Button href={medicationNewPath(data.kid.id)} variant="outline" class="shrink-0 px-5"
-				>Add a course</Button
+			<Button
+				href={medicationNewPath(data.kid.id)}
+				data-drawer="Add a course"
+				variant="outline"
+				class="shrink-0 px-5">Add a course</Button
 			>
 		{/if}
 		<p class="w-full text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
@@ -148,6 +151,7 @@
 								<!-- eslint-disable svelte/no-navigation-without-resolve -- the dose page's path helper, absolute like the other links to pages without JavaScript -->
 								<a
 									href={doseEntryPath(data.kid.id, dose.id)}
+									data-drawer="Edit dose"
 									aria-label="{nameOf(dose.medication)}, {when}{dose.amount
 										? ` ${dose.amount}`
 										: ''}{dose.note ? ` ${dose.note}` : ''}"

@@ -37,7 +37,9 @@
 			<h1>Growth</h1>
 			<p class="mt-1 text-sm text-muted-foreground">{data.age}</p>
 		</div>
-		<Button href={growthNewPath(data.kid.id)} class="flex-none">Add measurement</Button>
+		<Button href={growthNewPath(data.kid.id)} data-drawer="Add a measurement" class="flex-none"
+			>Add measurement</Button
+		>
 	</div>
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">

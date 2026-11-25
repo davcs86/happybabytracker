@@ -13,6 +13,7 @@
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { SECTION_HEADING } from '#lib/components/home.js';
+	import { TRACKER_TITLE } from '#lib/constants.js';
 	import { logPath } from '#lib/paths.js';
 	import { PAGE_ROUTE, type QuickLogEntry } from '#lib/quick-log.js';
 	import type { ModuleId } from '#lib/types.js';
@@ -23,6 +24,13 @@
 		message = null
 	}: { entries: QuickLogEntry[]; kidId: string; message?: string | null } = $props();
 
+	// Only the tiles that open a form open a sheet; the others open a list page.
+	const drawerTitle = (entry: QuickLogEntry) =>
+		entry.kind
+			? TRACKER_TITLE[entry.kind].log
+			: entry.module === 'growth'
+				? 'Add a measurement'
+				: undefined;
 	const href = (entry: QuickLogEntry) =>
 		entry.kind ? logPath(kidId, entry.kind) : PAGE_ROUTE[entry.module]?.(kidId);
 
@@ -80,7 +88,7 @@
 								<button type="submit" class={LABEL}>{entry.label}</button>
 							</form>
 						{:else}
-							<a href={href(entry)} class={LABEL}>{entry.label}</a>
+							<a href={href(entry)} data-drawer={drawerTitle(entry)} class={LABEL}>{entry.label}</a>
 						{/if}
 						{@render hint(entry)}
 					</span>

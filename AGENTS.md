@@ -24,6 +24,9 @@ baseline pictures in `docs/plans/ui-redesign/screenshots/`.
    IMPLEMENTATION 5). The page is the no-JS and new-tab route. Never add an inline form or a page-only
    form for such a job. Sheet anatomy, failure handling and toasts follow DESIGN 4.2, 4.3 and PATTERNS P1.
    Pages that are not records (Notifications, My profile, sign-in) stay pages.
+   To add one: wrap the page in `FormFrame`, use `FormCancel`, `savedAs('…')` and `isEmbed()`; add its path
+   to `ROUTES` in `ui/src/lib/drawer.ts`; put `data-drawer="<h1 text>"` on every link to it. The full
+   description is IMPLEMENTATION 5; `ui/e2e/drawer.spec.ts` is the spec to copy.
 2. **One component, one definition.** Use `ui/src/lib/components/ui/*` and the app components
    (`FormSheet`, `AppShell`, the `navModel` function). No second copy of a nav list, a sheet, a chip, an
    age line or a field set. Native `input/select/textarea` keep the styling layer of DESIGN 4.3.

@@ -2,9 +2,11 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
-	import { keepValues } from '#lib/components/field.js';
 	import { Alert } from '#lib/components/ui/alert/index.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { PageProps } from './$types';
 
@@ -20,31 +22,43 @@
 		)
 	});
 	const error = (name: string) => (save?.field === name ? save.message : null);
+	const embed = isEmbed();
 	const medication = $derived(resolve('/(app)/kids/[kid]/medication', { kid: data.kid.id }));
 </script>
 
-<svelte:head>
-	<title>Edit dose · {data.kid.name} · happybabytracker</title>
-</svelte:head>
+{#snippet info()}
+	<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
+		Dose of {data.course.name}
+	</p>
+	<p class="text-[13.5px] text-muted-foreground">Times are in {data.kid.timeZone}</p>
+{/snippet}
 
-<div class="flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:w-[920px] xl:max-w-none">
-	<div class="mt-5 flex flex-col gap-1.5">
-		<h1>Edit dose</h1>
-		<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
-		<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
-			Dose of {data.course.name}
-		</p>
-		<p class="text-[13.5px] text-muted-foreground">Times are in {data.kid.timeZone}</p>
-	</div>
+<FormFrame
+	class="flex flex-col gap-[18px]"
+	documentTitle="Edit dose · {data.kid.name} · happybabytracker"
+>
+	{#snippet chrome()}
+		<div class="mt-5 flex flex-col gap-1.5">
+			<h1>Edit dose</h1>
+			<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
+			{@render info()}
+		</div>
+	{/snippet}
+	{#if embed}
+		<div class="flex flex-col gap-1.5">{@render info()}</div>
+	{/if}
 	{#if save && !save.field && save.message}
 		<Alert class="[overflow-wrap:anywhere]">{save.message}</Alert>
 	{/if}
 	<form
 		method="POST"
 		action="?/save"
-		class="flex flex-col gap-[18px] xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6"
+		class={[
+			'flex flex-col gap-[18px]',
+			!embed && 'xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6'
+		]}
 		novalidate
-		use:enhance={keepValues}
+		use:enhance={savedAs('Dose saved')}
 	>
 		<div class="flex flex-col gap-3.5">
 			<Field id="dose-given_at" label="Given at" error={error('given_at')}>
@@ -69,8 +83,8 @@
 		<input type="hidden" name="amount_original" value={data.values.amount_original} />
 		<input type="hidden" name="note_original" value={data.values.note_original} />
 		<div class="flex gap-2">
-			<Button type="submit" class="flex-1">Save</Button>
-			<Button href={medication} variant="outline">Cancel</Button>
+			<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
+			<FormCancel href={medication} size="default" class="" />
 		</div>
 	</form>
 
@@ -83,7 +97,12 @@
 			})} w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden"
 			>Delete this dose</summary
 		>
-		<form method="POST" action="?/delete" class="flex flex-col gap-2.5 pt-3" use:enhance>
+		<form
+			method="POST"
+			action="?/delete"
+			class="flex flex-col gap-2.5 pt-3"
+			use:enhance={savedAs('Dose deleted')}
+		>
 			{#if del?.message}
 				<Alert class="[overflow-wrap:anywhere]">{del.message}</Alert>
 			{/if}
@@ -93,4 +112,4 @@
 			<Button type="submit" variant="destructive">Yes, delete this dose</Button>
 		</form>
 	</details>
-</div>
+</FormFrame>

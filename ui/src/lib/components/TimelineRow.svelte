@@ -22,7 +22,7 @@
 
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { TRACKER_LABEL } from '#lib/constants.js';
+	import { TRACKER_LABEL, TRACKER_TITLE } from '#lib/constants.js';
 	import { timelineLine } from '#lib/timeline.js';
 	import { formatClock } from '#lib/time-zone.js';
 	import type { TimelineItem, Units } from '#lib/types.js';
@@ -63,6 +63,7 @@
 <li>
 	<a
 		{href}
+		data-drawer={TRACKER_TITLE[item.kind].edit}
 		aria-label={name}
 		class="flex min-h-[60px] items-center gap-3 rounded-xl border bg-card px-3 py-2 hover:bg-accent"
 	>

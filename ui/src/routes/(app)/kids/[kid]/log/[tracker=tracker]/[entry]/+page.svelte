@@ -5,6 +5,7 @@
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { MAX_SESSION_HOURS, TRACKER_TITLE } from '#lib/constants.js';
+	import { savedAs } from '#lib/drawer.js';
 	import { advancedToggle } from '#lib/entry-edit.js';
 	import type { PageProps } from './$types';
 
@@ -30,10 +31,6 @@
 	const title = $derived(TRACKER_TITLE[data.kind].edit);
 	const toggle = $derived(advancedToggle(data.kind, values.advanced === '1'));
 </script>
-
-<svelte:head>
-	<title>{title} · {data.kid.name} · happybabytracker</title>
-</svelte:head>
 
 <TrackerForm
 	kid={data.kid}
@@ -62,7 +59,12 @@
 				})} w-full cursor-pointer list-none px-5 [&::-webkit-details-marker]:hidden"
 				>Delete this entry</summary
 			>
-			<form method="POST" action="?/delete" class="flex flex-col gap-2.5 pt-2.5 pb-2" use:enhance>
+			<form
+				method="POST"
+				action="?/delete"
+				class="flex flex-col gap-2.5 pt-2.5 pb-2"
+				use:enhance={savedAs('Entry deleted')}
+			>
 				{#if del?.message}
 					<p class={ERROR_CLASS} role="alert">{del.message}</p>
 				{/if}
