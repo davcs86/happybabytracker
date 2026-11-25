@@ -4,16 +4,19 @@
 	import { toast } from 'svelte-sonner';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { CHOICE_CLASS } from '#lib/components/field.js';
 	import { VISIT_KIND_LABEL, VISIT_STATUS_LABEL } from '#lib/constants.js';
 	import {
 		growthEntryPath,
 		medicationEntryPath,
 		vaccinesPath,
+		visitCalendarPath,
+		visitPath,
 		visitEditPath,
 		visitOutcomePath
 	} from '#lib/paths.js';
-	import { hasOutcome, visitRecordDate, visitWhenLong } from '#lib/visits.js';
+	import { hasOutcome, visitRecordDate, visitRecordLines, visitWhenLong } from '#lib/visits.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -46,6 +49,21 @@
 			drawer: 'Edit course'
 		}))
 	]);
+
+	const consequences = $derived(visitRecordLines(visit.linked));
+	const del = $derived(form?.form === 'delete' ? form : null);
+	const CALENDAR = [
+		['generic', 'Without details', 'Shows only “Medical visit”'],
+		['full', 'With details', 'Includes the child’s name, the doctor, the place and the reason']
+	] as const;
+
+	// Without JavaScript the Cancel link reloads the page, which closes the confirm.
+	function closeConfirm(e: MouseEvent & { currentTarget: HTMLElement }) {
+		const details = e.currentTarget.closest('details');
+		if (!details) return;
+		e.preventDefault();
+		details.open = false;
+	}
 
 	// The visit page is no sheet, so its own toast says what the button did.
 	const done =
@@ -104,7 +122,100 @@
 				class="inline-flex min-h-11 items-center self-start text-sm underline"
 				>{outcome ? 'Add more from the visit' : 'Record the visit'}</a
 			>
+		{:else}
+			<!-- A download, not a page: the router must leave it to the browser. -->
+			<form
+				method="GET"
+				action={visitCalendarPath(data.kid.id, visit.id)}
+				data-sveltekit-reload
+				class="flex flex-col gap-2.5"
+			>
+				<fieldset role="radiogroup" aria-labelledby="calendar-legend" class="flex flex-col gap-1">
+					<legend id="calendar-legend" class="mb-1 p-0 text-[13px] text-muted-foreground"
+						>Add to calendar</legend
+					>
+					{#each CALENDAR as [value, label, description] (value)}
+						<div class="flex flex-col">
+							<label class="flex min-h-11 items-center gap-3 text-[15px]">
+								<input
+									type="radio"
+									name="detail"
+									{value}
+									checked={value === 'generic'}
+									aria-describedby="calendar-{value}-description"
+									class={CHOICE_CLASS}
+								/>
+								{label}
+							</label>
+							<p
+								id="calendar-{value}-description"
+								class="-mt-1.5 pb-1 pl-8 text-[13px] leading-snug text-muted-foreground"
+							>
+								{description}
+							</p>
+						</div>
+					{/each}
+				</fieldset>
+				<Button type="submit" variant="outline" class="self-start px-5">Download .ics</Button>
+			</form>
 		{/if}
+
+		<!-- Two steps without JavaScript: the confirm exists only inside the opened details.
+		     A failure reopens it, so its message shows after a full-page POST too. -->
+		<details class="max-w-[448px] border-t pt-4" open={!!del?.message}>
+			<summary
+				class="{buttonVariants({
+					variant: 'destructive'
+				})} w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+				>Delete visit</summary
+			>
+			<form
+				method="POST"
+				action="?/delete"
+				class="flex flex-col gap-2.5 pt-3"
+				use:enhance={done('Visit deleted')}
+			>
+				{#if del?.message}
+					<Alert class="[overflow-wrap:anywhere]">{del.message}</Alert>
+				{/if}
+				{#if consequences.length > 0}
+					<p class="text-[13.5px]">This visit recorded:</p>
+					<ul class="list-disc pl-5 text-[13.5px]">
+						{#each consequences as line (line)}<li>{line}</li>{/each}
+					</ul>
+					<!-- CSS shows the sentence while the box is unticked, so this works without JavaScript. -->
+					<div class="group/linked flex flex-col">
+						<label class="flex min-h-11 items-center gap-3 text-[15px]">
+							<input
+								type="checkbox"
+								id="visit-delete-linked"
+								name="linked"
+								value="delete"
+								checked
+								class={CHOICE_CLASS}
+							/>
+							Also delete these records
+						</label>
+						<p
+							class="hidden text-[13.5px] text-muted-foreground group-has-[#visit-delete-linked:not(:checked)]/linked:block"
+						>
+							The records stay in Growth, Vaccines and Medication.
+						</p>
+					</div>
+				{:else}
+					<p class="text-[13.5px]">This deletes the visit.</p>
+				{/if}
+				<div class="flex gap-2">
+					<Button type="submit" variant="destructive" class="flex-1">Yes, delete this visit</Button>
+					<Button
+						href={visitPath(data.kid.id, visit.id)}
+						variant="outline"
+						class="px-5"
+						onclick={closeConfirm}>Cancel</Button
+					>
+				</div>
+			</form>
+		</details>
 	</div>
 
 	{#if outcome}

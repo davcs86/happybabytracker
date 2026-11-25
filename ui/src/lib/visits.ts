@@ -1,5 +1,5 @@
 import { instantToLocalInput } from './time-zone';
-import type { Visit, VisitDetail } from './types';
+import type { Visit, VisitDetail, VisitLinks } from './types';
 
 type Style = { weekday?: 'short' | 'long'; month: 'short' | 'long' };
 
@@ -39,3 +39,23 @@ export const visitRecordDate = (date: string) => formatDate(date, { month: 'shor
 export const hasOutcome = (v: Pick<VisitDetail, 'outcomeNotes' | 'linked'>) =>
 	v.outcomeNotes !== null ||
 	v.linked.growth.length + v.linked.vaccinations.length + v.linked.medications.length > 0;
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// The delete confirm's consequence lines: "1 growth measurement", "2 vaccines",
+// "1 medication, with its 14 logged doses"; none when nothing is linked.
+export function visitRecordLines(l: VisitLinks): string[] {
+	const lines: string[] = [];
+	if (l.growth.length)
+		lines.push(count(l.growth.length, 'growth measurement', 'growth measurements'));
+	if (l.vaccinations.length) lines.push(count(l.vaccinations.length, 'vaccine', 'vaccines'));
+	const n = l.medications.length;
+	if (n) {
+		const doses = l.medications.reduce((sum, m) => sum + m.doseCount, 0);
+		const logged = doses
+			? `, with ${n === 1 ? 'its' : 'their'} ${count(doses, 'logged dose', 'logged doses')}`
+			: '';
+		lines.push(`${count(n, 'medication', 'medications')}${logged}`);
+	}
+	return lines;
+}

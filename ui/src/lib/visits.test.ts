@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VisitDetail } from './types';
-import { hasOutcome, visitRecordDate, visitWhen, visitWhenLong } from './visits';
+import { hasOutcome, visitRecordDate, visitRecordLines, visitWhen, visitWhenLong } from './visits';
 
 describe('visit dates', () => {
 	it('writes a row on the kid’s clock, not the server’s', () => {
@@ -29,5 +29,38 @@ describe('hasOutcome', () => {
 			medications: [{ id: 'm', name: 'x', doseCount: 0 }]
 		};
 		expect(hasOutcome({ ...none, linked })).toBe(true);
+	});
+});
+
+describe('visitRecordLines', () => {
+	const g = (n: number) =>
+		Array.from({ length: n }, (_, i) => ({ id: `g${i}`, measuredOn: '2026-12-03' }));
+	const v = (n: number) =>
+		Array.from({ length: n }, (_, i) => ({
+			id: `v${i}`,
+			givenOn: '2026-12-03',
+			antigens: ['measles']
+		}));
+	const m = (...doses: number[]) =>
+		doses.map((doseCount, i) => ({ id: `m${i}`, name: 'Amoxicillin', doseCount }));
+
+	it('names each module once, singular or plural, in the confirm’s order', () => {
+		expect(visitRecordLines({ growth: g(1), vaccinations: v(2), medications: m(14) })).toEqual([
+			'1 growth measurement',
+			'2 vaccines',
+			'1 medication, with its 14 logged doses'
+		]);
+		expect(visitRecordLines({ growth: g(2), vaccinations: v(1), medications: m(1, 0) })).toEqual([
+			'2 growth measurements',
+			'1 vaccine',
+			'2 medications, with their 1 logged dose'
+		]);
+	});
+
+	it('leaves out what is not linked, and the doses when there are none', () => {
+		expect(visitRecordLines({ growth: [], vaccinations: [], medications: m(0) })).toEqual([
+			'1 medication'
+		]);
+		expect(visitRecordLines({ growth: [], vaccinations: [], medications: [] })).toEqual([]);
 	});
 });

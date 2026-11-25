@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
-import { visitPath } from '#lib/paths.js';
+import { visitPath, visitsPath } from '#lib/paths.js';
 import { setKidCookie } from '#lib/server/cookie.js';
-import { failPage } from '#lib/server/outcome.js';
+import { failAction, failPage } from '#lib/server/outcome.js';
 import { visitRefusal } from '#lib/server/visit-form.js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -35,5 +35,13 @@ async function setCancelled(
 
 export const actions: Actions = {
 	cancel: ({ locals, params }) => setCancelled(locals, params, true),
-	restore: ({ locals, params }) => setCancelled(locals, params, false)
+	restore: ({ locals, params }) => setCancelled(locals, params, false),
+	// An unticked box, or none because nothing was linked, keeps the records.
+	delete: async ({ request, locals, params }) => {
+		const { kid, visit } = await stored(locals, params);
+		const linked = (await request.formData()).get('linked') === 'delete' ? 'delete' : 'keep';
+		const r = await locals.api.visits.remove(kid.id, visit.id, linked);
+		if (!r.ok) return failAction(r, { form: 'delete' as const });
+		redirect(303, visitsPath(kid.id));
+	}
 };

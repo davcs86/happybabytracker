@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { VISIT_KIND_LABEL } from '../src/lib/constants.js';
 import { instantToLocalInput } from '../src/lib/time-zone.js';
 import type { VisitKind } from '../src/lib/types.js';
@@ -523,4 +524,237 @@ test('a parent without a grant, an unknown kid, a visit that is not this kid’s
 	]) {
 		expect(await expectNotFoundPage(page, path)).toBe(unknown);
 	}
+});
+
+// Delete and the calendar file (Task 14).
+const calendarUrl = (id: unknown, detail?: string, kid: string = MIA.id) =>
+	`${visitUrl(id, kid)}/calendar${detail ? `?detail=${detail}` : ''}`;
+const confirmOf = (page: Page) => page.locator('details').filter({ hasText: 'Delete visit' });
+const openConfirm = async (page: Page) => {
+	await confirmOf(page).locator('summary').click();
+	await expect(page.getByRole('button', { name: 'Yes, delete this visit' })).toBeVisible();
+	return confirmOf(page);
+};
+const linkedBox = (page: Page | Locator) =>
+	page.getByRole('checkbox', { name: 'Also delete these records', exact: true });
+const STAY = 'The records stay in Growth, Vaccines and Medication.';
+const listOf = async (api: Api, module: 'growth' | 'vaccinations' | 'medications') =>
+	(await api('GET', `/v1/kids/${MIA.id}/${module}`)).body[module] as Row[];
+
+// A past visit that recorded a measurement, two vaccines and a course with two logged doses.
+async function seedRecorded(api: Api) {
+	const v = await seedVisit(api, { starts_at: days(-2), kind: 'sick' });
+	const done = await api('POST', `${VISITS()}/${v.id}/outcome`, {
+		revision: v.revision,
+		growth: { weight: { unit: 'kg', amount: 6400 } },
+		vaccinations: [{ antigens: ['diphtheria'] }, { antigens: ['measles'] }],
+		medications: [{ name: 'Amoxicillin', dose: '5 ml', schedule: { kind: 'none' } }]
+	});
+	expect(done.status).toBe(200);
+	const course = (done.body.linked as { medications: Row[] }).medications[0].id;
+	for (let i = 0; i < 2; i++) {
+		const dose = await api('POST', `/v1/kids/${MIA.id}/medication-doses`, { medication: course });
+		expect(dose.status).toBe(201);
+	}
+	return v;
+}
+
+test('delete a visit with its records: the confirm names them and they go with it', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const v = await seedRecorded(api);
+	await signIn(page, ANA);
+	await page.goto(visitUrl(v.id));
+	await expect(page.getByRole('button', { name: 'Yes, delete this visit' })).toBeHidden();
+	const confirm = await openConfirm(page);
+	await expect(confirm.getByText('This visit recorded:')).toBeVisible();
+	await expect(confirm.getByRole('listitem')).toHaveText([
+		'1 growth measurement',
+		'2 vaccines',
+		'1 medication, with its 2 logged doses'
+	]);
+	await expect(linkedBox(confirm)).toBeChecked();
+	await expect(confirm.getByText(STAY)).toBeHidden();
+	await expectAccessible(page);
+
+	await submit(page.getByRole('button', { name: 'Yes, delete this visit' }));
+	await onList(page);
+	await expect(toast(page, 'Visit deleted')).toBeVisible();
+	expect((await api('GET', `${VISITS()}/${v.id}`)).status).toBe(404);
+	expect(await listOf(api, 'growth')).toEqual([]);
+	expect(await listOf(api, 'vaccinations')).toEqual([]);
+	expect(await listOf(api, 'medications')).toEqual([]);
+});
+
+test('delete a visit and keep its records: unticked, the confirm says where they stay', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const v = await seedRecorded(api);
+	await signIn(page, ANA);
+	await page.goto(visitUrl(v.id));
+	const confirm = await openConfirm(page);
+	await linkedBox(confirm).uncheck();
+	await expect(confirm.getByText(STAY)).toBeVisible();
+	await expectAccessible(page);
+	await submit(page.getByRole('button', { name: 'Yes, delete this visit' }));
+	await onList(page);
+	await expect(toast(page, 'Visit deleted')).toBeVisible();
+	expect((await api('GET', `${VISITS()}/${v.id}`)).status).toBe(404);
+	for (const module of ['growth', 'vaccinations', 'medications'] as const) {
+		const rows = await listOf(api, module);
+		expect(rows.length).toBeGreaterThan(0);
+		for (const row of rows) expect(row.visit_id).toBeNull();
+	}
+});
+
+test('a visit with nothing recorded says the delete takes only the visit; Cancel closes the confirm', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const v = await seedVisit(api, { starts_at: days(3) });
+	await signIn(page, ANA);
+	await page.goto(visitUrl(v.id));
+	await expect(async () => {
+		const confirm = await openConfirm(page);
+		await confirm.getByRole('link', { name: 'Cancel', exact: true }).click();
+		await expect(page.getByRole('button', { name: 'Yes, delete this visit' })).toBeHidden({
+			timeout: 1000
+		});
+	}).toPass();
+	await expect(page).toHaveURL(visitUrl(v.id));
+	const confirm = await openConfirm(page);
+	await expect(confirm.getByText('This deletes the visit.')).toBeVisible();
+	await expect(linkedBox(confirm)).toHaveCount(0);
+	await expect(confirm.getByText('This visit recorded:')).toHaveCount(0);
+	await expectAccessible(page);
+	await submit(page.getByRole('button', { name: 'Yes, delete this visit' }));
+	await onList(page);
+	await expect(toast(page, 'Visit deleted')).toBeVisible();
+	expect((await api('GET', VISITS())).body.visits).toEqual([]);
+});
+
+test('an upcoming visit downloads its calendar file, without details unless chosen', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const v = await seedVisit(api, { starts_at: days(3), provider: 'Dr. Lee' });
+	await signIn(page, ANA);
+	await page.goto(visitUrl(v.id));
+	const calendar = page.getByRole('radiogroup', { name: 'Add to calendar' });
+	await expect(calendar.getByRole('radio', { name: 'Without details', exact: true })).toBeChecked();
+	await expect(
+		calendar.getByRole('radio', { name: 'Without details', exact: true })
+	).toHaveAccessibleDescription('Shows only “Medical visit”');
+	await expect(
+		calendar.getByRole('radio', { name: 'With details', exact: true })
+	).toHaveAccessibleDescription('Includes the child’s name, the doctor, the place and the reason');
+	await expectAccessible(page);
+
+	const day = String(v.starts_at).slice(0, 10);
+	const download = page.waitForEvent('download');
+	await page.getByRole('button', { name: 'Download .ics' }).click();
+	const file = await download;
+	expect(file.suggestedFilename()).toBe(`visit-${day}.ics`);
+	expect(await readFile(await file.path(), 'utf8')).toContain('SUMMARY:Medical visit');
+	await expect(page).toHaveURL(visitUrl(v.id));
+
+	const generic = await page.request.get(calendarUrl(v.id, 'generic'));
+	expect(generic.status()).toBe(200);
+	expect(generic.headers()['content-type']).toBe('text/calendar; charset=utf-8');
+	expect(generic.headers()['content-disposition']).toBe(`attachment; filename="visit-${day}.ics"`);
+	expect(generic.headers()['cache-control']).toBe('no-store');
+	expect(generic.headers()['x-content-type-options']).toBe('nosniff');
+	const full = await page.request.get(calendarUrl(v.id, 'full'));
+	expect(await full.text()).toContain('SUMMARY:Mia: Well-child visit with Dr. Lee');
+	expect(await (await page.request.get(calendarUrl(v.id))).text()).toContain(
+		'SUMMARY:Medical visit'
+	);
+});
+
+test('the calendar is offered on upcoming and cancelled visits, not on past ones', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const past = await seedVisit(api, { starts_at: days(-1) });
+	const dropped = await seedVisit(api, { starts_at: days(2) });
+	expect((await api('PATCH', `${VISITS()}/${dropped.id}`, { cancelled: true })).status).toBe(200);
+	await signIn(page, ANA);
+	await page.goto(visitUrl(past.id));
+	await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Download .ics' })).toHaveCount(0);
+	await page.goto(visitUrl(dropped.id));
+	await expect(page.getByRole('button', { name: 'Download .ics' })).toBeVisible();
+	await expect(page.getByRole('radiogroup', { name: 'Add to calendar' })).toBeVisible();
+});
+
+test('the outcome page and the calendar file of a visit that is not this kid’s are the 404 page', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const mine = await seedVisit(api, { starts_at: days(-1) });
+	const others = await seedVisit(await stubAs(CLEO), { starts_at: days(1) }, LEO.id);
+	await signIn(page, DAN);
+	const unknown = await expectNotFoundPage(page, listUrl('k-unknown'));
+	for (const path of [`${visitUrl(mine.id)}/outcome`, calendarUrl(mine.id)]) {
+		expect(await expectNotFoundPage(page, path)).toBe(unknown);
+	}
+	await page.context().clearCookies();
+	await signIn(page, ANA);
+	for (const path of [
+		`${visitUrl(others.id)}/outcome`,
+		calendarUrl(others.id),
+		calendarUrl('vis-000000009999', 'full')
+	]) {
+		expect(await expectNotFoundPage(page, path)).toBe(unknown);
+	}
+});
+
+test.describe('delete and download without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('keep the records of a deleted visit', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const v = await seedRecorded(api);
+		await signIn(page, ANA);
+		await page.goto(visitUrl(v.id));
+		const confirm = await openConfirm(page);
+		await linkedBox(confirm).uncheck();
+		await expect(confirm.getByText(STAY)).toBeVisible();
+		await submit(page.getByRole('button', { name: 'Yes, delete this visit' }));
+		await onList(page);
+		expect((await api('GET', `${VISITS()}/${v.id}`)).status).toBe(404);
+		expect(await listOf(api, 'growth')).toHaveLength(1);
+	});
+
+	test('delete a visit with its records, and Cancel reloads the visit with the confirm closed', async ({
+		page
+	}) => {
+		const api = await stubAs(ANA);
+		const v = await seedRecorded(api);
+		await signIn(page, ANA);
+		await page.goto(visitUrl(v.id));
+		const confirm = await openConfirm(page);
+		await confirm.getByRole('link', { name: 'Cancel', exact: true }).click();
+		await expect(page).toHaveURL(visitUrl(v.id));
+		await expect(page.getByRole('button', { name: 'Yes, delete this visit' })).toBeHidden();
+		await openConfirm(page);
+		await submit(page.getByRole('button', { name: 'Yes, delete this visit' }));
+		await onList(page);
+		expect(await listOf(api, 'medications')).toEqual([]);
+	});
+
+	test('download the calendar file with details', async ({ page }) => {
+		const api = await stubAs(ANA);
+		const v = await seedVisit(api, { starts_at: days(3) });
+		await signIn(page, ANA);
+		await page.goto(visitUrl(v.id));
+		await page.getByRole('radio', { name: 'With details', exact: true }).check();
+		const download = page.waitForEvent('download');
+		await page.getByRole('button', { name: 'Download .ics' }).click();
+		const file = await download;
+		expect(file.suggestedFilename()).toBe(`visit-${String(v.starts_at).slice(0, 10)}.ics`);
+		expect(await readFile(await file.path(), 'utf8')).toContain('SUMMARY:Mia: Well-child visit');
+	});
 });

@@ -35,3 +35,4 @@ export const visitNewPath = (kidId: string) => `${visitsPath(kidId)}/new`;
 export const visitPath = (kidId: string, id: string) => `${visitsPath(kidId)}/${id}`;
 export const visitEditPath = (kidId: string, id: string) => `${visitPath(kidId, id)}/edit`;
 export const visitOutcomePath = (kidId: string, id: string) => `${visitPath(kidId, id)}/outcome`;
+export const visitCalendarPath = (kidId: string, id: string) => `${visitPath(kidId, id)}/calendar`;
