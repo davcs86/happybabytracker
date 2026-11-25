@@ -90,27 +90,43 @@ func insertDoses(ctx context.Context, tx *sql.Tx, a model.Administration, antige
 // CreateAdministration stores one row per antigen of a for kidID as actorID, who needs an active grant (else
 // ErrNotFound); ErrConflict when the kid already holds MaxVaccineAdministrationsPerKid. The caller validates the rest.
 func (s *Store) CreateAdministration(ctx context.Context, kidID, actorID string, a model.Administration, now time.Time) (model.Administration, error) {
-	set, ok := canonicalAntigens(a.Antigens)
-	if !ok {
+	if _, ok := canonicalAntigens(a.Antigens); !ok {
 		return model.Administration{}, ErrInvalidAntigens
 	}
-	a.ID, a.KidID, a.Antigens, a.CreatedBy, a.UpdatedBy = model.NewID(), kidID, set, actorID, actorID
-	a.CreatedAt, a.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var out model.Administration
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(DISTINCT administration) FROM vaccine_doses WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
-			return err
-		}
-		if n >= constants.MaxVaccineAdministrationsPerKid {
-			return ErrConflict
-		}
-		return insertDoses(ctx, tx, a, set)
+		var err error
+		out, err = createAdministrationTx(ctx, tx, kidID, actorID, a, nil, now)
+		return err
 	})
 	if err != nil {
+		return model.Administration{}, err
+	}
+	return out, nil
+}
+
+// createAdministrationTx is CreateAdministration inside tx, every row linked to visitID when set; the caller has
+// asserted the actor's role.
+func createAdministrationTx(ctx context.Context, tx *sql.Tx, kidID, actorID string, a model.Administration, visitID *string,
+	now time.Time) (model.Administration, error) {
+	set, ok := canonicalAntigens(a.Antigens)
+	if !ok {
+		return model.Administration{}, ErrInvalidAntigens
+	}
+	a.ID, a.KidID, a.Antigens, a.CreatedBy, a.UpdatedBy, a.VisitID = model.NewID(), kidID, set, actorID, actorID, visitID
+	a.CreatedAt, a.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var n int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT administration) FROM vaccine_doses WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
+		return model.Administration{}, err
+	}
+	if n >= constants.MaxVaccineAdministrationsPerKid {
+		return model.Administration{}, ErrConflict
+	}
+	if err := insertDoses(ctx, tx, a, set); err != nil {
 		return model.Administration{}, err
 	}
 	return a, nil

@@ -56,25 +56,35 @@ func measureArgs(g model.Growth) []any {
 // CreateGrowth stores g for kidID as actorID, who needs an active grant (else ErrNotFound); ErrConflict when the kid
 // already holds MaxGrowthPerKid measurements. The caller validates the rest.
 func (s *Store) CreateGrowth(ctx context.Context, kidID, actorID string, g model.Growth, now time.Time) (model.Growth, error) {
-	g.ID, g.KidID, g.CreatedBy, g.UpdatedBy = model.NewID(), kidID, actorID, actorID
-	g.CreatedAt, g.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var out model.Growth
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM growth_measurements WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
-			return err
-		}
-		if n >= constants.MaxGrowthPerKid {
-			return ErrConflict
-		}
-		args := append(append([]any{g.ID, kidID, g.Note, actorID, actorID, g.CreatedAt.Unix(), g.UpdatedAt.Unix(), g.MeasuredOn}, measureArgs(g)...), g.VisitID)
-		_, err := tx.ExecContext(ctx,
-			`INSERT INTO growth_measurements(`+growthColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+		var err error
+		out, err = createGrowthTx(ctx, tx, kidID, actorID, g, nil, now)
 		return err
 	})
 	if err != nil {
+		return model.Growth{}, err
+	}
+	return out, nil
+}
+
+// createGrowthTx is CreateGrowth inside tx, linked to visitID when set; the caller has asserted the actor's role.
+func createGrowthTx(ctx context.Context, tx *sql.Tx, kidID, actorID string, g model.Growth, visitID *string, now time.Time) (model.Growth, error) {
+	g.ID, g.KidID, g.CreatedBy, g.UpdatedBy, g.VisitID = model.NewID(), kidID, actorID, actorID, visitID
+	g.CreatedAt, g.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM growth_measurements WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
+		return model.Growth{}, err
+	}
+	if n >= constants.MaxGrowthPerKid {
+		return model.Growth{}, ErrConflict
+	}
+	args := append(append([]any{g.ID, kidID, g.Note, actorID, actorID, g.CreatedAt.Unix(), g.UpdatedAt.Unix(), g.MeasuredOn}, measureArgs(g)...), g.VisitID)
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO growth_measurements(`+growthColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...); err != nil {
 		return model.Growth{}, err
 	}
 	return g, nil

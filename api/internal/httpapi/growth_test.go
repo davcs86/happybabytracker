@@ -91,7 +91,7 @@ func TestGrowthRoutesRoles(t *testing.T) {
 
 	for name, token := range map[string]string{"guardian": ana, "caregiver": bo} {
 		m := k.createGrowth(token, kid, nil)
-		sameKeys(t, m, "id", "measured_on", "weight", "length", "head", "note", "age", "scores")
+		sameKeys(t, m, "id", "measured_on", "weight", "length", "head", "note", "age", "scores", "visit_id")
 		id := m["id"].(string)
 		if m["measured_on"] != "2026-06-01" || m["note"] != "first" ||
 			!equalJSON(m["weight"], map[string]any{"grams": w.Grams, "oz_hundredths": w.OzHundredths, "typed_unit": "kg"}) ||

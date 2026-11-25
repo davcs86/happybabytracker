@@ -159,7 +159,7 @@ func TestVaccinesShape(t *testing.T) {
 
 	rec = k.do(http.MethodGet, "/v1/kids/"+kid+"/vaccinations/"+typhoid, cara, nil)
 	a := bodyMap(t, rec)
-	sameKeys(t, a, "id", "given_on", "antigens", "lot", "product", "note")
+	sameKeys(t, a, "id", "given_on", "antigens", "lot", "product", "note", "visit_id")
 	if rec.Code != http.StatusOK || a["id"] != typhoid || a["given_on"] != "2025-03-02" || a["lot"] != nil ||
 		a["product"] != "Travel shot" || a["note"] != nil || !slices.Equal(stringsOf(a["antigens"]), []string{"other", "typhoid"}) {
 		t.Errorf("administration = %d %v", rec.Code, a)

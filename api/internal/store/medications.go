@@ -331,45 +331,56 @@ func readMedication(ctx context.Context, q querier, kidID, id string, now time.T
 // CreateMedication stores v for kidID as actorID (an active grant, else ErrNotFound) and materialises its rows;
 // ErrConflict at MaxMedicationsPerKid, ErrInvalidSchedule for a schedule the engine refuses. The caller validates the rest.
 func (s *Store) CreateMedication(ctx context.Context, kidID, actorID string, v model.Medication, now time.Time) (model.Medication, error) {
-	sc, ok := canonicalSchedule(v.Schedule)
-	if !ok {
+	if _, ok := canonicalSchedule(v.Schedule); !ok {
 		return model.Medication{}, ErrInvalidSchedule
 	}
-	v.Schedule = sc
-	v.ID, v.KidID, v.CreatedBy, v.UpdatedBy = model.NewID(), kidID, actorID, actorID
-	v.CreatedAt, v.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
-	v.StartAt = unixTime(v.StartAt.Unix())
 	var out model.Medication
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM medications WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
-			return err
-		}
-		if n >= constants.MaxMedicationsPerKid {
-			return ErrConflict
-		}
-		loc, err := kidZone(ctx, tx, kidID)
-		if err != nil {
-			return err
-		}
-		args := append(append([]any{v.ID, kidID, v.Note, actorID, actorID, v.CreatedAt.Unix(), v.UpdatedAt.Unix(), v.Name, v.Dose}, scheduleArgs(sc)...),
-			v.StartAt.Unix(), v.EndOn, v.Active, v.VisitID)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO medications(`+medicationColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...); err != nil {
-			return err
-		}
-		if err := materialiseCourse(ctx, tx, v.ID, loc, now); err != nil {
-			return err
-		}
-		out, err = readMedication(ctx, tx, kidID, v.ID, now)
+		var err error
+		out, err = createMedicationTx(ctx, tx, kidID, actorID, v, nil, now)
 		return err
 	})
 	if err != nil {
 		return model.Medication{}, err
 	}
 	return out, nil
+}
+
+// createMedicationTx is CreateMedication inside tx, linked to visitID when set, reminders materialised in tx; the
+// caller has asserted the actor's role.
+func createMedicationTx(ctx context.Context, tx *sql.Tx, kidID, actorID string, v model.Medication, visitID *string,
+	now time.Time) (model.Medication, error) {
+	sc, ok := canonicalSchedule(v.Schedule)
+	if !ok {
+		return model.Medication{}, ErrInvalidSchedule
+	}
+	v.Schedule, v.VisitID = sc, visitID
+	v.ID, v.KidID, v.CreatedBy, v.UpdatedBy = model.NewID(), kidID, actorID, actorID
+	v.CreatedAt, v.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	v.StartAt = unixTime(v.StartAt.Unix())
+	var n int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM medications WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
+		return model.Medication{}, err
+	}
+	if n >= constants.MaxMedicationsPerKid {
+		return model.Medication{}, ErrConflict
+	}
+	loc, err := kidZone(ctx, tx, kidID)
+	if err != nil {
+		return model.Medication{}, err
+	}
+	args := append(append([]any{v.ID, kidID, v.Note, actorID, actorID, v.CreatedAt.Unix(), v.UpdatedAt.Unix(), v.Name, v.Dose}, scheduleArgs(sc)...),
+		v.StartAt.Unix(), v.EndOn, v.Active, v.VisitID)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO medications(`+medicationColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...); err != nil {
+		return model.Medication{}, err
+	}
+	if err := materialiseCourse(ctx, tx, v.ID, loc, now); err != nil {
+		return model.Medication{}, err
+	}
+	return readMedication(ctx, tx, kidID, v.ID, now)
 }
 
 // Medication is ErrNotFound for an id that is absent or belongs to another kid; next due is the first row after now.

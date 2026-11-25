@@ -275,3 +275,28 @@ func TestVisitCapAndCascade(t *testing.T) {
 		t.Errorf("visits after the kid's delete: %d, err %v", n, err)
 	}
 }
+
+func TestUpdateAdministrationKeepsVisitID(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	v := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	a, err := s.CreateAdministration(ctx, k.ID, ana.ID, model.Administration{GivenOn: "2026-03-01", Antigens: []string{"dtap"}}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkRow(t, s, "vaccine_doses", "administration", a.ID, v.ID)
+	a.Antigens = []string{"dtap", "ipv"}
+	if err := s.UpdateAdministration(ctx, k.ID, ana.ID, a, t0); err != nil {
+		t.Fatal(err)
+	}
+	var rows, linked int
+	if err := s.r.QueryRow(`SELECT COUNT(*), COUNT(visit_id) FROM vaccine_doses WHERE administration = ?`, a.ID).Scan(&rows, &linked); err != nil ||
+		rows != 2 || linked != 2 {
+		t.Errorf("after adding an antigen: %d rows, %d linked, err %v; want 2 and 2", rows, linked, err)
+	}
+	got, err := s.Administration(ctx, k.ID, a.ID)
+	if err != nil || got.VisitID == nil || *got.VisitID != v.ID {
+		t.Errorf("administration read back with visit %v, err %v", got.VisitID, err)
+	}
+}
