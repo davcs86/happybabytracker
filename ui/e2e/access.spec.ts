@@ -41,16 +41,16 @@ const grant = (page: Page, displayName: string) =>
 async function add(page: Page, username: string, role: 'Caregiver' | 'Guardian') {
 	await untilHydrated(page.getByLabel('Username'));
 	await page.getByLabel('Username').fill(username);
-	await page.getByLabel('Role', { exact: true }).selectOption({ label: role });
-	await page.getByRole('button', { name: 'Add', exact: true }).click();
+	await page.getByRole('radio', { name: role, exact: true }).check();
+	await page.getByRole('button', { name: 'Give access', exact: true }).click();
 }
 
 test('a guardian sees the grants with their roles', async ({ page }) => {
 	await signIn(page, CLEO);
 	await page.goto(`/kids/${LEO.id}/access`);
-	await expect(page.getByRole('heading', { name: `Access to ${LEO.name}` })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Access', level: 1 })).toBeVisible();
 	await expect(grant(page, 'Cleo')).toContainText('Guardian');
-	await expect(grant(page, 'Cleo')).toContainText('(you)');
+	await expect(grant(page, 'Cleo')).toContainText('You');
 	await expect(grant(page, 'Ana')).toContainText('Caregiver');
 	await expect(grant(page, 'Cleo').getByRole('button', { name: 'Leave' })).toBeVisible();
 	await expect(grant(page, 'Ana').getByRole('button', { name: 'Leave' })).toHaveCount(0);
@@ -64,12 +64,13 @@ test('grant, change role and remove', async ({ page }) => {
 	await expect(grant(page, 'Dan')).toContainText('Caregiver');
 	await expectAccessible(page);
 
-	await grant(page, 'Dan').getByLabel('Role for Dan').selectOption({ label: 'Guardian' });
-	await grant(page, 'Dan').getByRole('button', { name: 'Change role for Dan' }).click();
+	await grant(page, 'Dan').getByRole('button', { name: 'Make Dan a guardian' }).click();
 	await expect(grant(page, 'Dan')).toContainText('Guardian');
-	await expect(grant(page, 'Dan').getByLabel('Role for Dan')).toHaveValue('guardian');
+	await expect(grant(page, 'Dan').getByRole('button', { name: 'Make Dan a caregiver' })).toBeVisible();
 
-	await grant(page, 'Dan').getByRole('button', { name: 'Remove Dan' }).click();
+	await grant(page, 'Dan')
+		.getByRole('button', { name: `Remove Dan’s access to ${MIA.name}` })
+		.click();
 	await expect(grant(page, 'Dan')).toHaveCount(0);
 	await expect(grant(page, 'Ana')).toBeVisible();
 	await expectAccessible(page);
@@ -88,6 +89,9 @@ test(`an unknown or disabled username reads "${PARENT_NOT_FOUND}"`, async ({ pag
 test(`the only guardian cannot leave: "${LAST_GUARDIAN}"`, async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/access`);
+	await expect(
+		page.getByText(`You are ${MIA.name}’s only active guardian. Give another person guardian access`)
+	).toBeVisible();
 	await grant(page, 'Ana').getByRole('button', { name: 'Leave' }).click();
 	await expect(page.getByRole('alert')).toHaveText(LAST_GUARDIAN);
 	await expect(grant(page, 'Ana')).toContainText('Guardian');

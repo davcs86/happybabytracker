@@ -52,6 +52,7 @@
 		'flex h-full min-h-24 w-full flex-col items-start gap-2.5 rounded-xl border bg-card p-3 text-left hover:bg-accent';
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
 {#snippet face(entry: QuickLogEntry)}
 	{@const look = LOOK[entry.module]}
 	<span class="tracker-chip {look.hue}"><look.icon aria-hidden="true" class="size-5" /></span>
@@ -86,7 +87,6 @@
 							>
 						</form>
 					{:else}
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
 						<a
 							href={href(entry)}
 							class={TILE}

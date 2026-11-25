@@ -37,14 +37,13 @@
 			<h1>Growth</h1>
 			<p class="mt-1 text-sm text-muted-foreground">{data.age}</p>
 		</div>
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
 		<Button href={growthNewPath(data.kid.id)} class="flex-none">Add measurement</Button>
 	</div>
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
 		<nav aria-label="Measures" class="flex gap-1 rounded-xl bg-muted p-1">
 			{#each MEASURES as m (m)}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
 				<a
 					href={growthMeasurePath(data.kid.id, m)}
 					aria-current={m === data.measure ? 'page' : undefined}
@@ -53,6 +52,7 @@
 						? 'bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.15)]'
 						: 'text-muted-foreground'}">{MEASURE_LABEL[m]}</a
 				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{/each}
 		</nav>
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import * as Alert from '#lib/components/ui/alert/index.js';

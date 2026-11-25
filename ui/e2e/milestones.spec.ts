@@ -117,7 +117,7 @@ async function open(page: Page, title: string) {
 async function onPage(page: Page, kid: { id: string; name: string }) {
 	await page.waitForURL((u) => u.pathname === pageUrl(kid.id) && u.search === '');
 	await expect(
-		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
 }
 // A one-tap mark returns to the item: its list named in the query, the row in the fragment.
@@ -126,7 +126,7 @@ async function onItem(page: Page, kid: { id: string; name: string }, id: string)
 		(u) => u.pathname === pageUrl(kid.id) && u.search === `?open=${id}` && u.hash === `#item-${id}`
 	);
 	await expect(
-		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
 }
 const stored = async (api: Api, kid: string) => {
@@ -185,7 +185,10 @@ test('a 9-month kid sees all twelve lists in age order, the current one open and
 	).toHaveAttribute('href', newUrl(NELL.id, '9m-lc-stub-1'));
 	await expect(nine).not.toContainText('Reached on');
 	// No colour, icon, count or progress: nothing but the absence of a date marks an unreached item.
-	await expect(page.locator('main').locator('svg, img, progress, meter')).toHaveCount(0);
+	// The chevrons and the Edit and Choose a date buttons are controls, marked data-chrome.
+	await expect(
+		page.locator('main').locator('svg:not([data-chrome]), img, progress, meter')
+	).toHaveCount(0);
 	await expectAccessible(page);
 
 	await expect(reachButton(page, '30m-se-stub-1')).toHaveCount(0);
@@ -208,9 +211,16 @@ test('the CDC sentence and attribution from the API sit under the lists', async 
 	const attribution = page.getByText('Stub attribution, not reference data.', { exact: true });
 	await expect(note).toBeVisible();
 	await expect(attribution).toBeVisible();
-	const last = await summaries(page).last().boundingBox();
-	expect((await note.boundingBox())!.y).toBeGreaterThan(last!.y);
-	expect((await attribution.boundingBox())!.y).toBeGreaterThan(last!.y);
+	// Beside the lists from 1280 px: after them in the document, so also in the reading order.
+	const last = (await summaries(page).last().elementHandle())!;
+	for (const text of [note, attribution]) {
+		expect(
+			await text.evaluate(
+				(el, ref) => !!(ref.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING),
+				last
+			)
+		).toBe(true);
+	}
 	await expect(page.locator('main')).not.toContainText('omitted');
 });
 

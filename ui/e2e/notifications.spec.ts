@@ -27,7 +27,7 @@ const RESEND_FAILED =
 const IOS_SENTENCE =
 	'On iPhone and iPad, add this app to your Home Screen first, then open it from there to turn on notifications';
 const NTFY_SENTENCE =
-	"ntfy keeps each message for up to 72 hours on its server, so your child's name is stored there in plain text for that long";
+	'ntfy keeps each message for up to 72 hours on its server, so your child’s name is stored there in plain text for that long';
 const TOPIC = /^hbt-[0-9A-Za-z]{22}$/;
 const SIGN_OUT_SENTENCE =
 	'Signing out of this app does not stop notifications on this phone or browser: turn them off first with Turn off ntfy or Turn off on this device.';
@@ -180,7 +180,7 @@ test.describe('Web Push on', () => {
 		const ana = await stubAs(ANA);
 		await signIn(page, ANA);
 		await page.goto('/account');
-		await page.getByRole('link', { name: 'Notifications' }).click();
+		await page.getByRole('link', { name: 'Notification settings' }).click();
 		await expect(page).toHaveURL(new RegExp(`${PAGE}$`));
 		await expect(enableButton(page)).toBeEnabled();
 		await expect(page.getByText(IOS_SENTENCE)).toHaveCount(0);
@@ -372,7 +372,7 @@ test.describe('Web Push on', () => {
 		const before = (await receivedRequests()).length;
 		await enableButton(page).click();
 		await expect(page.getByRole('alert')).toHaveText(
-			"Notifications are blocked for this site. Allow them in the browser's settings, then try again."
+			'Notifications are blocked for this site. Allow them in the browser’s settings, then try again.'
 		);
 		expect(await pushWrites(before)).toEqual([]);
 		await expectAccessible(page);

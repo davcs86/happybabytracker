@@ -47,7 +47,7 @@ async function onGrowth(page: Page, kid: string, measure: string) {
 	await page.waitForURL(
 		(u) => u.pathname === `/kids/${kid}/growth` && u.search === `?measure=${measure}`
 	);
-	await expect(page.getByRole('heading', { name: /^Growth for /, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Growth', level: 1 })).toBeVisible();
 }
 
 test('create with kilograms and centimetres lands on the growth page with the row', async ({

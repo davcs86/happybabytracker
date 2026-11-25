@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 	await resetStub();
 	await signIn(page, ANA);
 	await page.goto('/account');
-	await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Your profile', level: 1 })).toBeVisible();
 	await untilHydrated(page.getByLabel('Display name'));
 });
 

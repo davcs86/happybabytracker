@@ -19,7 +19,7 @@ test('the admin is kept inside /admin/ and can sign out from /admin/parents', as
 	}
 	const session = (await sessionCookie(context))?.value;
 
-	await page.getByRole('button', { name: 'Sign out' }).click();
+	await page.getByRole('button', { name: 'Sign out of admin' }).click();
 	await expect(page).toHaveURL(/\/login$/);
 	await expectAccessible(page);
 	expect(await sessionCookie(context)).toBeUndefined();

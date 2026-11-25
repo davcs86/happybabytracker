@@ -17,21 +17,29 @@ test.beforeEach(async ({ page }) => {
 const row = (page: Page, username: string) =>
 	page.getByRole('listitem').filter({ has: page.getByText(username, { exact: true }) });
 
+// The create form sits in a disclosure that a refused submit leaves open.
 async function addParent(page: Page, username: string, displayName: string) {
+	if (!(await page.getByLabel('Username').isVisible())) {
+		await page.locator('summary', { hasText: 'Create parent' }).click();
+	}
 	await page.getByLabel('Username').fill(username);
 	await page.getByLabel('Display name').fill(displayName);
-	await page.getByRole('button', { name: 'Add parent' }).click();
+	await page.getByRole('button', { name: 'Create parent' }).click();
+}
+
+// The confirm button exists only inside the opened details.
+async function disable(page: Page, username: string) {
+	await row(page, username).locator('summary', { hasText: 'Disable' }).click();
+	await row(page, username).getByRole('button', { name: 'Disable' }).click();
 }
 
 test('the list shows each parent with its status and no kid data', async ({ page }) => {
 	await expect(page.getByRole('heading', { name: 'Parents', level: 1 })).toBeVisible();
 	await expect(row(page, 'ana')).toContainText('Ana');
 	await expect(row(page, 'ana')).toContainText('Active');
-	await expect(row(page, 'bo')).toContainText('No password yet');
+	await expect(row(page, 'bo')).toContainText('Invited');
 	await expect(row(page, 'dee')).toContainText('Disabled');
-	await expect(
-		page.getByText('3 to 32 characters: a–z, 0–9, dot, underscore or hyphen')
-	).toBeVisible();
+	await expect(page.getByText('5 parents · 3 active · 1 invited · 1 disabled')).toBeVisible();
 	const text = await page.locator('body').innerText();
 	expect(text).not.toContain(MIA.name);
 	expect(text).not.toContain(LEO.name);
@@ -46,10 +54,10 @@ test('create shows the invite link once, with its validity and a copy button', a
 	await addParent(page, '  Eve ', 'Eve');
 	const panel = page.getByRole('region', { name: 'Invite link for eve' });
 	await expect(panel).toContainText(INVITE_TEXT);
-	const link = (await panel.getByTestId('parent-link').innerText()).trim();
+	const link = await panel.getByLabel('One-time link').inputValue();
 	expect(link).toMatch(LINK);
 	expect(link).toContain('/invite/');
-	await expect(row(page, 'eve')).toContainText('No password yet');
+	await expect(row(page, 'eve')).toContainText('Invited');
 	await expectAccessible(page);
 
 	await panel.getByRole('button', { name: 'Copy link' }).click();
@@ -89,35 +97,38 @@ test('a duplicate username and a malformed one get field messages', async ({ pag
 test('a reset link lasts 1 hour; a parent without a password gets a 72-hour invite', async ({
 	page
 }) => {
-	await row(page, 'ana').getByRole('button', { name: 'Reset link' }).click();
+	await row(page, 'ana').getByRole('button', { name: 'New reset link' }).click();
 	const reset = page.getByRole('region', { name: 'Reset link for ana' });
 	await expect(reset).toContainText(RESET_TEXT);
-	expect((await reset.getByTestId('parent-link').innerText()).trim()).toMatch(/\/reset\//);
+	expect(await reset.getByLabel('One-time link').inputValue()).toMatch(/\/reset\//);
 	await expectAccessible(page);
 
-	await row(page, 'bo').getByRole('button', { name: 'Reset link' }).click();
+	await row(page, 'bo').getByRole('button', { name: 'New invite link' }).click();
 	const invite = page.getByRole('region', { name: 'Invite link for bo' });
 	await expect(invite).toContainText(INVITE_TEXT);
-	expect((await invite.getByTestId('parent-link').innerText()).trim()).toMatch(/\/invite\//);
+	expect(await invite.getByLabel('One-time link').inputValue()).toMatch(/\/invite\//);
 	await expect(page.getByRole('region', { name: 'Reset link for ana' })).toHaveCount(0);
 });
 
 test('disabling the only guardian of a child is refused with the sole-guardian text', async ({
 	page
 }) => {
-	await row(page, 'ana').getByRole('button', { name: 'Disable' }).click();
+	await disable(page, 'ana');
 	await expect(page.getByRole('alert')).toHaveText(SOLE_GUARDIAN);
 	await expect(row(page, 'ana')).toContainText('Active');
 	await expectAccessible(page);
 });
 
 test('disable and enable a parent', async ({ page }) => {
+	await row(page, 'dan').locator('summary', { hasText: 'Disable' }).click();
+	await expect(row(page, 'dan')).toContainText('is signed out everywhere');
+	await expectAccessible(page);
 	await row(page, 'dan').getByRole('button', { name: 'Disable' }).click();
 	await expect(row(page, 'dan')).toContainText('Disabled');
 	await expectAccessible(page);
 	await row(page, 'dan').getByRole('button', { name: 'Enable' }).click();
 	await expect(row(page, 'dan')).toContainText('Active');
-	await expect(row(page, 'dan').getByRole('button', { name: 'Disable' })).toBeVisible();
+	await expect(row(page, 'dan').locator('summary', { hasText: 'Disable' })).toBeVisible();
 });
 
 test.describe('without JavaScript', () => {
@@ -128,9 +139,9 @@ test.describe('without JavaScript', () => {
 		await addParent(page, 'gus', 'Gus');
 		const panel = page.getByRole('region', { name: 'Invite link for gus' });
 		await expect(panel).toContainText(INVITE_TEXT);
-		expect((await panel.getByTestId('parent-link').innerText()).trim()).toMatch(LINK);
+		expect(await panel.getByLabel('One-time link').inputValue()).toMatch(LINK);
 		await expect(panel.getByRole('button', { name: 'Copy link' })).toHaveCount(0);
-		await expect(row(page, 'gus')).toContainText('No password yet');
+		await expect(row(page, 'gus')).toContainText('Invited');
 	});
 
 	test('a duplicate username is refused without JavaScript', async ({ page }) => {
