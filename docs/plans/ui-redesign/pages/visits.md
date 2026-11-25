@@ -1,8 +1,8 @@
 # Medical visits (list, visit, add and edit, after the visit)
 
-Status: **draft for owner approval**. Owner decision 2026-11-25: there is no prototype for this module; the
-pages are composed from existing designed pages, parts and wording, and this file is the page spec. Items
-marked **(confirm)** are the author's choices waiting on that approval.
+Status: **approved by the owner on 2026-11-25**, including the three items marked **(confirm)**. Owner decision
+2026-11-25: there is no prototype for this module; the pages are composed from existing designed pages, parts and
+wording, and this file is the page spec.
 
 Behaviour comes from `docs/superpowers/specs/2026-11-25-medical-visits-design.md` ("the visits spec"); this
 file decides only look, words and the no-JS routes. No prototype, no `specs/*.layout.json` and no baselines
