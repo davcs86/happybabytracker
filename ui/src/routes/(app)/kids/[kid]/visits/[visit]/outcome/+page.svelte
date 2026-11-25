@@ -123,7 +123,7 @@
 			{#if data.sections.growth}
 				<div class="group/growth {SECTION}">
 					{@render addBox('add_growth', 'Add a growth measurement', values.add.growth)}
-					<div class="hidden group-has-[#outcome-add_growth:checked]/growth:block">
+					<div class="hidden group-has-[#outcome-add\_growth:checked]/growth:block">
 						<div class={BLOCK}>
 							<MeasurementFields
 								prefix="growth."
@@ -142,7 +142,7 @@
 				<div class="group/vaccinations {SECTION}">
 					{@render addBox('add_vaccinations', 'Add vaccines given', values.add.vaccinations)}
 					<div
-						class="hidden flex-col gap-3.5 group-has-[#outcome-add_vaccinations:checked]/vaccinations:flex"
+						class="hidden flex-col gap-3.5 group-has-[#outcome-add\_vaccinations:checked]/vaccinations:flex"
 					>
 						{#each vaccinations as block, i (i)}
 							<fieldset
@@ -179,7 +179,7 @@
 				<div class="group/medications {SECTION}">
 					{@render addBox('add_medications', 'Add a medication', values.add.medications)}
 					<div
-						class="hidden flex-col gap-3.5 group-has-[#outcome-add_medications:checked]/medications:flex"
+						class="hidden flex-col gap-3.5 group-has-[#outcome-add\_medications:checked]/medications:flex"
 					>
 						{#each medications as block, i (i)}
 							<fieldset
