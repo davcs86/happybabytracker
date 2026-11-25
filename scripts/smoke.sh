@@ -185,9 +185,9 @@ parent_id() { # body-name username -> the parent's id from the admin list
     head -n 1 | sed -E 's/.*name="parent_id" value="([^"]+)".*/\1/' || true
 }
 
-invite_url() { # body-name -> the link shown to the admin
-  grep -oE 'data-testid="parent-link">[^<]*' "$WORK/$1.body" | sed -E 's/.*>[[:space:]]*//' |
-    head -n 1 || true
+invite_url() { # body-name -> the link shown to the admin, in a read-only field
+  tr -d '\n' <"$WORK/$1.body" | grep -oE '<input[^>]*data-testid="parent-link"[^>]*>' | head -n 1 |
+    grep -oE ' value="[^"]*"' | sed -E 's/^ value="//; s/"$//' | head -n 1 || true
 }
 
 redeem() { # name addr url password -> session cookie
@@ -639,12 +639,17 @@ vaccine_schedule() { # name schedule -> as smoke-a, saves the kid's settings wit
     'birth_date=2026-01-15' 'sex=female' "time_zone=$KID_ZONE" growth_source=who "vaccine_schema=$2")"
   { [ "$code" = 200 ] && body_has "$1" 'Saved'; } || fail "4i schedule $2" "status $code"
 }
-line_status() { # body-name line-id -> the status badge of that schedule line
-  grep -oE "id=\"vline-$2-status\"[^>]*>[^<]*" "$WORK/$1.body" | head -n 1 | sed 's/.*>//' || true
+# The page body without class attributes (a class can hold a '>'), inline icons and comment markers.
+no_icons() {
+  tr -d '\n' <"$WORK/$1.body" | sed -E 's# class="[^"]*"##g' |
+    sed -E 's#</?(svg|path|circle|rect|line|polyline|polygon|ellipse|g)[^>]*>##g; s#<!--[^>]*-->##g'
 }
-group_status() { # body-name from-date -> the status badge of that age group
-  tr -d '\n' <"$WORK/$1.body" | grep -oE "id=\"vgroup-$2\"[^>]*>[^<]*<span[^>]*>[^<]*" | head -n 1 |
-    sed 's/.*>//' || true
+line_status() { # body-name line-id -> the status badge of that schedule line
+  no_icons "$1" | grep -oE "id=\"vline-$2-status\"[^>]*>[^<]*" | head -n 1 | sed 's/.*>//' || true
+}
+group_status() { # body-name from-date -> the status badge of that age group, the last span of its heading
+  no_icons "$1" | sed 's#</h2>#\n#g' | grep -F "id=\"vgroup-$2\"" | head -n 1 |
+    sed -E 's#.*<span[^>]*>([^<]*)</span>[[:space:]]*$#\1#' || true
 }
 active_groups() { # body-name -> the from dates of the groups shown before Completed, in page order
   tr -d '\n' <"$WORK/$1.body" | sed 's|Completed (.*||' | grep -oE 'id="vgroup-[0-9-]{10}"' |
@@ -667,7 +672,7 @@ vaccine_schedule schedule-us us
 code="$(req vaccines-us "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
 mapfile -t groups < <(active_groups vaccines-us)
 { [ "$code" = 200 ] && body_has vaccines-us "$US_CAPTION" && body_has vaccines-us "$US_ATTRIBUTION" &&
-  body_has vaccines-us '>What is not included</summary>' &&
+  no_icons vaccines-us | grep -qE '<summary>What is not included[[:space:]]*</summary>' &&
   body_has vaccines-us 'Tdap: 1 dose during each pregnancy' && [ "${#groups[@]}" -ge 2 ] &&
   printf '%s\n' "${groups[@]}" | sort -c && [ "${groups[0]}" = 2026-01-15 ] &&
   [ "$(group_status vaccines-us 2026-01-15)" = Overdue ] &&
@@ -676,7 +681,8 @@ mapfile -t groups < <(active_groups vaccines-us)
   [ "$(count vaccines-us 'action="?/dismiss"')" -gt 0 ]; } ||
   fail "4i vaccines page (us)" "status $code, groups '${groups[*]}', birth $(group_status vaccines-us 2026-01-15)"
 code="$(req home-due "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
-due_href="$(grep -oE '<a href="[^"]*"[^>]*>Birth · Overdue</a>' "$WORK/home-due.body" |
+due_href="$(no_icons home-due |
+  grep -oE '<a href="[^"]*"[^>]*>(<span[^>]*></span>)? *<span[^>]*>Birth · Overdue</span></a>' |
   sed -E 's/<a href="([^"]*)".*/\1/' || true)"
 { [ "$code" = 200 ] && body_has home-due 'id="due-heading"' && [[ "$due_href" == *"$VACCINES" ]]; } ||
   fail "4i home Due" "status $code, link '$due_href'"
@@ -1012,9 +1018,9 @@ COURSE_ID="$({ grep -oE "$MEDICATION/[0-9a-f-]{36}\"" "$WORK/medication-k.body" 
 code="$(req home-k1 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
 # The home list ends at the kid's midnight: a DUE on the next kid-local day is not on it yet.
 { [ "$code" = 200 ] && { [ "$(date +%s)" -ge "$DUE" ] || [ "$(TZ="$KID_ZONE" date -d "@$DUE" '+%Y-%m-%d')" != "$(today)" ] ||
-  body_has home-k1 ">$MED_NAME · $(due_label "$DUE")</a>"; }; } ||
+  body_has home-k1 ">$MED_NAME · $(due_label "$DUE")</span></a>"; }; } ||
   fail "4k Due before the dose is due" "status $code"
-OVERDUE_LINE=">$MED_NAME · $(due_label "$DUE") · overdue</a>"
+OVERDUE_LINE=">$MED_NAME · $(due_label "$DUE") · overdue</span></a>"
 for _ in $(seq 1 40); do
   code="$(req home-k2 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
   if [ "$code" = 200 ] && body_has home-k2 "$OVERDUE_LINE"; then break; fi
@@ -1107,7 +1113,7 @@ DUE_2=$((($(date +%s) + 90) / 60 * 60))
 code="$(form course-new-2 "$ADDR_A" "$SESSION_A" "$MEDICATION/new?/save" "name=$MED_NAME_2" "dose=$MED_DOSE" kind=every \
   hours=1 "start_at=$(TZ="$KID_ZONE" date -d "@$DUE_2" '+%Y-%m-%dT%H:%M')" end_on= active=on note=)"
 code_m="$(req medication-l2 "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
-COURSE_ID_2="$(pieces medication-l2 '<li' | grep -F ">$MED_NAME_2</a>" | grep -oE "$MEDICATION/[0-9a-f-]{36}\"" |
+COURSE_ID_2="$(pieces medication-l2 '<li' | grep -F ">$MED_NAME_2</h3>" | grep -oE "$MEDICATION/[0-9a-f-]{36}\"" |
   head -n 1 | sed -E 's|.*/([0-9a-f-]{36})"|\1|' || true)"
 { [ "$code $(location course-new-2) $code_m" = "303 $MEDICATION 200" ] && [ -n "$COURSE_ID_2" ]; } ||
   fail "4l add a second course" "status $code, Location $(location course-new-2), page $code_m"
@@ -1194,12 +1200,12 @@ words="$(page_text ms-a | { grep -oiwE "$DENYLIST" || true; } | sort -u | tr '\n
 CDC_TEXTS="$WORK/cdc-texts"
 : >"$CDC_TEXTS"
 if [ "$AGE_MONTHS" -lt 60 ]; then
-  titles="$(grep -oE '<summary[^>]*>[^<]*</summary>' "$WORK/ms-a.body" | sed -E 's|<[^>]*>||g; s| · .*||' |
-    paste -sd '|' || true)"
+  titles="$(no_icons ms-a | grep -oE '<summary[^>]*><span[^>]*>[^<]*(<span[^>]*>[^<]*</span>)?</span> *</summary>' |
+    sed -E 's|<[^>]*>||g; s| · .*||; s|[[:space:]]+$||' | paste -sd '|' || true)"
   want=""
   for a in $LIST_AGES; do want="${want:+$want|}${LIST_TITLE[$a]}"; done
-  marked="$(grep -oE "<summary[^>]*>[^<]*· Current list for this age</summary>" "$WORK/ms-a.body" |
-    sed -E 's|<[^>]*>||g' || true)"
+  marked="$(no_icons ms-a | grep -oE '<summary[^>]*><span[^>]*>[^<]*<span[^>]*> · Current list for this age</span></span> *</summary>' |
+    sed -E 's|<[^>]*>||g; s|[[:space:]]+$||' || true)"
   { [ "$titles" = "$want" ] && [ "$(count ms-a 'Current list for this age')" = 1 ] &&
     [ "$marked" = "${LIST_TITLE[$CURRENT]} · Current list for this age" ]; } ||
     fail "4m lists" "titles '$titles', current '$marked', age $AGE_MONTHS months"
