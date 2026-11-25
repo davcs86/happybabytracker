@@ -2,7 +2,7 @@
 
 The Growth page plots a child's weight, length, head circumference and BMI against a reference chart (WHO or CDC) and lists every measurement with its score. The page states numbers and does not interpret them. All screenshots show fake data (for example Ivy, 1 year 1 month, or Uma, born at 30 weeks) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Add measurement and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the page you opened it from; after a save on the page you land where the steps say.
+The Add a measurement and Edit measurement forms open in a sheet over the Growth page: the form's title, a **Close** button (the ×), the fields, **Save** and **Cancel**. Saving closes the sheet, the list underneath shows the change and a short message appears ([Forms in sheets](Forms-in-sheets.md)). Every form screenshot below is the open sheet. Without JavaScript, in a new tab or when you open the address directly, the same form is a page with the same steps; after a save there you land where the steps say.
 
 ## Guide
 
@@ -38,19 +38,19 @@ Open **Chart data** under the chart. It shows two tables: **Measurements plotted
 2. Check the **Date**. It starts as the child's today. It cannot be in the future or before the birth date.
 3. Type at least one of **Weight**, **Length or height** and **Head circumference**. Each has its own unit box, which starts in the unit set on your profile. For pounds, a **Pounds** box and an **Ounces** box appear. A decimal comma is read as a decimal point.
 4. Add a **Note** if you want one.
-5. Tap **Save**. The sheet closes, the measurement is in the list and the message "Measurement added" appears. Without JavaScript you land back on the Growth page, on the chart of the first measure you typed.
+5. Tap **Save**. The sheet closes, the measurement is in the list underneath and the message "Measurement added" appears (`sheets/03-growth-saved`). Without JavaScript you land back on the Growth page, on the chart of the first measure you typed.
 
 | Phone, the sheet | Desktop, the sheet |
 |---|---|
 | <img src="../screenshots/sheets/01-growth-add-mobile.png" alt="Growth page for Ivy dimmed behind a sheet titled Add a measurement, with Date, Kilograms, Length or height, Head circumference and Note fields, then Save and Cancel" width="260"> | <img src="../screenshots/sheets/01-growth-add-desktop.png" alt="The same sheet centred over the Growth page on a desktop" width="460"> |
 
-Cancel, or the "Growth for ..." link at the top, returns without saving.
+**Cancel** or **Close** closes the sheet without saving (on the page, Cancel or the "Growth for ..." link at the top returns to Growth).
 
 If something is wrong, the sheet stays open, a box at the top says "Check the fields with a message." and the field says what to fix. Your typed values stay (`sheets/02-growth-refused`).
 
-| Phone, the page |
+| Phone |
 |---|
-| <img src="../screenshots/growth/13-new-nothing-measured-mobile.png" alt="Add a measurement for Mia with every measurement box empty: an alert Check the fields with a message and the red text Enter at least one of weight, length or head circumference" width="260"> |
+| <img src="../screenshots/growth/13-new-nothing-measured-mobile.png" alt="The Add a measurement sheet over Mia's dimmed Growth page with every measurement box empty: a box Check the fields with a message and the red text Enter at least one of weight, length or head circumference under Measurements" width="260"> |
 
 The messages you can meet:
 
@@ -67,15 +67,15 @@ The messages you can meet:
 2. Change the boxes and tap **Save**. A box left empty removes that measure from the visit. A measurement added from a medical visit has a **Recorded at a visit** link at the top that opens the visit ([Medical visits](Medical-visits.md)).
 3. To delete the whole visit, tap **Delete this measurement**. A box opens that says "This removes the measurement for everyone with access to Ivy." Tap **Yes, delete this measurement** to confirm.
 
-The edit page shows each measure in the unit it was typed in. To change the unit of a measure, pick the other unit in its box: the number is then read in the new unit. A measure the visit does not have starts in your profile's unit. In the example below (shot `08-edit-imperial`, for a parent who chose pounds and inches) the weight and length of the visit still show kg and cm because that is how they were typed, and only the empty head box shows "in".
+The edit sheet shows each measure in the unit it was typed in. To change the unit of a measure, pick the other unit in its box: the number is then read in the new unit. A measure the visit does not have starts in your profile's unit. In the example below (shot `08-edit-imperial`, for a parent who chose pounds and inches) the weight and length of the visit still show kg and cm because that is how they were typed, and only the empty head box shows "in".
 
-| Phone, the page | Desktop, the page |
+| Phone | Desktop |
 |---|---|
-| <img src="../screenshots/growth/09-edit-mobile.png" alt="Edit measurement for Ivy: Date 11/24/2026, Kilograms 9.5 kg, Length 76 cm, empty Head circumference, Note After the bath, Save and Cancel buttons and a Delete this measurement button" width="260"> | <img src="../screenshots/growth/09-edit-desktop.png" alt="The same page on a wide screen: the date and measurements on the left, the note on the right, Delete this measurement across the bottom" width="460"> |
+| <img src="../screenshots/growth/09-edit-mobile.png" alt="The Edit measurement sheet over Ivy's dimmed Growth page: Date 11/24/2026, Kilograms 9.5 kg, Length 76 cm, empty Head circumference, Note After the bath, Save and Cancel buttons and a Delete this measurement button" width="260"> | <img src="../screenshots/growth/09-edit-desktop.png" alt="The same sheet on a wide screen, centred over the dimmed chart and measurement cards: one column of fields, Close at the top right, Delete this measurement under Save and Cancel" width="460"> |
 
 | Phone |
 |---|
-| <img src="../screenshots/growth/10-edit-delete-confirm-mobile.png" alt="Edit measurement with Delete opened: the sentence This removes the measurement for everyone with access to Ivy and a red button Yes, delete this measurement" width="260"> |
+| <img src="../screenshots/growth/10-edit-delete-confirm-mobile.png" alt="The Edit measurement sheet with Delete opened: the sentence This removes the measurement for everyone with access to Ivy and a red button Yes, delete this measurement" width="260"> |
 
 ### Why are my values in pounds and inches?
 
@@ -120,15 +120,15 @@ The page says "No measurements yet. Add a weight, length or head size from a che
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
 | Growth | `/kids/[kid]/growth` (`?measure=weight`, `length`, `head` or `bmi`) | Guardian, caregiver. Admin: sent to `/admin/parents`. Signed out: sent to the sign-in page. No grant: the 404 page, identical to an unknown child | `01-ivy-weight-who`, `02-ivy-length-who`, `03-ivy-head-who`, `04-ivy-bmi-who`, `05-ivy-weight-cdc`, `06-ivy-bmi-cdc-no-table`, `07-ivy-imperial`, `11-empty`, `16-leo-preterm-caregiver`, `17-before-expected-term`, `18-who-head-after-5-unscored`, `19-remy-preterm-guardian`, `20-ivy-chart-data-table` |
-| Add a measurement | `/kids/[kid]/growth/new` | Guardian, caregiver (same access rules) | `12-new-empty`, `13-new-nothing-measured`, `14-new-future-date`, `15-new-filled` |
-| Edit measurement | `/kids/[kid]/growth/[entry]` | Guardian, caregiver. No grant, an unknown entry and another child's entry are the same 404 page | `08-edit-imperial`, `09-edit`, `10-edit-delete-confirm` |
+| Add a measurement (sheet over Growth; a page without JavaScript) | `/kids/[kid]/growth/new` | Guardian, caregiver (same access rules) | `12-new-empty`, `13-new-nothing-measured`, `14-new-future-date`, `15-new-filled` |
+| Edit measurement (sheet over Growth; a page without JavaScript) | `/kids/[kid]/growth/[entry]` | Guardian, caregiver. No grant, an unknown entry and another child's entry are the same 404 page | `08-edit-imperial`, `09-edit`, `10-edit-delete-confirm` |
 
 ### Rules the screens show
 
 - **Measures**: weight, length, head circumference and BMI. An unknown `?measure=` shows the weight chart.
 - **Add and edit**: a visit needs at least one of weight, length and head circumference. The date has to fall between the birth date and the child's today.
 - **Limits** (metric entries): weight 0.2 to 250 kg, length 15 to 250 cm, head circumference 15 to 80 cm. Imperial entries are converted and checked by the API. The messages are listed in the Guide above and never repeat what was typed.
-- **Units**: kg or lb with oz, cm or in, from the viewer's profile. An existing visit keeps the unit it was typed in on the edit page. Changing a unit in the edit form reads the typed number in the new unit.
+- **Units**: kg or lb with oz, cm or in, from the viewer's profile. An existing visit keeps the unit it was typed in on the edit form. Changing a unit in the edit form reads the typed number in the new unit.
 - **Scores**: z-score and percentile per measure and visit. A score is replaced by "this source has no table for this age" or "before expected term". Percentiles beyond the shown range read as a bound (for example "<0.1" in shot `18-who-head-after-5-unscored`).
 - **Corrected age**: shown for children born before 37 weeks, until the second birthday; both ages wherever it applies.
 - **Source**: WHO or CDC, set per child in the child's settings by a guardian. The page names the source and, in **About the reference data**, its version, attribution and licence.

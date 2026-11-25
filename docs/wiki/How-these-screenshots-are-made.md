@@ -5,6 +5,7 @@ Every picture in this wiki is produced by code, not by hand, so it can be regene
 ## What is captured
 
 - **247 screens and states**, each at two sizes: **mobile** 390 × 844 and **desktop** 1280 × 800 (494 images). Light theme, JavaScript on, full-page captures.
+- A form that opens in a sheet is captured as the open sheet over the page it is opened from, as a person with JavaScript sees it. Only a form that no link opens in a sheet (Log sleep) is captured as a page.
 - The real user interface (the SvelteKit app) running against `ui/e2e/stub-api.ts`, a stub of the API that holds fake people, children and entries. No real person or child appears.
 - The images are in `docs/screenshots/<area>/<NN-name>-<mobile|desktop>.png`, and `docs/screenshots/README.md` is the generated catalogue: every shot, its caption, the route it shows, and what is not captured.
 - The flows live in `ui/e2e/screenshots/*.shot.ts`. They are never part of `pnpm test:e2e`.

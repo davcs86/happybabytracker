@@ -51,6 +51,6 @@ Same people, after adding Dan as a caregiver (`kid-admin/14-access-caregiver-add
 
 ## Other screens
 
-Every other screen of the [catalogue](../screenshots/README.md) has the legacy twin of the same name in the [legacy catalogue](../screenshots-legacy/README.md), where the shot exists in both. New in the redesign, with no legacy twin: the Switch child, More and Change theme sheets, the Choose a child pages and the Child profile (areas `shell` and `kid-admin`), the forms in sheets (area `sheets`) and Medical visits (area `visits`), which the first pass did not have.
+Every other screen of the [catalogue](../screenshots/README.md) has the legacy twin of the same name in the [legacy catalogue](../screenshots-legacy/README.md), where the shot exists in both. New in the redesign, with no legacy twin: the Switch child, More and Change theme sheets, the Choose a child pages and the Child profile (areas `shell` and `kid-admin`), the forms in sheets (area `sheets`) and Medical visits (area `visits`), which the first pass did not have. The form shots of trackers, growth, vaccines, medication and milestones keep the names of their legacy twins, but the twin is a full page and the current shot is the form open in a sheet over Home, the Timeline or the module's page (except Log sleep, still a page).
 
 Back to the [wiki home](Home.md).
