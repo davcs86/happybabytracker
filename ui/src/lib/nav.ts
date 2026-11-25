@@ -9,7 +9,6 @@ import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 import ListIcon from '@lucide/svelte/icons/list';
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
-import SettingsIcon from '@lucide/svelte/icons/settings';
 import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
 import SyringeIcon from '@lucide/svelte/icons/syringe';
 import UserIcon from '@lucide/svelte/icons/user';
@@ -43,7 +42,7 @@ const KID = String.raw`^/kids/(?!new(?:/|$))[^/]+`;
 const section = (name: string) => new RegExp(`${KID}/${name}(/|$)`);
 const HOME = new RegExp(`^/$|${KID}(/log/[^/]+)?$`);
 const TIMELINE = new RegExp(`^/timeline$|${KID}/timeline(/|$)|${KID}/log/[^/]+/[^/]+$`);
-const PROFILE = new RegExp(`${KID}/(profile|access)(/|$)`);
+const PROFILE = new RegExp(`${KID}/(profile|access|settings)(/|$)`);
 
 // Each entry names the module that must be on for the child, if any.
 const MODULE_OF: Partial<Record<string, ModuleId>> = {
@@ -129,14 +128,6 @@ export function navModel(i: NavInput): { primary: PrimaryEntry[]; more: NavEntry
 						kid && `${kid}/profile`,
 						'Guardian',
 						PROFILE
-					),
-					...link(
-						'settings',
-						'Settings',
-						SettingsIcon,
-						kid && `${kid}/settings`,
-						'Guardian',
-						section('settings')
 					)
 				]
 			: []),

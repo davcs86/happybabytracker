@@ -102,7 +102,7 @@ Volumes are in your own unit. For a parent who chose fluid ounces the same day r
 A caregiver logs and views like a guardian. The differences are:
 
 - The badge in the header reads **Caregiver**.
-- The More sheet and the side navigation have no **Modules**, **Child profile** or **Settings** ([Navigation and shell](Navigation-and-shell.md)).
+- The More sheet and the side navigation have no **Modules** or **Child profile** ([Navigation and shell](Navigation-and-shell.md)).
 - At the bottom there is a **Leave this child** card instead of the **Add a child** link.
 
 | Phone |
@@ -162,7 +162,7 @@ A switched-off module has no tile in Quick log, no entry in More or the side nav
 - **Today** has a row per switched-on module among Bottles, Nursing, Diapers and Sleep, for the child's own day, with volumes in the parent's unit. "None yet" is the empty value.
 - **Times** on timers and Due medication are on the child's clock, not the viewer's.
 - **Corrected age** is shown only for a child born before 37 weeks and until the second birthday.
-- **Role differences:** guardian gets Add a child; caregiver gets Leave this child and no Modules, Child profile or Settings entries.
+- **Role differences:** guardian gets Add a child; caregiver gets Leave this child and no Modules or Child profile entries.
 - **Failures** of Sleep, End, Switch side and Leave show their message on the page; the Leave failure reopens the card.
 - **Catalogue caption that does not match its capture:** the caption for `home/11-leo-guardian-24-plus` mentions "the corrected age line"; the capture shows none, because the correction ends at two years.
 

@@ -16,9 +16,9 @@ The header sits at the top of every page: the child switcher on the left, the be
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/shell/03-more-sheet-mobile.png" alt="Leo's home on a phone with the More sheet open: Vaccines, Medication, Export PDF, Modules, Child profile, Settings, My profile, Change theme and Sign out, each with a note on the right such as Open, Guardian, Auto or This device" width="260"> | <img src="../screenshots/shell/03-more-sheet-desktop.png" alt="Leo's home on a desktop: the side navigation lists Home, Timeline and Growth, a divider, then Vaccines, Medication, Export PDF, Modules, Child profile, Settings, My profile, Change theme and Sign out" width="460"> |
+| <img src="../screenshots/shell/03-more-sheet-mobile.png" alt="Leo's home on a phone with the More sheet open: Vaccines, Medication, Export PDF, Modules, Child profile, My profile, Change theme and Sign out, each with a note on the right such as Open, Guardian, Auto or This device" width="260"> | <img src="../screenshots/shell/03-more-sheet-desktop.png" alt="Leo's home on a desktop: the side navigation lists Home, Timeline and Growth, a divider, then Vaccines, Medication, Export PDF, Modules, Child profile, My profile, Change theme and Sign out" width="460"> |
 
-The same entries, as the More sheet on a phone and inline on a desktop. This is a guardian's view of Leo, which is why Modules, Child profile and Settings are there.
+The same entries, as the More sheet on a phone and inline on a desktop. This is a guardian's view of Leo, which is why Modules and Child profile are there.
 
 ### How do I open the More sheet?
 
@@ -37,16 +37,16 @@ What the list holds depends on your role for the child you are looking at, and o
 | Medication | yes, unless the Medication module is off | same |
 | Milestones | yes, unless the Milestones module is off | same |
 | Export PDF | yes | yes |
-| Modules, Child profile, Settings | yes | not shown |
+| Modules, Child profile | yes | not shown |
 | My profile, Change theme, Sign out | yes | yes |
 
 An entry for a module that is switched off is not shown at all, rather than greyed out. In the screenshots, Leo is over two years old, so Milestones is off by default and the list has no Milestones entry; for Mia (4 months, `shell/06-choose-a-child-many`) the side navigation does list it. If the app cannot read a child's modules, nothing is hidden.
 
-A caregiver sees the same list without Modules, Child profile and Settings. Those pages answer a caregiver with the same "Not found" page as for a child that does not exist ([Error pages](Error-pages.md)).
+A caregiver sees the same list without Modules and Child profile. Those pages answer a caregiver with the same "Not found" page as for a child that does not exist ([Error pages](Error-pages.md)).
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/home/08-leo-caregiver-mobile.png" alt="Leo's home on a phone, seen by a caregiver: the role badge in the header reads Caregiver and the page has a Leave this child card" width="260"> | <img src="../screenshots/home/08-leo-caregiver-desktop.png" alt="The same home on a desktop: the side navigation lists Home, Timeline, Growth, Vaccines, Medication, Export PDF, My profile, Change theme and Sign out, with no Modules, Child profile or Settings" width="460"> |
+| <img src="../screenshots/home/08-leo-caregiver-mobile.png" alt="Leo's home on a phone, seen by a caregiver: the role badge in the header reads Caregiver and the page has a Leave this child card" width="260"> | <img src="../screenshots/home/08-leo-caregiver-desktop.png" alt="The same home on a desktop: the side navigation lists Home, Timeline, Growth, Vaccines, Medication, Export PDF, My profile, Change theme and Sign out, with no Modules or Child profile" width="460"> |
 
 A caregiver's view of Leo: the same frame, without the three guardian entries (and, as for every view of Leo, without Milestones).
 
@@ -119,7 +119,7 @@ The admin has no shell: an admin session only reaches `/admin/parents`, and erro
 ### Rules the screens show
 
 - **Primary navigation** is fixed: Home (`/`), Timeline (`/timeline`), Growth (`/growth`). The last two redirect to the current child's page, or to Home when there is no child.
-- **More, in order:** Vaccines, Medication, Milestones, Export PDF; for a guardian Modules, Child profile, Settings; then My profile, Change theme, Sign out. The notes are "Open", "Guardian", the current theme and "This device".
+- **More, in order:** Vaccines, Medication, Milestones, Export PDF; for a guardian Modules, Child profile; then My profile, Change theme, Sign out. The notes are "Open", "Guardian", the current theme and "This device".
 - **Hidden, not disabled.** Vaccines, Medication and Milestones are hidden when that module is off for the child; the guardian-only entries are hidden from a caregiver. Entries that need a child (everything but My profile, Change theme and Sign out) are hidden when there is no child.
 - **Roles are per child.** The badge and the guardian entries follow the child shown in the header.
 - **The switcher keeps your place.** The target section is one of timeline, growth, vaccines, medication, milestones or export; anything else returns to the child's Home. The `to` value of the Choose a child page accepts only those names.
