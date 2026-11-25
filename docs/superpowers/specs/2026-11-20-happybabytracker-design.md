@@ -52,6 +52,9 @@ CI here, pinned by digest in `davcs86/homelab-edge`, live after a manual deploy 
   an addition, never a replacement: Web Push is always present **(owner)**. Nothing in this repository
   depends on `homelab-edge`; a fork runs against any ntfy server or none **(owner)**.
 - G12. PDF export of a kid's record for a time range **(owner)**.
+- G16. Medical visits, scheduled or past, with post-visit notes, one form that records the visit's growth,
+  vaccines and medication, and an `.ics` file per visit (amended 2026-11-25:
+  `2026-11-25-medical-visits-design.md`) **(owner)**.
 - G13. Each user picks display units; storage keeps metric and imperial values side by side,
   converted when a row is saved **(owner)**.
 - G14. The database is backed up off the edge twice a day, encrypted **(owner: twice a day)**.
@@ -457,12 +460,13 @@ logs in.
 | `sleep_sessions` | sleep | start, end (null while asleep) |
 | `diapers` | diapers | time, kind (`wet`/`dirty`/`both`/`dry`) |
 | `meals` | feeding (solids) | time, what was eaten (text), reaction (text, optional) |
-| `growth_measurements` | growth | date, any of weight, length/height, head circumference |
-| `vaccine_doses` | administered doses (9) | administration id, date, antigen, lot (optional), product name (optional) |
+| `growth_measurements` | growth | date, any of weight, length/height, head circumference, visit (optional, amended 2026-11-25) |
+| `vaccine_doses` | administered doses (9) | administration id, date, antigen, lot (optional), product name (optional), visit (optional, amended 2026-11-25) |
 | `vaccine_dismissals` | dismissed schedule lines (9) | schema, line, reason |
 | `milestones_reached` | milestones (10.1) | catalog id or custom text, date |
 | `symptoms` | sickness (10.2) | time, symptom, severity (optional), temperature and method (for `fever`) |
-| `medications` | a medication course | name, dose text, schedule (10.3), start, end, active |
+| `medications` | a medication course | name, dose text, schedule (10.3), start, end, active, visit (optional, amended 2026-11-25) |
+| `visits` | medical visits (amended 2026-11-25, visits spec 5.1) | start, length, kind, provider, place, reason (the common note), post-visit notes, cancelled at, revision |
 | `medication_doses` | doses given | medication, time, amount text |
 | `reminders` | materialised reminder occurrences (11) | medication, due time, state, attempts |
 | `push_subscriptions`, `push_kid_optins` | Web Push (11) | parent, device label, endpoint, keys; subscription, kid |
@@ -510,6 +514,7 @@ reminders; its data stays and reappears when it is turned on.
 | Vaccination | on | on | on |
 | Sickness | on | on | on |
 | Medication | on | on | on |
+| Medical visits (amended 2026-11-25) | on | on | on |
 
 The 24-months column is the owner's decision; the split of the first two is the home-screen order
 below, not a difference in what is on.

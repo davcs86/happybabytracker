@@ -1,6 +1,7 @@
 # Medical visits: design
 
-Date: 2026-11-25. Status: awaiting owner approval. Extends
+Date: 2026-11-25. Status: approved by the owner on 2026-11-25 with every **(call)** as written; plan 9
+(`docs/superpowers/plans/2026-11-25-visits.md`) records the rulings taken since. Extends
 `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` ("the main spec"); section numbers
 below without a prefix are this document's, "main N" is the main spec's.
 
@@ -152,7 +153,7 @@ All `Caregiver` class in `routes.go`, pinned in `routeClasses` and `matrixParams
 
 | Route | Does |
 |---|---|
-| `GET /v1/kids/{kid}/visits` | lists by `starts_at` with the trackers' `from`/`to`/cursor paging; unlike the trackers, `to` may lie in the future, up to the scheduling horizon |
+| `GET /v1/kids/{kid}/visits` | lists by `starts_at` with the trackers' `from`/`to`/cursor paging; unlike the trackers, `to` may lie in the future, up to the scheduling horizon (its default), and `order=asc` lists soonest first (plan 9 ruling B1; default `desc`) |
 | `POST /v1/kids/{kid}/visits` | creates |
 | `GET /v1/kids/{kid}/visits/{entry}` | one visit, with its linked rows (5.5) |
 | `PATCH /v1/kids/{kid}/visits/{entry}` | edits; an absent key keeps the stored value, `null` clears an optional one |
@@ -322,7 +323,8 @@ Add to calendar:  ( ) Without details  (•) With details   [ Download .ics ]
 [ Edit ]  [ Cancel visit ]  [ Delete ]
 ```
 
-Once the visit is past, the same page carries "After the visit":
+Once the visit is past, "After the visit" is its own sheet page, `/kids/{kid}/visits/{visit}/outcome`, opened
+from the visit page (owner ruling of 2026-11-25, AGENTS.md rule 1); the visit page lists what it recorded:
 
 ```
 After the visit
