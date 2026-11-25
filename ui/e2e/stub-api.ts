@@ -3910,10 +3910,12 @@ function outcomeBlocksOK(res: ServerResponse, body: Body): boolean {
 const visitRoutes: RouteDef[] = [
 	kidRoute('GET', 'visits', 'caregiver', (state, req, res, kid) => {
 		const url = new URL(req.url ?? '/', STUB_URL);
+		const horizon = now() + VISIT_HORIZON_S;
+		// As the API: the horizon is the default to before from is checked against it.
+		if (!url.searchParams.has('to'))
+			url.searchParams.set('to', new Date(horizon * 1000).toISOString());
 		const q = parsePage(url);
 		if (typeof q === 'string') return error(res, 422, 'invalid', q);
-		const horizon = now() + VISIT_HORIZON_S;
-		if (!url.searchParams.has('to')) q.to = horizon;
 		if (q.to > horizon) return error(res, 422, 'invalid', 'to');
 		const order = url.searchParams.get('order');
 		if (order !== null && order !== 'asc' && order !== 'desc') {

@@ -162,9 +162,13 @@ test('list: newest first by default, soonest first with order=asc, paged; to rea
 	expect(await ana('GET', `${base()}?to=${encodeURIComponent(iso(t + 732 * DAY))}`)).toEqual(
 		invalid('to')
 	);
-	expect(await ana('GET', `${base()}?from=${encodeURIComponent(iso(t + DAY))}`)).toEqual(
-		invalid('from')
-	);
+	expect((await ana('GET', `${base()}?from=${encodeURIComponent(iso(t + DAY))}`)).status).toBe(200);
+	expect(
+		await ana(
+			'GET',
+			`${base()}?from=${encodeURIComponent(iso(t + 2 * DAY))}&to=${encodeURIComponent(iso(t + DAY))}`
+		)
+	).toEqual(invalid('from'));
 	expect(await ana('GET', `${base()}?limit=0`)).toEqual(invalid('limit'));
 });
 
