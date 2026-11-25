@@ -324,3 +324,41 @@ func TestOutcomeWithoutSchedules(t *testing.T) {
 		t.Errorf("notes without schedules: %d %q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestVisitCalendar(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	m := k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": "2026-12-03T23:30:00Z"}))
+	one := "/v1/kids/" + kid + "/visits/" + m["id"].(string)
+	uid := "UID:visit-" + m["id"].(string) + "@example.test\r\n"
+	rec := k.do(http.MethodGet, one+"/calendar", bo, nil)
+	unfold := strings.NewReplacer("\r\n ", "").Replace
+	h, body := rec.Header(), unfold(rec.Body.String())
+	if rec.Code != http.StatusOK || h.Get("Content-Type") != "text/calendar; charset=utf-8" || h.Get("Cache-Control") != "no-store" ||
+		h.Get("Content-Disposition") != `attachment; filename="visit-2026-12-04.ics"` || h.Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("generic: %d %v", rec.Code, h)
+	}
+	if !strings.Contains(body, uid) || !strings.Contains(body, "\r\nSUMMARY:Medical visit\r\n") || !strings.Contains(body, "\r\nSEQUENCE:0\r\n") ||
+		!strings.Contains(body, "\r\nURL:https://example.test/kids/"+kid+"/visits/"+m["id"].(string)+"\r\n") ||
+		!strings.Contains(body, "TRIGGER:-PT24H") || strings.Contains(body, "LOCATION") || strings.Contains(body, "Dr. Lee") || strings.Contains(body, testKidName) {
+		t.Errorf("generic body %q", body)
+	}
+	k.do(http.MethodPatch, one, ana, map[string]any{"cancelled": true})
+	full := unfold(k.do(http.MethodGet, one+"/calendar?detail=full", ana, nil).Body.String())
+	if !strings.Contains(full, uid) || !strings.Contains(full, "\r\nSEQUENCE:1\r\n") || !strings.Contains(full, "\r\nSTATUS:CANCELLED\r\n") ||
+		!strings.Contains(full, "SUMMARY:"+testKidName+": Well-child visit with Dr. Lee\r\n") || !strings.Contains(full, "\r\nLOCATION:12 Main St\r\n") ||
+		!strings.Contains(full, "\r\nDESCRIPTION:4-month check\r\n") || strings.Contains(full, "VALARM") {
+		t.Errorf("full, cancelled: %q", full)
+	}
+	past, rev := k.pastVisit(ana, kid, t0.Add(-time.Hour))
+	k.do(http.MethodPost, past+"/outcome", ana, map[string]any{"revision": rev, "outcome_notes": "Private notes"})
+	if b := unfold(k.do(http.MethodGet, past+"/calendar?detail=full", ana, nil).Body.String()); strings.Contains(b, "Private notes") {
+		t.Errorf("outcome notes in the calendar file: %q", b)
+	}
+	wantInvalid(t, k.do(http.MethodGet, one+"/calendar?detail=all", ana, nil), "detail")
+	xavi := k.asParent("xavi")
+	unknown := k.do(http.MethodGet, "/v1/kids/k-unknown/visits", ana, nil)
+	if rec := k.do(http.MethodGet, one+"/calendar", xavi, nil); rec.Code != http.StatusNotFound || !bytes.Equal(rec.Body.Bytes(), unknown.Body.Bytes()) {
+		t.Errorf("no grant: %d %q", rec.Code, rec.Body.String())
+	}
+}

@@ -326,6 +326,10 @@ type VisitKind string
 // VisitKinds lists every visit kind in display order.
 var VisitKinds = []VisitKind{"well_child", "sick", "specialist", "dental", "emergency", "other"}
 
+// VisitKindLabel is each kind's name in the calendar file and the PDF, as the UI's page spec words it.
+var VisitKindLabel = map[VisitKind]string{"well_child": "Well-child visit", "sick": "Sick visit", "specialist": "Specialist visit",
+	"dental": "Dental visit", "emergency": "Emergency visit", "other": "Other visit"}
+
 // Visit is a medical visit, scheduled or past; Note is its reason. Status is derived, never stored.
 type Visit struct {
 	Entry

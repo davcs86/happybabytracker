@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
+	"github.com/davcs86/happybabytracker/api/internal/ics"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -426,4 +429,61 @@ func (d Deps) recordOutcome(w http.ResponseWriter, r *http.Request) {
 		noteOutcomeCounts(w, o)
 		respondJSON(w, http.StatusOK, newVisitDetailView(out, now))
 	}
+}
+
+// visitCalendar serves the visit's .ics; generic leaves out the kid, the provider, the place and the reason, and
+// the outcome notes never enter the file (visits spec 8).
+func (d Deps) visitCalendar(w http.ResponseWriter, r *http.Request) {
+	id, ok := entryID(w, r)
+	if !ok {
+		return
+	}
+	detail := r.URL.Query().Get("detail")
+	if r.URL.Query().Has("detail") && detail != "generic" && detail != "full" {
+		respondInvalid(w, "detail")
+		return
+	}
+	kid, loc, ok := d.growthKid(w, r)
+	if !ok {
+		return
+	}
+	v, err := d.Store.Visit(r.Context(), kid.ID, id)
+	if !entryOK(w, err) {
+		return
+	}
+	origin, err := url.Parse(d.Cfg.PublicOrigin)
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	e := ics.Event{UID: "visit-" + v.ID + "@" + origin.Hostname(), Sequence: v.Revision, Stamp: v.UpdatedAt, Start: v.StartsAt,
+		End: v.StartsAt.Add(time.Duration(v.DurationMin) * time.Minute), Cancelled: v.CancelledAt != nil, Summary: "Medical visit",
+		URL: d.Cfg.PublicOrigin + "/kids/" + kid.ID + "/visits/" + v.ID}
+	if v.CancelledAt == nil {
+		e.AlarmBefore = constants.VisitAlarmBefore
+	}
+	if detail == "full" {
+		e.Summary = kid.Name + ": " + model.VisitKindLabel[v.Kind]
+		if v.Provider != nil {
+			e.Summary += " with " + *v.Provider
+		}
+		if v.Location != nil {
+			e.Location = *v.Location
+		}
+		if v.Note != nil {
+			e.Description = *v.Note
+		}
+	}
+	var buf bytes.Buffer
+	if err := ics.Write(&buf, e); err != nil {
+		respondInternal(w, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "text/calendar; charset=utf-8")
+	h.Set("Content-Disposition", `attachment; filename="visit-`+v.StartsAt.In(loc).Format(time.DateOnly)+`.ics"`)
+	h.Set("Cache-Control", "no-store")
+	h.Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+	_, _ = buf.WriteTo(w)
 }
