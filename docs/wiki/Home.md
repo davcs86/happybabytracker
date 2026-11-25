@@ -8,7 +8,7 @@ A self-hosted tracker for a baby's feeds, sleep, diapers, growth, vaccines, medi
 
 ## How the pages are built
 
-Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Screens** section (route, who can open it, the states captured and the rules the screens show, for owners and reviewers). Every picture is a capture of the real user interface, running against a stub of the API that holds fake data, so what you see is what the interface does. The full list of 215 captured screens, with captions, is in the [screenshot catalogue](../screenshots/README.md).
+Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Screens** section (route, who can open it, the states captured and the rules the screens show, for owners and reviewers). Every picture is a capture of the real user interface, running against a stub of the API that holds fake data, so what you see is what the interface does. The full list of 230 captured screens, with captions, is in the [screenshot catalogue](../screenshots/README.md).
 
 ## Pages
 
