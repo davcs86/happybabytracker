@@ -16,7 +16,12 @@ test('error pages', async ({ page }) => {
 	await shot(page, 'errors', '02-404-unknown-path', 'A path that does not exist');
 	await page.goto('/admin/parents');
 	await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
-	await shot(page, 'errors', '03-404-parent-on-admin', 'A parent on /admin/*');
+	await shot(
+		page,
+		'errors',
+		'03-404-parent-on-admin',
+		'A parent on /admin/*: the unstyled fallback page, not the designed 404 (a known gap)'
+	);
 	await setScenario('unavailable');
 	await page.goto('/');
 	await expect(
@@ -26,6 +31,6 @@ test('error pages', async ({ page }) => {
 		page,
 		'errors',
 		'04-503-api-unavailable',
-		'The API is down, unavailable or slow: SvelteKit’s plain fallback 503 page, the session kept'
+		'The API is down, unavailable or slow: SvelteKit’s plain fallback 503 page (src/error.html, unstyled), the session kept'
 	);
 });

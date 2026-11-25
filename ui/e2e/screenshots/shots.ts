@@ -61,9 +61,21 @@ export async function shot(page: Page, area: Area, name: string, about: string) 
 	const path = join(SHOTS_DIR, area, `${name}-${project}.png`);
 	mkdirSync(dirname(path), { recursive: true });
 	// A fixed bottom bar lands mid-page in a plain full-page capture: grow the viewport to the page.
+	// Growing the viewport can reflow the page, so repeat until the page fits.
 	const size = page.viewportSize()!;
-	const height = await page.evaluate(() => document.documentElement.scrollHeight);
-	if (height > size.height) await page.setViewportSize({ width: size.width, height });
+	let height = size.height;
+	const settle = () =>
+		page.evaluate(
+			() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+		);
+	for (let pass = 0; pass < 8; pass++) {
+		await settle();
+		await page.waitForLoadState('networkidle');
+		const needed = await page.evaluate(() => document.documentElement.scrollHeight);
+		if (needed <= height) break;
+		height = needed;
+		await page.setViewportSize({ width: size.width, height });
+	}
 	await page.screenshot({ path, fullPage: true, animations: 'disabled', caret: 'hide' });
 	await page.setViewportSize(size);
 	const entry: ManifestEntry = { area, name, about, project, path: new URL(page.url()).pathname };

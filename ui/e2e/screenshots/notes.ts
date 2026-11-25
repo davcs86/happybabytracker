@@ -7,7 +7,7 @@ export const FIXTURES = (now: string): string[] => [
 	'| User | Role and kids |',
 	'|---|---|',
 	'| `admin` | the admin: only `/admin/parents` |',
-	'| `ana` (Ana) | guardian of Mia and Ivy (and of Noa, Uma, Oli and a long-named kid the shots add), caregiver of Leo; of Sami in one milestone shot |',
+	'| `ana` (Ana) | guardian of Mia and Ivy (and of Noa, Uma, Oli and a long-named kid the shots add), caregiver of Leo; of Sami in one milestone shot; the shell shots add four long-named children |',
 	'| `cleo` (Cleo) | guardian of Leo, Nell, Otto, Pia, Remy and Sami |',
 	'| `dan` (Dan) | no kids |',
 	'| `bo` (Bo) | invited, no password yet (the invite link) |',
@@ -32,7 +32,7 @@ export const FIXTURES = (now: string): string[] => [
 export const ABOUT_AREAS: Record<Area, string> = {
 	auth: 'Sign-in, invite and password-reset pages, signed out.',
 	shell:
-		'The app shell: bottom bar on mobile, left column on desktop. Every other shot shows it too (guardian, caregiver and admin).',
+		'The app shell: tab bar on mobile, side navigation on desktop; its sheets (Switch child, More, Change theme) and the Choose a child pages. Every other shot shows the shell too (guardian and caregiver; the admin has none).',
 	home: 'Kid homes in every age band and role: quick log, running timers, Due, Today.',
 	trackers:
 		'Log and edit forms of every tracker (Ana, Mia), with their errors, advanced modes and units.',
@@ -44,8 +44,8 @@ export const ABOUT_AREAS: Record<Area, string> = {
 	export:
 		'The PDF export page and its refusals. The PDF itself (POST /kids/[kid]/export/pdf) is a download, not a page: nothing is captured for it.',
 	'kid-admin':
-		'Guardian pages: modules, settings, access and the new-kid form, with the caregiver 404s.',
-	account: 'The account page: profile, units, password and sessions.',
+		'Guardian pages: modules, child profile, edit details, access and the add-a-child form, with the caregiver 404s.',
+	account: 'My profile: details, units, password and signed-in devices.',
 	notifications: 'Web Push devices and ntfy, under every server configuration the stub offers.',
 	admin: 'The admin’s parents panel.',
 	errors: 'The 404 and 503 pages.'

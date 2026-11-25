@@ -77,7 +77,12 @@ test('a term kid: measures, sources, units', async ({ page }) => {
 		'Pounds and ounces and inches for an imperial parent'
 	);
 	await open(page, `/kids/${IVY.id}/growth/${latest.id}`);
-	await shot(page, 'growth', '08-edit-imperial', 'Edit measurement in pounds, ounces and inches');
+	await shot(
+		page,
+		'growth',
+		'08-edit-imperial',
+		'Edit a measurement for an imperial parent: it keeps the unit it was typed in (kg and cm); the empty head box shows inches'
+	);
 	await must(ana, 'PATCH', '/v1/me', { units: { weight: 'kg', length: 'cm' } });
 	await open(page, `/kids/${IVY.id}/growth/${latest.id}`);
 	await shot(page, 'growth', '09-edit', 'Edit measurement: 9.5 kg, 76 cm, a note');
@@ -104,7 +109,12 @@ test('empty, new and errors', async ({ page }) => {
 	await field(page, 'Date').fill(TODAY);
 	await field(page, 'Length or height').fill('64');
 	await field(page, 'Head circumference').fill('41.5');
-	await shot(page, 'growth', '15-new-filled', 'Weight, length and head typed, ready to save');
+	await shot(
+		page,
+		'growth',
+		'15-new-filled',
+		'Weight, length and head typed and the date corrected; the earlier refusal stays on screen until the next save'
+	);
 });
 
 test('preterm and unscored', async ({ page }) => {
@@ -149,7 +159,7 @@ test('preterm and unscored', async ({ page }) => {
 		page,
 		'growth',
 		'16-leo-preterm-caregiver',
-		'Born at 35 weeks: both ages, plotted at corrected age; a caregiver gets no settings link'
+		'Born at 35 weeks: both ages, plotted at corrected age, seen by a caregiver'
 	);
 	await open(page, page_(early.id));
 	await shot(

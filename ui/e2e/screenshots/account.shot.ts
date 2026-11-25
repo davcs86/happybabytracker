@@ -23,7 +23,7 @@ test('account', async ({ page }) => {
 		page,
 		'account',
 		'01-account',
-		'Account: profile and units, password, sessions (this one and another device)'
+		'Your profile: details and units, password, signed-in devices and the children you can see'
 	);
 	await untilHydrated(page.getByLabel('Display name'));
 	await page.getByLabel('Weight').selectOption({ label: 'lb' });

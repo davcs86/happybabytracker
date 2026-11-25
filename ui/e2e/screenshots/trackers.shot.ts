@@ -71,7 +71,12 @@ test('bottles', async ({ page }) => {
 	await page.getByRole('checkbox', { name: 'Formula', exact: true }).check();
 	await field(page, 'Breast milk volume').fill('60');
 	await field(page, 'Formula volume').fill('90');
-	await shot(page, 'trackers', '06-bottle-new-advanced', 'Advanced bottle: a volume per source');
+	await shot(
+		page,
+		'trackers',
+		'06-bottle-new-advanced',
+		'Advanced bottle: a volume per source; the total is worked out on save'
+	);
 	await open(page, edit('bottles', rows.bottle.id));
 	await shot(page, 'trackers', '07-bottle-edit', 'Edit bottle: a stored formula bottle');
 	await open(page, edit('bottles', rows.bottleMixed.id));
@@ -158,9 +163,19 @@ test('pumping', async ({ page }) => {
 	await shot(page, 'trackers', '18-pumping-new-empty', 'Log pumping: the empty form');
 	await save(page);
 	await expect(page.getByRole('alert').first()).toBeVisible();
-	await shot(page, 'trackers', '19-pumping-new-error', 'Refused: the required fields are marked');
+	await shot(
+		page,
+		'trackers',
+		'19-pumping-new-error',
+		'Refused: the first missing required field (Minutes) is marked; the form reports one problem at a time'
+	);
 	await open(page, log('pumping', '?advanced=1'));
-	await shot(page, 'trackers', '20-pumping-new-advanced', 'Advanced pumping: a volume per side');
+	await shot(
+		page,
+		'trackers',
+		'20-pumping-new-advanced',
+		'Advanced pumping: a volume per side; the total is worked out on save'
+	);
 	await open(page, edit('pumping', rows.pumping.id));
 	await shot(
 		page,
@@ -242,7 +257,7 @@ test('meals', async ({ page }) => {
 		page,
 		'trackers',
 		'33-meal-edit-long-text',
-		'A 200-character unbroken meal and note wrap without overflow'
+		'A 200-character unbroken meal and note stay inside their single-line fields: the page does not overflow'
 	);
 });
 
@@ -267,7 +282,12 @@ test('symptoms', async ({ page }) => {
 	);
 	await field(page, 'Temperature').fill('38.5');
 	await field(page, 'Method').selectOption('oral');
-	await shot(page, 'trackers', '37-symptom-fever-filled', 'Fever, 38.5 °C, oral, moderate');
+	await shot(
+		page,
+		'trackers',
+		'37-symptom-fever-filled',
+		'Fever, 38.5 °C, oral, moderate typed; the earlier refusal stays on screen until the next save'
+	);
 	await field(page, 'Symptom').selectOption('other');
 	await field(page, 'Other symptom').fill('Hiccups');
 	await shot(page, 'trackers', '38-symptom-other', 'Other: a free-text symptom');
