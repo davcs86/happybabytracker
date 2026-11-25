@@ -96,8 +96,7 @@ async function closeAndWait() {
 }
 
 // A sheet shows the data it was opened with: reload it after a change that leaves the sheet open.
-async function refreshDrawer() {
-	const d = page.state.drawer;
+async function refreshDrawer(d: DrawerState | undefined) {
 	if (!d) return;
 	const result = await preloadData(d.href);
 	if (result.type === 'loaded' && result.status === 200) {
@@ -122,8 +121,9 @@ export const savedAs =
 			return update({ reset: false });
 		}
 		if (result.type === 'success') {
+			const open = page.state.drawer;
 			await update({ reset: false });
-			if (stay) await refreshDrawer();
+			if (stay) await refreshDrawer(open);
 			else await closeAndWait();
 		} else {
 			await closeAndWait();
