@@ -2,6 +2,8 @@
 
 The Vaccines page shows a child's vaccination schedule as visits (for example "12-month vaccines"), says what is due, overdue, upcoming or already done, and keeps the record of every dose given. A schedule is only a list of what is usually offered and when: the page does not tell you what a child should have. All screenshots show fake data (for example Ivy, 1 year 1 month, on a stub schedule) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
+With JavaScript, the Record a vaccination and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 ## Guide
 
 ### How do I choose a schedule?

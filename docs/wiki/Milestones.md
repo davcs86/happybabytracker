@@ -2,6 +2,8 @@
 
 The Milestones page holds the checklists of things many children do by a given age (from the catalogue the app ships), lets you record the day a child did one, and keeps your own milestones. All screenshots show fake data (for example Nell, 9 months, with placeholder items such as "Stub item 9m-se-1") on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
+With JavaScript, the Mark as reached, Add a milestone and Edit milestone forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 The app never judges development. The page states facts and the next action only: a milestone is either unmarked or it carries the line "Reached on 24 November 2026". There is no colour, icon, check, count or progress on a milestone, and the page's own words are tested to keep to this (see section 9 of the [design rules](../plans/ui-redesign/design-system/DESIGN.md)). Questions about what a list means for your child are for your clinic.
 
 ## Guide

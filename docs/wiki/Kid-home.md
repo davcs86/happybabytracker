@@ -2,6 +2,8 @@
 
 A child's home is the page you land on after signing in. It shows who the child is, runs the one-tap logging, lists the timers that are running, what is due and the totals for today. All screenshots show fake data (for example Mia, 4 months old, or Leo, a 2-year-old) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md). The frame around the page (tab bar, header, sheets) is explained in [Navigation and shell](Navigation-and-shell.md).
 
+With JavaScript, the forms the quick-log tiles lead to open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 ## Guide
 
 ### What is on the home page?

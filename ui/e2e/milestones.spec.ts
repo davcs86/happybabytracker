@@ -9,7 +9,8 @@ import {
 	navLink,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -117,6 +118,13 @@ async function open(page: Page, title: string) {
 }
 async function onPage(page: Page, kid: { id: string; name: string }) {
 	await page.waitForURL((u) => u.pathname === pageUrl(kid.id) && u.search === '');
+	await expect(
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
+	).toBeVisible();
+}
+// A saved sheet closes onto the page it opened from, whatever its query.
+async function onSheetClosed(page: Page) {
+	await expect(page.getByRole('dialog')).toHaveCount(0);
 	await expect(
 		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
@@ -446,12 +454,13 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	const id = '9m-lc-stub-1';
 	const [past, earlier] = [addDays(TODAY, -3), addDays(TODAY, -5)];
 	await signIn(page, CLEO);
-	await page.goto(pageUrl(NELL.id));
-	await item(page, id)
-		.getByRole('link', { name: `Choose a date for ${itemText(id)}` })
-		.click();
-	await expect(page.getByRole('heading', { name: 'Mark as reached', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	const sheet = await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => item(p, id).getByRole('link', { name: `Choose a date for ${itemText(id)}` }),
+		'Mark as reached'
+	);
+	await expect(sheet.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -468,8 +477,9 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	await expect(row).toContainText(reachedLabel(past));
 
 	await editLink(row, itemText(id)).click();
-	await expect(page.getByRole('heading', { name: 'Edit milestone', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	const editing = page.getByRole('dialog', { name: 'Edit milestone' });
+	await expect(editing).toBeVisible();
+	await expect(editing.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Milestone')).toHaveCount(0);
 	await expect(field(page, 'Date reached')).toHaveValue(past);
 	await expect(field(page, 'Note')).toHaveValue('at the park');
@@ -527,7 +537,7 @@ test('undo deletes the mark and returns the item to its list', async ({ page }) 
 	await page.goto(editUrl(NELL.id, row.id));
 	await page.getByText('Undo reached', { exact: true }).click();
 	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	await expect(reachButton(page, id)).toBeVisible();
 	await expect(item(page, id)).not.toContainText('Reached on');
 	expect((await stored(cleo, NELL.id)).reached(id)).toBeNull();
@@ -540,8 +550,12 @@ test('a custom milestone is added, edited and deleted; 201 characters are refuse
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
 	await expect(custom(page)).toContainText('No milestones added');
-	await custom(page).getByRole('link', { name: 'Add a milestone' }).click();
-	await expect(page.getByRole('heading', { name: 'Add a milestone', level: 1 })).toBeVisible();
+	await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => custom(p).getByRole('link', { name: 'Add a milestone' }),
+		'Add a milestone'
+	);
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -588,12 +602,12 @@ test('a caregiver marks, edits, undoes and adds milestones', async ({ page }) =>
 	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('with Ana');
 	await save(page);
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	expect((await stored(ana, NELL.id)).reached('9m-se-stub-1')).toMatchObject({ note: 'with Ana' });
 	await editLink(item(page, '9m-se-stub-1'), itemText('9m-se-stub-1')).click();
 	await page.getByText('Undo reached', { exact: true }).click();
 	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	await expect(reachButton(page, '9m-se-stub-1')).toBeVisible();
 
 	await page.goto(newUrl(NELL.id));

@@ -1,17 +1,16 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import KidForm from '#lib/components/KidForm.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 </script>
 
-<svelte:head>
-	<title>Add a child · happybabytracker</title>
-</svelte:head>
-
-<div class="mt-5 flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:w-[920px] xl:max-w-none">
-	<h1>Add a child</h1>
+<FormFrame class="mt-5 flex flex-col gap-[18px]" documentTitle="Add a child · happybabytracker">
+	{#snippet chrome()}
+		<h1>Add a child</h1>
+	{/snippet}
 	<p class="leading-normal">
 		You will be a guardian of this child. Corrected age on Home uses the birth date and weeks at
 		birth.
@@ -26,5 +25,7 @@
 		detectZone
 		submitLabel="Add child"
 		cancelHref={resolve('/(app)/kids')}
+		saved="Child added"
+		follow
 	/>
-</div>
+</FormFrame>

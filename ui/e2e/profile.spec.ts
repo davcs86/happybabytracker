@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { formatAge, todayIn } from '../src/lib/format.js';
-import { expectAccessible, expectNotFoundPage, signIn } from './helpers.js';
+import { expectAccessible, expectNotFoundPage, signIn, openSheet } from './helpers.js';
 import { ANA, CLEO, LEO, MIA, resetStub } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -70,20 +70,27 @@ test('a child not born early has no weeks at birth row', async ({ page }) => {
 	await expectAccessible(page);
 });
 
-test('Edit details, Manage access and Delete lead to the existing pages', async ({ page }) => {
+test('Edit details and Manage access open sheets, and Delete leads to the settings page', async ({
+	page
+}) => {
 	await signIn(page, CLEO);
-	await page.goto(`/kids/${LEO.id}/profile`);
-	await page.getByRole('link', { name: 'Edit details' }).click();
+	const profile = `/kids/${LEO.id}/profile`;
+	const details = await openSheet(
+		page,
+		profile,
+		(p) => p.getByRole('link', { name: 'Edit details' }),
+		'Edit details'
+	);
 	await expect(page).toHaveURL(`/kids/${LEO.id}/settings`);
-	await expect(page.getByRole('heading', { name: 'Edit details', level: 1 })).toBeVisible();
-	await page.getByRole('link', { name: 'Cancel' }).click();
-	await expect(page).toHaveURL(`/kids/${LEO.id}/profile`);
+	await details.getByRole('button', { name: 'Cancel' }).click();
+	await expect(details).toBeHidden();
+	await expect(page).toHaveURL(profile);
 
 	await page.getByRole('link', { name: 'Manage access' }).click();
+	await expect(page.getByRole('dialog', { name: 'Access' })).toBeVisible();
 	await expect(page).toHaveURL(`/kids/${LEO.id}/access`);
-	await expect(page.getByRole('heading', { name: 'Access', level: 1 })).toBeVisible();
 
-	await page.goto(`/kids/${LEO.id}/profile`);
+	await page.goto(profile);
 	await page.getByRole('link', { name: `Delete all data for ${LEO.name}…` }).click();
 	await expect(page).toHaveURL(`/kids/${LEO.id}/settings#delete`);
 	await expect(page.getByText(`Delete all data for ${LEO.name}…`, { exact: true })).toBeVisible();

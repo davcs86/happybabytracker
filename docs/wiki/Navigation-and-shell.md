@@ -62,7 +62,7 @@ The app remembers the last child you opened. Opening the app, or Home, goes back
 |---|---|
 | <img src="../screenshots/shell/02-six-kids-switcher-mobile.png" alt="The Switch child sheet on a phone listing six children with their ages: Leo 2 years 3 months with a check mark, Nell 9 months, Otto 4 years 11 months, Pia 5 years, Remy 3 months, Sami 2 years 6 months, and an Add a child link" width="260"> | <img src="../screenshots/shell/02-six-kids-switcher-desktop.png" alt="The same sheet on a desktop, centred over the dimmed page" width="460"> |
 
-A guardian of six children. At the bottom, **Add a child** appears if you are a guardian of at least one child; otherwise the sheet says "Ask a guardian to add a child."
+A guardian of six children. At the bottom, **Add a child** appears if you are a guardian of at least one child; otherwise the sheet says "Ask a guardian to add a child." With JavaScript, **Add a child** opens its form in a sheet ([Forms in sheets](Forms-in-sheets.md)).
 
 With more than six children the sheet has a **Find a child** field above the list that filters as you type; when nothing matches, the list says "No child matches".
 
