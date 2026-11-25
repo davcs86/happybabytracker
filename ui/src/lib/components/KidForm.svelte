@@ -5,7 +5,9 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
-	import { ERROR_CLASS, SELECT_CLASS, keepValues } from '#lib/components/field.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import { ERROR_CLASS, SELECT_CLASS } from '#lib/components/field.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import {
 		GESTATION_DAYS,
 		GESTATION_WEEKS,
@@ -42,7 +44,9 @@
 		mode = 'create',
 		submitLabel,
 		cancelHref,
-		action
+		action,
+		saved,
+		follow = false
 	}: {
 		values: Values;
 		field?: string | null;
@@ -55,7 +59,12 @@
 		submitLabel: string;
 		cancelHref: string;
 		action?: string;
+		// What a sheet says after the save; follow goes on to the page the save redirects to.
+		saved: string;
+		follow?: boolean;
 	} = $props();
+
+	const embed = isEmbed();
 
 	const HINT = 'text-[12.5px] leading-normal text-muted-foreground';
 	const CHOICE = 'flex min-h-11 items-center gap-3 text-[15px]';
@@ -99,9 +108,13 @@
 <form
 	method="POST"
 	{action}
-	class="flex flex-col gap-4 xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:items-start xl:gap-x-6 xl:gap-y-[18px]"
+	class={[
+		'flex flex-col gap-4',
+		!embed &&
+			'xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:items-start xl:gap-x-6 xl:gap-y-[18px]'
+	]}
 	novalidate
-	use:enhance={keepValues}
+	use:enhance={savedAs(saved, { follow })}
 >
 	<div class="flex flex-col gap-4">
 		<div class="grid gap-1.5">
@@ -319,7 +332,7 @@
 		{/if}
 	</div>
 	<div class="flex gap-2">
-		<Button type="submit" class="flex-1">{submitLabel}</Button>
-		<Button href={cancelHref} variant="outline">Cancel</Button>
+		<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">{submitLabel}</Button>
+		<FormCancel href={cancelHref} size="default" class="" />
 	</div>
 </form>

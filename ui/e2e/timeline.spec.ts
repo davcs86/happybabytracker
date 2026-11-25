@@ -7,7 +7,7 @@ import {
 	expectNotFoundPage,
 	signIn,
 	untilHydrated,
-	formView
+	openSheet
 } from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
 
@@ -428,9 +428,13 @@ test('symptoms read in the parent unit, and a row opens the symptom edit page', 
 		'href',
 		`/kids/${MIA.id}/log/symptoms/${fever.id}`
 	);
-	await page.getByRole('link', { name: /^09:12 Fever/ }).click();
+	await openSheet(
+		page,
+		timelineUrl(RANGE),
+		(p) => p.getByRole('link', { name: /^09:12 Fever/ }),
+		'Edit symptom'
+	);
 	await expect(page).toHaveURL(`/kids/${MIA.id}/log/symptoms/${fever.id}`);
-	await expect(formView(page, 'Edit symptom')).toBeVisible();
 });
 
 test('the Symptom box narrows the timeline to symptoms, and unticking it hides them', async ({

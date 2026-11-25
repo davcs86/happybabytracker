@@ -16,15 +16,6 @@ export async function expectAccessible(page: Page): Promise<void> {
 	expect(results.violations).toEqual([]);
 }
 
-export const sheet = (page: Page, name: string) =>
-	page.getByRole('dialog', { name }).and(page.locator('[data-state="open"]'));
-
-// A data-drawer link opens its sheet; clicked before hydration it navigates to the page.
-export const formView = (page: Page, title: string): Locator =>
-	sheet(page, title).or(
-		page.getByRole('main').filter({ has: page.getByRole('heading', { name: title, level: 1 }) })
-	);
-
 export async function sessionCookie(context: BrowserContext) {
 	return (await context.cookies()).find((c) => c.name === SESSION_COOKIE);
 }
@@ -45,6 +36,8 @@ export async function submit(button: Locator) {
 	);
 	await button.click();
 	await (await response).finished();
+	// A toast under the pointer stays until the pointer leaves it.
+	await page.mouse.move(0, 0);
 }
 
 // Hydration resets prefilled controls, then drops the SSR value or checked attribute: edit them after.
@@ -120,4 +113,20 @@ export async function navLink(page: Page, name: string): Promise<Locator> {
 		}).toPass();
 	}
 	return sheet.getByRole('link', { name: new RegExp(`^\\s*${name}`) });
+}
+
+// A form link opens a sheet once the page has hydrated; a click before that loads the page, so load again.
+export async function openSheet(
+	page: Page,
+	from: string,
+	link: (page: Page) => Locator,
+	name: string | RegExp
+) {
+	const sheet = page.getByRole('dialog', { name }).and(page.locator('[data-state="open"]'));
+	await expect(async () => {
+		await page.goto(from);
+		await link(page).click();
+		await expect(sheet).toBeVisible({ timeout: 1500 });
+	}).toPass();
+	return sheet;
 }

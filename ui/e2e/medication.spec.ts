@@ -15,7 +15,7 @@ import {
 	signIn,
 	submit,
 	untilHydrated,
-	formView
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -332,11 +332,9 @@ test('an edit of the note alone sends only the note, and the amount and time go 
 	const dose = await seedDose(api, calpol.id, { given_at: given, amount: '2.5 ml', note: 'first' });
 	const path = `${DOSES()}/${dose.id}`;
 	await signIn(page, ANA);
-	await page.goto(pageUrl());
-	await page.getByRole('link', { name: /^Calpol, / }).click();
+	await openSheet(page, pageUrl(), (p) => p.getByRole('link', { name: /^Calpol, / }), 'Edit dose');
 	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(doseUrl(dose.id));
-	await expect(formView(page, 'Edit dose')).toBeVisible();
 	await expect(page.getByText('Dose of Calpol')).toBeVisible();
 	await expect(field(page, 'Given at')).toHaveValue(instantToLocalInput(given, 'UTC'));
 	await expect(field(page, 'Amount')).toHaveValue('2.5 ml');
@@ -735,11 +733,14 @@ test('a fixed-times course is created through the form and listed with its times
 }) => {
 	const api = await stubAs(ANA);
 	await signIn(page, ANA);
-	await page.goto(pageUrl());
-	await page.getByRole('link', { name: 'Add a course' }).click();
+	const sheet = await openSheet(
+		page,
+		pageUrl(),
+		(p) => p.getByRole('link', { name: 'Add a course' }),
+		'Add a course'
+	);
 	await expect(page).toHaveURL(newUrl());
-	await expect(formView(page, 'Add a course')).toBeVisible();
-	await expect(formView(page, 'Add a course').getByText('Times are in UTC')).toBeVisible();
+	await expect(sheet.getByText('Times are in UTC')).toBeVisible();
 	await expect(kindRadio(page, AS_NEEDED)).toBeChecked();
 	await expect(field(page, 'Active')).toBeChecked();
 	await expectAccessible(page);
@@ -957,11 +958,14 @@ test('the edit page shows the stored course and an edit of the note alone sends 
 	});
 	const path = `${COURSES()}/${calpol.id}`;
 	await signIn(page, ANA);
-	await page.goto(pageUrl());
-	await page.getByRole('link', { name: 'Edit Calpol', exact: true }).click();
+	await openSheet(
+		page,
+		pageUrl(),
+		(p) => p.getByRole('link', { name: 'Edit Calpol', exact: true }),
+		'Edit course'
+	);
 	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(courseUrl(calpol.id));
-	await expect(formView(page, 'Edit course')).toBeVisible();
 	await expect(field(page, 'Name')).toHaveValue('Calpol');
 	await expect(field(page, 'Dose')).toHaveValue('2.5 ml');
 	await expect(kindRadio(page, FIXED)).toBeChecked();

@@ -271,7 +271,7 @@ test('settings keeps a stored zone missing from the ICU list selected', async ({
 test('create a child without "born early"', async ({ page }) => {
 	await signIn(page, ANA);
 	await (await openSwitcher(page, MIA.name)).getByRole('link', { name: 'Add a child' }).click();
-	await expect(page.getByRole('heading', { name: 'Add a child', level: 1 })).toBeVisible();
+	await expect(page.getByRole('dialog', { name: 'Add a child' })).toBeVisible();
 	await expect(page.getByLabel('Weeks')).toBeHidden();
 	await expectAccessible(page);
 	await fillKid(page, { name: '  Noa ', birthDate: '2026-10-01', sex: 'Female', timeZone: 'UTC' });

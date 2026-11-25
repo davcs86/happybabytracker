@@ -2,6 +2,8 @@
 
 The Timeline lists everything logged for a child, newest first, grouped by day. All screenshots show fake data (for example Mia, or Leo, a 2-year-old) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
+With JavaScript, the edit form a row leads to open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 ## Guide
 
 ### How do I see what happened today?

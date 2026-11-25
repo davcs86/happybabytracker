@@ -2,12 +2,14 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { enhance } from '$app/forms';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import KidForm from '#lib/components/KidForm.svelte';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
+	import { ERROR_CLASS } from '#lib/components/field.js';
 	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
+	import { savedAs } from '#lib/drawer.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -22,15 +24,13 @@
 	onMount(() => (hydrated = true));
 </script>
 
-<svelte:head>
-	<title>Edit details · happybabytracker</title>
-</svelte:head>
-
-<div class="mt-5 flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:w-[920px] xl:max-w-none">
-	<div class="flex flex-col gap-1.5">
-		<h1>Edit details</h1>
-		<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
-	</div>
+<FormFrame class="mt-5 flex flex-col gap-[18px]" documentTitle="Edit details · happybabytracker">
+	{#snippet chrome()}
+		<div class="flex flex-col gap-1.5">
+			<h1>Edit details</h1>
+			<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
+		</div>
+	{/snippet}
 	{#if save && 'saved' in save}
 		<Alert.Root role="status">Saved</Alert.Root>
 	{/if}
@@ -46,6 +46,7 @@
 		submitLabel="Save"
 		cancelHref={resolve('/(app)/kids/[kid]/profile', { kid: data.kid.id })}
 		action="?/save"
+		saved="Details saved"
 	/>
 
 	<details
@@ -72,7 +73,7 @@
 				action="?/delete"
 				class="flex flex-col gap-3.5"
 				novalidate
-				use:enhance={keepValues}
+				use:enhance={savedAs('Child deleted', { follow: true })}
 			>
 				{#if del && 'message' in del && del.message}
 					<Alert.Root>{del.message}</Alert.Root>
@@ -106,4 +107,4 @@
 			</form>
 		</div>
 	</details>
-</div>
+</FormFrame>

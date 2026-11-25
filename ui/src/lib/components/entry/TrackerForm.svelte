@@ -83,7 +83,9 @@
 		{#if toggle}
 			<!-- eslint-disable svelte/no-navigation-without-resolve -- a query on this same page -->
 			<p class="text-sm">
-				<a href={toggle.href} data-drawer={title} class="underline">{toggle.label}</a>
+				<a href={toggle.href} data-drawer={embed ? title : undefined} class="underline"
+					>{toggle.label}</a
+				>
 			</p>
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/if}

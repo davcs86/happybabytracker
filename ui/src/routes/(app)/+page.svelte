@@ -16,5 +16,7 @@
 		Add a child to start logging feeds, sleep and diapers. Everyone you invite sees the same
 		entries.
 	</p>
-	<Button href={resolve('/(app)/kids/new')} size="lg">Add your first child</Button>
+	<Button href={resolve('/(app)/kids/new')} data-drawer="Add a child" size="lg"
+		>Add your first child</Button
+	>
 </div>

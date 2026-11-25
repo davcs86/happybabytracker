@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectAccessible, sheet, signIn } from './helpers.js';
+import { expectAccessible, signIn } from './helpers.js';
 import { ANA, IVY, resetStub, stubAs } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -8,6 +8,8 @@ test.beforeEach(async () => {
 
 const list = `/kids/${IVY.id}/growth`;
 const addLink = (page: Page) => page.getByRole('link', { name: 'Add measurement' });
+const sheet = (page: Page, name: string) =>
+	page.getByRole('dialog', { name }).and(page.locator('[data-state="open"]'));
 
 // A click before hydration navigates to the page: load the list again until the sheet opens.
 async function openSheet(page: Page, link: (p: Page) => Locator, name: string) {

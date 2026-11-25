@@ -11,6 +11,13 @@ type Loader = () => Promise<{ default: Component<any> }>; // eslint-disable-line
 const KID = '/kids/[^/]+';
 // Form pages that may open in a sheet; anything else navigates.
 const ROUTES: [RegExp, Loader][] = [
+	[new RegExp('^/kids/new$'), () => import('../routes/(app)/kids/new/+page.svelte')],
+	[
+		new RegExp(`^${KID}/settings$`),
+		() => import('../routes/(app)/kids/[kid]/settings/+page.svelte')
+	],
+	[new RegExp(`^${KID}/modules$`), () => import('../routes/(app)/kids/[kid]/modules/+page.svelte')],
+	[new RegExp(`^${KID}/access$`), () => import('../routes/(app)/kids/[kid]/access/+page.svelte')],
 	[
 		new RegExp(`^${KID}/growth/new$`),
 		() => import('../routes/(app)/kids/[kid]/growth/new/+page.svelte')
@@ -75,7 +82,7 @@ export const isDrawerLink = (a: HTMLAnchorElement) =>
 		: a.pathname !== page.url.pathname);
 
 export async function openDrawer(a: HTMLAnchorElement): Promise<void> {
-	const href = a.pathname + a.search;
+	const href = a.pathname + a.search + a.hash;
 	const [result] = await Promise.all([preloadData(href), drawerComponent(href)]);
 	if (result.type !== 'loaded' || result.status !== 200) {
 		await goto(href);
@@ -87,14 +94,46 @@ export async function openDrawer(a: HTMLAnchorElement): Promise<void> {
 	else pushState(href, state);
 }
 
+async function closeAndWait() {
+	closeDrawer();
+	for (let i = 0; i < 100 && page.state.drawer; i++) await new Promise((r) => setTimeout(r, 20));
+}
+
+// A sheet shows the data it was opened with: reload it after a change that leaves the sheet open.
+async function refreshDrawer(d: DrawerState | undefined) {
+	if (!d) return;
+	const result = await preloadData(d.href);
+	if (result.type === 'loaded' && result.status === 200) {
+		replaceState(d.href, { drawer: { ...d, data: result.data } });
+	}
+}
+
+type Options = {
+	// A redirect result goes to its page instead of back to the one under the sheet.
+	follow?: boolean;
+	// A success result leaves the sheet open, with its data reloaded.
+	stay?: boolean;
+};
+
 // The form's submit handler: in a sheet a saved result closes it, refreshes the page and says so.
 export const savedAs =
-	(message: string): SubmitFunction =>
+	(message: string, { follow = false, stay = false }: Options = {}): SubmitFunction =>
 	() =>
 	async ({ result, update }) => {
-		if (!page.state.drawer || result.type !== 'redirect') return update({ reset: false });
-		closeDrawer();
-		for (let i = 0; i < 100 && page.state.drawer; i++) await new Promise((r) => setTimeout(r, 20));
+		const open = page.state.drawer;
+		if (!open || (result.type !== 'redirect' && result.type !== 'success')) {
+			return update({ reset: false });
+		}
+		if (result.type === 'success') {
+			// update() refreshes the page itself.
+			await update({ reset: false });
+			if (stay) await refreshDrawer(open);
+			else await closeAndWait();
+			toast(message);
+			return;
+		}
+		await closeAndWait();
+		if (follow) await goto(result.location, { invalidateAll: true });
 		toast(message);
-		await invalidateAll();
+		if (!follow) await invalidateAll();
 	};

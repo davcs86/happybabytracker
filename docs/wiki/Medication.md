@@ -2,6 +2,8 @@
 
 Medication keeps a list of **courses** (a medicine, its dose and when it is given) and a log of the **doses** given. Every example below uses fake data: Mia, 4 months, and her courses Calpol, Amoxil and Vitamin D.
 
+With JavaScript, the Add a course, Edit course and Edit dose forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 ## Guide
 
 ### How do I open the Medication page?

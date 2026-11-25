@@ -7,7 +7,7 @@ import {
 	signIn,
 	submit,
 	untilHydrated,
-	formView
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -2540,10 +2540,13 @@ test.describe('the sickness tracker', () => {
 	}) => {
 		await stubAs(ANA);
 		await signIn(page, ANA);
-		await page.goto(`/kids/${LEO.id}`);
-		await page.getByRole('link', { name: 'Sickness', exact: true }).click();
+		await openSheet(
+			page,
+			`/kids/${LEO.id}`,
+			(p) => p.getByRole('link', { name: 'Sickness', exact: true }),
+			'Log a symptom'
+		);
 		await expect(page).toHaveURL(`/kids/${LEO.id}/log/symptoms`);
-		await expect(formView(page, 'Log a symptom')).toBeVisible();
 		await expect(field(page, 'Symptom')).toBeVisible();
 		await expect(field(page, 'Left minutes')).toHaveCount(0);
 		await expectAccessible(page);

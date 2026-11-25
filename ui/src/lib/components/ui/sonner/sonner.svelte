@@ -13,6 +13,7 @@
 <Sonner
 	position="bottom-center"
 	offset={84}
+	mobileOffset={84}
 	duration={TOAST_MS}
 	class="toaster group"
 	toastOptions={{
