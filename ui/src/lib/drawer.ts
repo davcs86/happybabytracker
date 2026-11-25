@@ -116,19 +116,20 @@ export const savedAs =
 	(message: string, { follow = false, stay = false }: Options = {}): SubmitFunction =>
 	() =>
 	async ({ result, update }) => {
-		const inSheet = !!page.state.drawer;
-		if (!inSheet || (result.type !== 'redirect' && result.type !== 'success')) {
+		const open = page.state.drawer;
+		if (!open || (result.type !== 'redirect' && result.type !== 'success')) {
 			return update({ reset: false });
 		}
 		if (result.type === 'success') {
-			const open = page.state.drawer;
+			// update() refreshes the page itself.
 			await update({ reset: false });
 			if (stay) await refreshDrawer(open);
 			else await closeAndWait();
-		} else {
-			await closeAndWait();
-			if (follow) await goto(result.location, { invalidateAll: true });
+			toast(message);
+			return;
 		}
+		await closeAndWait();
+		if (follow) await goto(result.location, { invalidateAll: true });
 		toast(message);
 		if (!follow) await invalidateAll();
 	};
