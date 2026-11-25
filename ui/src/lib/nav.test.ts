@@ -26,7 +26,6 @@ describe('navModel', () => {
 			'export',
 			'modules',
 			'profile',
-			'settings',
 			'account',
 			'theme',
 			'logout'
@@ -65,7 +64,6 @@ describe('navModel', () => {
 			'/kids/k1/export',
 			'/kids/k1/modules',
 			'/kids/k1/profile',
-			'/kids/k1/settings',
 			'/account'
 		]);
 	});
@@ -96,7 +94,7 @@ describe('current page', () => {
 		['/kids/k1/milestones/new', ['milestones']],
 		['/kids/k1/export/pdf', ['export']],
 		['/kids/k1/access', ['profile']],
-		['/kids/k1/settings', ['settings']],
+		['/kids/k1/settings', ['profile']],
 		['/account', ['account']],
 		['/account/notifications', []],
 		['/kids/new', []]

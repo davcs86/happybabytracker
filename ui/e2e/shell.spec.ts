@@ -39,7 +39,6 @@ test('the More sheet lists the other pages, Sign out last', async ({ page }) => 
 		/^\s*Export PDF/,
 		/^\s*Modules/,
 		/^\s*Child profile/,
-		/^\s*Settings/,
 		/^\s*My profile/
 	]);
 	await expect(sheet.getByRole('button')).toHaveText([
@@ -71,7 +70,6 @@ test('a side navigation from 768 px carries the same entries inline and no More'
 		'Export PDF',
 		'Modules',
 		'Child profile',
-		'Settings',
 		'My profile'
 	]);
 	await expect(nav.getByRole('button')).toHaveText(['Change theme', 'Sign out']);

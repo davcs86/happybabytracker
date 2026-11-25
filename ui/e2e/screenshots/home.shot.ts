@@ -227,7 +227,7 @@ test('caregiver home and leaving', async ({ page }) => {
 		page,
 		'home',
 		'08-leo-caregiver',
-		'A caregiver on a 2-year-old: the Leave this child card; no Modules, Child profile or Settings entries'
+		'A caregiver on a 2-year-old: the Leave this child card; no Modules or Child profile entries'
 	);
 	await openDetails(page, 'Leave this child');
 	await shot(
