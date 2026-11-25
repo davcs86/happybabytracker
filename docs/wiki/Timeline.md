@@ -24,7 +24,7 @@ The timeline of an empty day. The **Log something** button at the top and in the
 
 Each entry is one card: an icon and a name (Bottle, Nursing, Pumping, Sleep, Diaper, Solids, the symptom's name, or the kind of a medical visit), a detail line, and the time on the right. A sleep shows its start and end instead of a single time. A sleep that ends on a later day reads, for example, "20:15–05:40 +1 day (9 h 25 min)" and stays under the day it began. A note you typed appears as a last line on the card.
 
-Tap a card to open that entry on its edit page, where you can change or delete it.
+Tap a card to open that entry in its edit sheet over the timeline, where you can change or delete it (without JavaScript, the edit page opens instead). A visit card opens the visit's own page.
 
 | Phone | Desktop |
 |---|---|
