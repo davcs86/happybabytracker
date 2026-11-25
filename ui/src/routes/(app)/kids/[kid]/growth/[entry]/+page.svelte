@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import FormCancel from '#lib/components/FormCancel.svelte';
 	import FormFrame from '#lib/components/FormFrame.svelte';
+	import RecordedAtVisit from '#lib/components/visits/RecordedAtVisit.svelte';
 	import MeasurementFields from '#lib/components/growth/MeasurementFields.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -32,6 +33,7 @@
 		>
 		<h1 class="mt-1">Edit measurement</h1>
 	{/snippet}
+	<RecordedAtVisit kidId={data.kid.id} visitId={data.visitId} />
 	<form
 		method="POST"
 		action="?/save"

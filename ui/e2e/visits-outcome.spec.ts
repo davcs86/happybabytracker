@@ -132,6 +132,53 @@ test('record growth, two vaccines and a course in the sheet; the module pages sh
 	).toHaveCount(1);
 });
 
+test('the growth, vaccination and course a visit recorded say so on their edit pages, linked to it', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	const v = await seedVisit(api);
+	const day = String(v.starts_at).slice(0, 10);
+	const recorded = await api('POST', `${VISITS}/${v.id}/outcome`, {
+		revision: v.revision,
+		growth: { measured_on: day, weight: { unit: 'kg', amount: 6400 } },
+		vaccinations: [{ given_on: day, antigens: ['measles'] }],
+		medications: [
+			{ name: 'Amoxicillin', dose: '5 ml', schedule: { kind: 'none' }, start_at: v.starts_at }
+		]
+	});
+	expect(recorded.status).toBe(200);
+	const { linked } = await visitOf(api, v.id);
+	const other = await api('POST', `/v1/kids/${MIA.id}/growth`, {
+		measured_on: day,
+		weight: { unit: 'kg', amount: 6500 }
+	});
+	expect(other.status).toBe(201);
+	const recordedAt = (where: Page | Locator) =>
+		where.getByRole('link', { name: 'Recorded at a visit', exact: true });
+	await signIn(page, ANA);
+
+	for (const path of [
+		`growth/${linked.growth[0].id}`,
+		`vaccines/${linked.vaccinations[0].id}`,
+		`medication/${linked.medications[0].id}`
+	]) {
+		await page.goto(`/kids/${MIA.id}/${path}`);
+		await expect(recordedAt(page)).toHaveAttribute('href', visitUrl(v.id));
+		await expectAccessible(page);
+	}
+	await page.goto(`/kids/${MIA.id}/growth/${(other.body as Row).id}`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Edit measurement' })).toBeVisible();
+	await expect(recordedAt(page)).toHaveCount(0);
+
+	const growthRow = (p: Page) =>
+		p.locator(`a[href="/kids/${MIA.id}/growth/${linked.growth[0].id}"]`).first();
+	const sheet = await openSheet(page, `/kids/${MIA.id}/growth`, growthRow, 'Edit measurement');
+	await recordedAt(sheet).click();
+	await expect(page).toHaveURL(visitUrl(v.id));
+	await expect(sheet).toBeHidden();
+	await expect(page.getByRole('heading', { level: 1, name: 'Well-child visit' })).toBeVisible();
+});
+
 test('a refused lot in vaccine 2 is named in its block, and nothing is sent', async ({ page }) => {
 	const api = await stubAs(ANA);
 	const v = await seedVisit(api);

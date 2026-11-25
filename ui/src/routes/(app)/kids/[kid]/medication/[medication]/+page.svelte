@@ -5,6 +5,7 @@
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import FormCancel from '#lib/components/FormCancel.svelte';
 	import FormFrame from '#lib/components/FormFrame.svelte';
+	import RecordedAtVisit from '#lib/components/visits/RecordedAtVisit.svelte';
 	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import { doseCountLabel } from '#lib/medication.js';
@@ -29,6 +30,7 @@
 {#snippet info()}
 	<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">{data.course.name}</p>
 	<p class="text-[13.5px] text-muted-foreground">Times are in {data.kid.timeZone}</p>
+	<RecordedAtVisit kidId={data.kid.id} visitId={data.course.visitId} />
 {/snippet}
 
 <FormFrame
