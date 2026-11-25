@@ -14,6 +14,10 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const username = String(form.get('username') ?? '');
 		const password = String(form.get('password') ?? '');
+		const usernameError = username.trim() ? null : 'Enter your username';
+		const passwordError = password ? null : 'Enter your password';
+		if (usernameError || passwordError)
+			return fail(400, { username, usernameError, passwordError });
 		const api = createApi(getEnv(), fetch, undefined, getClientAddress());
 		const r = await api.login(username, password);
 		if (!r.ok) {
