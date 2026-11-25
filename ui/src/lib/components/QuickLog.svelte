@@ -48,24 +48,18 @@
 		medication: 'Log a dose'
 	};
 
+	// The link or button holds the label only; its ::after stretches the target over the whole tile.
 	const TILE =
-		'flex h-full min-h-24 w-full flex-col items-start gap-2.5 rounded-xl border bg-card p-3 text-left hover:bg-accent';
+		'relative flex h-full min-h-24 flex-col items-start gap-2.5 rounded-xl border bg-card p-3 hover:bg-accent has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary';
+	const LABEL =
+		'block text-left text-[15px] leading-tight font-semibold outline-none after:absolute after:inset-0';
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
-{#snippet face(entry: QuickLogEntry)}
-	{@const look = LOOK[entry.module]}
-	<span class="tracker-chip {look.hue}"><look.icon aria-hidden="true" class="size-5" /></span>
-	<span class="block">
-		<span id="ql-{entry.module}" class="block text-[15px] leading-tight font-semibold"
-			>{entry.label}</span
-		>
-		{#if HINT[entry.module]}
-			<span id="ql-{entry.module}-hint" class="mt-px block text-xs text-muted-foreground"
-				>{HINT[entry.module]}</span
-			>
-		{/if}
-	</span>
+{#snippet hint(entry: QuickLogEntry)}
+	{#if HINT[entry.module]}
+		<span class="mt-px block text-xs text-muted-foreground">{HINT[entry.module]}</span>
+	{/if}
 {/snippet}
 
 {#if entries.length > 0}
@@ -74,26 +68,22 @@
 		{#if message}<p class={ERROR_CLASS} role="alert">{message}</p>{/if}
 		<ul class="grid grid-cols-2 gap-2.5">
 			{#each entries as entry (entry.module)}
-				{@const describedby = HINT[entry.module] ? `ql-${entry.module}-hint` : undefined}
-				<li>
-					<!-- Sleep is one tap, a form post that works without JavaScript; the rest open their form. -->
-					{#if entry.kind === 'sleep'}
-						<form method="POST" action="?/startSleep" class="h-full" use:enhance>
-							<button
-								type="submit"
-								class={TILE}
-								aria-labelledby="ql-{entry.module}"
-								aria-describedby={describedby}>{@render face(entry)}</button
-							>
-						</form>
-					{:else}
-						<a
-							href={href(entry)}
-							class={TILE}
-							aria-labelledby="ql-{entry.module}"
-							aria-describedby={describedby}>{@render face(entry)}</a
-						>
-					{/if}
+				{@const look = LOOK[entry.module]}
+				<li class={TILE}>
+					<span class="tracker-chip {look.hue}"
+						><look.icon aria-hidden="true" class="size-5" /></span
+					>
+					<span class="block">
+						<!-- Sleep is one tap, a form post that works without JavaScript; the rest open their form. -->
+						{#if entry.kind === 'sleep'}
+							<form method="POST" action="?/startSleep" use:enhance>
+								<button type="submit" class={LABEL}>{entry.label}</button>
+							</form>
+						{:else}
+							<a href={href(entry)} class={LABEL}>{entry.label}</a>
+						{/if}
+						{@render hint(entry)}
+					</span>
 				</li>
 			{/each}
 		</ul>

@@ -34,7 +34,7 @@ const running = (page: Page) => page.getByRole('region', { name: 'Running now' }
 const today = (page: Page) => page.getByRole('region', { name: 'Today' });
 const due = (page: Page) => page.getByRole('region', { name: 'Due' });
 // A tile's text may carry a one-line hint after its name.
-const tiles = (names: string[]) => names.map((name) => new RegExp(`^${name}`));
+const tiles = (names: string[]) => names.map((name) => new RegExp(`^\\s*${name}`));
 const MS_PER_MINUTE = 60_000;
 const minutesAgo = (m: number) =>
 	new Date(Date.now() - m * MS_PER_MINUTE).toISOString().replace(/\.\d{3}Z$/, 'Z');

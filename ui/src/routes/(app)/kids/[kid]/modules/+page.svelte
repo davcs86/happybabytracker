@@ -42,7 +42,7 @@
 						value={m.module}
 						checked={m.enabled}
 						aria-describedby="module-{m.module}-default"
-						class="mt-0.5 size-5 shrink-0 accent-primary"
+						class="relative z-10 mt-0.5 size-5 shrink-0 accent-primary"
 					/>
 					<div class="flex min-w-0 flex-col">
 						<label for="module-{m.module}" class="font-medium after:absolute after:inset-0"
