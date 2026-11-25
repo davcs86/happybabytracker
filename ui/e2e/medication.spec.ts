@@ -96,7 +96,9 @@ const overflows = (page: Page) =>
 	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 async function onMedication(page: Page, kid: string = MIA.id) {
 	await page.waitForURL(new RegExp(`${pageUrl(kid)}$`));
-	await expect(page.getByRole('heading', { level: 1, name: /^Medication for / })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { level: 1, name: 'Medication', exact: true })
+	).toBeVisible();
 }
 
 test('lists the active courses with their schedule, last dose and next due, following the clock', async ({
@@ -113,7 +115,9 @@ test('lists the active courses with their schedule, last dose and next due, foll
 	await seedCourse(api, { name: 'Vitamin D', dose: '1 drop' });
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
-	await expect(page.getByRole('heading', { name: 'Medication for Mia', level: 1 })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Medication', exact: true, level: 1 })
+	).toBeVisible();
 
 	const calpol = card(page, 'Calpol');
 	await expect(calpol).toContainText('2.5 ml');
@@ -136,14 +140,14 @@ test('lists the active courses with their schedule, last dose and next due, foll
 	await expect(card(page, 'Vitamin D').getByText(/Next due/)).toHaveCount(0);
 });
 
-test('the course name links to its edit page and the page offers a new course', async ({
+test('the edit button of a course links to its edit page and the page offers a new course', async ({
 	page
 }) => {
 	const api = await stubAs(ANA);
 	const calpol = await seedCourse(api, { name: 'Calpol' });
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
-	await expect(page.getByRole('link', { name: 'Calpol', exact: true })).toHaveAttribute(
+	await expect(page.getByRole('link', { name: 'Edit Calpol', exact: true })).toHaveAttribute(
 		'href',
 		`${pageUrl()}/${calpol.id}`
 	);
@@ -577,7 +581,7 @@ test('the kid page links to the medication page for every role', async ({ page }
 		await page.getByRole('link', { name: `Medication for ${kid.name}` }).click();
 		await expect(page).toHaveURL(pageUrl(kid.id));
 		await expect(
-			page.getByRole('heading', { name: `Medication for ${kid.name}`, level: 1 })
+			page.getByRole('heading', { name: 'Medication', exact: true, level: 1 })
 		).toBeVisible();
 	}
 });
@@ -947,7 +951,7 @@ test('the edit page shows the stored course and an edit of the note alone sends 
 	const path = `${COURSES()}/${calpol.id}`;
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
-	await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+	await page.getByRole('link', { name: 'Edit Calpol', exact: true }).click();
 	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(courseUrl(calpol.id));
 	await expect(page.getByRole('heading', { name: 'Edit course', level: 1 })).toBeVisible();
@@ -1151,7 +1155,7 @@ for (const [who, role] of [
 			`Every 6 hours from ${instantToLocalInput(start, 'Europe/Madrid').slice(-5)}`
 		);
 
-		await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+		await page.getByRole('link', { name: 'Edit Calpol', exact: true }).click();
 		await untilHydrated(field(page, 'Note'));
 		await expect(field(page, 'Start')).toHaveValue(instantToLocalInput(start, 'Europe/Madrid'));
 		await field(page, 'Note').fill('by the book');
@@ -1227,22 +1231,22 @@ test('the course pages work with the medication module off', async ({ page }) =>
 	await expect(field(page, 'Name')).toHaveValue('Calpol');
 });
 
-const pausedNote = (name: string) => `Medication is off for ${name}: reminders are paused.`;
-const turnOnLink = (page: Page) => page.getByRole('link', { name: 'Turn it on in Modules' });
+const pausedNote = (name: string) => `Medication is switched off for ${name}`;
+const turnOnLink = (page: Page) => page.getByRole('link', { name: 'Open modules' });
 const setMedication = (api: Api, kid: string, enabled: boolean) =>
 	api('PUT', `/v1/kids/${kid}/modules/medication`, { enabled });
 
-test('the medication page has no paused note while the module is on', async ({ page }) => {
+test('the medication page has no switched-off card while the module is on', async ({ page }) => {
 	await stubAs(ANA);
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
 	await onMedication(page);
-	await expect(page.getByText('reminders are paused')).toHaveCount(0);
+	await expect(page.getByText('is switched off for')).toHaveCount(0);
 	await expect(turnOnLink(page)).toHaveCount(0);
 	await expectAccessible(page);
 });
 
-test('a guardian sees the paused note with a link to the modules page while the module is off', async ({
+test('a guardian sees the switched-off card with a link to the modules page, and no courses or add link', async ({
 	page
 }) => {
 	const api = await stubAs(ANA);
@@ -1253,7 +1257,8 @@ test('a guardian sees the paused note with a link to the modules page while the 
 	await onMedication(page);
 	await expect(page.getByText(pausedNote('Mia'))).toBeVisible();
 	await expect(page.getByRole('alert')).toHaveCount(0);
-	await expect(card(page, 'Calpol')).toBeVisible();
+	await expect(card(page, 'Calpol')).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Add a course' })).toHaveCount(0);
 	await expectAccessible(page);
 	await turnOnLink(page).click();
 	await expect(page).toHaveURL(`/kids/${MIA.id}/modules`);
@@ -1263,7 +1268,7 @@ for (const [who, role, expected] of [
 	[ANA, 'caregiver', false],
 	[CLEO, 'guardian', true]
 ] as const) {
-	test(`a ${role} of Leo sees the paused note ${expected ? 'with' : 'without'} the modules link`, async ({
+	test(`a ${role} of Leo sees the switched-off card ${expected ? 'with' : 'without'} the modules link`, async ({
 		page
 	}) => {
 		expect((await setMedication(await stubAs(CLEO), LEO.id, false)).status).toBeLessThan(300);
@@ -1273,11 +1278,12 @@ for (const [who, role, expected] of [
 		await onMedication(page, LEO.id);
 		await expect(page.getByText(pausedNote('Leo'))).toBeVisible();
 		await expect(turnOnLink(page)).toHaveCount(expected ? 1 : 0);
+		await expect(page.getByText('A guardian can switch it on.')).toHaveCount(expected ? 0 : 1);
 		await expectAccessible(page);
 	});
 }
 
-test('the paused note wraps a long kid name at phone width', async ({ page }, testInfo) => {
+test('the switched-off card wraps a long kid name at phone width', async ({ page }, testInfo) => {
 	test.skip(testInfo.project.name !== 'phone', 'the overflow is a phone-width check');
 	const api = await stubAs(ANA);
 	const name = 'w'.repeat(KID_NAME_MAX_LEN);
@@ -1286,15 +1292,15 @@ test('the paused note wraps a long kid name at phone width', async ({ page }, te
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
 	await expect(page.getByText(pausedNote(name))).toBeVisible();
-	// The kid page's own back link has no wrap rule (not this change), so only the note is measured.
+	// Only the card's sentence is measured.
 	const box = await page.getByText(pausedNote(name)).boundingBox();
 	expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
-test.describe('the paused note without JavaScript', () => {
+test.describe('the switched-off card without JavaScript', () => {
 	test.use({ javaScriptEnabled: false });
 
-	test('the server renders the note and the link', async ({ page }) => {
+	test('the server renders the card and the link', async ({ page }) => {
 		const api = await stubAs(ANA);
 		expect((await setMedication(api, MIA.id, false)).status).toBeLessThan(300);
 		await signIn(page, ANA);
@@ -1407,7 +1413,7 @@ test.describe('the course pages without JavaScript', () => {
 		const path = `${COURSES()}/${calpol.id}`;
 		await signIn(page, ANA);
 		await page.goto(pageUrl());
-		await page.getByRole('link', { name: 'Calpol', exact: true }).click();
+		await page.getByRole('link', { name: 'Edit Calpol', exact: true }).click();
 		await expect(page).toHaveURL(courseUrl(calpol.id));
 		await field(page, 'Note').fill('no script');
 		await saveCourse(page);

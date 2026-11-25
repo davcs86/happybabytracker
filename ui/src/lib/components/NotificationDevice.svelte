@@ -35,12 +35,12 @@
 	<form
 		method="POST"
 		action="?/device"
-		class="flex flex-col gap-4"
+		class="flex flex-col gap-3.5"
 		novalidate
 		use:enhance={keepValues}
 	>
 		<input type="hidden" name="device" value={device.id} />
-		<div class="flex flex-col gap-2">
+		<div class="flex flex-col gap-1.5">
 			<Label for={labelId}>Device name</Label>
 			<Input
 				id={labelId}
@@ -52,36 +52,34 @@
 				aria-describedby={labelError ? `${labelId}-error` : undefined}
 			/>
 			{#if labelError}
-				<p id="{labelId}-error" class={ERROR_CLASS} role="alert">{labelError}</p>
+				<p id="{labelId}-error" class={ERROR_CLASS}>{labelError}</p>
 			{/if}
 		</div>
-		<fieldset class="flex flex-col gap-2">
-			<legend class="mb-1 text-sm font-medium">Reminders on this device for</legend>
+		<fieldset class="flex flex-col">
+			<legend class="mb-1 text-[13px] text-muted-foreground">Reminders on this device for</legend>
 			{#each kids as kid (kid.id)}
-				<div class="flex items-center gap-2">
+				<label class="flex min-h-11 items-center gap-3 text-[15px] [overflow-wrap:anywhere]">
 					<input
-						id="device-{device.id}-kid-{kid.id}"
 						type="checkbox"
 						name="kid"
 						value={kid.id}
 						checked={chosen.includes(kid.id)}
-						class="size-4"
-					/>
-					<label for="device-{device.id}-kid-{kid.id}">{kid.name}</label>
-				</div>
+						class="size-6 shrink-0 accent-primary"
+					/>{kid.name}
+				</label>
 			{/each}
 		</fieldset>
-		<Button type="submit" class="self-start">Save</Button>
+		<Button type="submit">Save</Button>
 	</form>
 {:else}
-	<div class="text-sm">
-		<p class="font-medium">{device.label}</p>
-		<p class="text-muted-foreground">Added {formatInstant(device.createdAt)}</p>
+	<div class="min-w-0 flex-1">
+		<p class="text-[15px] font-semibold [overflow-wrap:anywhere]">{device.label}</p>
+		<p class="text-[12.5px] text-muted-foreground">Added {formatInstant(device.createdAt)}</p>
 	</div>
 {/if}
 <form method="POST" action="?/remove" use:enhance={afterRemove}>
 	<input type="hidden" name="device" value={device.id} />
-	<Button type="submit" variant="outline"
+	<Button type="submit" variant="outline" class={editable ? 'w-full' : ''}
 		>{#if editable}Turn off on this device{:else}Remove<span class="sr-only">
 				{device.label}</span
 			>{/if}</Button

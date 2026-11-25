@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ERROR_CLASS } from '#lib/components/field.js';
+	import { ERROR_CLASS, CHOICE_CLASS } from '#lib/components/field.js';
 	import type { EntryValues } from '#lib/entry-edit.js';
 
 	let {
@@ -34,25 +34,36 @@
 <fieldset
 	role="radiogroup"
 	aria-labelledby="{id}-legend"
-	class="flex flex-col gap-1"
+	class="flex flex-col gap-1.5"
 	aria-invalid={error(name) ? 'true' : undefined}
 	aria-describedby={describedBy}
 >
-	<legend id="{id}-legend" class="mb-1 text-sm font-medium">{legend}</legend>
-	<div class="flex flex-wrap gap-x-4">
+	<legend id="{id}-legend" class="mb-0.5 text-[13px] leading-4 text-muted-foreground"
+		>{legend}</legend
+	>
+	<div class="flex flex-col gap-0.5">
 		{#each options as option (option)}
-			<label class="flex min-h-11 items-center gap-2 text-sm">
-				<input type="radio" {name} value={option} checked={values[name] === option} {required} />
+			<label class="flex min-h-11 items-center gap-3 text-[15px]">
+				<input
+					type="radio"
+					{name}
+					value={option}
+					checked={values[name] === option}
+					{required}
+					class={CHOICE_CLASS}
+				/>
 				{label(option)}
 			</label>
 		{/each}
 		{#if blank !== null}
-			<label class="flex min-h-11 items-center gap-2 text-sm">
-				<input type="radio" {name} value="" checked={values[name] === ''} />
+			<label class="flex min-h-11 items-center gap-3 text-[15px]">
+				<input type="radio" {name} value="" checked={values[name] === ''} class={CHOICE_CLASS} />
 				{blank}
 			</label>
 		{/if}
 	</div>
-	{#if hint}<p id="{id}-hint" class="text-sm text-muted-foreground">{hint}</p>{/if}
+	{#if hint}<p id="{id}-hint" class="text-[12.5px] leading-normal text-muted-foreground">
+			{hint}
+		</p>{/if}
 	{#if error(name)}<p id="{id}-error" class={ERROR_CLASS} role="alert">{error(name)}</p>{/if}
 </fieldset>

@@ -3,65 +3,109 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
+	import TrackerFields from '#lib/components/entry/TrackerFields.svelte';
+	import { keepValues } from '#lib/components/field.js';
+	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import type { EntryValues } from '#lib/entry-edit.js';
+	import type { EntryStage, EntryValues } from '#lib/entry-edit.js';
+	import type { TrackerKind } from '#lib/types.js';
 
 	let {
 		kid,
+		kind,
+		stage,
+		title,
+		age,
 		zone,
 		values,
 		error,
+		estimate = null,
 		message = null,
+		refused = false,
 		running = false,
+		notice = null,
 		toggle = null,
-		children
+		footer
 	}: {
 		kid: { id: string; name: string };
+		kind: TrackerKind;
+		stage: EntryStage;
+		title: string;
+		age: string;
 		zone: string;
 		values: EntryValues;
 		error: (name: string) => string | null;
+		// The edit page's paragraph under the weigh-ins (milkStatus).
+		estimate?: string | null;
 		// A failure that belongs to no field; running adds the way to the timer that blocks this one.
 		message?: string | null;
+		// A field was refused: the summary points at the messages under the fields.
+		refused?: boolean;
 		running?: boolean;
+		notice?: string | null;
 		// The plain link that reloads the form advanced or simple; values.advanced says which it is.
 		toggle?: { href: string; label: string } | null;
-		children: Snippet;
+		footer?: Snippet;
 	} = $props();
 
 	const home = $derived(resolve('/(app)/kids/[kid]', { kid: kid.id }));
+	const GROUP = 'flex min-w-0 flex-col gap-3.5';
 </script>
 
-<form
-	method="POST"
-	action="?/save"
-	class="flex max-w-md flex-col gap-4"
-	novalidate
-	use:enhance={keepValues}
->
-	{#if toggle}
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a query on this same page -->
-		<p class="text-sm"><a href={toggle.href} class="underline">{toggle.label}</a></p>
+<div class="max-w-[448px] xl:mx-auto xl:w-[920px] xl:max-w-none">
+	<h1 class="mt-[26px]">{title}</h1>
+	<p class="mt-1.5 text-sm leading-[1.4] text-muted-foreground">{age}</p>
+	<p class="mt-1.5 text-[13.5px] leading-normal [overflow-wrap:anywhere] text-muted-foreground">
+		Times are in {zone}
+	</p>
+	{#if notice}
+		<p class="mt-4 text-[13.5px] leading-normal [overflow-wrap:anywhere]">{notice}</p>
 	{/if}
-	{#if values.advanced === '1'}
-		<input type="hidden" name="advanced" value="1" />
-	{/if}
-	{#if message}
-		<p class={ERROR_CLASS} role="alert">
-			{message}{#if running}.
-				<a href={home} class="underline">See {kid.name}'s timer</a>{/if}
-		</p>
-	{/if}
-	<p class="text-sm text-muted-foreground">Times are in {zone}</p>
-	{@render children()}
-	<Field id="entry-note" label="Note" error={error('note')}>
-		{#snippet children(control)}
-			<Input {...control} name="note" autocomplete="off" value={values.note as string} />
-		{/snippet}
-	</Field>
-	<div class="flex items-center gap-4">
-		<Button type="submit">Save</Button>
-		<a href={home} class="text-sm underline">Cancel</a>
-	</div>
-</form>
+
+	<form
+		method="POST"
+		action="?/save"
+		class="group/entry mt-4 flex flex-col gap-3.5"
+		novalidate
+		use:enhance={keepValues}
+	>
+		{#if toggle}
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a query on this same page -->
+			<p class="text-sm"><a href={toggle.href} class="underline">{toggle.label}</a></p>
+		{/if}
+		{#if values.advanced === '1'}
+			<input type="hidden" name="advanced" value="1" />
+		{/if}
+		{#if message}
+			<Alert>
+				<p class="[overflow-wrap:anywhere]">
+					{message}{#if running}.
+						<a href={home} class="underline">See {kid.name}'s timer</a>{/if}
+				</p>
+			</Alert>
+		{:else if refused}
+			<Alert><p>Check the fields with a message.</p></Alert>
+		{/if}
+		<div
+			class="contents xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:items-start xl:gap-x-6 xl:gap-y-[18px]"
+		>
+			<div class={GROUP}>
+				<TrackerFields {kind} {stage} part="primary" {values} {error} {estimate} />
+			</div>
+			<div class="{GROUP} xl:row-span-2">
+				<TrackerFields {kind} {stage} part="optional" {values} {error} {estimate} />
+				<Field id="entry-note" label="Note" error={error('note')}>
+					{#snippet children(control)}
+						<Input {...control} name="note" autocomplete="off" value={values.note as string} />
+					{/snippet}
+				</Field>
+			</div>
+			<div class="flex gap-2">
+				<Button type="submit" class="flex-1">Save</Button>
+				<Button href={home} variant="outline">Cancel</Button>
+			</div>
+		</div>
+	</form>
+	{@render footer?.()}
+</div>

@@ -19,33 +19,37 @@
 	const text = (name: string) => values[name] ?? '';
 </script>
 
-{#if custom}
-	<Field id="milestone-text" label="Milestone" error={error('text')}>
+<div class="flex flex-col gap-3.5">
+	{#if custom}
+		<Field id="milestone-text" label="Milestone" error={error('text')}>
+			{#snippet children(control)}
+				<Input {...control} name="text" autocomplete="off" value={text('text')} required />
+			{/snippet}
+		</Field>
+	{/if}
+
+	<Field id="milestone-reached_on" label="Date reached" error={error('reached_on')}>
 		{#snippet children(control)}
-			<Input {...control} name="text" autocomplete="off" value={text('text')} required />
+			<Input
+				{...control}
+				name="reached_on"
+				type="date"
+				value={text('reached_on')}
+				min={birthDate}
+				max={today}
+				required
+			/>
 		{/snippet}
 	</Field>
-{/if}
+</div>
 
-<Field id="milestone-reached_on" label="Date reached" error={error('reached_on')}>
-	{#snippet children(control)}
-		<Input
-			{...control}
-			name="reached_on"
-			type="date"
-			value={text('reached_on')}
-			min={birthDate}
-			max={today}
-			required
-		/>
-	{/snippet}
-</Field>
-
-<Field id="milestone-note" label="Note" error={error('note')}>
-	{#snippet children(control)}
-		<Input {...control} name="note" autocomplete="off" value={text('note')} />
-	{/snippet}
-</Field>
+<div class="flex flex-col gap-3.5 xl:row-span-2">
+	<Field id="milestone-note" label="Note" error={error('note')}>
+		{#snippet children(control)}
+			<Input {...control} name="note" autocomplete="off" value={text('note')} />
+		{/snippet}
+	</Field>
+</div>
 
 {#if values.reached_on_original !== undefined}
 	{#each [...(custom ? ['text'] : []), 'reached_on', 'note'] as name (name)}

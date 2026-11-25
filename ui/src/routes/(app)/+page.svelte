@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -9,10 +10,11 @@
 	<title>Home · happybabytracker</title>
 </svelte:head>
 
-<h1 class="mb-4 text-xl font-semibold">Welcome, {data.session?.parent?.displayName}</h1>
-
-<a
-	href={resolve('/(app)/kids/new')}
-	class="inline-block rounded-lg border px-4 py-3 font-medium hover:bg-muted"
-	>Add your first child</a
->
+<div class="flex max-w-[448px] flex-col gap-3.5 pt-10">
+	<h1>Welcome, {data.session?.parent?.displayName}</h1>
+	<p class="text-[14.5px] leading-normal text-muted-foreground">
+		Add a child to start logging feeds, sleep and diapers. Everyone you invite sees the same
+		entries.
+	</p>
+	<Button href={resolve('/(app)/kids/new')} size="lg">Add your first child</Button>
+</div>

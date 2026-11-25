@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ERROR_CLASS } from '#lib/components/field.js';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
 	import CourseCard from '#lib/components/medication/CourseCard.svelte';
+	import { Alert } from '#lib/components/ui/alert/index.js';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import { courseEnded, whenLabel } from '#lib/medication.js';
 	import { doseEntryPath, medicationNewPath } from '#lib/paths.js';
 	import type { PageProps } from './$types';
@@ -26,101 +29,149 @@
 	<title>Medication · {data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<p class="mb-2 text-sm">
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="underline">{data.kid.name}</a>
-</p>
-<div class="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-	<h1 class="text-xl font-semibold [overflow-wrap:anywhere]">Medication for {data.kid.name}</h1>
-	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
-	<a href={medicationNewPath(data.kid.id)} class="text-sm underline">Add a course</a>
-</div>
-<p class="mb-4 text-sm text-muted-foreground">Times are in {zone}</p>
-
-{#if data.medicationOff}
-	<p class="mb-4 text-sm [overflow-wrap:anywhere]">
-		Medication is off for {data.kid.name}: reminders are paused.
-		{#if data.kid.role === 'guardian'}
-			<a href={resolve('/(app)/kids/[kid]/modules', { kid: data.kid.id })} class="underline"
-				>Turn it on in Modules</a
+<div
+	class="flex max-w-[720px] flex-col gap-[18px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+>
+	<div class="mt-5 flex flex-wrap items-start gap-x-3 gap-y-1.5 xl:col-span-2">
+		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
+			<h1>Medication</h1>
+			<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
+		</div>
+		{#if !data.medicationOff}
+			<Button href={medicationNewPath(data.kid.id)} variant="outline" class="shrink-0 px-5"
+				>Add a course</Button
 			>
 		{/if}
-	</p>
-{/if}
-
-{#if topMessage}
-	<p class="{ERROR_CLASS} mb-4" role="alert">{topMessage}</p>
-{/if}
-
-<section aria-labelledby="courses-heading" class="mb-6">
-	<h2 id="courses-heading" class="mb-2 font-semibold">Courses</h2>
-	{#if data.courses.length === 0}
-		<p class="text-sm text-muted-foreground">No courses yet</p>
-	{:else if current.length === 0}
-		<p class="text-sm text-muted-foreground">No active courses</p>
-	{/if}
-	{#if current.length > 0}
-		<ul class="flex flex-col gap-2">
-			{#each current as course (course.id)}
-				{@const failure = failureOf(course.id)}
-				<CourseCard
-					{course}
-					kidId={data.kid.id}
-					{zone}
-					today={data.today}
-					amount={failure?.values.amount}
-					error={failure?.message}
-				/>
-			{/each}
-		</ul>
-	{/if}
-	{#if rest.length > 0}
-		<details class="mt-4" open={rest.some((c) => failureOf(c.id))}>
-			<summary class="mb-2 cursor-pointer font-medium">
-				Ended and inactive courses ({rest.length})
-			</summary>
-			<ul class="flex flex-col gap-2">
-				{#each rest as course (course.id)}
-					{@const failure = failureOf(course.id)}
-					<CourseCard
-						{course}
-						kidId={data.kid.id}
-						{zone}
-						today={data.today}
-						amount={failure?.values.amount}
-						error={failure?.message}
-					/>
-				{/each}
-			</ul>
-		</details>
-	{/if}
-</section>
-
-<section aria-labelledby="doses-heading" class="mb-6">
-	<div class="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-		<h2 id="doses-heading" class="font-semibold [overflow-wrap:anywhere]">
-			{data.filter ? `Doses of ${data.filter.name}` : 'Recent doses'}
-		</h2>
-		{#if data.filter}
-			<a
-				href={resolve('/(app)/kids/[kid]/medication', { kid: data.kid.id })}
-				class="text-sm underline">Show all doses</a
-			>
-		{/if}
+		<p class="w-full text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
+			Times are in {zone}
+		</p>
 	</div>
-	{#if data.doses.length === 0}
-		<p class="text-sm text-muted-foreground">No doses logged yet</p>
-	{:else}
-		<ul class="flex flex-col gap-2">
-			{#each data.doses as dose (dose.id)}
-				<li class="rounded-lg border p-3 text-sm [overflow-wrap:anywhere]">
-					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the dose page's path helper, absolute like the other links to pages without JavaScript -->
-					<a href={doseEntryPath(data.kid.id, dose.id)} class="font-medium underline"
-						>{nameOf(dose.medication)}, {whenLabel(dose.givenAt, zone, data.today)}</a
-					>
-					{#if dose.amount}<p>{dose.amount}</p>{/if}
-					{#if dose.note}<p class="text-muted-foreground">{dose.note}</p>{/if}
-				</li>
-			{/each}
-		</ul>
+
+	{#if topMessage}
+		<Alert class="[overflow-wrap:anywhere] xl:col-span-2">{topMessage}</Alert>
 	{/if}
-</section>
+
+	{#if data.medicationOff}
+		<section
+			aria-labelledby="off-heading"
+			class="flex flex-col gap-3 rounded-2xl border bg-card p-3.5"
+		>
+			<h2 id="off-heading" class="text-[17px] font-semibold [overflow-wrap:anywhere]">
+				Medication is switched off for {data.kid.name}
+			</h2>
+			<p class="text-[13.5px] text-muted-foreground">
+				Courses and doses are kept. Nothing is deleted.
+			</p>
+			{#if data.kid.role === 'guardian'}
+				<Button
+					href={resolve('/(app)/kids/[kid]/modules', { kid: data.kid.id })}
+					variant="outline"
+					class="self-start px-5">Open modules</Button
+				>
+			{:else}
+				<p class="text-[13.5px] text-muted-foreground">A guardian can switch it on.</p>
+			{/if}
+		</section>
+	{:else}
+		<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+			<section aria-labelledby="courses-heading" class="flex flex-col gap-3">
+				<h2 id="courses-heading" class="text-lg font-semibold">Courses</h2>
+				{#if data.courses.length === 0}
+					<p class="text-[13.5px] text-muted-foreground">No courses yet</p>
+				{:else if current.length === 0}
+					<p class="text-[13.5px] text-muted-foreground">No active courses</p>
+				{/if}
+				{#if current.length > 0}
+					<ul class="flex flex-col gap-3">
+						{#each current as course (course.id)}
+							{@const failure = failureOf(course.id)}
+							<CourseCard
+								{course}
+								kidId={data.kid.id}
+								{zone}
+								today={data.today}
+								amount={failure?.values.amount}
+								error={failure?.message}
+							/>
+						{/each}
+					</ul>
+				{/if}
+				{#if rest.length > 0}
+					<details class="group rounded-xl border bg-card" open={rest.some((c) => failureOf(c.id))}>
+						<summary
+							class="flex min-h-14 cursor-pointer list-none items-center gap-2.5 px-3.5 [&::-webkit-details-marker]:hidden"
+						>
+							<span class="flex-1 text-[15px] font-semibold">
+								Ended and inactive courses ({rest.length})
+							</span>
+							<ChevronDownIcon
+								aria-hidden="true"
+								class="size-4 shrink-0 text-muted-foreground group-open:rotate-180 motion-safe:transition-transform"
+							/>
+						</summary>
+						<ul class="flex flex-col gap-3 px-3 pb-3">
+							{#each rest as course (course.id)}
+								{@const failure = failureOf(course.id)}
+								<CourseCard
+									{course}
+									kidId={data.kid.id}
+									{zone}
+									today={data.today}
+									amount={failure?.values.amount}
+									error={failure?.message}
+								/>
+							{/each}
+						</ul>
+					</details>
+				{/if}
+			</section>
+		</div>
+
+		<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+			<section aria-labelledby="doses-heading" class="flex flex-col gap-2.5">
+				<h2 id="doses-heading" class="text-lg font-semibold [overflow-wrap:anywhere]">
+					{data.filter ? `Doses of ${data.filter.name}` : 'Recent doses'}
+				</h2>
+				{#if data.filter}
+					<a
+						href={resolve('/(app)/kids/[kid]/medication', { kid: data.kid.id })}
+						class="inline-flex min-h-11 items-center self-start text-sm underline">Show all doses</a
+					>
+				{/if}
+				{#if data.doses.length === 0}
+					<p class="text-[13.5px] text-muted-foreground">No doses logged yet</p>
+				{:else}
+					<ul class="flex flex-col gap-2.5">
+						{#each data.doses as dose (dose.id)}
+							{@const when = whenLabel(dose.givenAt, zone, data.today)}
+							<li>
+								<!-- eslint-disable svelte/no-navigation-without-resolve -- the dose page's path helper, absolute like the other links to pages without JavaScript -->
+								<a
+									href={doseEntryPath(data.kid.id, dose.id)}
+									aria-label="{nameOf(dose.medication)}, {when}"
+									class="flex min-h-15 items-center gap-3 rounded-xl border bg-card px-3 py-2 [overflow-wrap:anywhere]"
+								>
+									<span
+										aria-hidden="true"
+										class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary-ink"
+									>
+										<NotebookPenIcon class="size-5" />
+									</span>
+									<span class="flex min-w-0 flex-1 flex-col gap-0.5">
+										<span class="text-[15px] font-semibold">{nameOf(dose.medication)}</span>
+										{#if dose.amount}<span class="text-sm">{dose.amount}</span>{/if}
+										{#if dose.note}
+											<span class="text-[13.5px] text-muted-foreground">{dose.note}</span>
+										{/if}
+									</span>
+									<span class="shrink-0 text-sm text-muted-foreground">{when}</span>
+								</a>
+								<!-- eslint-enable svelte/no-navigation-without-resolve -->
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+		</div>
+	{/if}
+</div>

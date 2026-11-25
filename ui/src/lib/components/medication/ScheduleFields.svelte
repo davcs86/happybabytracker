@@ -19,27 +19,33 @@
 	] as const;
 	const SLOTS = Array.from({ length: MAX_SCHEDULE_TIMES }, (_, i) => i);
 	const ERROR_ID = 'course-schedule-error';
+	// Native radios stay native; the dot is a token-coloured gradient so it works without JavaScript.
+	const RADIO_CLASS =
+		'size-5 shrink-0 appearance-none rounded-full border border-[color-mix(in_oklab,var(--foreground)_55%,var(--background))] bg-background shadow-xs checked:border-primary checked:bg-[radial-gradient(circle,var(--primary)_0_4.5px,transparent_5.5px)]';
 	const invalid = (kind: string) => (error && values.kind === kind ? 'true' : undefined);
 </script>
 
 <!-- CSS shows the fields of the chosen kind, so this works without JavaScript. -->
-<fieldset class="group flex flex-col gap-2">
-	<legend id="course-schedule-legend" class="mb-1 text-sm font-medium">Schedule</legend>
+<fieldset class="group flex min-w-0 flex-col gap-2">
+	<legend id="course-schedule-legend" class="mb-1 p-0 text-[13px] text-muted-foreground"
+		>Schedule</legend
+	>
 	<div
 		role="radiogroup"
 		aria-labelledby="course-schedule-legend"
 		aria-invalid={error ? 'true' : undefined}
 		aria-describedby={error ? ERROR_ID : undefined}
-		class="flex flex-wrap gap-x-4"
+		class="flex flex-col"
 	>
 		{#each KINDS as [kind, label] (kind)}
-			<label class="flex min-h-11 items-center gap-2 text-sm">
+			<label class="flex min-h-11 items-center gap-3 text-[15px]">
 				<input
 					type="radio"
 					id="course-kind-{kind}"
 					name="kind"
 					value={kind}
 					checked={values.kind === kind}
+					class={RADIO_CLASS}
 				/>
 				{label}
 			</label>
@@ -47,7 +53,9 @@
 	</div>
 	{#if error}<p id={ERROR_ID} class={ERROR_CLASS} role="alert">{error}</p>{/if}
 
-	<div class="hidden grid-cols-2 gap-3 group-has-[#course-kind-times:checked]:grid sm:grid-cols-3">
+	<div
+		class="hidden grid-cols-2 gap-2.5 group-has-[#course-kind-times:checked]:grid sm:grid-cols-3"
+	>
 		{#each SLOTS as i (i)}
 			<Field id="course-time-{i}" label="Time {i + 1}">
 				{#snippet children(control)}
