@@ -2,7 +2,7 @@
 
 The Milestones page holds the checklists of things many children do by a given age (from the catalogue the app ships), lets you record the day a child did one, and keeps your own milestones. All screenshots show fake data (for example Nell, 9 months, with placeholder items such as "Stub item 9m-se-1") on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Mark as reached, Add a milestone and Edit milestone forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+With JavaScript, the Mark as reached, Add a milestone and Edit milestone forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the page you opened it from; after a save on the page you land where the steps say.
 
 The app never judges development. The page states facts and the next action only: a milestone is either unmarked or it carries the line "Reached on 24 November 2026". There is no colour, icon, check, count or progress on a milestone, and the page's own words are tested to keep to this (see section 9 of the [design rules](../plans/ui-redesign/design-system/DESIGN.md)). Questions about what a list means for your child are for your clinic.
 
@@ -35,10 +35,14 @@ Beside the lists (below them on a phone) the page always shows the catalogue's s
 
 **With another date or a note** (for something that happened earlier):
 
-1. Tap the calendar button next to **Reached** ("Choose a date for ..."). The **Mark as reached** page opens with the item's text.
+1. Tap the calendar button next to **Reached** ("Choose a date for ..."). **Mark as reached** opens with the item's text.
 2. Change **Date reached**. It starts as today and cannot be in the future or before the birth date.
 3. Add a **Note** if you want one.
-4. Tap **Save**. You return to the list. The list shows the date; the note is kept on the item's edit page.
+4. Tap **Save**. The sheet closes (without JavaScript, you return to the list). The list shows the date; the note is kept on the item's edit form.
+
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/09-milestone-mark-mobile.png" alt="Milestones page dimmed behind a sheet titled Mark as reached, with the milestone text, Date reached and Note" width="260"> |
 
 If the date is wrong, a box at the top says "Check the fields with a message." and the field says "Enter a date that is not in the future and not before the birth date" (shot `12-mark-future-date`).
 

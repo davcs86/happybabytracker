@@ -2,7 +2,7 @@
 
 How to log, edit and delete a bottle, nursing, pumping, diaper, sleep, meal or symptom entry, what each form refuses, and what the advanced modes add. All screenshots show fake data (for example Mia, 4 months old, on a frozen day, 24 November 2026, in the UTC time zone). The full list of 40 captured tracker screens is in the [screenshot catalogue](../screenshots/README.md); this page shows the most instructive ones and names the others by id.
 
-With JavaScript, the log and edit forms of every tracker open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+With JavaScript, the log and edit forms of every tracker open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the page you opened it from; after a save on the page you land where the steps say.
 
 ## Guide
 
@@ -10,7 +10,11 @@ With JavaScript, the log and edit forms of every tracker open in a sheet over th
 
 1. Open the child's home ([Kid home](Kid-home.md)).
 2. Press a tile in **Quick log**: **Bottle**, **Nursing**, **Pumping**, **Diaper**, **Feeding** (the meal form) or **Sickness** (the symptom form). **Sleep** is different: it starts a timer at once and opens no form (see [Sleep](#sleep)).
-3. Fill in the form and press **Save**. You land on the [Timeline](Timeline.md) for the day of the entry, where the new entry is the newest. **Cancel** returns to the child's home.
+3. Fill in the form and press **Save**. The sheet closes, you stay on the child's home and the message "Entry added" appears. Without JavaScript you land on the [Timeline](Timeline.md) for the day of the entry, where the new entry is the newest. **Cancel** closes the sheet (on the page, it returns to the child's home).
+
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/07-bottle-log-mobile.png" alt="Mia's home dimmed behind a sheet titled Log a bottle, opened from the Bottle tile" width="260"> |
 
 Every form has the same top: the title ("Log a bottle"), the child's age, and "Times are in UTC" (the child's own time zone, whichever it is). Every form ends with a **Note**. A tracker whose module is switched off has no tile on the home page ([Kid home](Kid-home.md)).
 
@@ -196,13 +200,13 @@ All ids are under `trackers/`. Each exists as a phone (`-mobile`) and a desktop 
 - **Limits:** bottle volume 1 to 1000 ml; pumping volume 1 to 2000 ml; a session (sleep, nursing, pumping) at most 24 hours; what was eaten at most 200 characters, and the reaction at most 200; a note at most 500 characters; an "other" symptom at most 80 characters; a temperature 30 to 45 °C (86 to 113 °F) with up to two decimals. Millilitres are whole numbers; fluid ounces take up to two decimals.
 - **Fixed sentences** (exact): "Check the fields with a message."; "Choose at least one"; "Enter from 1 to 1000 ml"; "Enter what was eaten"; "Choose wet, dirty, both or dry"; "Choose a symptom"; "Choose a side"; "A sleep timer is already running."; "A nursing timer is already running."; "See Mia's timer" (the child's name); "A timer can last at most 24 hours; set the end time or delete it"; "A finished session cannot be re-opened; set an end time or delete it"; "A finished session has no side; clear the side or the end"; "This timer has ended; check the times and save again"; "This removes the entry for everyone with access to Mia."
 - **One refusal at a time.** The form names the first field the server would name; the order follows each form's field order.
-- **A refusal keeps your values.** The page reloads with everything you typed, also without JavaScript.
+- **A refusal keeps your values.** In a sheet the sheet stays open with everything you typed; without JavaScript the page reloads with them.
 - **One running timer per kind.** A second sleep or nursing timer is refused on the form, with a link to the home page where the first one is.
 - **A timer ends by setting its end.** An end time on a running timer's edit page ends it. A finished session cannot be re-opened.
-- **Advanced modes** (bottle, nursing, pumping) are opened by a link that reloads the form; typed values are not carried across. An edit opens in advanced mode when the entry already has per-source or per-side volumes, or weigh-ins, unless the link is followed back to the simple form. Saving the simple form over an advanced entry replaces its parts with the one total; hiding the weigh-ins never deletes them.
+- **Advanced modes** (bottle, nursing, pumping) are opened by a link. In a sheet the link swaps the form inside the same sheet, and one Back or Close still closes it; on the page it reloads the form. Typed values are not carried across either way. An edit opens in advanced mode when the entry already has per-source or per-side volumes, or weigh-ins, unless the link is followed back to the simple form. Saving the simple form over an advanced entry replaces its parts with the one total; hiding the weigh-ins never deletes them.
 - **Units** follow the parent's profile: volume ml or fl oz, weight kg or lb and oz, temperature °C or °F. An entry typed in one unit is shown in another from its stored columns, so the number can differ by rounding (120 ml reads 4.06 fl oz).
 - **Delete** is two steps (open, then confirm) and works without JavaScript. It removes the entry for everyone with access.
-- **After a save or delete** you land on the Timeline for the entry's local day, not on the child's home.
+- **After a save or delete** in a sheet you stay on the page you opened it from (Home or the Timeline), with a message; on the page you land on the Timeline for the entry's local day, not on the child's home.
 
 ### Observations
 

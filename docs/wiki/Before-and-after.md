@@ -51,6 +51,6 @@ Same people, after adding Dan as a caregiver (`kid-admin/14-access-caregiver-add
 
 ## Other screens
 
-Every other screen of the [catalogue](../screenshots/README.md) has the legacy twin of the same name in the [legacy catalogue](../screenshots-legacy/README.md), where the shot exists in both. New in the redesign, with no legacy twin: the Switch child, More and Change theme sheets, the Choose a child pages and the Child profile (areas `shell` and `kid-admin`).
+Every other screen of the [catalogue](../screenshots/README.md) has the legacy twin of the same name in the [legacy catalogue](../screenshots-legacy/README.md), where the shot exists in both. New in the redesign, with no legacy twin: the Switch child, More and Change theme sheets, the Choose a child pages and the Child profile (areas `shell` and `kid-admin`), the forms in sheets (area `sheets`) and Medical visits (area `visits`), which the first pass did not have.
 
 Back to the [wiki home](Home.md).

@@ -2,7 +2,7 @@
 
 The Vaccines page shows a child's vaccination schedule as visits (for example "12-month vaccines"), says what is due, overdue, upcoming or already done, and keeps the record of every dose given. A schedule is only a list of what is usually offered and when: the page does not tell you what a child should have. All screenshots show fake data (for example Ivy, 1 year 1 month, on a stub schedule) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Record a vaccination and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+With JavaScript, the Record a vaccination and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the page you opened it from; after a save on the page you land where the steps say.
 
 ## Guide
 
@@ -72,15 +72,21 @@ Another schedule gives another list for the same child and doses (shot `06-uk-sc
 2. Check **Date given**. It starts as today and cannot be in the future or before the birth date.
 3. Tick every vaccine given. With JavaScript, **Product shortcut** ticks the vaccines a product covers for you, for example a 6-in-1; without JavaScript, tick them yourself.
 4. Optionally fill **Lot number**, **Product name** and **Note**. If you tick **Other (product name required)**, the product name is needed.
-5. Tap **Save**. You land back on the Vaccines page, where the lines you ticked now read "Given".
+5. Tap **Save**. The sheet closes, the lines you ticked now read "Given" and the message "Vaccination recorded" appears. Without JavaScript you land back on the Vaccines page.
+
+Vaccines given at a medical visit can also be recorded from the visit, with **Record the visit** ([Medical visits](Medical-visits.md)); their edit sheet then has a **Recorded at a visit** link that opens it.
 
 A caregiver can record a dose.
 
-| Phone | Desktop |
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/04-vaccine-record-mobile.png" alt="Vaccines page for Ivy dimmed behind a sheet titled Record a vaccination: Date given, Product shortcut, eight vaccine checkboxes, Lot number, Product name and Note, then Save and Cancel" width="260"> |
+
+| Phone, the page | Desktop, the page |
 |---|---|
 | <img src="../screenshots/vaccines/10-new-dose-empty-mobile.png" alt="Record a vaccination for Ivy: Date given 11/24/2026, a Product shortcut list, eight vaccine checkboxes from Diphtheria to Other, and boxes for Lot number, Product name and Note" width="260"> | <img src="../screenshots/vaccines/12-new-dose-from-record-link-desktop.png" alt="The form opened from a visit's Record button on a wide screen: Hib and Measles are ticked, the lot, product and note boxes are on the right" width="460"> |
 
-If something is wrong, a box at the top says "Check the fields with a message." and the field says what to fix. What you typed stays. The messages are:
+If something is wrong, the sheet stays open, a box at the top says "Check the fields with a message." and the field says what to fix. What you typed stays. The messages are:
 
 - "Enter a date that is not in the future and not before the birth date".
 - "Choose at least one vaccine from the list".

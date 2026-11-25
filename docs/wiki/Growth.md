@@ -2,7 +2,7 @@
 
 The Growth page plots a child's weight, length, head circumference and BMI against a reference chart (WHO or CDC) and lists every measurement with its score. The page states numbers and does not interpret them. All screenshots show fake data (for example Ivy, 1 year 1 month, or Uma, born at 30 weeks) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Add measurement and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+With JavaScript, the Add measurement and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the page you opened it from; after a save on the page you land where the steps say.
 
 ## Guide
 
@@ -38,13 +38,17 @@ Open **Chart data** under the chart. It shows two tables: **Measurements plotted
 2. Check the **Date**. It starts as the child's today. It cannot be in the future or before the birth date.
 3. Type at least one of **Weight**, **Length or height** and **Head circumference**. Each has its own unit box, which starts in the unit set on your profile. For pounds, a **Pounds** box and an **Ounces** box appear. A decimal comma is read as a decimal point.
 4. Add a **Note** if you want one.
-5. Tap **Save**. You land back on the Growth page, on the chart of the first measure you typed.
+5. Tap **Save**. The sheet closes, the measurement is in the list and the message "Measurement added" appears. Without JavaScript you land back on the Growth page, on the chart of the first measure you typed.
+
+| Phone, the sheet | Desktop, the sheet |
+|---|---|
+| <img src="../screenshots/sheets/01-growth-add-mobile.png" alt="Growth page for Ivy dimmed behind a sheet titled Add a measurement, with Date, Kilograms, Length or height, Head circumference and Note fields, then Save and Cancel" width="260"> | <img src="../screenshots/sheets/01-growth-add-desktop.png" alt="The same sheet centred over the Growth page on a desktop" width="460"> |
 
 Cancel, or the "Growth for ..." link at the top, returns without saving.
 
-If something is wrong, a box at the top says "Check the fields with a message." and the field says what to fix. Your typed values stay.
+If something is wrong, the sheet stays open, a box at the top says "Check the fields with a message." and the field says what to fix. Your typed values stay (`sheets/02-growth-refused`).
 
-| Phone |
+| Phone, the page |
 |---|
 | <img src="../screenshots/growth/13-new-nothing-measured-mobile.png" alt="Add a measurement for Mia with every measurement box empty: an alert Check the fields with a message and the red text Enter at least one of weight, length or head circumference" width="260"> |
 
@@ -60,12 +64,12 @@ The messages you can meet:
 ### How do I change or delete a measurement?
 
 1. On the card of the visit, tap the pencil button ("Edit the measurement of ..."). A caregiver can do this too.
-2. Change the boxes and tap **Save**. A box left empty removes that measure from the visit.
+2. Change the boxes and tap **Save**. A box left empty removes that measure from the visit. A measurement added from a medical visit has a **Recorded at a visit** link at the top that opens the visit ([Medical visits](Medical-visits.md)).
 3. To delete the whole visit, tap **Delete this measurement**. A box opens that says "This removes the measurement for everyone with access to Ivy." Tap **Yes, delete this measurement** to confirm.
 
 The edit page shows each measure in the unit it was typed in. To change the unit of a measure, pick the other unit in its box: the number is then read in the new unit. A measure the visit does not have starts in your profile's unit. In the example below (shot `08-edit-imperial`, for a parent who chose pounds and inches) the weight and length of the visit still show kg and cm because that is how they were typed, and only the empty head box shows "in".
 
-| Phone | Desktop |
+| Phone, the page | Desktop, the page |
 |---|---|
 | <img src="../screenshots/growth/09-edit-mobile.png" alt="Edit measurement for Ivy: Date 11/24/2026, Kilograms 9.5 kg, Length 76 cm, empty Head circumference, Note After the bath, Save and Cancel buttons and a Delete this measurement button" width="260"> | <img src="../screenshots/growth/09-edit-desktop.png" alt="The same page on a wide screen: the date and measurements on the left, the note on the right, Delete this measurement across the bottom" width="460"> |
 

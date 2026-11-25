@@ -2,7 +2,7 @@
 
 Medication keeps a list of **courses** (a medicine, its dose and when it is given) and a log of the **doses** given. Every example below uses fake data: Mia, 4 months, and her courses Calpol, Amoxil and Vitamin D.
 
-With JavaScript, the Add a course, Edit course and Edit dose forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+With JavaScript, the Add a course, Edit course and Edit dose forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. Pictures of the open sheet are marked as such; the other form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly. After a save in a sheet you stay on the Medication page; after a save on the page you land where the steps say.
 
 ## Guide
 
@@ -41,7 +41,13 @@ A time that is not today shows its date first, for example "2026-11-23 20:05", s
    - **At fixed times**: twelve time fields appear (Time 1 to Time 12). Fill the ones you want; each time of day can be used once.
    - **Every few hours**: an **Hours between doses** field appears. Enter a whole number from 1 to 168. The hours are counted from **Start**.
 4. Optional: **Start** (leave it blank to start now), **Last day (optional)**, **Active** (ticked by default) and a **Note**.
-5. Choose **Save**. You land back on the Medication page.
+5. Choose **Save**. The sheet closes, the course is on the page and the message "Course added" appears. Without JavaScript you land back on the Medication page.
+
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/05-course-add-mobile.png" alt="Medication page dimmed behind a sheet titled Add a course, with Name, Dose and the Schedule choices" width="260"> |
+
+A course prescribed at a medical visit can also be added from the visit, with **Record the visit** ([Medical visits](Medical-visits.md)); its edit sheet then has a **Recorded at a visit** link that opens it.
 
 Choosing another schedule kind keeps what you typed in the other kind, so you can switch back.
 
@@ -53,9 +59,9 @@ A child can have at most 50 courses. Past that, Save is refused with "This child
 
 ### What does a refused course look like?
 
-The page does not save and keeps everything you typed. The message sits under the field that failed, and only the first failing field is marked (checked in the order Name, Dose, Schedule, Start, Last day, Active, Note). For an empty form the message is "Enter a name of up to 80 characters" under Name.
+The form does not save and keeps everything you typed; in a sheet, the sheet stays open. The message sits under the field that failed, and only the first failing field is marked (checked in the order Name, Dose, Schedule, Start, Last day, Active, Note). For an empty form the message is "Enter a name of up to 80 characters" under Name.
 
-| Phone |
+| Phone, the page |
 |---|
 | <img src="../screenshots/medication/13-new-course-errors-mobile.png" alt="Add a course form on a phone, nothing typed, with the red message Enter a name of up to 80 characters under the Name field" width="260"> |
 
@@ -97,14 +103,14 @@ Shot `03-ended-courses-open` shows it open with "Paused cream" (an inactive cour
 ### How do I change or delete a course?
 
 1. On the course card choose the pencil button (named "Edit" followed by the course name).
-2. Change the fields. The page opens with the stored values, and the Start hint reads "Leave blank to keep the current start".
+2. Change the fields. The form opens with the stored values, and the Start hint reads "Leave blank to keep the current start".
 3. Choose **Save**, or **Cancel** to leave.
 
 To delete it, choose **Delete this course**. This opens a second step that says "This removes the course for everyone with access to Mia." and, for example, "This also deletes the 2 doses logged for this course." Choose **Yes, delete this course** to confirm. The doses of the course go with it. To keep the history but stop the course, untick **Active** instead.
 
-| Phone |
-|---|
-| <img src="../screenshots/medication/10-course-delete-confirm-mobile.png" alt="Edit course page for Calpol on a phone with At fixed times chosen, 08:00 AM and 08:00 PM filled in, Delete this course opened, the two sentences about removing the course and its 2 doses, and the button Yes, delete this course" width="260"> |
+| Phone, the sheet | Phone, the page |
+|---|---|
+| <img src="../screenshots/sheets/06-course-edit-mobile.png" alt="A sheet titled Edit course for Calpol on a phone: Name Calpol, Dose 2.5 ml, At fixed times chosen with Time 1 08:00 AM and Time 2 08:00 PM" width="260"> | <img src="../screenshots/medication/10-course-delete-confirm-mobile.png" alt="Edit course page for Calpol on a phone with At fixed times chosen, 08:00 AM and 08:00 PM filled in, Delete this course opened, the two sentences about removing the course and its 2 doses, and the button Yes, delete this course" width="260"> |
 
 ### How do I change or delete a dose?
 
@@ -114,7 +120,7 @@ To delete it, choose **Delete this course**. This opens a second step that says 
 
 A refused edit keeps what you typed and shows the message under the field: "Enter an amount of up to 80 characters" for the amount.
 
-| Phone |
+| Phone, the page |
 |---|
 | <img src="../screenshots/medication/07-dose-edit-error-mobile.png" alt="Edit dose page on a phone: Given at 11/24/2026 08:10 AM, an Amount field holding a long run of the letter a with the red message Enter an amount of up to 80 characters, the note Spat a little out, Save, Cancel and Delete this dose" width="260"> |
 
