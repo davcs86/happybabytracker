@@ -52,6 +52,7 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status       int
 	cause, slide string
+	outcome      *[3]int // growth, vaccinations, medications created by a visit outcome
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
@@ -88,6 +89,10 @@ func (d Deps) guard(route string, access Access, h http.HandlerFunc) http.Handle
 		}
 		if rec.slide != "" {
 			attrs = append(attrs, constants.LogFieldSlide, rec.slide)
+		}
+		if n := rec.outcome; n != nil {
+			attrs = append(attrs, constants.LogFieldOutcomeGrowth, n[0], constants.LogFieldOutcomeVaccinations, n[1],
+				constants.LogFieldOutcomeMedications, n[2])
 		}
 		d.Log.Info("request", attrs...)
 	})

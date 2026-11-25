@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -66,9 +68,48 @@ var testVAPID = sync.OnceValue(func() *ecdsa.PrivateKey {
 	return k
 })
 
+// migratedDB is a store migrated once per test binary; a kit opens a copy, so no kit pays for the migrations.
+var migratedDB = sync.OnceValues(func() (string, error) {
+	dir, err := os.MkdirTemp("", "happybabytracker-kit-")
+	if err != nil {
+		return "", err
+	}
+	s, err := store.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	return dir, s.Close()
+})
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if dir, err := migratedDB(); err == nil {
+		os.RemoveAll(dir)
+	}
+	os.Exit(code)
+}
+
 func newKit(t *testing.T) *kit {
 	t.Helper()
-	s, err := store.OpenMemory()
+	tmpl, err := migratedDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	files, err := os.ReadDir(tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		b, err := os.ReadFile(filepath.Join(tmpl, f.Name()))
+		if err == nil {
+			err = os.WriteFile(filepath.Join(dir, f.Name()), b, 0o600)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +300,8 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 	}
 }
 
-var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide}
+var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide,
+	constants.LogFieldOutcomeGrowth, constants.LogFieldOutcomeVaccinations, constants.LogFieldOutcomeMedications}
 
 // logLeaks is testlog.Leaks with this package's allowlist.
 func logLeaks(line string, banned ...string) []string {

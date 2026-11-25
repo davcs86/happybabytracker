@@ -275,10 +275,12 @@ type administrationView struct {
 	Lot      *string  `json:"lot"`
 	Product  *string  `json:"product"`
 	Note     *string  `json:"note"`
+	VisitID  *string  `json:"visit_id"`
 }
 
 func newAdministrationView(a model.Administration) administrationView {
-	return administrationView{ID: a.ID, GivenOn: a.GivenOn, Antigens: a.Antigens, Lot: a.Lot, Product: a.Product, Note: a.Note}
+	return administrationView{ID: a.ID, GivenOn: a.GivenOn, Antigens: a.Antigens, Lot: a.Lot, Product: a.Product, Note: a.Note,
+		VisitID: a.VisitID}
 }
 
 // optionalStrings tells an absent key (Set false) from an explicit null (Set true, V nil).

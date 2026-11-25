@@ -40,6 +40,12 @@ var (
 	ErrInvalidSession = errors.New("store: invalid session")
 	// ErrSummaryRange is a Summaries range longer than constants.SummaryMaxDays days.
 	ErrSummaryRange = errors.New("store: summary range too long")
+	// ErrHasOutcome is a cancel, or a move into the future, of a visit with notes or linked rows (visits spec 5.3).
+	ErrHasOutcome = errors.New("store: visit has an outcome")
+	// ErrNotPast is an outcome on a visit that is upcoming or cancelled.
+	ErrNotPast = errors.New("store: visit is not past")
+	// ErrStale is an outcome sent with a revision the visit no longer has.
+	ErrStale = errors.New("store: visit revision is stale")
 	// ErrParentNotFound is an ErrNotFound naming the grant's target, not the kid or the actor.
 	ErrParentNotFound = fmt.Errorf("%w: parent", ErrNotFound)
 )
