@@ -22,6 +22,7 @@ type ExportSnapshot struct {
 	Milestones      []model.Milestone
 	Medications     []model.Medication     // Open value 7 (R1), oldest start first, at most rowCap+1; no last dose, next due or count
 	MedicationDoses []model.MedicationDose // given in the range, newest first by (GivenAt, ID), at most rowCap+1
+	Visits          []model.Visit          // starting in the range, oldest first, at most rowCap+1; Counts["visits"] is every one
 }
 
 // ExportDismissal is a dismissal's reason and when it was made.
@@ -161,6 +162,11 @@ func (s *Store) ExportSnapshot(ctx context.Context, kidID string, modules []mode
 				return err
 			}
 		}
+		if slices.Contains(modules, "visits") {
+			if err := exportVisits(ctx, q, &snap, kidID, lq); err != nil {
+				return err
+			}
+		}
 		if slices.Contains(modules, "medication") {
 			return exportMedication(ctx, q, &snap, kidID, from.In(loc).Format(time.DateOnly), lq)
 		}
@@ -188,4 +194,25 @@ func exportDismissals(ctx context.Context, q querier, kidID, schema string) (map
 		out[line] = ExportDismissal{Reason: reason, CreatedAt: time.Unix(at, 0)}
 	}
 	return out, rows.Err()
+}
+
+func exportVisits(ctx context.Context, q querier, snap *ExportSnapshot, kidID string, lq ListQuery) error {
+	snap.Visits = []model.Visit{}
+	tail, args := ascPageTail("starts_at", kidID, lq)
+	if err := eachRow(ctx, q, `SELECT `+visitColumns+` FROM visits`+tail, args, func(row rowScanner) error {
+		v, err := scanVisit(row)
+		snap.Visits = append(snap.Visits, v)
+		return err
+	}); err != nil {
+		return err
+	}
+	n := len(snap.Visits)
+	if n >= lq.Limit {
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM visits WHERE kid_id = ? AND starts_at >= ? AND starts_at < ?`,
+			kidID, lq.From.Unix(), lq.To.Unix()).Scan(&n); err != nil {
+			return err
+		}
+	}
+	snap.Counts["visits"] = n
+	return nil
 }

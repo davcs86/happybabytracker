@@ -275,8 +275,8 @@ func TestEveryModelModuleIsAcceptedByKidModules(t *testing.T) {
 			t.Errorf("module %s refused: %v", m, err)
 		}
 	}
-	if len(model.Modules) != 11 {
-		t.Errorf("%d modules, want 11", len(model.Modules))
+	if len(model.Modules) != 12 {
+		t.Errorf("%d modules, want 12", len(model.Modules))
 	}
 }
 

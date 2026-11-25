@@ -317,7 +317,7 @@ type Module string
 // Modules lists every module id in display order.
 var Modules = []Module{
 	"bottles", "nursing", "pumping", "diapers", "sleep", "feeding",
-	"milestones", "growth", "vaccination", "sickness", "medication",
+	"milestones", "growth", "vaccination", "sickness", "medication", "visits",
 }
 
 // VisitKind is what a medical visit was for.

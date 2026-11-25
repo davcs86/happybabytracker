@@ -189,7 +189,7 @@ var VaccineSchedules = []string{"us", "uk", "mx"}
 
 // ExportModules lists the module ids an export accepts, in model.Modules order.
 var ExportModules = []string{"bottles", "nursing", "pumping", "diapers", "sleep", "feeding", "milestones", "growth", "vaccination",
-	"sickness", "medication"}
+	"sickness", "medication", "visits"}
 
 // MilestoneCatalogTextMaxLen caps one catalog item's text, in characters.
 const MilestoneCatalogTextMaxLen = 200

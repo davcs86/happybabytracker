@@ -41,7 +41,7 @@ const (
 var moduleTitle = map[model.Module]string{
 	"bottles": "Bottles", "nursing": "Nursing", "pumping": "Pumping", "diapers": "Diapers", "sleep": "Sleep",
 	"feeding": "Feeding", "milestones": "Milestones", "growth": "Growth", "vaccination": "Vaccination",
-	"sickness": "Sickness", "medication": "Medication",
+	"sickness": "Sickness", "medication": "Medication", "visits": "Medical visits",
 }
 
 // item is one drawn element: a chart or a table when set, else a heading, a profile line, body text or a paragraph.
@@ -135,7 +135,7 @@ func (s *section) shown(cols []pdfdoc.Col, rows [][]string, total int) []item {
 var sectionWriters = map[model.Module]func(snap store.ExportSnapshot, req Request, b *budget) ([]item, error){
 	"bottles": bottles.items, "nursing": nursing.items, "pumping": pumping.items,
 	"diapers": diapers.items, "sleep": sleep.items, "feeding": feeding.items, "milestones": milestoneItems,
-	"growth": growthItems, "vaccination": vaccinationItems, "sickness": sicknessItems, "medication": medicationItems,
+	"growth": growthItems, "vaccination": vaccinationItems, "sickness": sicknessItems, "medication": medicationItems, "visits": visitItems,
 }
 
 // Render writes the PDF of req.Modules only, in model.Modules order, after the profile; nothing is written on failure.
