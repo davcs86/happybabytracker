@@ -27,6 +27,8 @@ import type {
 } from './types';
 
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
+export const THEMES = ['light', 'dark', 'auto'] as const;
+export type Theme = (typeof THEMES)[number];
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 256;
 // The API's limits (api/internal/constants), for the forms' hints and attributes.

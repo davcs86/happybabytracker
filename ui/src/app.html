@@ -1,12 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="%hbt.theme%">
 	<head>
+		<script>
+			(function () {
+				var d = document.documentElement,
+					t = d.getAttribute('data-theme') || 'auto',
+					m = matchMedia('(prefers-color-scheme: dark)');
+				function r() {
+					d.setAttribute('data-resolved', t === 'auto' ? (m.matches ? 'dark' : 'light') : t);
+				}
+				r();
+				if (t === 'auto') m.addEventListener('change', r);
+			})();
+		</script>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
 		<link rel="manifest" href="/manifest.webmanifest" />
-		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
+		<meta name="theme-color" content="#fdf8f3" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#19120e" media="(prefers-color-scheme: dark)" />
 		<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-title" content="HappyBaby" />
