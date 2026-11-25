@@ -25,12 +25,13 @@
 	const growth = $derived(resolve('/(app)/kids/[kid]/growth', { kid: data.kid.id }));
 </script>
 
-<FormFrame
-	title="Edit measurement"
-	documentTitle="Edit measurement · {data.kid.name} · happybabytracker"
-	backHref={growth}
-	backLabel="Growth for {data.kid.name}"
->
+<FormFrame documentTitle="Edit measurement · {data.kid.name} · happybabytracker">
+	{#snippet chrome()}
+		<a href={growth} class="inline-flex min-h-11 items-center gap-1 text-sm underline"
+			><span aria-hidden="true">‹</span>Growth for {data.kid.name}</a
+		>
+		<h1 class="mt-1">Edit measurement</h1>
+	{/snippet}
 	<form
 		method="POST"
 		action="?/save"

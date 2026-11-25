@@ -45,6 +45,7 @@
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the entry page's path helper, absolute like the other links to pages without JavaScript -->
 			<Button
 				href={milestoneEntryPath(data.kid.id, id)}
+				data-drawer="Edit milestone"
 				variant="outline"
 				size="icon"
 				title="Edit"
@@ -151,7 +152,9 @@
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 				<h2 id="custom-heading" class="text-base font-semibold">Your milestones</h2>
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
-				<Button href={milestoneNewPath(data.kid.id)} variant="outline">Add a milestone</Button>
+				<Button href={milestoneNewPath(data.kid.id)} data-drawer="Add a milestone" variant="outline"
+					>Add a milestone</Button
+				>
 			</div>
 			{#if m.custom.length === 0}
 				<p class="text-[13px] text-muted-foreground">No milestones added</p>

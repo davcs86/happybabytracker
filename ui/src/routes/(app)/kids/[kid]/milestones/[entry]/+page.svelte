@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import { keepValues } from '#lib/components/field.js';
 	import MilestoneFields from '#lib/components/milestones/MilestoneFields.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import { formatAge } from '#lib/format.js';
 	import type { PageProps } from './$types';
 
@@ -22,6 +24,7 @@
 	const error = (name: string) => (save?.field === name ? save.message : null);
 	const top = $derived(save?.field == null || save.field === 'item' ? save?.message : null);
 	const refused = $derived(save?.field != null && save.field !== 'item');
+	const embed = isEmbed();
 	const milestones = $derived(resolve('/(app)/kids/[kid]/milestones', { kid: data.kid.id }));
 	// A list item's delete is an undo: the item goes back to its list.
 	const words = $derived(
@@ -35,25 +38,27 @@
 	);
 </script>
 
-<svelte:head>
-	<title>Edit milestone · {data.kid.name} · happybabytracker</title>
-</svelte:head>
-
-<div class="max-w-[448px] xl:mx-auto xl:w-[920px] xl:max-w-none">
-	<a href={milestones} class="inline-flex min-h-11 items-center gap-1.5 text-sm underline"
-		><span aria-hidden="true">‹</span>Milestones for {data.kid.name}</a
-	>
-	<h1 class="mt-2">Edit milestone</h1>
-	<p class="mt-1.5 text-sm text-muted-foreground">{formatAge(data.kid.birthDate, data.today)}</p>
+<FormFrame documentTitle="Edit milestone · {data.kid.name} · happybabytracker">
+	{#snippet chrome()}
+		<a href={milestones} class="inline-flex min-h-11 items-center gap-1.5 text-sm underline"
+			><span aria-hidden="true">‹</span>Milestones for {data.kid.name}</a
+		>
+		<h1 class="mt-2">Edit milestone</h1>
+		<p class="mt-1.5 text-sm text-muted-foreground">{formatAge(data.kid.birthDate, data.today)}</p>
+	{/snippet}
 	{#if !data.custom}
 		<p class="mt-[18px] text-[15px] [overflow-wrap:anywhere]">{data.text}</p>
 	{/if}
 	<form
 		method="POST"
 		action="?/save"
-		class="mt-[18px] flex flex-col gap-3.5 xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6 xl:gap-y-[18px]"
+		class={[
+			'flex flex-col gap-3.5',
+			!embed &&
+				'mt-[18px] xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6 xl:gap-y-[18px]'
+		]}
 		novalidate
-		use:enhance={keepValues}
+		use:enhance={savedAs('Milestone saved')}
 	>
 		{#if top}
 			<Alert class="xl:col-span-2">{top}</Alert>
@@ -68,8 +73,8 @@
 			today={data.today}
 		/>
 		<div class="flex gap-2">
-			<Button type="submit" class="flex-1">Save</Button>
-			<Button href={milestones} variant="outline">Cancel</Button>
+			<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
+			<FormCancel href={milestones} size="default" class="" />
 		</div>
 	</form>
 
@@ -81,7 +86,12 @@
 		<summary class="flex min-h-14 cursor-pointer items-center text-[15px] font-semibold"
 			>{words.summary}</summary
 		>
-		<form method="POST" action="?/delete" class="flex flex-col gap-3 pb-3.5" use:enhance>
+		<form
+			method="POST"
+			action="?/delete"
+			class="flex flex-col gap-3 pb-3.5"
+			use:enhance={savedAs('Milestone removed')}
+		>
 			{#if del?.message}
 				<Alert>{del.message}</Alert>
 			{/if}
@@ -91,4 +101,4 @@
 			<Button type="submit" variant="destructive" class="self-start">{words.confirm}</Button>
 		</form>
 	</details>
-</div>
+</FormFrame>

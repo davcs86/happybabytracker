@@ -39,6 +39,7 @@
 		</div>
 		<Button
 			href={medicationEntryPath(kidId, course.id)}
+			data-drawer="Edit course"
 			variant="outline"
 			size="icon"
 			aria-label="Edit {course.name}"

@@ -74,6 +74,7 @@
 										<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the entry page's path helper, absolute like the other links to pages without JavaScript -->
 										<Button
 											href={milestoneEntryPath(kidId, item.reached.id)}
+											data-drawer="Edit milestone"
 											variant="outline"
 											size="icon"
 											title="Edit"
@@ -97,6 +98,7 @@
 										<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the new page's path helper carries the item in its query -->
 										<Button
 											href={milestoneNewPath(kidId, item.id)}
+											data-drawer="Mark as reached"
 											variant="outline"
 											size="icon"
 											title="Choose a date"

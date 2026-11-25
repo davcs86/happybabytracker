@@ -4,10 +4,12 @@
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
 	import TrackerFields from '#lib/components/entry/TrackerFields.svelte';
-	import { keepValues } from '#lib/components/field.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import type { EntryStage, EntryValues } from '#lib/entry-edit.js';
 	import type { TrackerKind } from '#lib/types.js';
 
@@ -49,16 +51,24 @@
 		footer?: Snippet;
 	} = $props();
 
+	const embed = isEmbed();
 	const home = $derived(resolve('/(app)/kids/[kid]', { kid: kid.id }));
 	const GROUP = 'flex min-w-0 flex-col gap-3.5';
 </script>
 
-<div class="max-w-[448px] xl:mx-auto xl:w-[920px] xl:max-w-none">
-	<h1 class="mt-[26px]">{title}</h1>
-	<p class="mt-1.5 text-sm leading-[1.4] text-muted-foreground">{age}</p>
+{#snippet zoneNote()}
 	<p class="mt-1.5 text-[13.5px] leading-normal [overflow-wrap:anywhere] text-muted-foreground">
 		Times are in {zone}
 	</p>
+{/snippet}
+
+<FormFrame documentTitle="{title} · {kid.name} · happybabytracker">
+	{#snippet chrome()}
+		<h1 class="mt-[26px]">{title}</h1>
+		<p class="mt-1.5 text-sm leading-[1.4] text-muted-foreground">{age}</p>
+		{@render zoneNote()}
+	{/snippet}
+	{#if embed}{@render zoneNote()}{/if}
 	{#if notice}
 		<p class="mt-4 text-[13.5px] leading-normal [overflow-wrap:anywhere]">{notice}</p>
 	{/if}
@@ -68,11 +78,14 @@
 		action="?/save"
 		class="group/entry mt-4 flex flex-col gap-3.5"
 		novalidate
-		use:enhance={keepValues}
+		use:enhance={savedAs(stage === 'new' ? 'Entry added' : 'Entry saved')}
 	>
 		{#if toggle}
-			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a query on this same page -->
-			<p class="text-sm"><a href={toggle.href} class="underline">{toggle.label}</a></p>
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- a query on this same page -->
+			<p class="text-sm">
+				<a href={toggle.href} data-drawer={title} class="underline">{toggle.label}</a>
+			</p>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{/if}
 		{#if values.advanced === '1'}
 			<input type="hidden" name="advanced" value="1" />
@@ -88,7 +101,11 @@
 			<Alert><p>Check the fields with a message.</p></Alert>
 		{/if}
 		<div
-			class="contents xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:items-start xl:gap-x-6 xl:gap-y-[18px]"
+			class={[
+				'contents',
+				!embed &&
+					'xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:items-start xl:gap-x-6 xl:gap-y-[18px]'
+			]}
 		>
 			<div class={GROUP}>
 				<TrackerFields {kind} {stage} part="primary" {values} {error} {estimate} />
@@ -102,10 +119,10 @@
 				</Field>
 			</div>
 			<div class="flex gap-2">
-				<Button type="submit" class="flex-1">Save</Button>
-				<Button href={home} variant="outline">Cancel</Button>
+				<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
+				<FormCancel href={home} size="default" class="" />
 			</div>
 		</div>
 	</form>
 	{@render footer?.()}
-</div>
+</FormFrame>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { drawerComponent, openDrawer } from '#lib/drawer.js';
+	import { drawerComponent, isDrawerLink, openDrawer } from '#lib/drawer.js';
 	import FormSheet from './FormSheet.svelte';
 
 	const drawer = $derived(page.state.drawer);
@@ -11,9 +11,9 @@
 			return;
 		}
 		const a = (e.target as Element).closest<HTMLAnchorElement>('a[data-drawer]');
-		if (!a || a.target) return;
+		if (!a || a.target || !isDrawerLink(a)) return;
 		e.preventDefault();
-		if (!(await openDrawer(a))) location.assign(a.href);
+		await openDrawer(a);
 	}
 </script>
 

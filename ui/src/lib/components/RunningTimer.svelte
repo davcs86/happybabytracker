@@ -11,7 +11,7 @@
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import { MAX_SESSION_HOURS } from '#lib/constants.js';
+	import { MAX_SESSION_HOURS, TRACKER_TITLE } from '#lib/constants.js';
 	import { entryPath } from '#lib/paths.js';
 	import { formatClock } from '#lib/time-zone.js';
 
@@ -60,9 +60,13 @@
 		<Alert>
 			<p>
 				This timer ran over {MAX_SESSION_HOURS} hours:
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
-				<a href={entryPath(kidId, timer.kind, timer.entry.id)} class="underline">set the end time</a
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
+				<a
+					href={entryPath(kidId, timer.kind, timer.entry.id)}
+					data-drawer={TRACKER_TITLE[timer.kind].edit}
+					class="underline">set the end time</a
 				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</p>
 		</Alert>
 	{:else if message}

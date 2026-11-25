@@ -1,5 +1,6 @@
+/* eslint-disable svelte/no-navigation-without-resolve -- hrefs are the ones the page's links already carry */
 import { getContext, setContext, type Component } from 'svelte';
-import { goto, invalidateAll, preloadData, pushState } from '$app/navigation';
+import { goto, invalidateAll, preloadData, pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
 import type { SubmitFunction } from '$app/forms';
 import { toast } from 'svelte-sonner';
@@ -66,16 +67,20 @@ export const isEmbed = () => getContext<boolean>(EMBED) === true;
 
 export const closeDrawer = () => history.back();
 
-export async function openDrawer(a: HTMLAnchorElement): Promise<boolean> {
+export const isDrawerLink = (a: HTMLAnchorElement) =>
+	!!loaderFor(a.pathname) && a.pathname + a.search !== page.url.pathname + page.url.search;
+
+export async function openDrawer(a: HTMLAnchorElement): Promise<void> {
 	const href = a.pathname + a.search;
-	if (!loaderFor(a.pathname) || href === page.url.pathname + page.url.search) return false;
 	const [result] = await Promise.all([preloadData(href), drawerComponent(href)]);
 	if (result.type !== 'loaded' || result.status !== 200) {
 		await goto(href);
-		return true;
+		return;
 	}
-	pushState(href, { drawer: { href, title: a.dataset.drawer ?? '', data: result.data } });
-	return true;
+	const state = { drawer: { href, title: a.dataset.drawer ?? '', data: result.data } };
+	// A link inside an open sheet swaps its page: one Back still closes it.
+	if (page.state.drawer) replaceState(href, state);
+	else pushState(href, state);
 }
 
 // The form's submit handler: in a sheet a saved result closes it, refreshes the page and says so.

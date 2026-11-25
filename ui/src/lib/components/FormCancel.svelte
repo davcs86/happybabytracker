@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Button, type ButtonSize } from '#lib/components/ui/button/index.js';
 	import { closeDrawer, isEmbed } from '#lib/drawer.js';
 
-	let { href }: { href: string } = $props();
+	let {
+		href,
+		size = 'lg',
+		class: className = 'flex-1'
+	}: { href: string; size?: ButtonSize; class?: string } = $props();
 </script>
 
 {#if isEmbed()}
@@ -11,5 +15,5 @@
 	>
 {:else}
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the caller resolves it -->
-	<Button {href} variant="outline" size="lg" class="flex-1">Cancel</Button>
+	<Button {href} variant="outline" {size} class={className}>Cancel</Button>
 {/if}
