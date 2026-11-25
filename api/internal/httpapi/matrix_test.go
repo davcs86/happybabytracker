@@ -137,6 +137,11 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/growth/{entry}":                   Caregiver,
 	"PATCH /v1/kids/{kid}/growth/{entry}":                 Caregiver,
 	"DELETE /v1/kids/{kid}/growth/{entry}":                Caregiver,
+	"GET /v1/kids/{kid}/visits":                           Caregiver,
+	"POST /v1/kids/{kid}/visits":                          Caregiver,
+	"GET /v1/kids/{kid}/visits/{entry}":                   Caregiver,
+	"PATCH /v1/kids/{kid}/visits/{entry}":                 Caregiver,
+	"DELETE /v1/kids/{kid}/visits/{entry}":                Caregiver,
 	"GET /v1/kids/{kid}/symptoms":                         Caregiver,
 	"POST /v1/kids/{kid}/symptoms":                        Caregiver,
 	"GET /v1/kids/{kid}/symptoms/{entry}":                 Caregiver,
@@ -201,7 +206,7 @@ type fixture struct {
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
 	growth, administration, symptom, medication   string
-	dose, milestone                               string
+	dose, milestone, visit                        string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -254,6 +259,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.dose
 		case strings.Contains(rt.Pattern, "/milestones/"):
 			return f.milestone
+		case strings.Contains(rt.Pattern, "/visits/"):
+			return f.visit
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -357,6 +364,11 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.growth, f.administration = measurement.ID, dose.ID
+	visit, err := k.Store.CreateVisit(ctx, kid.ID, f.parent[aG].ID, model.Visit{StartsAt: k.now.Add(-time.Hour), DurationMin: 30, Kind: "sick"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.visit = visit.ID
 	symptom, err := k.Store.CreateSymptom(ctx, kid.ID, f.parent[aG].ID, model.Symptom{At: k.now, Symptom: "cough"}, k.now)
 	if err != nil {
 		t.Fatal(err)

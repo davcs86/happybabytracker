@@ -189,20 +189,24 @@ func (s *Store) ListVisits(ctx context.Context, kidID string, q ListQuery, asc b
 	return out, err
 }
 
-// UpdateVisit replaces every editable field of v.ID, which must belong to kidID, and adds 1 to its revision; actorID
-// needs an active grant. ErrHasOutcome cancels or moves into the future a visit with an outcome; ErrNotPast sets
-// notes on a visit that is not past.
-func (s *Store) UpdateVisit(ctx context.Context, kidID, actorID string, v model.Visit, now time.Time) (VisitDetail, error) {
+// UpdateVisit applies edit to visit id of kidID as read inside the write, so no concurrent write is lost, and adds
+// 1 to its revision; actorID needs an active grant. ErrHasOutcome and ErrNotPast are the visits spec 5.3 rules.
+func (s *Store) UpdateVisit(ctx context.Context, kidID, actorID, id string, now time.Time, edit func(model.Visit) (model.Visit, error)) (VisitDetail, error) {
 	var out VisitDetail
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		stored, err := readVisit(ctx, tx, kidID, v.ID)
+		stored, err := readVisit(ctx, tx, kidID, id)
 		if err != nil {
 			return err
 		}
-		linked, err := hasLinks(ctx, tx, v.ID)
+		v, err := edit(stored)
+		if err != nil {
+			return err
+		}
+		v.ID = id
+		linked, err := hasLinks(ctx, tx, id)
 		if err != nil {
 			return err
 		}

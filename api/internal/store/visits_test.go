@@ -14,6 +14,11 @@ func newVisit(at time.Time) model.Visit {
 	return model.Visit{StartsAt: at, DurationMin: constants.DefaultVisitDurationMin, Kind: "well_child"}
 }
 
+// set is an UpdateVisit edit that replaces the stored visit with v.
+func set(v model.Visit) func(model.Visit) (model.Visit, error) {
+	return func(model.Visit) (model.Visit, error) { return v, nil }
+}
+
 func mustVisit(t *testing.T, s *Store, kidID, actorID string, v model.Visit) model.Visit {
 	t.Helper()
 	got, err := s.CreateVisit(ctx, kidID, actorID, v, t0)
@@ -55,12 +60,12 @@ func TestVisitCRUD(t *testing.T) {
 	edit := got.Visit
 	edit.DurationMin, edit.Location = 45, nil
 	later := t0.Add(time.Hour)
-	updated, err := s.UpdateVisit(ctx, k.ID, ana.ID, edit, later)
+	updated, err := s.UpdateVisit(ctx, k.ID, ana.ID, edit.ID, later, set(edit))
 	if err != nil || updated.Revision != 1 || updated.UpdatedBy != ana.ID || !updated.UpdatedAt.Equal(later) ||
 		updated.DurationMin != 45 || updated.Location != nil || updated.CreatedBy != bo.ID {
 		t.Fatalf("updated %+v, %v", updated, err)
 	}
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, updated.Visit, later); err != nil {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, updated.Visit.ID, later, set(updated.Visit)); err != nil {
 		t.Fatal(err)
 	}
 	if again, _ := s.Visit(ctx, k.ID, v.ID); again.Revision != 2 {
@@ -141,25 +146,25 @@ func TestOutcomeRulesOnUpdate(t *testing.T) {
 
 	upcoming := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(time.Hour)))
 	upcoming.OutcomeNotes = strp("Healthy")
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, upcoming, t0); !errors.Is(err, ErrNotPast) {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, upcoming.ID, t0, set(upcoming)); !errors.Is(err, ErrNotPast) {
 		t.Errorf("notes on an upcoming visit: %v, want ErrNotPast", err)
 	}
 
 	withNotes := past
 	withNotes.OutcomeNotes = strp("Healthy")
-	stored, err := s.UpdateVisit(ctx, k.ID, ana.ID, withNotes, t0)
+	stored, err := s.UpdateVisit(ctx, k.ID, ana.ID, withNotes.ID, t0, set(withNotes))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cancel := stored.Visit
 	cancelled := t0
 	cancel.CancelledAt = &cancelled
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, cancel, t0); !errors.Is(err, ErrHasOutcome) {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, cancel.ID, t0, set(cancel)); !errors.Is(err, ErrHasOutcome) {
 		t.Errorf("cancel with notes: %v, want ErrHasOutcome", err)
 	}
 	move := stored.Visit
 	move.StartsAt = t0.Add(24 * time.Hour)
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, move, t0); !errors.Is(err, ErrHasOutcome) {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, move.ID, t0, set(move)); !errors.Is(err, ErrHasOutcome) {
 		t.Errorf("move to the future with notes: %v, want ErrHasOutcome", err)
 	}
 	if after, _ := s.Visit(ctx, k.ID, past.ID); after.Revision != stored.Revision || after.CancelledAt != nil {
@@ -170,13 +175,13 @@ func TestOutcomeRulesOnUpdate(t *testing.T) {
 	g := mustGrowth(t, s, k.ID, ana.ID, newGrowth(t, "2026-03-01"))
 	linkRow(t, s, "growth_measurements", "id", g.ID, linked.ID)
 	linked.CancelledAt = &cancelled
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, linked, t0); !errors.Is(err, ErrHasOutcome) {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, linked.ID, t0, set(linked)); !errors.Is(err, ErrHasOutcome) {
 		t.Errorf("cancel with a linked row: %v, want ErrHasOutcome", err)
 	}
 
 	plain := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-3*time.Hour)))
 	plain.CancelledAt = &cancelled
-	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, plain, t0); err != nil {
+	if _, err := s.UpdateVisit(ctx, k.ID, ana.ID, plain.ID, t0, set(plain)); err != nil {
 		t.Errorf("cancel a past visit without an outcome: %v", err)
 	}
 }
@@ -233,7 +238,7 @@ func TestVisitAccess(t *testing.T) {
 	if _, err := s.CreateVisit(ctx, k.ID, cy.ID, newVisit(t0), t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("create without a grant: %v", err)
 	}
-	if _, err := s.UpdateVisit(ctx, k.ID, cy.ID, v, t0); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UpdateVisit(ctx, k.ID, cy.ID, v.ID, t0, set(v)); !errors.Is(err, ErrNotFound) {
 		t.Errorf("update without a grant: %v", err)
 	}
 	if err := s.DeleteVisit(ctx, k.ID, cy.ID, v.ID, true); !errors.Is(err, ErrNotFound) {
@@ -386,5 +391,22 @@ func TestOutcomeRefusals(t *testing.T) {
 	cy := mustParent(t, s, "cy")
 	if _, err := s.RecordOutcome(ctx, k.ID, cy.ID, past.ID, 0, notes, t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("no grant: %v", err)
+	}
+}
+
+func TestUpdateVisitMergesOnTheRowReadInTheWrite(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	v := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	if _, err := s.RecordOutcome(ctx, k.ID, ana.ID, v.ID, 0, VisitOutcome{NotesSet: true, Notes: strp("Healthy")}, t0); err != nil {
+		t.Fatal(err)
+	}
+	d, err := s.UpdateVisit(ctx, k.ID, ana.ID, v.ID, t0, func(stored model.Visit) (model.Visit, error) {
+		stored.DurationMin = 60
+		return stored, nil
+	})
+	if err != nil || d.OutcomeNotes == nil || *d.OutcomeNotes != "Healthy" || d.DurationMin != 60 || d.Revision != 2 {
+		t.Errorf("an edit of the length after notes were saved: %+v, %v", d.Visit, err)
 	}
 }
