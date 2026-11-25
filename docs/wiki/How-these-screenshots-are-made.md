@@ -24,7 +24,7 @@ node e2e/screenshots/index.ts --check
 
 The stub, the UI server, the test workers and the browser all read one frozen instant, **2026-11-24T10:30:00Z**, in the UTC time zone. Ages, dates, "today" and every relative time are therefore the same whatever day the flow runs. Animations are off, the text caret is hidden, the pointer is parked and the page waits for the network and the fonts before each capture. A page taller than the screen is captured whole: the capture grows the window until the page fits, so the fixed tab bar sits at the bottom of the picture.
 
-Two consecutive complete runs were compared file by file: all 430 images were byte-identical.
+Two consecutive complete runs were compared file by file: all 460 images were byte-identical.
 
 ## The people and children on the screens
 
