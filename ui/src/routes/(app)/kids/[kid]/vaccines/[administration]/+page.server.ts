@@ -33,6 +33,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies }) => {
 		kid,
 		today: todayInOrUtc(kid.timeZone),
 		catalogue: catalogue.data,
+		visitId: administration.visitId,
 		values: vaccineEditValues(administration)
 	};
 };

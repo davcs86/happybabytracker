@@ -1,5 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import main from './playwright.config.ts';
+// Its servers, and the workers once imported, run frozen at the screenshots' instant, so the
+// baselines made from the build (visits) keep their dates and ages.
+import shots from './playwright.screenshots.config.ts';
 
 const base = {
 	...main.use,
@@ -19,7 +22,7 @@ export default defineConfig({
 	snapshotPathTemplate: '{testDir}/__baselines__/{projectName}/{arg}{ext}',
 	workers: 1,
 	retries: 0,
-	webServer: main.webServer,
+	webServer: shots.webServer,
 	projects: [
 		variant('phone-light', 390, 'light'),
 		variant('phone-dark', 390, 'dark'),

@@ -1319,6 +1319,57 @@ describe('createApi tracker calls', () => {
 			}
 		});
 
+		it('reads a visit row with its linked counts', async () => {
+			const visit = {
+				id: 'v-1',
+				starts_at: T0,
+				duration_min: 30,
+				kind: 'sick',
+				status: 'cancelled',
+				cancelled_at: T1,
+				provider: null,
+				location: null,
+				note: null,
+				outcome_notes: null,
+				revision: 2,
+				linked: { growth: 0, vaccinations: 1, medications: 2 }
+			};
+			const f = respond({ items: [{ type: 'visit', at: T0, ...visit }], next_cursor: null });
+			expect(await api(f).timeline(KID)).toEqual({
+				ok: true,
+				data: {
+					items: [
+						{
+							kind: 'visit',
+							at: T0,
+							entry: {
+								id: 'v-1',
+								startsAt: T0,
+								durationMin: 30,
+								kind: 'sick',
+								status: 'cancelled',
+								cancelledAt: T1,
+								provider: null,
+								location: null,
+								note: null,
+								outcomeNotes: null,
+								revision: 2,
+								linked: { growth: 0, vaccinations: 1, medications: 2 }
+							}
+						}
+					],
+					nextCursor: null
+				}
+			});
+			for (const bad of [
+				{ ...visit, linked: { growth: [], vaccinations: [], medications: [] } },
+				{ ...visit, status: 'missed' }
+			]) {
+				const g = respond({ items: [{ type: 'visit', at: T0, ...bad }], next_cursor: null });
+				expect(await api(g).timeline(KID)).toMatchObject({ ok: false, reason: 'error' });
+			}
+		});
+
 		it('reads day summaries for a date range', async () => {
 			const f = respond({ days: [DAY] });
 			expect(await api(f).summary(KID, '2026-11-20', '2026-11-22')).toEqual({
@@ -1418,6 +1469,22 @@ describe('createApi tracker calls', () => {
 			});
 		});
 
+		const VISIT_DUE_WIRE = { kind: 'visit', id: 'v-1', starts_at: T1, visit_kind: 'dental' };
+
+		it('reads a visit entry after the others, in the API order', async () => {
+			const f = respond({ ...HOME, due: [MED_DUE_WIRE, ...HOME.due, VISIT_DUE_WIRE] });
+			expect(await api(f).home(KID)).toMatchObject({
+				ok: true,
+				data: {
+					due: [
+						{ kind: 'medication' },
+						{ kind: 'vaccine' },
+						{ kind: 'visit', id: 'v-1', startsAt: T1, visitKind: 'dental' }
+					]
+				}
+			});
+		});
+
 		it('reads a running nursing session with its weight and no estimate', async () => {
 			const weighed = {
 				...ENTRIES.nursing.wire,
@@ -1470,6 +1537,15 @@ describe('createApi tracker calls', () => {
 			[
 				'a medication entry without a due time',
 				{ ...HOME, due: [{ ...MED_DUE_WIRE, due_at: undefined }] }
+			],
+			[
+				'a visit entry of an unknown kind of visit',
+				{ ...HOME, due: [{ ...VISIT_DUE_WIRE, visit_kind: 'checkup' }] }
+			],
+			['a visit entry without its id', { ...HOME, due: [{ ...VISIT_DUE_WIRE, id: undefined }] }],
+			[
+				'a visit entry without its start',
+				{ ...HOME, due: [{ ...VISIT_DUE_WIRE, starts_at: null }] }
 			]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
@@ -1557,6 +1633,7 @@ describe('createApi growth calls', () => {
 
 	const ROW_WIRE = {
 		id: 'g1',
+		visit_id: null,
 		measured_on: '2026-11-01',
 		weight: { grams: 3728, oz_hundredths: 13150, typed_unit: 'lb' },
 		length: { mm: 495, in_hundredths: 1949, typed_unit: 'cm' },
@@ -1572,6 +1649,7 @@ describe('createApi growth calls', () => {
 	};
 	const ROW = {
 		id: 'g1',
+		visitId: null,
 		measuredOn: '2026-11-01',
 		weight: { grams: 3728, ozHundredths: 13150, typedUnit: 'lb' },
 		length: { mm: 495, inHundredths: 1949, typedUnit: 'cm' },
@@ -1598,6 +1676,14 @@ describe('createApi growth calls', () => {
 		const g = respond(ROW_WIRE);
 		expect(await api(g).getGrowth(KID, 'g1')).toEqual({ ok: true, data: ROW });
 		expect(sent(g).url).toBe('http://api:9210/v1/kids/k-1/growth/g1');
+	});
+
+	it('reads the visit a measurement was recorded at', async () => {
+		const f = respond({ ...ROW_WIRE, visit_id: 'v-1' });
+		expect(await api(f).getGrowth(KID, 'g1')).toEqual({
+			ok: true,
+			data: { ...ROW, visitId: 'v-1' }
+		});
 	});
 
 	it('creates with the body as given; a refusal is invalid with the API field', async () => {
@@ -1669,6 +1755,8 @@ describe('createApi growth calls', () => {
 			{ scores: { ...ROW_WIRE.scores, bmi: { scored: false, reason: 'not_covered' } } }
 		],
 		['a missing scores block', { scores: undefined }],
+		['a missing visit id', { visit_id: undefined }],
+		['a numeric visit id', { visit_id: 7 }],
 		[
 			'a string percentile',
 			{ scores: { ...ROW_WIRE.scores, weight: { scored: true, z: 0, percentile: '5' } } }
@@ -1942,6 +2030,7 @@ describe('createApi vaccination calls', () => {
 	};
 	const ADMIN_WIRE = {
 		id: 'a1',
+		visit_id: null,
 		given_on: '2026-03-02',
 		antigens: ['diphtheria', 'hib'],
 		lot: null,
@@ -1950,6 +2039,7 @@ describe('createApi vaccination calls', () => {
 	};
 	const ADMIN = {
 		id: 'a1',
+		visitId: null,
 		givenOn: '2026-03-02',
 		antigens: ['diphtheria', 'hib'],
 		lot: null,
@@ -2037,6 +2127,14 @@ describe('createApi vaccination calls', () => {
 		});
 	});
 
+	it('reads the visit an administration was recorded at', async () => {
+		const f = respond({ ...ADMIN_WIRE, visit_id: 'v-1' });
+		expect(await api(f).getVaccination(KID, 'a1')).toEqual({
+			ok: true,
+			data: { ...ADMIN, visitId: 'v-1' }
+		});
+	});
+
 	it('maps a refusal to its field, the cap to limit, 404 and 503', async () => {
 		const input = { given_on: '2026-03-02', antigens: ['other'] };
 		expect(
@@ -2062,7 +2160,8 @@ describe('createApi vaccination calls', () => {
 		['a missing lot', { lot: undefined }],
 		['a numeric product', { product: 3 }],
 		['antigens that are not a list', { antigens: 'hib' }],
-		['a missing date', { given_on: undefined }]
+		['a missing date', { given_on: undefined }],
+		['a missing visit id', { visit_id: undefined }]
 	])('maps an administration with %s to error', async (_name, bad) => {
 		expect(
 			await api(respond({ vaccinations: [{ ...ADMIN_WIRE, ...bad }] })).listVaccinations(KID)
@@ -2241,7 +2340,8 @@ describe('createApi medication and dose calls', () => {
 		note: null,
 		last_dose: { id: 'd-1', given_at: T0, amount: null },
 		next_due: { due_at: T1 },
-		dose_count: 3
+		dose_count: 3,
+		visit_id: null
 	};
 	const COURSE = {
 		id: 'm-1',
@@ -2254,7 +2354,8 @@ describe('createApi medication and dose calls', () => {
 		note: null,
 		lastDose: { id: 'd-1', givenAt: T0, amount: null },
 		nextDue: { dueAt: T1 },
-		doseCount: 3
+		doseCount: 3,
+		visitId: null
 	};
 	const DOSE_WIRE = { id: 'd-1', medication: 'm-1', given_at: T0, amount: '2.5 ml', note: null };
 	const DOSE = { id: 'd-1', medication: 'm-1', givenAt: T0, amount: '2.5 ml', note: null };
@@ -2290,6 +2391,14 @@ describe('createApi medication and dose calls', () => {
 			},
 			{ url: 'http://api:9210/v1/kids/k-1/medications/m-1', method: 'DELETE', body: undefined }
 		]);
+	});
+
+	it('reads the visit a course was recorded at', async () => {
+		const f = respond({ ...COURSE_WIRE, visit_id: 'v-1' });
+		expect(await api(f).medications.get(KID, 'm-1')).toEqual({
+			ok: true,
+			data: { ...COURSE, visitId: 'v-1' }
+		});
 	});
 
 	it('reads the three schedule kinds and a course with no dose, no next due and no end', async () => {
@@ -2331,7 +2440,8 @@ describe('createApi medication and dose calls', () => {
 		['a fractional dose count', { ...COURSE_WIRE, dose_count: 1.5 }],
 		['a last dose without an id', { ...COURSE_WIRE, last_dose: { given_at: T0, amount: null } }],
 		['a next due that is not an object', { ...COURSE_WIRE, next_due: T1 }],
-		['a missing next due', { ...COURSE_WIRE, next_due: undefined }]
+		['a missing next due', { ...COURSE_WIRE, next_due: undefined }],
+		['a missing visit id', { ...COURSE_WIRE, visit_id: undefined }]
 	])('maps a course with %s to error', async (_name, body) => {
 		expect(await api(respond(body)).medications.get(KID, 'm-1')).toMatchObject({
 			ok: false,
@@ -3320,5 +3430,349 @@ describe('createApi export', () => {
 		for (const needle of ['k-secret', '2026-11-01', '2026-11-24', 'bottles', 'growth']) {
 			expect(logged()).not.toContain(needle);
 		}
+	});
+});
+
+describe('createApi visit calls', () => {
+	const KID = 'k-1';
+	const T0 = '2026-11-20T09:30:00Z';
+	const T1 = '2026-11-21T08:00:00Z';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+
+	const BASE_WIRE = {
+		id: 'v-1',
+		starts_at: T0,
+		duration_min: 30,
+		kind: 'well_child',
+		status: 'past',
+		cancelled_at: null,
+		provider: 'Dr. Lee',
+		location: '12 Main St',
+		note: '4-month check',
+		outcome_notes: 'Healthy.',
+		revision: 3
+	};
+	const BASE = {
+		id: 'v-1',
+		startsAt: T0,
+		durationMin: 30,
+		kind: 'well_child',
+		status: 'past',
+		cancelledAt: null,
+		provider: 'Dr. Lee',
+		location: '12 Main St',
+		note: '4-month check',
+		outcomeNotes: 'Healthy.',
+		revision: 3
+	};
+	const VISIT_WIRE = {
+		...BASE_WIRE,
+		linked: {
+			growth: [{ id: 'g-1', measured_on: '2026-11-20' }],
+			vaccinations: [{ id: 'a-1', given_on: '2026-11-20', antigens: ['dtap', 'ipv'] }],
+			medications: [{ id: 'm-1', name: 'Amoxicillin', dose_count: 14 }]
+		}
+	};
+	const VISIT = {
+		...BASE,
+		linked: {
+			growth: [{ id: 'g-1', measuredOn: '2026-11-20' }],
+			vaccinations: [{ id: 'a-1', givenOn: '2026-11-20', antigens: ['dtap', 'ipv'] }],
+			medications: [{ id: 'm-1', name: 'Amoxicillin', doseCount: 14 }]
+		}
+	};
+	const ROW_WIRE = { ...BASE_WIRE, linked: { growth: 1, vaccinations: 1, medications: 1 } };
+	const ROW = { ...BASE, linked: { growth: 1, vaccinations: 1, medications: 1 } };
+
+	it('lists a page with its query, then gets, creates, updates, removes and records an outcome', async () => {
+		const f = mockFetch(async (u, init) =>
+			init?.method === 'DELETE'
+				? new Response(null, { status: 204 })
+				: json(
+						init?.method === 'GET' && u.includes('/visits?')
+							? { visits: [ROW_WIRE], next_cursor: 'n' }
+							: VISIT_WIRE,
+						init?.method === 'POST' && u.endsWith('/visits') ? 201 : 200
+					)
+		);
+		const v = api(f).visits;
+		expect(await v.list(KID, { from: T0, to: T1, limit: 10, cursor: 'c', order: 'asc' })).toEqual({
+			ok: true,
+			data: { items: [ROW], nextCursor: 'n' }
+		});
+		expect(await v.get(KID, 'v-1')).toEqual({ ok: true, data: VISIT });
+		expect(await v.create(KID, { kind: 'sick' })).toEqual({ ok: true, data: VISIT });
+		expect(await v.update(KID, 'v-1', { cancelled: true })).toEqual({ ok: true, data: VISIT });
+		expect(await v.remove(KID, 'v-1', 'keep')).toEqual({ ok: true, data: null });
+		expect(await v.remove(KID, 'v-1', 'delete')).toEqual({ ok: true, data: null });
+		expect(await v.outcome(KID, 'v-1', { revision: 3, outcome_notes: 'Healthy.' })).toEqual({
+			ok: true,
+			data: VISIT
+		});
+		const base = 'http://api:9210/v1/kids/k-1/visits';
+		expect([0, 1, 2, 3, 4, 5, 6].map((i) => sent(f, i))).toEqual([
+			{
+				url: `${base}?from=${encodeURIComponent(T0)}&to=${encodeURIComponent(T1)}&limit=10&cursor=c&order=asc`,
+				method: 'GET',
+				body: undefined
+			},
+			{ url: `${base}/v-1`, method: 'GET', body: undefined },
+			{ url: base, method: 'POST', body: { kind: 'sick' } },
+			{ url: `${base}/v-1`, method: 'PATCH', body: { cancelled: true } },
+			{ url: `${base}/v-1?linked=keep`, method: 'DELETE', body: undefined },
+			{ url: `${base}/v-1?linked=delete`, method: 'DELETE', body: undefined },
+			{
+				url: `${base}/v-1/outcome`,
+				method: 'POST',
+				body: { revision: 3, outcome_notes: 'Healthy.' }
+			}
+		]);
+	});
+
+	it('lists without a query, so the API applies its defaults', async () => {
+		const f = respond({ visits: [], next_cursor: null });
+		expect(await api(f).visits.list(KID)).toEqual({
+			ok: true,
+			data: { items: [], nextCursor: null }
+		});
+		expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/visits');
+	});
+
+	it('reads every kind and status, and a visit with nothing set or linked', async () => {
+		for (const kind of ['well_child', 'sick', 'specialist', 'dental', 'emergency', 'other']) {
+			for (const status of ['upcoming', 'past', 'cancelled']) {
+				const bare = {
+					...BASE_WIRE,
+					kind,
+					status,
+					cancelled_at: status === 'cancelled' ? T1 : null,
+					provider: null,
+					location: null,
+					note: null,
+					outcome_notes: null,
+					linked: { growth: [], vaccinations: [], medications: [] }
+				};
+				expect(await api(respond(bare)).visits.get(KID, 'v-1')).toEqual({
+					ok: true,
+					data: {
+						...BASE,
+						kind,
+						status,
+						cancelledAt: status === 'cancelled' ? T1 : null,
+						provider: null,
+						location: null,
+						note: null,
+						outcomeNotes: null,
+						linked: { growth: [], vaccinations: [], medications: [] }
+					}
+				});
+			}
+		}
+	});
+
+	it.each([
+		['an unknown kind', { kind: 'checkup' }],
+		['an unknown status', { status: 'missed' }],
+		['a fractional revision', { revision: 1.5 }],
+		['a missing duration', { duration_min: undefined }],
+		['a missing outcome note', { outcome_notes: undefined }],
+		['linked counts in place of rows', { linked: { growth: 1, vaccinations: 0, medications: 0 } }],
+		[
+			'a linked course without its dose count',
+			{ linked: { ...VISIT_WIRE.linked, medications: [{ id: 'm-1', name: 'X' }] } }
+		],
+		[
+			'linked antigens that are not a list',
+			{
+				linked: {
+					...VISIT_WIRE.linked,
+					vaccinations: [{ id: 'a-1', given_on: '2026-11-20', antigens: 'dtap' }]
+				}
+			}
+		]
+	])('maps a visit with %s to error', async (_name, bad) => {
+		expect(await api(respond({ ...VISIT_WIRE, ...bad })).visits.get(KID, 'v-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a list row with linked rows in place of counts to error', async () => {
+		const f = respond({ visits: [VISIT_WIRE], next_cursor: null });
+		expect(await api(f).visits.list(KID)).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	it.each([
+		['stale', 409, 'conflict', undefined],
+		['not_past', 409, 'conflict', undefined],
+		['limit', 409, 'conflict', undefined],
+		['has_outcome', 409, 'conflict', undefined],
+		['invalid', 422, 'invalid', 'growth.weight'],
+		['invalid', 422, 'invalid', 'vaccinations[1].lot'],
+		['invalid', 422, 'invalid', 'medications[0].schedule'],
+		['invalid', 422, 'invalid', 'revision'],
+		['invalid', 422, 'invalid', 'outcome'],
+		['invalid', 422, 'invalid', 'outcome_notes']
+	])(
+		'maps an outcome refused with %s (%i, field %s) to its code',
+		async (code, status, reason, field) => {
+			const body = field === undefined ? { error: code } : { error: code, field };
+			expect(await api(respond(body, status)).visits.outcome(KID, 'v-1', { revision: 3 })).toEqual({
+				ok: false,
+				status,
+				reason,
+				code,
+				...(field === undefined ? {} : { field })
+			});
+		}
+	);
+
+	it('maps has_outcome on an update and limit on a create to conflict', async () => {
+		expect(
+			await api(respond({ error: 'has_outcome' }, 409)).visits.update(KID, 'v-1', {
+				cancelled: true
+			})
+		).toEqual({ ok: false, status: 409, reason: 'conflict', code: 'has_outcome' });
+		expect(await api(respond({ error: 'limit' }, 409)).visits.create(KID, {})).toEqual({
+			ok: false,
+			status: 409,
+			reason: 'conflict',
+			code: 'limit'
+		});
+	});
+
+	it('answers not_found without a request for an id outside the pattern or an unknown linked choice', async () => {
+		const f = respond(VISIT_WIRE);
+		const v = api(f).visits;
+		for (const r of [
+			await v.list('../x'),
+			await v.get(KID, '../x'),
+			await v.get('k/1', 'v-1'),
+			await v.create('', {}),
+			await v.update(KID, 'v 1', {}),
+			await v.remove(KID, '..', 'keep'),
+			await v.remove(KID, 'v-1', 'all' as never),
+			await v.outcome(KID, 'v/1', { revision: 0 }),
+			await v.calendar(KID, '..', 'generic'),
+			await v.calendar(KID, 'v-1', 'private' as never)
+		]) {
+			expect(r).toEqual(NOT_FOUND);
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a visit call by its endpoint name, never the kid, the visit or the body', async () => {
+		const refuse = api(respond({ error: 'invalid', field: 'outcome_notes' }, 422)).visits;
+		await refuse.outcome('k-secret', 'v-secret', { revision: 1, outcome_notes: 'private note' });
+		await refuse.update('k-secret', 'v-secret', { provider: 'Dr. Secret' });
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'visit_outcome', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'update_visit', status: 422 }
+		]);
+		for (const needle of ['k-secret', 'v-secret', 'private note', 'Dr. Secret']) {
+			expect(logged()).not.toContain(needle);
+		}
+	});
+
+	describe('calendar', () => {
+		const DISPOSITION = 'attachment; filename="visit-2026-11-20.ics"';
+		const ics = (headers: Record<string, string> = {}) => {
+			let pulled = false;
+			const body = new ReadableStream<Uint8Array>(
+				{
+					pull(c) {
+						pulled = true;
+						c.enqueue(new TextEncoder().encode('BEGIN:VCALENDAR\r\n'));
+						c.close();
+					}
+				},
+				{ highWaterMark: 0 }
+			);
+			const res = new Response(body, {
+				status: 200,
+				headers: {
+					'content-type': 'text/calendar; charset=utf-8',
+					'content-disposition': DISPOSITION,
+					'cache-control': 'no-store',
+					...headers
+				}
+			});
+			return { res, pulled: () => pulled };
+		};
+
+		it('gets the file with the detail asked for and hands back the body unread, with its headers', async () => {
+			for (const detail of ['generic', 'full'] as const) {
+				const { res, pulled } = ics();
+				const f = mockFetch(async () => res);
+				const r = await api(f).visits.calendar(KID, 'v-1', detail);
+				const [url, init] = f.mock.calls[0];
+				expect(url).toBe(`http://api:9210/v1/kids/k-1/visits/v-1/calendar?detail=${detail}`);
+				expect(init?.method).toBe('GET');
+				expect(init?.body).toBeUndefined();
+				const h = new Headers(init?.headers);
+				expect(h.get('authorization')).toBe(`Bearer ${TOKEN}`);
+				expect(h.get('x-session-token')).toBe(SESSION);
+				expect(h.get('accept')).toBe('text/calendar');
+				expect(r.ok).toBe(true);
+				if (!r.ok) return;
+				expect(r.contentType).toBe('text/calendar; charset=utf-8');
+				expect(r.disposition).toBe(DISPOSITION);
+				expect(pulled()).toBe(false);
+				expect(await new Response(r.body).text()).toBe('BEGIN:VCALENDAR\r\n');
+			}
+			expect(logSpy).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['a JSON 200', { 'content-type': 'application/json' }],
+			['a calendar without its charset', { 'content-type': 'text/calendar' }],
+			['an inline disposition', { 'content-disposition': 'inline' }],
+			['a path in the name', { 'content-disposition': 'attachment; filename="../visit.ics"' }],
+			['a name in the file name', { 'content-disposition': 'attachment; filename="ivy.ics"' }],
+			['no disposition', { 'content-disposition': '' }]
+		])('refuses %s as a shape error and never streams it', async (_name, headers) => {
+			const { res, pulled } = ics(headers);
+			const r = await api(mockFetch(async () => res)).visits.calendar(KID, 'v-1', 'generic');
+			expect(r).toEqual({ ok: false, status: 200, reason: 'error' });
+			expect(pulled()).toBe(false);
+			expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+				level: 'error',
+				msg: 'api call failed',
+				endpoint: 'visit_calendar',
+				status: 200
+			});
+		});
+
+		it('maps a refusal as call() does, and a network error to unavailable', async () => {
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).visits.calendar(KID, 'v-1', 'full')
+			).toEqual({ ok: false, status: 404, reason: 'not_found', code: 'not_found' });
+			expect(
+				await api(respond({ error: 'invalid', field: 'detail' }, 422)).visits.calendar(
+					KID,
+					'v-1',
+					'full'
+				)
+			).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'detail' });
+			const down = mockFetch(async () => {
+				throw new TypeError('fetch failed');
+			});
+			expect(await api(down).visits.calendar(KID, 'v-1', 'generic')).toEqual({
+				ok: false,
+				status: 0,
+				reason: 'unavailable'
+			});
+		});
 	});
 });

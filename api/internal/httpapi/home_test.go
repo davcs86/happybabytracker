@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,8 +167,8 @@ func TestHomeCorrectedBirthDate(t *testing.T) {
 	}
 }
 
-// dueLines renders the home's due list, a vaccine entry as "<n><unit> <status> <count>" and a medication entry as
-// "<name> <due_at> <state>", after checking each entry's shape.
+// dueLines renders the home's due list, a vaccine entry as "<n><unit> <status> <count>", a medication entry as
+// "<name> <due_at> <state>" and a visit as "visit <visit_kind> <starts_at>", after checking each entry's shape.
 func dueLines(t *testing.T, h map[string]any) []string {
 	t.Helper()
 	list, ok := h["due"].([]any)
@@ -182,6 +183,11 @@ func dueLines(t *testing.T, h map[string]any) []string {
 			m := e["medication"].(map[string]any)
 			sameKeys(t, m, "id", "name")
 			out = append(out, fmt.Sprintf("%v %v %v", m["name"], e["due_at"], e["state"]))
+			continue
+		}
+		if e["kind"] == "visit" {
+			sameKeys(t, e, "kind", "id", "starts_at", "visit_kind")
+			out = append(out, fmt.Sprintf("visit %v %v", e["visit_kind"], e["starts_at"]))
 			continue
 		}
 		sameKeys(t, e, "kind", "from", "status", "count")
@@ -551,4 +557,25 @@ func TestHomeDueMedicationExpiredOfAnInactiveCourse(t *testing.T) {
 		t.Fatalf("deactivate: %d %q", rec.Code, rec.Body.String())
 	}
 	k.wantDue(bob, kid, "inactive course")
+}
+
+func TestHomeDueVisitWindowIsKidLocal(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	// t0 is Friday 2026-11-20 13:00 in Madrid (UTC+1); the window ends at the start of Saturday 2026-11-28 there, 23:00Z.
+	last := time.Date(2026, 11, 27, 22, 59, 0, 0, time.UTC)
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(last), "kind": "dental"}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(last.Add(time.Minute))}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(-time.Minute))}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(time.Hour)), "kind": "sick"}))
+	cancelled := k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(2 * time.Hour))}))
+	k.do(http.MethodPatch, "/v1/kids/"+kid+"/visits/"+cancelled["id"].(string), ana, map[string]any{"cancelled": true})
+	want := []string{"visit sick " + ts(t0.Add(time.Hour)), "visit dental " + ts(last)}
+	k.wantDue(bo, kid, "a caregiver", want...)
+	if body := k.do(http.MethodGet, "/v1/kids/"+kid+"/home", ana, nil).Body.String(); strings.Contains(body, "Dr. Lee") ||
+		strings.Contains(body, "4-month check") {
+		t.Errorf("the home names a provider or a reason: %s", body)
+	}
+	k.setModule(ana, kid, "visits", false)
+	k.wantDue(ana, kid, "with the module off")
 }

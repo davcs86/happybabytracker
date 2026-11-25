@@ -2,7 +2,7 @@
 
 The Milestones page holds the checklists of things many children do by a given age (from the catalogue the app ships), lets you record the day a child did one, and keeps your own milestones. All screenshots show fake data (for example Nell, 9 months, with placeholder items such as "Stub item 9m-se-1") on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Mark as reached, Add a milestone and Edit milestone forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+The Mark as reached, Add a milestone and Edit milestone forms open in a sheet over the Milestones page: the form's title, a **Close** button (the ×), the fields, **Save** and **Cancel**. Saving closes the sheet, the list underneath shows the change and a short message appears ([Forms in sheets](Forms-in-sheets.md)). Every form screenshot below is the open sheet. Without JavaScript, in a new tab or when you open the address directly, the same form is a page with the same steps; after a save there you land where the steps say.
 
 The app never judges development. The page states facts and the next action only: a milestone is either unmarked or it carries the line "Reached on 24 November 2026". There is no colour, icon, check, count or progress on a milestone, and the page's own words are tested to keep to this (see section 9 of the [design rules](../plans/ui-redesign/design-system/DESIGN.md)). Questions about what a list means for your child are for your clinic.
 
@@ -35,30 +35,34 @@ Beside the lists (below them on a phone) the page always shows the catalogue's s
 
 **With another date or a note** (for something that happened earlier):
 
-1. Tap the calendar button next to **Reached** ("Choose a date for ..."). The **Mark as reached** page opens with the item's text.
+1. Tap the calendar button next to **Reached** ("Choose a date for ..."). **Mark as reached** opens with the item's text.
 2. Change **Date reached**. It starts as today and cannot be in the future or before the birth date.
 3. Add a **Note** if you want one.
-4. Tap **Save**. You return to the list. The list shows the date; the note is kept on the item's edit page.
+4. Tap **Save**. The sheet closes (without JavaScript, you return to the list). The list shows the date; the note is kept on the item's edit form.
 
-If the date is wrong, a box at the top says "Check the fields with a message." and the field says "Enter a date that is not in the future and not before the birth date" (shot `12-mark-future-date`).
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/09-milestone-mark-mobile.png" alt="Milestones page dimmed behind a sheet titled Mark as reached, with the milestone text, Date reached and Note" width="260"> |
+
+If the date is wrong, the sheet stays open, a box at the top says "Check the fields with a message." and the field says "Enter a date that is not in the future and not before the birth date" (shot `12-mark-future-date`).
 
 | Phone | Phone |
 |---|---|
-| <img src="../screenshots/milestones/11-mark-with-date-mobile.png" alt="Mark as reached for Nell: the item text Stub item 9m-lc-1, Date reached 11/24/2026 and an empty Note, with Save and Cancel" width="260"> | <img src="../screenshots/milestones/12-mark-future-date-mobile.png" alt="The same page with the date 11/25/2026 and the red message Enter a date that is not in the future and not before the birth date" width="260"> |
+| <img src="../screenshots/milestones/11-mark-with-date-mobile.png" alt="The Mark as reached sheet over Nell's dimmed Milestones page: the item text Stub item 9m-lc-1, Date reached 11/24/2026 and an empty Note, with Save and Cancel" width="260"> | <img src="../screenshots/milestones/12-mark-future-date-mobile.png" alt="The same sheet after Save with the date 11/25/2026 and the red message Enter a date that is not in the future and not before the birth date" width="260"> |
 
 If someone marked the same item on another device in the meantime, the item shows "Already marked as reached" in its own row (shot `04-already-reached`). Reload the page to see the date.
 
 ### How do I change a date or note, or undo a mark?
 
-1. Tap the pencil button on a reached item. The **Edit milestone** page shows the item's text, **Date reached** and **Note**.
+1. Tap the pencil button on a reached item. The **Edit milestone** sheet opens over the list and shows the item's text, **Date reached** and **Note**.
 2. Change them and tap **Save**.
 3. To undo, tap **Undo reached**. A box opens: "This removes the date for everyone with access to Nell." Tap **Yes, undo reached**. The item goes back to its list with its **Reached** button.
 
-The app does not show an undo toast after marking. Undo is on the edit page. See [Not built yet](Not-built-yet.md).
+The app does not show an undo toast after marking. Undo is in the edit sheet. See [Not built yet](Not-built-yet.md).
 
 | Phone | Phone |
 |---|---|
-| <img src="../screenshots/milestones/16-undo-reached-confirm-mobile.png" alt="Edit milestone for a list item: the item text, Date reached 11/23/2026, Note At the park, and the opened box Undo reached with the sentence This removes the date for everyone with access to Nell and a red button Yes, undo reached" width="260"> | <img src="../screenshots/milestones/17-edit-custom-delete-confirm-mobile.png" alt="Edit milestone for a custom milestone Waves bye-bye, with an editable Milestone box and the opened box Delete this milestone with the red button Yes, delete this milestone" width="260"> |
+| <img src="../screenshots/milestones/16-undo-reached-confirm-mobile.png" alt="The Edit milestone sheet over the dimmed list, for a list item: the item text, Date reached 11/23/2026, Note At the park, and the opened box Undo reached with the sentence This removes the date for everyone with access to Nell and a red button Yes, undo reached" width="260"> | <img src="../screenshots/milestones/17-edit-custom-delete-confirm-mobile.png" alt="The Edit milestone sheet for a custom milestone Waves bye-bye, with an editable Milestone box and the opened box Delete this milestone with the red button Yes, delete this milestone" width="260"> |
 
 ### How do I add a milestone of my own?
 
@@ -66,9 +70,9 @@ The app does not show an undo toast after marking. Undo is on the edit page. See
 2. Type the **Milestone** (at most 200 characters), check **Date reached** and add a **Note** if you want one.
 3. Tap **Save**. It appears under **Your milestones** with its date.
 
-A text over 200 characters is refused with "Enter a milestone of up to 200 characters" and your text stays (shot `14-new-custom-201-chars`). A long text without spaces wraps inside its card (shot `10-reached-and-custom`).
+A text over 200 characters is refused with "Enter a milestone of up to 200 characters"; the sheet stays open and your text stays (shot `14-new-custom-201-chars`). A long text without spaces wraps inside its card (shot `10-reached-and-custom`).
 
-To change a milestone of your own, tap its pencil. You can edit the text, the date and the note, or tap **Delete this milestone** and then **Yes, delete this milestone** ("This removes the milestone for everyone with access to Nell.", shot `17-edit-custom-delete-confirm`). The shot `13-new-custom` shows the empty form.
+To change a milestone of your own, tap its pencil. You can edit the text, the date and the note, or tap **Delete this milestone** and then **Yes, delete this milestone** ("This removes the milestone for everyone with access to Nell.", shot `17-edit-custom-delete-confirm`). The shot `13-new-custom` shows the empty Add a milestone sheet.
 
 Both kinds of change can also hit these messages: "This milestone is no longer in the list" and "This child has the maximum number of recorded milestones".
 
@@ -109,8 +113,8 @@ Yes. A caregiver can mark, edit, undo and add milestones.
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
 | Milestones | `/kids/[kid]/milestones` | Guardian, caregiver. Admin: sent to `/admin/parents`. Signed out: sent to the sign-in page. No grant: the 404 page, identical to an unknown child | `01-nell-9-months`, `02-nell-all-lists-open`, `03-one-tap-reached`, `04-already-reached`, `05-otto-4-years-11-months`, `06-pia-5th-birthday`, `07-remy-preterm`, `08-sami-off-guardian`, `09-sami-off-caregiver`, `10-reached-and-custom` |
-| Mark as reached / Add a milestone | `/kids/[kid]/milestones/new` (with `?item=` for a list item; without it, the custom form) | Guardian, caregiver | `11-mark-with-date`, `12-mark-future-date`, `13-new-custom`, `14-new-custom-201-chars` |
-| Edit milestone | `/kids/[kid]/milestones/[entry]` | Guardian, caregiver. No grant, an unknown entry and another child's entry are the same 404 page | `15-edit-item-mark`, `16-undo-reached-confirm`, `17-edit-custom-delete-confirm` |
+| Mark as reached / Add a milestone (sheet over Milestones; a page without JavaScript) | `/kids/[kid]/milestones/new` (with `?item=` for a list item; without it, the custom form) | Guardian, caregiver | `11-mark-with-date`, `12-mark-future-date`, `13-new-custom`, `14-new-custom-201-chars` |
+| Edit milestone (sheet over Milestones; a page without JavaScript) | `/kids/[kid]/milestones/[entry]` | Guardian, caregiver. No grant, an unknown entry and another child's entry are the same 404 page | `15-edit-item-mark`, `16-undo-reached-confirm`, `17-edit-custom-delete-confirm` |
 
 ### Rules the screens show
 
@@ -127,6 +131,6 @@ Yes. A caregiver can mark, edit, undo and add milestones.
 
 ### Not built yet
 
-The design shows undo toasts after marking a milestone. The app has none; undo is on the edit page. See [Not built yet](Not-built-yet.md).
+The design shows undo toasts after marking a milestone. The app has none; undo is in the edit sheet. See [Not built yet](Not-built-yet.md).
 
 Back to the [wiki home](Home.md).

@@ -58,11 +58,12 @@ Every sheet is also an ordinary page, so nothing depends on it. Without JavaScri
 
 | Form | Opened from | Page it is also at | Who can open it | Shots |
 |---|---|---|---|---|
-| Add a measurement, Edit measurement | Growth, a measurement's edit button | `/kids/[kid]/growth/new`, `/kids/[kid]/growth/[entry]` | guardian, caregiver | `sheets/01-growth-add`, `02-growth-refused`, `03-growth-saved` |
-| Record a vaccination, Edit vaccination | Vaccines, a Record link, a "Given" link | `/kids/[kid]/vaccines/new`, `/kids/[kid]/vaccines/[administration]` | guardian, caregiver | `sheets/04-vaccine-record` |
-| Add a course, Edit course, Edit dose | Medication, a course's edit button, a dose | `/kids/[kid]/medication/new`, `/kids/[kid]/medication/[medication]`, `/kids/[kid]/medication/doses/[dose]` | guardian, caregiver | `sheets/05-course-add`, `06-course-edit` |
-| Log and edit a tracker entry, including a symptom | Home quick-log tiles, Timeline rows, a running timer's "set the end time" link | `/kids/[kid]/log/[tracker]`, `/kids/[kid]/log/[tracker]/[entry]` | guardian, caregiver | `sheets/07-bottle-log`, `08-symptom-log` |
-| Mark as reached, Add a milestone, Edit milestone | Milestones | `/kids/[kid]/milestones/new`, `/kids/[kid]/milestones/[entry]` | guardian, caregiver | `sheets/09-milestone-mark`, `10-milestone-add` |
+| Add a measurement, Edit measurement | Growth, a measurement's edit button | `/kids/[kid]/growth/new`, `/kids/[kid]/growth/[entry]` | guardian, caregiver | `sheets/01-growth-add`, `02-growth-refused`, `03-growth-saved`; `growth/08-edit-imperial` to `10-edit-delete-confirm`, `12-new-empty` to `15-new-filled` |
+| Record a vaccination, Edit vaccination | Vaccines, a Record link, a "Given" link | `/kids/[kid]/vaccines/new`, `/kids/[kid]/vaccines/[administration]` | guardian, caregiver | `sheets/04-vaccine-record`; `vaccines/10-new-dose-empty` to `14-edit-delete-confirm`, `16-long-note-edit` |
+| Add a course, Edit course, Edit dose | Medication, a course's edit button, a dose | `/kids/[kid]/medication/new`, `/kids/[kid]/medication/[medication]`, `/kids/[kid]/medication/doses/[dose]` | guardian, caregiver | `sheets/05-course-add`, `06-course-edit`; `medication/06-dose-edit` to `15-new-course-every-hours` |
+| Add a visit, Edit visit, After the visit | Medical visits, a visit's page (Edit visit, Record the visit) | `/kids/[kid]/visits/new`, `/kids/[kid]/visits/[visit]/edit`, `/kids/[kid]/visits/[visit]/outcome` | guardian, caregiver | `visits/09-add-sheet`, `10-edit-sheet`, `11-outcome-sheet`, `12-outcome-refused` |
+| Log and edit a tracker entry, including a symptom | Home quick-log tiles, Timeline rows, a running timer's "set the end time" link | `/kids/[kid]/log/[tracker]`, `/kids/[kid]/log/[tracker]/[entry]` | guardian, caregiver | `sheets/07-bottle-log`, `08-symptom-log`; every `trackers/` shot except `25-sleep-new-empty` and `28-sleep-second-timer` (Log sleep, which no link opens, is only a page) |
+| Mark as reached, Add a milestone, Edit milestone | Milestones | `/kids/[kid]/milestones/new`, `/kids/[kid]/milestones/[entry]` | guardian, caregiver | `sheets/09-milestone-mark`, `10-milestone-add`; `milestones/11-mark-with-date` to `17-edit-custom-delete-confirm` |
 | Edit details | Child profile: Edit details and the settings rows | `/kids/[kid]/settings` | guardian | `sheets/11-edit-details` |
 | Modules for a child | Child profile: Trackers | `/kids/[kid]/modules` | guardian | `sheets/12-modules` |
 | Access | Child profile: Manage access | `/kids/[kid]/access` | guardian | `sheets/13-access`, `14-access-added` |
@@ -74,7 +75,7 @@ The rules the sheets show:
 
 - Title, **Close**, **Save** and **Cancel** are in every sheet. The sheet's name is the title of the page it also is (for example "Add a measurement").
 - A refused save shows "Check the fields with a message." and the field messages, and keeps the values.
-- A save that works shows one of these messages for about six seconds: Measurement added, saved or deleted; Vaccination recorded, saved or deleted; Course added, saved or deleted; Dose saved or deleted; Entry added, saved or deleted; Milestone saved or removed; Details saved; Modules saved; Access added; Role changed; Access removed; Child added; Child deleted; You left.
+- A save that works shows one of these messages for about six seconds: Measurement added, saved or deleted; Vaccination recorded, saved or deleted; Course added, saved or deleted; Dose saved or deleted; Visit added, saved or recorded; Entry added, saved or deleted; Milestone saved or removed; Details saved; Modules saved; Access added; Role changed; Access removed; Child added; Child deleted; You left.
 - Not every message is captured: the screenshots show Measurement added, Access added and the refused save.
 - The Edit details sheet carries the delete-all-data section at its foot, as the page does. Deleting a child from the sheet has not been captured in a screenshot.
 - The **Modules** entry in More and in the side navigation, and **Child profile**, open their pages, not sheets.

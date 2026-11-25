@@ -22,11 +22,11 @@ A module is a tracker or record type, such as Bottle, Pumping or Medication.
 2. Tick the modules you want and untick the ones you do not. Under each name the page says whether it is "On by default for this age" or "Off by default for this age".
 3. Choose **Save**. A box says "Saved".
 
-A module you turn off leaves the home screen and the menu. Its entries stay and come back when you turn it on. For Mia (4 months) every module is on to begin with. For Leo (2 years 3 months) the baby trackers (Bottle, Nursing, Pumping, Diaper, Sleep, Feeding) and Milestones are off by default, and Growth, Vaccination, Sickness and Medication are on.
+A module you turn off leaves the home screen and the menu. Its entries stay and come back when you turn it on. For Mia (4 months) every module is on to begin with. For Leo (2 years 3 months) the baby trackers (Bottle, Nursing, Pumping, Diaper, Sleep, Feeding) and Milestones are off by default, and Growth, Vaccination, Sickness, Medication and Medical visits are on.
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/kid-admin/01-modules-under-12-months-mobile.png" alt="Modules for Mia on a phone: eleven ticked modules from Bottle to Medication, each with the line On by default for this age, and a Save button" width="260"> | <img src="../screenshots/kid-admin/01-modules-under-12-months-desktop.png" alt="The same Modules for Mia page on a desktop, with the Modules entry highlighted in the left menu" width="460"> |
+| <img src="../screenshots/kid-admin/01-modules-under-12-months-mobile.png" alt="Modules for Mia on a phone: twelve ticked modules from Bottle to Medical visits, each with the line On by default for this age, and a Save button" width="260"> | <img src="../screenshots/kid-admin/01-modules-under-12-months-desktop.png" alt="The same Modules for Mia page on a desktop, with the Modules entry highlighted in the left menu" width="460"> |
 
 After Pumping and Feeding were unticked and saved (shot `02-modules-saved-two-off`), Mia's home no longer shows those two tiles (shot `03-home-with-modules-off`). Pages of a module that is off say so: see [Medication](Medication.md) and [Export PDF](Export-PDF.md), where a switched-off module can still be ticked.
 

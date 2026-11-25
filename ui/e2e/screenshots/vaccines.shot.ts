@@ -1,5 +1,5 @@
-import type { Page } from '@playwright/test';
-import { submit, untilHydrated } from '../helpers.js';
+import type { Locator, Page } from '@playwright/test';
+import { openSheet, submit } from '../helpers.js';
 import { ANA, CLEO, IVY, LEO, MIA, storeVaccineSchema } from '../stub-api.js';
 import { as, at, kidPath, must } from './seed.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
@@ -9,8 +9,27 @@ const AT_TWO_MONTHS = new Date(Date.parse(`${IVY.birthDate}T00:00:00Z`) + 60 * 8
 	.toISOString()
 	.slice(0, 10);
 const url = (kid: string, rest = '') => `/kids/${kid}/vaccines${rest}`;
-const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const save = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+const field = (where: Page | Locator, label: string) => where.getByLabel(label, { exact: true });
+const save = (where: Page | Locator) =>
+	submit(where.getByRole('button', { name: 'Save', exact: true }));
+
+// A dose's Given link can sit in a folded visit card: unfold that card, then open the sheet.
+async function openEdit(page: Page, id: string) {
+	const href = url(IVY.id, `/${id}`);
+	const sheet = page
+		.getByRole('dialog', { name: 'Edit vaccination' })
+		.and(page.locator('[data-state="open"]'));
+	await expect(async () => {
+		await open(page, url(IVY.id));
+		await page
+			.locator(`details:has(a[href="${href}"])`)
+			.evaluateAll((ds) => ds.forEach((d) => ((d as HTMLDetailsElement).open = true)));
+		await page.locator(`a[href="${href}"]:visible`).first().click({ timeout: 1500 });
+		await expect(sheet).toBeVisible({ timeout: 1500 });
+	}).toPass();
+	// The sheet moves focus in after it opens: wait, or the capture's blur can come first.
+	await expect.poll(() => sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+}
 
 async function open(page: Page, path: string) {
 	await page.goto(path);
@@ -133,39 +152,53 @@ test('dose forms', async ({ page }) => {
 		note: 'Left thigh, a little fussy after'
 	});
 	await signInAs(page, ANA);
-	await open(page, url(IVY.id, '/new'));
+	const sheet = await openSheet(
+		page,
+		url(IVY.id),
+		(p) => p.getByRole('link', { name: 'Record a vaccination', exact: true }),
+		'Record a vaccination'
+	);
 	await shot(
 		page,
 		'vaccines',
 		'10-new-dose-empty',
-		'Record a vaccination: date, product shortcut, vaccines, lot, product, note'
+		'The Record a vaccination sheet over the Vaccines page: date, product shortcut, vaccines, lot, product, note'
 	);
-	await untilHydrated(field(page, 'Date given'));
-	await field(page, 'Date given').fill('');
-	await save(page);
-	await expect(page.getByRole('alert').first()).toBeVisible();
+	await field(sheet, 'Date given').fill('');
+	await save(sheet);
+	await expect(sheet.getByText('Check the fields with a message.')).toBeVisible();
 	await shot(
 		page,
 		'vaccines',
 		'11-new-dose-errors',
-		'Refused: no date and no vaccine ticked; the date is the first problem shown'
+		'Refused in the sheet: no date and no vaccine ticked; the date is the first problem shown'
 	);
-	await open(page, url(IVY.id, '/new?antigens=hib,measles'));
+	await openSheet(
+		page,
+		url(IVY.id),
+		(p) => p.locator(`a[href^="${url(IVY.id, '/new?antigens=')}"]:visible`).first(),
+		'Record a vaccination'
+	);
 	await shot(
 		page,
 		'vaccines',
 		'12-new-dose-from-record-link',
-		'Opened from a visit’s Record link: its outstanding vaccines ticked'
+		'The sheet opened from a visit’s Record button: its outstanding vaccines ticked'
 	);
-	await open(page, url(IVY.id, `/${dose.id}`));
+	await openEdit(page, dose.id);
 	await shot(
 		page,
 		'vaccines',
 		'13-edit-administration',
-		'Edit vaccination: lot, product and note read back'
+		'The Edit vaccination sheet: lot, product and note read back'
 	);
 	await openDetails(page, /^Delete/);
-	await shot(page, 'vaccines', '14-edit-delete-confirm', 'Delete opened: the confirm step');
+	await shot(
+		page,
+		'vaccines',
+		'14-edit-delete-confirm',
+		'Delete opened inside the Edit vaccination sheet: the confirm step'
+	);
 	const long = await must(ana, 'POST', kidPath(IVY.id, 'vaccinations'), {
 		given_on: TODAY,
 		antigens: ['other'],
@@ -179,6 +212,11 @@ test('dose forms', async ({ page }) => {
 		'15-long-product-on-page',
 		'An 80-character product under Other wraps on the page'
 	);
-	await open(page, url(IVY.id, `/${long.id}`));
-	await shot(page, 'vaccines', '16-long-note-edit', 'A 200-character note on the edit page wraps');
+	await openEdit(page, long.id);
+	await shot(
+		page,
+		'vaccines',
+		'16-long-note-edit',
+		'A 200-character note and an 80-character product stay inside their single-line fields in the Edit vaccination sheet'
+	);
 });

@@ -17,6 +17,7 @@ design and the plan of the next item.
 | Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done, merged to `main` (PR #9) |
 | Plan 6, edge side | `davcs86/homelab-edge`, not written | the VAPID PR, then the ntfy plan; see "What to do next" |
 | Plan 7, milestones and PDF export | `docs/superpowers/plans/2026-11-23-milestones-pdf-export.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #10 to `main`, merged only with the owner's go-ahead); open owner items under "What to do next" |
+| Plan 9, medical visits | `docs/superpowers/plans/2026-11-25-visits.md` (design `docs/superpowers/specs/2026-11-25-medical-visits-design.md`, page spec `docs/plans/ui-redesign/pages/visits.md`) | API merged to `main` (PR #22); UI, screenshots, visual baselines and wiki on branch `ccr-406c8e35-e8hvag` (PR #24 to `main`, merged only with the owner's go-ahead); the provider lookup (NPI, design section 10) is a later plan, not written |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except

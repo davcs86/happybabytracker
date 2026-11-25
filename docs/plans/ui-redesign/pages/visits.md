@@ -1,8 +1,8 @@
 # Medical visits (list, visit, add and edit, after the visit)
 
-Status: **draft for owner approval**. Owner decision 2026-11-25: there is no prototype for this module; the
-pages are composed from existing designed pages, parts and wording, and this file is the page spec. Items
-marked **(confirm)** are the author's choices waiting on that approval.
+Status: **approved by the owner on 2026-11-25**, including the three items marked **(confirm)**. Owner decision
+2026-11-25: there is no prototype for this module; the pages are composed from existing designed pages, parts and
+wording, and this file is the page spec.
 
 Behaviour comes from `docs/superpowers/specs/2026-11-25-medical-visits-design.md` ("the visits spec"); this
 file decides only look, words and the no-JS routes. No prototype, no `specs/*.layout.json` and no baselines
@@ -41,7 +41,7 @@ Icon: lucide `Stethoscope` in a `tracker-chip`, hue `--h:235` (the hue the Due l
 - List add action: "Add a visit" **(confirm: the visits spec says "New visit"; every designed list says "Add a …")**.
 - List groups (h2): "Upcoming", "Past". Empty: "No visits yet." + "Add a visit".
 - Row: kind label (h3), then "{EEE d MMM yyyy}, {HH:mm}" and, when set, "{provider}"; a "Cancelled" badge.
-  The row is a link to the visit, name "{kind label}, {d MMM yyyy}".
+  The row is a link to the visit; its accessible name is its visible text (axe label-content-name-mismatch, WCAG 2.5.3; the timeline rows' precedent).
 - Form fields: "Date and time" (EntryTimeField), "Length (minutes)", "Kind" (RadioGroup), "Doctor or clinic
   (optional)", "Place (optional)", "Reason (optional)". Save: "Save"; Cancel: `FormCancel`.
 - Toasts: "Visit added", "Visit saved", "Visit cancelled", "Visit restored", "Visit deleted",

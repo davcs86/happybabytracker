@@ -81,3 +81,61 @@ export async function seedDay(api: Api, kid: string) {
 	};
 	return rows;
 }
+
+type Row = Record<string, unknown> & { id: string; revision: number; starts_at: string };
+
+// Two upcoming, two past (one with an outcome) and one cancelled, around the frozen day.
+export async function seedVisits(api: Api, kid: string) {
+	const add = async (body: Record<string, unknown>) =>
+		(await must(api, 'POST', kidPath(kid, 'visits'), body)) as Row;
+	const checkup = await add({
+		kind: 'well_child',
+		starts_at: at('09:15', -3),
+		provider: 'Dr Rivera',
+		location: 'Northside Clinic, room 4',
+		note: 'Six-month check'
+	});
+	await add({ kind: 'dental', starts_at: at('16:00', -20), duration_min: 45 });
+	const cancelled = await add({
+		kind: 'specialist',
+		starts_at: at('11:00', -9),
+		provider: 'Dr Okafor',
+		location: 'Children’s Hospital, outpatients',
+		note: 'Hip scan'
+	});
+	await must(api, 'PATCH', kidPath(kid, `visits/${cancelled.id}`), { cancelled: true });
+	const sick = await add({
+		kind: 'sick',
+		starts_at: at('15:30', 5),
+		provider: 'Dr Rivera',
+		note: 'Fever for two days'
+	});
+	const plain = await add({
+		kind: 'other',
+		starts_at: at('10:00', 12),
+		provider: 'Lactation clinic'
+	});
+	const day = sick.starts_at.slice(0, 10);
+	await must(api, 'POST', kidPath(kid, `visits/${sick.id}/outcome`), {
+		revision: sick.revision,
+		outcome_notes: 'Ear infection on the left. Back if the fever lasts past Friday.',
+		growth: { measured_on: day, weight: { unit: 'kg', amount: 6400 } },
+		vaccinations: [{ given_on: day, antigens: ['influenza'] }],
+		medications: [
+			{
+				name: 'Amoxicillin',
+				dose: '5 ml',
+				schedule: { kind: 'every', hours: 8 },
+				start_at: sick.starts_at
+			}
+		]
+	});
+	const detail = (await must(api, 'GET', kidPath(kid, `visits/${sick.id}`))) as {
+		linked: { growth: { id: string }[]; medications: { id: string }[] };
+	};
+	await must(api, 'POST', kidPath(kid, 'medication-doses'), {
+		medication: detail.linked.medications[0].id,
+		given_at: at('16:10', 5)
+	});
+	return { checkup, cancelled, sick, plain, growth: detail.linked.growth[0].id };
+}

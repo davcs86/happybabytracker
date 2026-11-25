@@ -8,6 +8,8 @@ export const EXPORT_DEFAULT_DAYS = 30;
 // The only answer streamed to the browser: an attachment named by its two dates.
 export const EXPORT_DISPOSITION_PATTERN =
 	/^attachment; filename="happybabytracker-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.pdf"$/;
+// A visit's calendar file: an attachment named by its kid-local date only.
+export const VISIT_DISPOSITION_PATTERN = /^attachment; filename="visit-\d{4}-\d{2}-\d{2}\.ics"$/;
 export const MIN_INTERNAL_API_TOKEN = 32;
 export const MAX_PORT = 65535;
 // One-time tokens are 43 base64url characters; anything else never reaches the API path.

@@ -2,7 +2,7 @@
 
 Medication keeps a list of **courses** (a medicine, its dose and when it is given) and a log of the **doses** given. Every example below uses fake data: Mia, 4 months, and her courses Calpol, Amoxil and Vitamin D.
 
-With JavaScript, the Add a course, Edit course and Edit dose forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+The Add a course, Edit course and Edit dose forms open in a sheet over the Medication page: the form's title, a **Close** button (the ×), the fields, **Save** and **Cancel**. Saving closes the sheet, the courses and doses underneath show the change and a short message appears ([Forms in sheets](Forms-in-sheets.md)). Every form screenshot below is the open sheet. Without JavaScript, in a new tab or when you open the address directly, the same form is a page with the same steps; after a save there you land where the steps say.
 
 ## Guide
 
@@ -41,7 +41,13 @@ A time that is not today shows its date first, for example "2026-11-23 20:05", s
    - **At fixed times**: twelve time fields appear (Time 1 to Time 12). Fill the ones you want; each time of day can be used once.
    - **Every few hours**: an **Hours between doses** field appears. Enter a whole number from 1 to 168. The hours are counted from **Start**.
 4. Optional: **Start** (leave it blank to start now), **Last day (optional)**, **Active** (ticked by default) and a **Note**.
-5. Choose **Save**. You land back on the Medication page.
+5. Choose **Save**. The sheet closes, the course is on the page and the message "Course added" appears. Without JavaScript you land back on the Medication page.
+
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/05-course-add-mobile.png" alt="Medication page dimmed behind a sheet titled Add a course, with Name, Dose and the Schedule choices" width="260"> |
+
+A course prescribed at a medical visit can also be added from the visit, with **Record the visit** ([Medical visits](Medical-visits.md)); its edit sheet then has a **Recorded at a visit** link that opens it.
 
 Choosing another schedule kind keeps what you typed in the other kind, so you can switch back.
 
@@ -53,11 +59,11 @@ A child can have at most 50 courses. Past that, Save is refused with "This child
 
 ### What does a refused course look like?
 
-The page does not save and keeps everything you typed. The message sits under the field that failed, and only the first failing field is marked (checked in the order Name, Dose, Schedule, Start, Last day, Active, Note). For an empty form the message is "Enter a name of up to 80 characters" under Name.
+The form does not save and keeps everything you typed; in a sheet, the sheet stays open. The message sits under the field that failed, and only the first failing field is marked (checked in the order Name, Dose, Schedule, Start, Last day, Active, Note). For an empty form the message is "Enter a name of up to 80 characters" under Name.
 
 | Phone |
 |---|
-| <img src="../screenshots/medication/13-new-course-errors-mobile.png" alt="Add a course form on a phone, nothing typed, with the red message Enter a name of up to 80 characters under the Name field" width="260"> |
+| <img src="../screenshots/medication/13-new-course-errors-mobile.png" alt="The Add a course sheet on a phone over the dimmed Medication page, nothing typed, with the red message Enter a name of up to 80 characters under the Name field" width="260"> |
 
 The other messages are:
 
@@ -97,26 +103,26 @@ Shot `03-ended-courses-open` shows it open with "Paused cream" (an inactive cour
 ### How do I change or delete a course?
 
 1. On the course card choose the pencil button (named "Edit" followed by the course name).
-2. Change the fields. The page opens with the stored values, and the Start hint reads "Leave blank to keep the current start".
-3. Choose **Save**, or **Cancel** to leave.
+2. Change the fields. The **Edit course** sheet opens with the stored values, and the Start hint reads "Leave blank to keep the current start".
+3. Choose **Save** (the sheet closes and the message "Course saved" appears), or **Cancel** or **Close** to leave.
 
 To delete it, choose **Delete this course**. This opens a second step that says "This removes the course for everyone with access to Mia." and, for example, "This also deletes the 2 doses logged for this course." Choose **Yes, delete this course** to confirm. The doses of the course go with it. To keep the history but stop the course, untick **Active** instead.
 
-| Phone |
-|---|
-| <img src="../screenshots/medication/10-course-delete-confirm-mobile.png" alt="Edit course page for Calpol on a phone with At fixed times chosen, 08:00 AM and 08:00 PM filled in, Delete this course opened, the two sentences about removing the course and its 2 doses, and the button Yes, delete this course" width="260"> |
+| Phone | Phone, delete opened |
+|---|---|
+| <img src="../screenshots/medication/09-course-edit-mobile.png" alt="The Edit course sheet for Calpol on a phone over the dimmed Medication page: Name Calpol, Dose 2.5 ml, At fixed times chosen with Time 1 08:00 AM and Time 2 08:00 PM, Start, Last day, Active ticked, the note With food, Save, Cancel and Delete this course" width="260"> | <img src="../screenshots/medication/10-course-delete-confirm-mobile.png" alt="The same Edit course sheet with Delete this course opened under Save and Cancel: the two sentences about removing the course and its 2 doses, and the button Yes, delete this course" width="260"> |
 
 ### How do I change or delete a dose?
 
 1. In **Recent doses**, choose the dose.
-2. On **Edit dose**, change **Given at**, **Amount** or **Note**, then choose **Save**.
+2. In the **Edit dose** sheet, change **Given at**, **Amount** or **Note**, then choose **Save**. The sheet closes and the message "Dose saved" appears.
 3. To delete it, choose **Delete this dose**, then **Yes, delete this dose** ("This removes the dose for everyone with access to Mia."). The dose is removed and the course's "Last dose" follows.
 
-A refused edit keeps what you typed and shows the message under the field: "Enter an amount of up to 80 characters" for the amount.
+A refused edit keeps the sheet open with what you typed and shows the message under the field: "Enter an amount of up to 80 characters" for the amount.
 
 | Phone |
 |---|
-| <img src="../screenshots/medication/07-dose-edit-error-mobile.png" alt="Edit dose page on a phone: Given at 11/24/2026 08:10 AM, an Amount field holding a long run of the letter a with the red message Enter an amount of up to 80 characters, the note Spat a little out, Save, Cancel and Delete this dose" width="260"> |
+| <img src="../screenshots/medication/07-dose-edit-error-mobile.png" alt="The Edit dose sheet on a phone over the dimmed Medication page: Given at 11/24/2026 08:10 AM, an Amount field holding a long run of the letter a with the red message Enter an amount of up to 80 characters, the note Spat a little out, Save, Cancel and Delete this dose" width="260"> |
 
 ### What do I see if Medication is switched off?
 
@@ -136,9 +142,9 @@ A guardian can switch Medication off for a child on [Children and access](Childr
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
 | Medication | `/kids/[kid]/medication` | guardian, caregiver | `01-no-courses`, `02-courses`, `03-ended-courses-open`, `04-doses-filtered-by-course`, `05-dose-logged-now`, `16-module-off-guardian`, `17-module-off-caregiver-long-name` |
-| Add a course | `/kids/[kid]/medication/new` | guardian, caregiver | `12-new-course-empty`, `13-new-course-errors`, `14-new-course-fixed-times`, `15-new-course-every-hours` |
-| Edit course | `/kids/[kid]/medication/[medication]` | guardian, caregiver | `09-course-edit`, `10-course-delete-confirm`, `11-course-edit-every` |
-| Edit dose | `/kids/[kid]/medication/doses/[dose]` | guardian, caregiver | `06-dose-edit`, `07-dose-edit-error`, `08-dose-delete-confirm` |
+| Add a course (sheet over Medication; a page without JavaScript) | `/kids/[kid]/medication/new` | guardian, caregiver | `12-new-course-empty`, `13-new-course-errors`, `14-new-course-fixed-times`, `15-new-course-every-hours` |
+| Edit course (sheet over Medication; a page without JavaScript) | `/kids/[kid]/medication/[medication]` | guardian, caregiver | `09-course-edit`, `10-course-delete-confirm`, `11-course-edit-every` |
+| Edit dose (sheet over Medication; a page without JavaScript) | `/kids/[kid]/medication/doses/[dose]` | guardian, caregiver | `06-dose-edit`, `07-dose-edit-error`, `08-dose-delete-confirm` |
 
 Nobody else can open these pages: a parent with no grant on the child, an unknown child, and a course or dose that is not the child's all get the same 404 page (see [Error pages](Error-pages.md)). The admin never sees a child. All the shots are in the [screenshot catalogue](../screenshots/README.md#medication).
 

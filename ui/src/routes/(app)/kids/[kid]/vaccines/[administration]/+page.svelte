@@ -4,6 +4,7 @@
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import FormCancel from '#lib/components/FormCancel.svelte';
 	import FormFrame from '#lib/components/FormFrame.svelte';
+	import RecordedAtVisit from '#lib/components/visits/RecordedAtVisit.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import DoseFields from '#lib/components/vaccines/DoseFields.svelte';
@@ -34,6 +35,7 @@
 		<h1 class="mt-2">Edit vaccination</h1>
 		<p class="mt-1.5 text-sm text-muted-foreground">{formatAge(data.kid.birthDate, data.today)}</p>
 	{/snippet}
+	<RecordedAtVisit kidId={data.kid.id} visitId={data.visitId} />
 	<form
 		method="POST"
 		action="?/save"

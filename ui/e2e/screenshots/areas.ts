@@ -9,6 +9,7 @@ export const AREAS = [
 	'growth',
 	'vaccines',
 	'medication',
+	'visits',
 	'milestones',
 	'export',
 	'kid-admin',

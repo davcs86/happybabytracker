@@ -25,6 +25,9 @@ What a parent can do so far:
 - Sickness and medication: symptoms (a fever with its temperature) on the timeline, medication courses
   with a schedule, logged doses, and reminders on the home's Due list and, when the server has a channel
   configured, on opted-in devices (see "Sickness, medication and reminders" below).
+- Medical visits: appointments with a private-by-default calendar file, and after a visit its notes and
+  the growth, vaccines and medication recorded there; visits show on the home's Due list, the timeline and
+  the PDF (see the [Medical visits](docs/wiki/Medical-visits.md) wiki page).
 - Milestones: CDC's developmental milestone checklists, with a date marked for each item reached and custom
   milestones of your own (see "Milestones" below).
 - PDF export: one kid, a range of at most 93 days and the modules you choose, made as a PDF when you
@@ -41,6 +44,7 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | `growth` | built | on | on | on |
 | `vaccination` | built | on | on | on |
 | `sickness`, `medication` | built | on | on | on |
+| `visits` (medical visits) | built | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -68,7 +72,8 @@ A guide and a screen reference, built from screenshots the e2e flow captures. St
 - Every day: [Kid home](docs/wiki/Kid-home.md), [Logging trackers](docs/wiki/Logging-trackers.md),
   [Timeline](docs/wiki/Timeline.md).
 - Health records: [Growth](docs/wiki/Growth.md), [Vaccines](docs/wiki/Vaccines.md),
-  [Medication](docs/wiki/Medication.md), [Milestones](docs/wiki/Milestones.md),
+  [Medication](docs/wiki/Medication.md), [Medical visits](docs/wiki/Medical-visits.md),
+  [Milestones](docs/wiki/Milestones.md),
   [Export PDF](docs/wiki/Export-PDF.md).
 - Setup and account: [Children and access](docs/wiki/Children-and-access.md),
   [My profile](docs/wiki/My-profile.md), [Notifications](docs/wiki/Notifications.md).

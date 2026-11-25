@@ -260,7 +260,8 @@ function build(v: GrowthFormValues, mode: GrowthMode): Outcome {
 // message is null when the field's own message (GROWTH_FIELD_MESSAGES) applies.
 export function readGrowthForm(
 	form: FormData,
-	mode: GrowthMode
+	mode: GrowthMode,
+	{ prefix = '' }: { prefix?: string } = {}
 ): {
 	values: GrowthFormValues;
 	input: EntryBody | null;
@@ -268,11 +269,11 @@ export function readGrowthForm(
 	message: string | null;
 } {
 	const values: GrowthFormValues = Object.fromEntries(
-		TEXT_FIELDS.map((k) => [k, String(form.get(k) ?? '')])
+		TEXT_FIELDS.map((k) => [k, String(form.get(`${prefix}${k}`) ?? '')])
 	);
 	if (mode.kind === 'edit') {
 		for (const k of KEPT_FIELDS) {
-			const o = form.get(`${k}_original`);
+			const o = form.get(`${prefix}${k}_original`);
 			if (o !== null) values[`${k}_original`] = String(o);
 		}
 	}

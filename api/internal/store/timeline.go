@@ -13,6 +13,9 @@ import (
 // TimelineTypes names every tracker the timeline merges, as the wire spells them.
 var TimelineTypes = []string{"bottle", "nursing", "pumping", "sleep", "diaper", "meal", "symptom"}
 
+// TimelineFeedTypes is every type the timeline merges: the trackers, then records with no daily summary or export rows.
+var TimelineFeedTypes = append(slices.Clone(TimelineTypes), "visit")
+
 var errUnknownTimelineType = errors.New("store: unknown timeline type")
 
 // TimelineItem is one tracker row; At is the row's time column and Entry the model value (model.BottleFeed, ...).
@@ -58,11 +61,14 @@ func (s *Store) timelineOf(ctx context.Context, typ, kidID string, q ListQuery) 
 	case "symptom":
 		rows, err := s.ListSymptoms(ctx, kidID, q)
 		return timelineItems(typ, rows, err, func(v model.Symptom) (time.Time, string) { return v.At, v.ID })
+	case "visit":
+		rows, err := s.ListVisits(ctx, kidID, q, false)
+		return timelineItems(typ, rows, err, func(v VisitRow) (time.Time, string) { return v.StartsAt, v.ID })
 	}
 	return nil, errUnknownTimelineType
 }
 
-// Timeline merges the kid's rows of types (distinct TimelineTypes names) within q, newest first by (At, ID), and
+// Timeline merges the kid's rows of types (distinct TimelineFeedTypes names) within q, newest first by (At, ID), and
 // keeps q.Limit of them; each tracker contributes at most q.Limit rows, so the load is bounded.
 func (s *Store) Timeline(ctx context.Context, kidID string, types []string, q ListQuery) ([]TimelineItem, error) {
 	out := []TimelineItem{}

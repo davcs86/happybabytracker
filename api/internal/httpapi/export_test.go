@@ -28,7 +28,7 @@ const (
 	notice      = "Some characters cannot be shown in this PDF and appear as ?"
 )
 
-var sectionTitles = []string{"Bottles", "Nursing", "Pumping", "Diapers", "Sleep", "Feeding", "Milestones", "Growth", "Vaccination", "Sickness", "Medication"}
+var sectionTitles = []string{"Bottles", "Nursing", "Pumping", "Diapers", "Sleep", "Feeding", "Milestones", "Growth", "Vaccination", "Sickness", "Medication", "Medical visits"}
 
 func exportBody(from, to string, modules ...string) map[string]any {
 	return map[string]any{"from": from, "to": to, "modules": modules}
@@ -214,8 +214,8 @@ func TestExportUnavailable(t *testing.T) {
 	k.exportPDF(ana, kid, "milestones", "vaccination")
 }
 
-// filterKid holds an entry of every daily tracker, a measurement, a US schedule, a custom milestone, a symptom, a course
-// and a dose.
+// filterKid holds an entry of every daily tracker, a measurement, a US schedule, a custom milestone, a symptom, a course,
+// a dose and a visit.
 func (k *kit) filterKid() (kid, ana string) {
 	k.t.Helper()
 	ana = k.asParent("ana")
@@ -229,6 +229,7 @@ func (k *kit) filterKid() (kid, ana string) {
 	k.seedEntry(kid, "ana", "symptom", at)
 	course := k.createMedication(ana, kid, medBody(map[string]any{"name": "Zentrolex"}))["id"].(string)
 	k.createDose(ana, kid, doseBody(course, nil))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(at), "provider": "Dr. Orsolya", "location": nil, "note": nil}))
 	return kid, ana
 }
 
@@ -269,7 +270,7 @@ func TestExportModuleFilter(t *testing.T) {
 		"bottles": "Bottle 120 ml, formula", "nursing": "Nursing L 1 min · R 1 min", "pumping": "Pumping 10 min, 120 ml (both)",
 		"diapers": "Diaper wet", "sleep": "Sleep until 2026-11-18 10:30 (30 min)", "feeding": "Solids: pear",
 		"growth": "Mon 1 Jun 2026", "milestones": "Waves bye", "vaccination": "Hepatitis B, dose 1",
-		"sickness": "Cough", "medication": "Zentrolex",
+		"sickness": "Cough", "medication": "Zentrolex", "visits": "Dr. Orsolya",
 	}
 	for _, m := range constants.ExportModules {
 		strs, _ := pdfStrings(t, k.exportPDF(ana, kid, m))
@@ -497,14 +498,15 @@ func TestExportEmptyKid(t *testing.T) {
 			t.Errorf("%q appears %d times, want once", empty, n)
 		}
 	}
-	if n := countOf(strs, noEntries); n != 8 {
-		t.Errorf("%q appears %d times, want once per daily tracker, sickness and medication", noEntries, n)
+	if n := countOf(strs, noEntries); n != 9 {
+		t.Errorf("%q appears %d times, want once per daily tracker, sickness, medication and visits", noEntries, n)
 	}
 	if n := countOf(strs, "No measurements recorded."); n != 1 {
 		t.Errorf("the empty growth text appears %d times, want once", n)
 	}
 	wantStrings(t, "profile", strs, "Profile", testKidName, "2026-03-04", "Female", "Europe/Madrid", "8 months 16 days",
-		"2026-11-01 to 2026-11-20", "Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication",
+		"2026-11-01 to 2026-11-20", "Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination,",
+		"Sickness, Medication, Medical visits",
 		"No schedule chosen", "WHO Child Growth Standards (2006) and Growth Reference (2007)",
 		"Generated 2026-11-20 13:00 (Europe/Madrid) by happybabytracker · Page 1 of 2",
 		"Generated 2026-11-20 13:00 (Europe/Madrid) by happybabytracker · Page 2 of 2")
@@ -880,4 +882,15 @@ func TestExportSicknessMedication(t *testing.T) {
 	wantStrings(t, "medication", strs, "Zentrolex", "08:00, 20:00", "2026-11-02", "Not active", "Quorbitan", "Every 6 hours from 10:00",
 		"2026-10-01 10:00", "Given at", "2026-11-05 15:00", "1.5 ml", "with yogurt")
 	wantNoSubstring(t, "medication", strs, "Plixamol", "9 drops", "Next", "Last dose")
+}
+
+func TestExportVisitsSection(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	in := k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": "2026-11-10T08:00:00Z", "kind": "sick", "provider": "Dr. Ivo"}))
+	k.do(http.MethodPatch, "/v1/kids/"+kid+"/visits/"+in["id"].(string), ana, map[string]any{"cancelled": true})
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": "2026-10-10T08:00:00Z", "provider": "Dr. Before"}))
+	strs, _ := pdfStrings(t, k.exportPDF(ana, kid, "visits"))
+	wantStrings(t, "visits", strs, "Medical visits", "Dr. Ivo", "Sick visit, cancelled", "2026-11-10 09:00", "Doctor or clinic")
+	wantNoSubstring(t, "visits", strs, "Dr. Before", "Dr. Lee")
 }

@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 describe('constants', () => {
-	it('mirrors the API: 93 days, the eleven module ids in model.Modules order', () => {
+	it('mirrors the API: 93 days, the twelve module ids in model.Modules order', () => {
 		expect(EXPORT_MAX_DAYS).toBe(93);
 		expect(EXPORT_DEFAULT_DAYS).toBe(30);
 		expect(EXPORT_MODULES).toEqual([
@@ -49,7 +49,8 @@ describe('constants', () => {
 			'growth',
 			'vaccination',
 			'sickness',
-			'medication'
+			'medication',
+			'visits'
 		]);
 	});
 });

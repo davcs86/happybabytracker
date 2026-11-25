@@ -161,6 +161,7 @@ type State = {
 	medications: CourseStub[];
 	doses: DoseStub[];
 	milestones: MilestoneStub[];
+	visits: VisitStub[];
 	reminders: ReminderStub[];
 	pushDevices: PushDeviceStub[];
 	// By parent id.
@@ -311,6 +312,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 				createdAt: midnight(addMonths(otto.birthDate, 4), otto.timeZone)
 			}
 		],
+		visits: [],
 		reminders: [],
 		pushDevices: [],
 		ntfyTopics: new Map(),
@@ -443,6 +445,15 @@ async function decodeBody(
 		error(res, 400, 'bad_request');
 		return null;
 	}
+	return checkFields(res, value, fields);
+}
+
+// One decoded object, the whole body or a nested block: decodeJSON's unknown_field 422 and bad_request 400.
+function checkFields(
+	res: ServerResponse,
+	value: unknown,
+	fields: Record<string, FieldKind>
+): Body | null {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 		error(res, 400, 'bad_request');
 		return null;
@@ -951,6 +962,7 @@ const routes: RouteDef[] = [
 			state.grants = state.grants.filter((g) => g.kidId !== id);
 			state.medications = state.medications.filter((m) => m.kidId !== id);
 			state.milestones = state.milestones.filter((m) => m.kidId !== id);
+			state.visits = state.visits.filter((v) => v.kidId !== id);
 			state.doses = state.doses.filter((d) => d.kidId !== id);
 			state.reminders = state.reminders.filter((r) => r.kidId !== id);
 			for (const o of [...state.pushDevices, ...state.ntfyTopics.values()]) dropKid(o, id);
@@ -1066,7 +1078,8 @@ const MODULES = [
 	'growth',
 	'vaccination',
 	'sickness',
-	'medication'
+	'medication',
+	'visits'
 ] as const;
 const MODULE_OF: Record<TrackerKey, string> = {
 	bottles: 'bottles',
@@ -1077,7 +1090,7 @@ const MODULE_OF: Record<TrackerKey, string> = {
 	meals: 'feeding',
 	symptoms: 'sickness'
 };
-const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication'];
+const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication', 'visits'];
 const BOTTLE_CONTENTS = ['breast_milk', 'formula', 'cow_milk', 'other'];
 const DIAPER_KINDS = ['wet', 'dirty', 'both', 'dry'];
 const NURSING_SIDES = ['left', 'right'];
@@ -2001,18 +2014,23 @@ const overviewRoutes: RouteDef[] = [
 		if (typeof q === 'string') return error(res, 422, 'invalid', q);
 		const given = url.searchParams.getAll('types');
 		let keys: TrackerKey[];
+		let visits: boolean;
 		if (given.length === 0) {
 			const on = moduleStates(state, kid)
 				.filter((m) => m.enabled)
 				.map((m) => m.module as string);
 			keys = TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]));
+			visits = on.includes('visits');
 		} else {
 			const names = given.length === 1 ? given[0].split(',') : [''];
-			const wanted = names.map((n) => TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n));
+			const wanted = names.map((n) =>
+				n === VISIT_TYPE ? n : TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n)
+			);
 			if (wanted.some((k, i) => !k || wanted.indexOf(k) !== i)) {
 				return error(res, 422, 'invalid', 'types');
 			}
-			keys = wanted as TrackerKey[];
+			keys = wanted.filter((k) => k !== VISIT_TYPE) as TrackerKey[];
+			visits = wanted.includes(VISIT_TYPE);
 		}
 		const items = keys.flatMap((key) =>
 			itemsOf(state, key, kid.id).map((i) => ({
@@ -2020,6 +2038,15 @@ const overviewRoutes: RouteDef[] = [
 				out: { type: TIMELINE_TYPES[key], at: iso(i.at), ...i.out }
 			}))
 		);
+		if (visits) {
+			for (const v of state.visits.filter((x) => x.kidId === kid.id)) {
+				items.push({
+					at: v.startsAt,
+					id: v.id,
+					out: { type: VISIT_TYPE, at: iso(v.startsAt), ...visitRowView(state, v) }
+				});
+			}
+		}
 		respondPage(res, 'items', items, q);
 	}),
 	kidRoute('GET', 'summary', 'caregiver', (state, req, res, kid) => {
@@ -2069,7 +2096,7 @@ const overviewRoutes: RouteDef[] = [
 			due:
 				state.scenario === 'home_due_many'
 					? MANY_DUE
-					: [...medicationDue(state, kid), ...vaccineDue(state, kid)]
+					: [...medicationDue(state, kid), ...vaccineDue(state, kid), ...visitDue(state, kid)]
 		});
 	})
 ];
@@ -2106,6 +2133,7 @@ type Length = { mm: number; in_hundredths: number; typed_unit: string };
 type GrowthStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	measuredOn: string;
 	weight: Weight | null;
 	length: Length | null;
@@ -2153,6 +2181,7 @@ function leoGrowth(): GrowthStub[] {
 	) => ({
 		kidId: LEO.id,
 		id,
+		visitId: null,
 		measuredOn,
 		weight: newWeight('kg', grams),
 		length: mm === null ? null : newLength('cm', mm),
@@ -2238,6 +2267,7 @@ function growthView(g: GrowthStub, kid: KidRow) {
 		g.weight && g.length ? (g.weight.grams * 1000) / (g.length.mm * g.length.mm) : null;
 	return {
 		id: g.id,
+		visit_id: g.visitId,
 		measured_on: g.measuredOn,
 		weight: g.weight,
 		length: g.length,
@@ -2415,6 +2445,7 @@ const growthRoutes: RouteDef[] = [
 		const g: GrowthStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			measuredOn: '',
 			weight: null,
 			length: null,
@@ -2513,6 +2544,7 @@ type StubLine = {
 type AdministrationStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	givenOn: string;
 	antigens: string[];
 	lot: string | null;
@@ -2799,6 +2831,7 @@ function vaccineDue(state: State, kid: KidRow) {
 
 const administrationView = (a: AdministrationStub) => ({
 	id: a.id,
+	visit_id: a.visitId,
 	given_on: a.givenOn,
 	antigens: a.antigens,
 	lot: a.lot,
@@ -2944,6 +2977,7 @@ const vaccineRoutes: RouteDef[] = [
 		const a: AdministrationStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			givenOn: '',
 			antigens: [],
 			lot: null,
@@ -3017,6 +3051,7 @@ type Schedule = { kind: string; times: string[]; hours: number };
 type CourseStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	name: string;
 	dose: string;
 	schedule: Schedule;
@@ -3262,7 +3297,8 @@ function medicationView(state: State, c: CourseStub) {
 		note: c.note,
 		last_dose: last ? { id: last.id, given_at: iso(last.givenAt), amount: last.amount } : null,
 		next_due: next === Infinity ? null : { due_at: iso(next) },
-		dose_count: doses.length
+		dose_count: doses.length,
+		visit_id: c.visitId
 	};
 }
 
@@ -3421,6 +3457,7 @@ const medicationRoutes: RouteDef[] = [
 		const c: CourseStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			name: '',
 			dose: '',
 			schedule: { kind: '', times: [], hours: 0 },
@@ -3529,6 +3566,506 @@ const medicationRoutes: RouteDef[] = [
 	medicationEntryRoute('DELETE', 'medication-doses', {}, doseOf, (state, res, _kid, d) => {
 		state.doses = state.doses.filter((x) => x !== d);
 		send(res, 204);
+	})
+];
+
+// Medical visits: the Go handlers (httpapi/visits.go, store/visits.go) in memory. The outcome re-uses the three
+// modules' stub validators, as the API re-uses their mergeOnto; the calendar file is a marked stand-in.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const VISIT_KINDS = ['well_child', 'sick', 'specialist', 'dental', 'emergency', 'other'];
+const VISIT_KIND_LABEL: Record<string, string> = {
+	well_child: 'Well-child visit',
+	sick: 'Sick visit',
+	specialist: 'Specialist visit',
+	dental: 'Dental visit',
+	emergency: 'Emergency visit',
+	other: 'Other visit'
+};
+const DEFAULT_VISIT_DURATION_MIN = 30;
+const VISIT_DURATION_MIN = { min: 5, max: 720 };
+const VISIT_PROVIDER_MAX_LEN = 120;
+const VISIT_LOCATION_MAX_LEN = 200;
+const VISIT_OUTCOME_NOTES_MAX_LEN = 4000;
+const MAX_VISITS_PER_KID = 2000;
+const VISIT_HORIZON_S = 731 * DAY_S;
+const VISIT_DUE_LOOK_AHEAD_DAYS = 7;
+const MAX_OUTCOME_VACCINATIONS = 10;
+const MAX_OUTCOME_MEDICATIONS = 5;
+const VISIT_TYPE = 'visit';
+const STUB_ICS_HOST = 'stub.example';
+
+type VisitStub = {
+	kidId: string;
+	id: string;
+	startsAt: number;
+	durationMin: number;
+	kind: string;
+	provider: string | null;
+	location: string | null;
+	note: string | null;
+	outcomeNotes: string | null;
+	cancelledAt: number | null;
+	revision: number;
+};
+
+const VISIT_FIELDS: Record<string, FieldKind> = {
+	starts_at: 'time',
+	duration_min: 'int',
+	kind: 'string',
+	provider: 'string',
+	location: 'string',
+	note: 'string'
+};
+const VISIT_PATCH_FIELDS: Record<string, FieldKind> = {
+	...VISIT_FIELDS,
+	outcome_notes: 'string',
+	cancelled: 'bool'
+};
+const OUTCOME_FIELDS: Record<string, FieldKind> = {
+	revision: 'int',
+	outcome_notes: 'string',
+	growth: 'raw',
+	vaccinations: 'raw',
+	medications: 'raw'
+};
+
+// visitStatus: derived on every read, never stored.
+const visitStatus = (v: VisitStub) =>
+	v.cancelledAt !== null ? 'cancelled' : now() < v.startsAt ? 'upcoming' : 'past';
+const visitPast = (v: VisitStub) => v.cancelledAt === null && v.startsAt <= now();
+
+const linkedGrowth = (state: State, v: VisitStub) =>
+	state.growth
+		.filter((g) => g.visitId === v.id)
+		.sort((a, b) =>
+			a.measuredOn === b.measuredOn ? (a.id < b.id ? -1 : 1) : a.measuredOn < b.measuredOn ? -1 : 1
+		);
+const linkedVaccinations = (state: State, v: VisitStub) =>
+	state.vaccinations
+		.filter((a) => a.visitId === v.id)
+		.sort((a, b) =>
+			a.givenOn === b.givenOn ? (a.id < b.id ? -1 : 1) : a.givenOn < b.givenOn ? -1 : 1
+		);
+const linkedCourses = (state: State, v: VisitStub) =>
+	state.medications
+		.filter((c) => c.visitId === v.id)
+		.sort((a, b) => a.startAt - b.startAt || (a.id < b.id ? -1 : 1));
+const hasOutcome = (state: State, v: VisitStub) =>
+	v.outcomeNotes !== null ||
+	state.growth.some((g) => g.visitId === v.id) ||
+	state.vaccinations.some((a) => a.visitId === v.id) ||
+	state.medications.some((c) => c.visitId === v.id);
+
+const visitBaseView = (v: VisitStub) => ({
+	id: v.id,
+	starts_at: iso(v.startsAt),
+	duration_min: v.durationMin,
+	kind: v.kind,
+	status: visitStatus(v),
+	cancelled_at: v.cancelledAt === null ? null : iso(v.cancelledAt),
+	provider: v.provider,
+	location: v.location,
+	note: v.note,
+	outcome_notes: v.outcomeNotes,
+	revision: v.revision
+});
+
+// The list and the timeline: linked holds counts.
+function visitRowView(state: State, v: VisitStub) {
+	return {
+		...visitBaseView(v),
+		linked: {
+			growth: linkedGrowth(state, v).length,
+			vaccinations: linkedVaccinations(state, v).length,
+			medications: linkedCourses(state, v).length
+		}
+	};
+}
+
+// One visit, a write's answer: linked holds the rows, oldest first.
+function visitDetailView(state: State, v: VisitStub) {
+	return {
+		...visitBaseView(v),
+		linked: {
+			growth: linkedGrowth(state, v).map((g) => ({ id: g.id, measured_on: g.measuredOn })),
+			vaccinations: linkedVaccinations(state, v).map((a) => ({
+				id: a.id,
+				given_on: a.givenOn,
+				antigens: a.antigens
+			})),
+			medications: linkedCourses(state, v).map((c) => ({
+				id: c.id,
+				name: c.name,
+				dose_count: state.doses.filter((d) => d.medication === c.id).length
+			}))
+		}
+	};
+}
+
+// textOK: absent, or 1 to max characters that are not only spaces.
+const visitTextOK = (s: string | null, max: number) =>
+	s === null || (s.trim() !== '' && runes(s) <= max);
+
+// visitInput.mergeOnto: starts_at, duration_min, kind, provider, location, note, outcome_notes, cancelled; an
+// unchanged stored start stays valid. null keeps starts_at, duration_min and kind, and clears the texts.
+function mergeVisit(v: VisitStub, body: Body, kid: KidRow): string {
+	const stored = v.startsAt;
+	if (typeof body.starts_at === 'string') v.startsAt = unix(body.starts_at);
+	const t = now();
+	if (
+		v.startsAt === 0 ||
+		(v.startsAt !== stored &&
+			(v.startsAt < midnight(kid.birthDate, kid.timeZone) || v.startsAt > t + VISIT_HORIZON_S))
+	) {
+		return 'starts_at';
+	}
+	if (typeof body.duration_min === 'number') v.durationMin = body.duration_min;
+	if (v.durationMin < VISIT_DURATION_MIN.min || v.durationMin > VISIT_DURATION_MIN.max) {
+		return 'duration_min';
+	}
+	if (typeof body.kind === 'string') v.kind = body.kind;
+	if (!VISIT_KINDS.includes(v.kind)) return 'kind';
+	const texts = [
+		['provider', 'provider', VISIT_PROVIDER_MAX_LEN],
+		['location', 'location', VISIT_LOCATION_MAX_LEN],
+		['note', 'note', NOTE_MAX_LEN],
+		['outcome_notes', 'outcomeNotes', VISIT_OUTCOME_NOTES_MAX_LEN]
+	] as const;
+	for (const [key, prop, max] of texts) {
+		if (key in body) v[prop] = body[key] as string | null;
+		if (!visitTextOK(v[prop], max)) return key;
+	}
+	if ('cancelled' in body) {
+		if (body.cancelled === null) return 'cancelled';
+		if (body.cancelled === false) v.cancelledAt = null;
+		else if (v.cancelledAt === null) v.cancelledAt = t;
+	}
+	return '';
+}
+
+const visitOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.visits.find((v) => v.kidId === kidId && v.id === id) : undefined;
+
+// The page in store/visits.go: [from, to) by starts_at, newest first, or soonest first with order=asc.
+function respondVisitPage(res: ServerResponse, items: Item[], q: Page, asc: boolean) {
+	const later = (a: Item, b: { at: number; id: string }) =>
+		a.at > b.at || (a.at === b.at && a.id > b.id);
+	const rows = items
+		.filter((i) => i.at >= q.from && i.at < q.to)
+		.filter((i) => !q.after || (asc ? later(i, q.after) : later(q.after as Item, i)))
+		.sort((a, b) => (asc ? 1 : -1) * (a.at - b.at || (a.id < b.id ? -1 : 1)));
+	const page = rows.slice(0, q.limit);
+	const last = rows.length > q.limit ? page[page.length - 1] : null;
+	send(res, 200, {
+		visits: page.map((i) => i.out),
+		next_cursor: last ? Buffer.from(`${last.at}:${last.id}`).toString('base64url') : null
+	});
+}
+
+// visitDue in home.go: upcoming visits before the end of the kid-local day VISIT_DUE_LOOK_AHEAD_DAYS after today,
+// soonest first; empty when the module is off.
+function visitDue(state: State, kid: KidRow) {
+	if (!moduleStates(state, kid).some((m) => m.module === 'visits' && m.enabled)) return [];
+	const t = now();
+	const end = midnight(addDays(todayIn(kid.timeZone), VISIT_DUE_LOOK_AHEAD_DAYS + 1), kid.timeZone);
+	return state.visits
+		.filter(
+			(v) => v.kidId === kid.id && v.cancelledAt === null && v.startsAt > t && v.startsAt < end
+		)
+		.sort((a, b) => a.startsAt - b.startsAt || (a.id < b.id ? -1 : 1))
+		.map((v) => ({ kind: VISIT_TYPE, id: v.id, starts_at: iso(v.startsAt), visit_kind: v.kind }));
+}
+
+// A STUB, not the API's file: a marked stand-in carrying the UID, the sequence and the summary only.
+function stubIcs(v: VisitStub, kid: KidRow, full: boolean): string {
+	const summary = full
+		? `${kid.name}: ${VISIT_KIND_LABEL[v.kind]}${v.provider ? ` with ${v.provider}` : ''}`
+		: 'Medical visit';
+	return [
+		'BEGIN:VCALENDAR',
+		'VERSION:2.0',
+		'PRODID:-//happybabytracker//stub//EN',
+		'METHOD:PUBLISH',
+		'BEGIN:VEVENT',
+		`UID:visit-${v.id}@${STUB_ICS_HOST}`,
+		`SEQUENCE:${v.revision}`,
+		`SUMMARY:${summary}`,
+		'COMMENT:STUB CALENDAR FILE, NOT A REAL EVENT',
+		`STATUS:${v.cancelledAt === null ? 'CONFIRMED' : 'CANCELLED'}`,
+		'END:VEVENT',
+		'END:VCALENDAR',
+		''
+	].join('\r\n');
+}
+
+// An entry route: the malformed id first, then the body (PATCH, outcome), then the 404 an unknown or another kid's
+// visit shares.
+const visitRoute = (
+	method: string,
+	suffix: string,
+	fields: Record<string, FieldKind> | null,
+	run: (
+		state: State,
+		req: IncomingMessage,
+		res: ServerResponse,
+		kid: KidRow,
+		body: Body,
+		id: string
+	) => unknown
+): RouteDef => ({
+	method,
+	pattern: new RegExp(`^\\/v1\\/kids\\/([^/]+)\\/visits\\/([^/]+)${suffix}$`),
+	access: 'caregiver',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, id]) => {
+		if (!ENTRY_ID.test(id)) return noKid(res);
+		const body = fields ? await decodeBody(req, res, fields) : {};
+		if (!body) return;
+		return run(state, req, res, state.kids.get(kidId) as KidRow, body, id);
+	}
+});
+
+// The outcome's blocks: each the body its module's POST takes, re-validated by that module's stub validator.
+type OutcomeRows = {
+	growth: GrowthStub | null;
+	vaccinations: AdministrationStub[];
+	medications: CourseStub[];
+};
+
+function outcomeRows(v: VisitStub, kid: KidRow, body: Body): OutcomeRows | string {
+	const day = todayIn(kid.timeZone, v.startsAt);
+	const out: OutcomeRows = { growth: null, vaccinations: [], medications: [] };
+	if (body.growth) {
+		const g: GrowthStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			measuredOn: day,
+			weight: null,
+			length: null,
+			head: null,
+			note: null
+		};
+		const f = mergeGrowth(g, body.growth as Body, kid);
+		if (f) return `growth.${f}`;
+		out.growth = g;
+	}
+	for (const [i, a] of ((body.vaccinations ?? []) as Body[]).entries()) {
+		const row: AdministrationStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			givenOn: day,
+			antigens: [],
+			lot: null,
+			product: null,
+			note: null
+		};
+		const f = mergeAdministration(row, a, kid);
+		if (f) return `vaccinations[${i}].${f}`;
+		out.vaccinations.push(row);
+	}
+	for (const [i, m] of ((body.medications ?? []) as Body[]).entries()) {
+		const c: CourseStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			name: '',
+			dose: '',
+			schedule: { kind: '', times: [], hours: 0 },
+			startAt: v.startsAt,
+			endOn: null,
+			active: true,
+			note: null
+		};
+		const f = mergeMedication(c, m, kid);
+		if (f) return `medications[${i}].${f}`;
+		out.medications.push(c);
+	}
+	return out;
+}
+
+// decodeJSON over the nested blocks: a block of the wrong JSON type is 400, an unknown key in one 422.
+function outcomeBlocksOK(res: ServerResponse, body: Body): boolean {
+	const list = (v: unknown) => v === null || v === undefined || Array.isArray(v);
+	if (!list(body.vaccinations) || !list(body.medications)) {
+		error(res, 400, 'bad_request');
+		return false;
+	}
+	const blocks: [unknown, Record<string, FieldKind>][] = [
+		...(body.growth == null
+			? []
+			: [[body.growth, GROWTH_FIELDS] as [unknown, Record<string, FieldKind>]]),
+		...((body.vaccinations ?? []) as unknown[]).map(
+			(a) => [a, ADMINISTRATION_FIELDS] as [unknown, Record<string, FieldKind>]
+		),
+		...((body.medications ?? []) as unknown[]).map(
+			(m) => [m, MEDICATION_FIELDS] as [unknown, Record<string, FieldKind>]
+		)
+	];
+	return blocks.every(([block, fields]) => checkFields(res, block, fields) !== null);
+}
+
+const visitRoutes: RouteDef[] = [
+	kidRoute('GET', 'visits', 'caregiver', (state, req, res, kid) => {
+		const url = new URL(req.url ?? '/', STUB_URL);
+		const horizon = now() + VISIT_HORIZON_S;
+		// As the API: the horizon is the default to before from is checked against it.
+		if (!url.searchParams.has('to'))
+			url.searchParams.set('to', new Date(horizon * 1000).toISOString());
+		const q = parsePage(url);
+		if (typeof q === 'string') return error(res, 422, 'invalid', q);
+		if (q.to > horizon) return error(res, 422, 'invalid', 'to');
+		const order = url.searchParams.get('order');
+		if (order !== null && order !== 'asc' && order !== 'desc') {
+			return error(res, 422, 'invalid', 'order');
+		}
+		const items = state.visits
+			.filter((v) => v.kidId === kid.id)
+			.map((v) => ({ at: v.startsAt, id: v.id, out: visitRowView(state, v) }));
+		respondVisitPage(res, items, q, order === 'asc');
+	}),
+	kidRoute('POST', 'visits', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, VISIT_FIELDS);
+		if (!body) return;
+		const v: VisitStub = {
+			kidId: kid.id,
+			id: '',
+			startsAt: 0,
+			durationMin: DEFAULT_VISIT_DURATION_MIN,
+			kind: '',
+			provider: null,
+			location: null,
+			note: null,
+			outcomeNotes: null,
+			cancelledAt: null,
+			revision: 0
+		};
+		const field = mergeVisit(v, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (state.visits.filter((x) => x.kidId === kid.id).length >= MAX_VISITS_PER_KID) {
+			return error(res, 409, 'limit');
+		}
+		v.id = nextId(state, 'vis');
+		state.visits.push(v);
+		send(res, 201, visitDetailView(state, v));
+	}),
+	visitRoute('GET', '', null, (state, _req, res, kid, _body, id) => {
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		send(res, 200, visitDetailView(state, v));
+	}),
+	// UpdateVisit: merged on the stored row, then has_outcome (from the stored outcome) and not_past.
+	visitRoute('PATCH', '', VISIT_PATCH_FIELDS, (state, _req, res, kid, body, id) => {
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const merged = structuredClone(v);
+		const field = mergeVisit(merged, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (hasOutcome(state, v) && (merged.cancelledAt !== null || merged.startsAt > now())) {
+			return error(res, 409, 'has_outcome');
+		}
+		if (merged.outcomeNotes !== null && !visitPast(merged)) return error(res, 409, 'not_past');
+		Object.assign(v, merged, { revision: v.revision + 1 });
+		send(res, 200, visitDetailView(state, v));
+	}),
+	// DeleteVisit: linked (default delete) before the 404; delete takes each row as its module deletes it.
+	visitRoute('DELETE', '', null, (state, req, res, kid, _body, id) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const linked = q.get('linked');
+		if (linked !== null && linked !== 'delete' && linked !== 'keep') {
+			return error(res, 422, 'invalid', 'linked');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		if (linked === 'keep') {
+			for (const row of [...state.growth, ...state.vaccinations, ...state.medications]) {
+				if (row.visitId === v.id) row.visitId = null;
+			}
+		} else {
+			const courses = state.medications.filter((c) => c.visitId === v.id).map((c) => c.id);
+			state.growth = state.growth.filter((g) => g.visitId !== v.id);
+			state.vaccinations = state.vaccinations.filter((a) => a.visitId !== v.id);
+			state.medications = state.medications.filter((c) => c.visitId !== v.id);
+			state.doses = state.doses.filter((d) => !courses.includes(d.medication));
+			state.reminders = state.reminders.filter((r) => !courses.includes(r.medicationId));
+		}
+		state.visits = state.visits.filter((x) => x !== v);
+		send(res, 204);
+	}),
+	// recordOutcome: revision, something to record, the caps, the 404, the blocks' fields, then stale, not_past and
+	// the per-kid caps; one write or none.
+	visitRoute('POST', '\\/outcome', OUTCOME_FIELDS, (state, _req, res, kid, body, id) => {
+		if (!outcomeBlocksOK(res, body)) return;
+		const vaccinations = (body.vaccinations ?? []) as Body[];
+		const medications = (body.medications ?? []) as Body[];
+		if (typeof body.revision !== 'number') return error(res, 422, 'invalid', 'revision');
+		if (!('outcome_notes' in body) && !body.growth && !vaccinations.length && !medications.length) {
+			return error(res, 422, 'invalid', 'outcome');
+		}
+		if (vaccinations.length > MAX_OUTCOME_VACCINATIONS) {
+			return error(res, 422, 'invalid', 'vaccinations');
+		}
+		if (medications.length > MAX_OUTCOME_MEDICATIONS) {
+			return error(res, 422, 'invalid', 'medications');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const notes = body.outcome_notes as string | null | undefined;
+		if (
+			notes !== undefined &&
+			(notes === null || !visitTextOK(notes, VISIT_OUTCOME_NOTES_MAX_LEN))
+		) {
+			return error(res, 422, 'invalid', 'outcome_notes');
+		}
+		const rows = outcomeRows(v, kid, body);
+		if (typeof rows === 'string') return error(res, 422, 'invalid', rows);
+		if (body.revision !== v.revision) return error(res, 409, 'stale');
+		if (!visitPast(v)) return error(res, 409, 'not_past');
+		const count = (list: { kidId: string }[]) => list.filter((r) => r.kidId === kid.id).length;
+		if (
+			(rows.growth && count(state.growth) + 1 > MAX_GROWTH_PER_KID) ||
+			count(state.vaccinations) + rows.vaccinations.length > MAX_VACCINE_ADMINISTRATIONS_PER_KID ||
+			count(state.medications) + rows.medications.length > MAX_MEDICATIONS_PER_KID
+		) {
+			return error(res, 409, 'limit');
+		}
+		if (rows.growth) {
+			rows.growth.id = nextId(state, 'g');
+			state.growth.push(rows.growth);
+		}
+		for (const a of rows.vaccinations) {
+			a.id = nextId(state, 'v');
+			state.vaccinations.push(a);
+		}
+		for (const c of rows.medications) {
+			c.schedule = canonicalSchedule(c.schedule);
+			c.id = nextId(state, 'm');
+			state.medications.push(c);
+			materialiseCourse(state, c, now());
+		}
+		if (notes !== undefined) v.outcomeNotes = notes;
+		v.revision += 1;
+		send(res, 200, visitDetailView(state, v));
+	}),
+	visitRoute('GET', '\\/calendar', null, (state, req, res, kid, _body, id) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const detail = q.get('detail');
+		if (detail !== null && detail !== 'generic' && detail !== 'full') {
+			return error(res, 422, 'invalid', 'detail');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const file = stubIcs(v, kid, detail === 'full');
+		res.writeHead(200, {
+			'content-type': 'text/calendar; charset=utf-8',
+			'content-disposition': `attachment; filename="visit-${todayIn(kid.timeZone, v.startsAt)}.ics"`,
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
+			'content-length': String(Buffer.byteLength(file))
+		});
+		res.end(file);
 	})
 ];
 
@@ -4166,6 +4703,7 @@ routes.push(
 	...growthRoutes,
 	...vaccineRoutes,
 	...medicationRoutes,
+	...visitRoutes,
 	...milestoneRoutes,
 	...exportRoutes,
 	...pushRoutes,

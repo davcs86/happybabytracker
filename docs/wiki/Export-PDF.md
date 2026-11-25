@@ -15,7 +15,7 @@ Guardians and caregivers of the child can both open it. The page says "The file 
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/export/01-default-mobile.png" alt="Export PDF page for Ivy on a phone: From 10/26/2026, To 11/24/2026, eleven ticked module chips from Bottle to Medication, and a Download PDF button" width="260"> | <img src="../screenshots/export/01-default-desktop.png" alt="Export PDF page for Ivy on a desktop: the dates and the Download PDF button on the left, the ticked module chips on the right, the Export PDF entry highlighted in the left menu" width="460"> |
+| <img src="../screenshots/export/01-default-mobile.png" alt="Export PDF page for Ivy on a phone: From 10/26/2026, To 11/24/2026, twelve ticked module chips from Bottle to Medical visits, and a Download PDF button" width="260"> | <img src="../screenshots/export/01-default-desktop.png" alt="Export PDF page for Ivy on a desktop: the dates and the Download PDF button on the left, the ticked module chips on the right, the Export PDF entry highlighted in the left menu" width="460"> |
 
 ### How do I download a PDF?
 
@@ -25,7 +25,7 @@ Guardians and caregivers of the child can both open it. The page says "The file 
 
 The browser saves a file named `happybabytracker-FROM-TO.pdf`, for example `happybabytracker-2026-10-26-2026-11-24.pdf` for the dates above. You stay on the Export page. Nothing is kept on the server: each download makes the file again.
 
-The modules you can pick are Bottle, Nursing, Pumping, Diaper, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness and Medication.
+The modules you can pick are Bottle, Nursing, Pumping, Diaper, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication and Medical visits. The Medical visits section lists the visits of the range with their date and time, kind, doctor, place, reason and notes from the visit, and says which were cancelled; what was recorded at a visit is in its own module's section ([Medical visits](Medical-visits.md)).
 
 ### What if a module is switched off for the child?
 
@@ -33,7 +33,7 @@ A module a guardian switched off (see [Children and access](Children-and-access.
 
 | Phone |
 |---|
-| <img src="../screenshots/export/02-module-switched-off-mobile.png" alt="Export PDF for Ivy on a phone: ten ticked chips, then the sub-heading Switched off for this child with an unticked Pumping chip" width="260"> |
+| <img src="../screenshots/export/02-module-switched-off-mobile.png" alt="Export PDF for Ivy on a phone: eleven ticked chips, then the sub-heading Switched off for this child with an unticked Pumping chip" width="260"> |
 
 ### What are the messages I can get?
 
@@ -67,11 +67,11 @@ The same message appears when **To** is before **From** or after today.
 
 ### What can a caregiver do?
 
-A caregiver can export, the same as a guardian. The picture shows Leo (2 years 3 months) seen by a caregiver: five modules are ticked, and the others sit under "Switched off for this child".
+A caregiver can export, the same as a guardian. The picture shows Leo (2 years 3 months) seen by a caregiver: six modules are ticked, and the others sit under "Switched off for this child".
 
 | Phone |
 |---|
-| <img src="../screenshots/export/07-caregiver-mobile.png" alt="Export PDF for Leo on a phone with the Caregiver badge: Diaper, Growth, Vaccination, Sickness and Medication ticked, and Bottle, Nursing, Pumping, Sleep, Feeding and Milestones unticked under Switched off for this child" width="260"> |
+| <img src="../screenshots/export/07-caregiver-mobile.png" alt="Export PDF for Leo on a phone with the Caregiver badge: Diaper, Growth, Vaccination, Sickness, Medication and Medical visits ticked, and Bottle, Nursing, Pumping, Sleep, Feeding and Milestones unticked under Switched off for this child" width="260"> |
 
 ### What if I get Not found?
 
@@ -94,7 +94,7 @@ All the shots are in the [screenshot catalogue](../screenshots/README.md#export)
 ### Rules the screens show
 
 - Default range: the last 30 days ending today on the child's clock, never before the birth date. The range must be from the start date to today, at most 93 days counting both ends.
-- At least one module. All eleven are ticked by default; a switched-off module is unticked but can be ticked.
+- At least one module. All twelve are ticked by default; a switched-off module is unticked but can be ticked.
 - Fixed sentences: "The file is made when you download it and is not kept.", "Choose at least one module", "Enter a start date that is not before the birth date", "Enter an end date from the start date to today, at most 93 days in all", "The PDF cannot be made right now, try again in a moment".
 - A refusal brings you back to the page with the dates, the ticks and the message; nothing typed is lost. The messages never repeat what you typed.
 - No grant is the same 404 page as an unknown child, on the page and on the download.

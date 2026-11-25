@@ -9,6 +9,7 @@ import LayoutGridIcon from '@lucide/svelte/icons/layout-grid';
 import ListIcon from '@lucide/svelte/icons/list';
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
+import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
 import SyringeIcon from '@lucide/svelte/icons/syringe';
 import UserIcon from '@lucide/svelte/icons/user';
@@ -48,6 +49,7 @@ const PROFILE = new RegExp(`${KID}/(profile|access|settings)(/|$)`);
 const MODULE_OF: Partial<Record<string, ModuleId>> = {
 	vaccines: 'vaccination',
 	medication: 'medication',
+	visits: 'visits',
 	milestones: 'milestones'
 };
 
@@ -95,6 +97,7 @@ export function navModel(i: NavInput): { primary: PrimaryEntry[]; more: NavEntry
 			'Open',
 			section('medication')
 		),
+		...link('visits', 'Visits', StethoscopeIcon, kid && `${kid}/visits`, 'Open', section('visits')),
 		...link(
 			'milestones',
 			'Milestones',

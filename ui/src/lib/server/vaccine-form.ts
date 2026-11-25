@@ -119,24 +119,25 @@ function build(v: VaccineFormValues, mode: VaccineMode): Outcome {
 // message is null when the field's own message (VACCINE_FIELD_MESSAGES) applies.
 export function readVaccineForm(
 	form: FormData,
-	mode: VaccineMode
+	mode: VaccineMode,
+	{ prefix = '' }: { prefix?: string } = {}
 ): {
 	values: VaccineFormValues;
 	input: AdministrationInput | null;
 	field: string | null;
 	message: string | null;
 } {
-	const text = (k: string) => String(form.get(k) ?? '');
+	const text = (k: string) => String(form.get(`${prefix}${k}`) ?? '');
 	const values: VaccineFormValues = {
 		given_on: text('given_on'),
-		antigens: form.getAll('antigens').map(String),
+		antigens: form.getAll(`${prefix}antigens`).map(String),
 		lot: text('lot'),
 		product: text('product'),
 		note: text('note')
 	};
 	if (mode.kind === 'edit') {
 		for (const k of KEPT) {
-			const o = form.get(`${k}_original`);
+			const o = form.get(`${prefix}${k}_original`);
 			if (o !== null) values[`${k}_original`] = String(o);
 		}
 	}

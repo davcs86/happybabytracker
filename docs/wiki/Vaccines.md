@@ -2,7 +2,7 @@
 
 The Vaccines page shows a child's vaccination schedule as visits (for example "12-month vaccines"), says what is due, overdue, upcoming or already done, and keeps the record of every dose given. A schedule is only a list of what is usually offered and when: the page does not tell you what a child should have. All screenshots show fake data (for example Ivy, 1 year 1 month, on a stub schedule) on a frozen day, 24 November 2026. The full list of captured screens is in the [screenshot catalogue](../screenshots/README.md).
 
-With JavaScript, the Record a vaccination and edit forms open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+The Record a vaccination and Edit vaccination forms open in a sheet over the Vaccines page: the form's title, a **Close** button (the ×), the fields, **Save** and **Cancel**. Saving closes the sheet, the page underneath shows the change and a short message appears ([Forms in sheets](Forms-in-sheets.md)). Every form screenshot below is the open sheet. Without JavaScript, in a new tab or when you open the address directly, the same form is a page with the same steps; after a save there you land where the steps say.
 
 ## Guide
 
@@ -68,19 +68,25 @@ Another schedule gives another list for the same child and doses (shot `06-uk-sc
 
 ### How do I record a vaccination?
 
-1. On **Vaccines**, tap **Record a vaccination**. Or open a visit and tap **Record 12-month vaccines**: the form then opens with that visit's outstanding vaccines already ticked.
+1. On **Vaccines**, tap **Record a vaccination**. Or open a visit and tap **Record 12-month vaccines**: the sheet then opens with that visit's outstanding vaccines already ticked.
 2. Check **Date given**. It starts as today and cannot be in the future or before the birth date.
 3. Tick every vaccine given. With JavaScript, **Product shortcut** ticks the vaccines a product covers for you, for example a 6-in-1; without JavaScript, tick them yourself.
 4. Optionally fill **Lot number**, **Product name** and **Note**. If you tick **Other (product name required)**, the product name is needed.
-5. Tap **Save**. You land back on the Vaccines page, where the lines you ticked now read "Given".
+5. Tap **Save**. The sheet closes, the lines you ticked now read "Given" and the message "Vaccination recorded" appears. Without JavaScript you land back on the Vaccines page.
+
+Vaccines given at a medical visit can also be recorded from the visit, with **Record the visit** ([Medical visits](Medical-visits.md)); their edit sheet then has a **Recorded at a visit** link that opens it.
 
 A caregiver can record a dose.
 
+| Phone, the sheet |
+|---|
+| <img src="../screenshots/sheets/04-vaccine-record-mobile.png" alt="Vaccines page for Ivy dimmed behind a sheet titled Record a vaccination: Date given, Product shortcut, eight vaccine checkboxes, Lot number, Product name and Note, then Save and Cancel" width="260"> |
+
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/vaccines/10-new-dose-empty-mobile.png" alt="Record a vaccination for Ivy: Date given 11/24/2026, a Product shortcut list, eight vaccine checkboxes from Diphtheria to Other, and boxes for Lot number, Product name and Note" width="260"> | <img src="../screenshots/vaccines/12-new-dose-from-record-link-desktop.png" alt="The form opened from a visit's Record button on a wide screen: Hib and Measles are ticked, the lot, product and note boxes are on the right" width="460"> |
+| <img src="../screenshots/vaccines/10-new-dose-empty-mobile.png" alt="The Record a vaccination sheet over Ivy's dimmed Vaccines page: Date given 11/24/2026, a Product shortcut list, eight vaccine checkboxes from Diphtheria to Other, boxes for Lot number, Product name and Note, then Save and Cancel" width="260"> | <img src="../screenshots/vaccines/12-new-dose-from-record-link-desktop.png" alt="The sheet opened from a visit's Record button on a wide screen, centred over the dimmed Vaccines page: Hib and Measles are ticked, one column of fields down to Save and Cancel" width="460"> |
 
-If something is wrong, a box at the top says "Check the fields with a message." and the field says what to fix. What you typed stays. The messages are:
+If something is wrong, the sheet stays open, a box at the top says "Check the fields with a message." and the field says what to fix. What you typed stays. The messages are:
 
 - "Enter a date that is not in the future and not before the birth date".
 - "Choose at least one vaccine from the list".
@@ -91,19 +97,19 @@ If something is wrong, a box at the top says "Check the fields with a message." 
 
 | Phone |
 |---|
-| <img src="../screenshots/vaccines/11-new-dose-errors-mobile.png" alt="Record a vaccination with an empty date: an alert Check the fields with a message and, under Date given, the red text Enter a date that is not in the future and not before the birth date" width="260"> |
+| <img src="../screenshots/vaccines/11-new-dose-errors-mobile.png" alt="The Record a vaccination sheet with an empty date: a box Check the fields with a message and, under Date given, the red text Enter a date that is not in the future and not before the birth date" width="260"> |
 
 ### How do I edit or delete a vaccination?
 
-1. Tap the "Given ..." link of a line, a link under **Every season** or **Other recorded vaccinations**. The **Edit vaccination** page shows the date, the ticked vaccines, the lot, the product and the note as saved (shot `13-edit-administration`).
-2. Change what you need and tap **Save**. Emptying the lot number, product name or note clears it.
+1. Tap the "Given ..." link of a line, a link under **Every season** or **Other recorded vaccinations**. The **Edit vaccination** sheet opens over the page and shows the date, the ticked vaccines, the lot, the product and the note as saved (shot `13-edit-administration`).
+2. Change what you need and tap **Save**. The sheet closes and the message "Vaccination saved" appears. Emptying the lot number, product name or note clears it.
 3. To remove the record, tap **Delete this vaccination**. A box opens that says "This removes the dose for everyone with access to Ivy." Tap **Yes, delete this vaccination** to confirm.
 
 | Phone |
 |---|
-| <img src="../screenshots/vaccines/14-edit-delete-confirm-mobile.png" alt="Edit vaccination for Ivy with Delete opened: the sentence This removes the dose for everyone with access to Ivy and a red button Yes, delete this vaccination" width="260"> |
+| <img src="../screenshots/vaccines/14-edit-delete-confirm-mobile.png" alt="The Edit vaccination sheet for Ivy with Delete opened under Save and Cancel: the sentence This removes the dose for everyone with access to Ivy and a red button Yes, delete this vaccination" width="260"> |
 
-A long note or product name wraps in its box (shot `16-long-note-edit`).
+A long note or product name stays inside its single-line box and does not widen the sheet (shot `16-long-note-edit`).
 
 ### How do I dismiss a line I do not need?
 
@@ -146,8 +152,8 @@ A caregiver sees the same schedule and can record doses. There is no **Dismiss**
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
 | Vaccines | `/kids/[kid]/vaccines` | Guardian, caregiver. Admin: sent to `/admin/parents`. Signed out: sent to the sign-in page. No grant: the 404 page, identical to an unknown child | `01-no-schedule-guardian`, `02-us-schedule`, `03-us-schedule-about-open`, `04-line-dismissed`, `05-dismiss-before-result`, `06-uk-schedule`, `07-retired-schedule`, `08-no-schedule-caregiver`, `09-caregiver-on-schedule`, `15-long-product-on-page`, `17-completed-open` |
-| Record a vaccination | `/kids/[kid]/vaccines/new` (optional `?antigens=a,b` from a visit's Record button) | Guardian, caregiver | `10-new-dose-empty`, `11-new-dose-errors`, `12-new-dose-from-record-link` |
-| Edit vaccination | `/kids/[kid]/vaccines/[administration]` | Guardian, caregiver. No grant, an unknown dose and another child's dose are the same 404 page | `13-edit-administration`, `14-edit-delete-confirm`, `16-long-note-edit` |
+| Record a vaccination (sheet over Vaccines; a page without JavaScript) | `/kids/[kid]/vaccines/new` (optional `?antigens=a,b` from a visit's Record button) | Guardian, caregiver | `10-new-dose-empty`, `11-new-dose-errors`, `12-new-dose-from-record-link` |
+| Edit vaccination (sheet over Vaccines; a page without JavaScript) | `/kids/[kid]/vaccines/[administration]` | Guardian, caregiver. No grant, an unknown dose and another child's dose are the same 404 page | `13-edit-administration`, `14-edit-delete-confirm`, `16-long-note-edit` |
 
 ### Rules the screens show
 

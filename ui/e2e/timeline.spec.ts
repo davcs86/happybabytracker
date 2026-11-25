@@ -127,7 +127,16 @@ test('the filter form shows the kid’s dates and every enabled tracker, ticked'
 	await page.goto(timelineUrl(RANGE));
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(DAY1);
 	await expect(page.getByLabel('To', { exact: true })).toHaveValue(DAY2);
-	for (const name of ['Bottle', 'Nursing', 'Pumping', 'Sleep', 'Diaper', 'Solids', 'Symptom']) {
+	for (const name of [
+		'Bottle',
+		'Nursing',
+		'Pumping',
+		'Sleep',
+		'Diaper',
+		'Solids',
+		'Symptom',
+		'Visits'
+	]) {
 		await expect(box(page, name)).toBeChecked();
 	}
 	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
@@ -191,6 +200,89 @@ test('a switched-off module’s entries stay hidden until its box is ticked', as
 	await expect(link(page, '09:05 Bottle 120 ml')).toBeVisible();
 	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1).first()).toHaveText('Bottles 1 · 120 ml');
+});
+
+// A sick visit and a cancelled dental visit around a diaper, on DAY1.
+async function seedVisits(api: Api) {
+	const sick = await seed(api, 'visits', { kind: 'sick', starts_at: `${DAY1}T10:00:00Z` });
+	const dental = await seed(api, 'visits', { kind: 'dental', starts_at: `${DAY1}T15:00:00Z` });
+	const cancel = await api('PATCH', `/v1/kids/${MIA.id}/visits/${dental.id}`, { cancelled: true });
+	expect(cancel.status).toBe(200);
+	await seed(api, 'diapers', { at: `${DAY1}T11:30:00Z`, kind: 'wet' });
+	return { sick, dental };
+}
+// A visit row has no aria-label: its name is its visible text, clock first.
+const SICK = /^10:00\s*Sick visit$/;
+const DENTAL = /^15:00\s*Dental visit\s*Cancelled$/;
+
+test('a visit is a row of its day, Cancelled when it is, and opens the visit page', async ({
+	page
+}) => {
+	const { sick, dental } = await seedVisits(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
+	await expect(box(page, 'Visits')).toBeChecked();
+	const rows = entries(page, DAY1).getByRole('link');
+	await expect(rows).toHaveCount(3);
+	await expect(rows.nth(0)).toHaveAccessibleName(DENTAL);
+	await expect(rows.nth(1)).toHaveAccessibleName('11:30 Diaper wet');
+	await expect(rows.nth(2)).toHaveAccessibleName(SICK);
+	await expect(rows.nth(0)).toHaveAttribute('href', `/kids/${MIA.id}/visits/${dental.id}`);
+	await expect(rows.nth(0)).not.toHaveAttribute('data-drawer');
+	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)']);
+	await expectAccessible(page);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await link(page, SICK).click();
+	await expect(page).toHaveURL(`/kids/${MIA.id}/visits/${sick.id}`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Sick visit' })).toBeVisible();
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('the Visits box narrows the timeline to visits, and unticking it hides them', async ({
+	page
+}) => {
+	await seedVisits(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}&types=visit`));
+	await expect(box(page, 'Visits')).toBeChecked();
+	await expect(box(page, 'Diaper')).not.toBeChecked();
+	await expect(entries(page, DAY1)).toHaveCount(2);
+	await expect(link(page, '11:30 Diaper wet')).toHaveCount(0);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await box(page, 'Visits').uncheck();
+	await box(page, 'Diaper').check();
+	await show(page);
+	await page.waitForURL(/types=diaper/);
+	await expect(page).not.toHaveURL(/types=visit/);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, SICK)).toHaveCount(0);
+	await expect(link(page, DENTAL)).toHaveCount(0);
+});
+
+test('with Medical visits off, visits stay hidden until the Visits box is ticked', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await seedVisits(api);
+	expect(
+		(await api('PUT', `/v1/kids/${MIA.id}/modules/visits`, { enabled: false })).status
+	).toBeLessThan(300);
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
+	await expect(box(page, 'Visits')).not.toBeChecked();
+	await expect(box(page, 'Diaper')).toBeChecked();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, SICK)).toHaveCount(0);
+	await expectAccessible(page);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await box(page, 'Visits').check();
+	await show(page);
+	await expect(link(page, SICK)).toBeVisible();
+	await expect(link(page, DENTAL)).toBeVisible();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 });
 
 // One more diaper than a page holds, on one day.

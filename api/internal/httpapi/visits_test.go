@@ -158,6 +158,9 @@ func TestVisitListOrderAndRange(t *testing.T) {
 	if got, _ = listIDs("?to=" + url.QueryEscape(ts(t0))); len(got) != 1 || got[0] != ids[0] {
 		t.Errorf("past: %v", got)
 	}
+	if got, _ = listIDs("?order=asc&from=" + url.QueryEscape(ts(t0.Add(36*time.Hour)))); len(got) != 1 || got[0] != ids[3] {
+		t.Errorf("from a day and a half ahead, no to: %v", got)
+	}
 	wantInvalid(t, k.do(http.MethodGet, base+"?order=up", ana, nil), "order")
 	wantInvalid(t, k.do(http.MethodGet, base+"?to="+url.QueryEscape(ts(t0.Add(constants.VisitHorizon+time.Hour))), ana, nil), "to")
 }

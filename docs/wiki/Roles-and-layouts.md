@@ -30,7 +30,7 @@ The header is the same everywhere: the child switcher on the left, the notificat
 
 ## Modules
 
-Each child has trackers and tools that can be switched on or off (Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication). The defaults depend on the child's age: for a child past two years the baby trackers and Milestones start off. A guardian changes them on the Modules page ([Children and access](Children-and-access.md)).
+Each child has trackers and tools that can be switched on or off (Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication, Medical visits). The defaults depend on the child's age: for a child past two years the baby trackers and Milestones start off. A guardian changes them on the Modules page ([Children and access](Children-and-access.md)).
 
 - A switched-off module has no quick-log tile on Home and its entries are hidden from the Timeline unless you ask for them.
 - Its entry in More and in the side navigation is hidden. Its page, opened by address, says it is switched off and that nothing was deleted.

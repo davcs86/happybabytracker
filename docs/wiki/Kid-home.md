@@ -13,7 +13,7 @@ From the top:
 1. **The child's name and age**, for example "Mia" and "4 months 16 days". The age is written in the largest units that fit: days for a newborn ("10 days"), months and days under a year ("4 months 16 days", or "9 months" on the day it is exact), years and months after that ("1 year 1 month", "4 years 11 months"), and whole years on a birthday ("5 years").
 2. **Running now**, only while a sleep or nursing timer is running.
 3. **Quick log**, a grid of tiles, one per tracker or tool that is switched on for this child.
-4. **Due**, only when a medication dose or a vaccine visit is due.
+4. **Due**, only when a medication dose, a vaccine visit or a medical visit is due.
 5. **Today**, the totals for the child's day, only when the child has a tracker that has totals.
 6. For a guardian, an **Add a child** link at the bottom. For a caregiver, a **Leave this child** card instead.
 
@@ -82,11 +82,17 @@ If you press **End sleep** or **End nursing** on a timer that has run for more t
 
 ### What does Due show?
 
-**Due** lists medication doses and vaccine visits that need attention, with the medication first. A line reads, for example, "Vitamin D · 10:00 · overdue", "Iron drops · 20:00" or "8-week vaccines · Overdue". Each line opens its own page. The state is in words, not only in colour.
+**Due** lists medication doses and vaccine visits that need attention, then the medical visits of the next seven days, in that order. A line reads, for example, "Vitamin D · 10:00 · overdue", "Iron drops · 20:00", "8-week vaccines · Overdue" or "Well-child visit, Fri 27 Nov, 09:15". Each line opens its own page. The state is in words, not only in colour.
 
-Only three lines are shown. If more are due, a link follows for each kind that has more, for example "2 more on the Vaccines page" or "2 more on the Medication page".
+Only three lines are shown. If more are due, a link follows for each kind that has more, for example "2 more on the Vaccines page", "2 more on the Medication page" or "2 more on the Visits page".
 
-When the Vaccination or Medication module is switched off for the child, its lines are not listed. With nothing due, the Due heading is not shown.
+When the Vaccination, Medication or Medical visits module is switched off for the child, its lines are not listed. With nothing due, the Due heading is not shown.
+
+| Phone |
+|---|
+| <img src="../screenshots/visits/13-home-due-mobile.png" alt="Mia's home on a phone: the Due list with Amoxicillin · 15:30 and Well-child visit, Fri 27 Nov, 09:15" width="260"> |
+
+A medical visit in three days, under the course another visit started ([Medical visits](Medical-visits.md)).
 
 ### What does Today show?
 
@@ -141,7 +147,7 @@ If the due date is still ahead, the second line reads "Before expected term" wit
 
 ### What if a module is switched off?
 
-A switched-off module has no tile in Quick log, no entry in More or the side navigation (Vaccines, Medication, Milestones), and, for Vaccination and Medication, no lines in Due. Its entries are not deleted. In the capture below a guardian switched off Pumping and Feeding for Mia, so the grid goes straight from Diaper and Sleep to Milestones. Sami (30 months, Milestones off by default) has no Milestones tile (`home/16-sami-30-months-milestones-off`).
+A switched-off module has no tile in Quick log, no entry in More or the side navigation (Vaccines, Medication, Visits, Milestones), and, for Vaccination, Medication and Medical visits, no lines in Due. Its entries are not deleted. In the capture below a guardian switched off Pumping and Feeding for Mia, so the grid goes straight from Diaper and Sleep to Milestones. Sami (30 months, Milestones off by default) has no Milestones tile (`home/16-sami-30-months-milestones-off`).
 
 | Phone |
 |---|
@@ -160,7 +166,7 @@ A switched-off module has no tile in Quick log, no entry in More or the side nav
 - **A running timer replaces its tile.** Only one sleep timer and one nursing timer can run for a child; a second start is refused on the form with a link to the running one ([Logging trackers](Logging-trackers.md)).
 - **One tap starts sleep:** the Sleep tile is a form post, so it works without JavaScript. So do End sleep, End nursing, Switch side and Leave this child, which is a two-step form (open the card, then confirm).
 - **Timer limit:** a session can last at most 24 hours. Ending a longer one sends you to its entry to set the end time.
-- **Due** shows at most three lines in the order the server returns them (medication, then vaccine visits), then one "N more on the ... page" link for each kind that has more. The server decides what is due; the page does not.
+- **Due** shows at most three lines in the order the server returns them (medication, then vaccine visits, then medical visits), then one "N more on the ... page" link for each kind that has more. The server decides what is due; the page does not.
 - **Today** has a row per switched-on module among Bottles, Nursing, Diapers and Sleep, for the child's own day, with volumes in the parent's unit. "None yet" is the empty value.
 - **Times** on timers and Due medication are on the child's clock, not the viewer's.
 - **Corrected age** is shown only for a child born before 37 weeks and until the second birthday.

@@ -201,15 +201,18 @@ func visitOK(w http.ResponseWriter, err error) bool {
 
 func (d Deps) listVisits(w http.ResponseWriter, r *http.Request) {
 	now := d.Now()
+	v := r.URL.Query()
+	horizon := now.Add(constants.VisitHorizon)
+	if !v.Has("to") {
+		// The horizon is the default to before from is checked against it, so a future from needs no to.
+		v.Set("to", horizon.UTC().Format(time.RFC3339))
+		r = r.Clone(r.Context())
+		r.URL.RawQuery = v.Encode()
+	}
 	q, bad := parseListQuery(r, now)
 	if bad != "" {
 		respondInvalid(w, bad)
 		return
-	}
-	v := r.URL.Query()
-	horizon := now.Add(constants.VisitHorizon)
-	if !v.Has("to") {
-		q.To = horizon
 	}
 	if q.To.After(horizon) {
 		respondInvalid(w, "to")

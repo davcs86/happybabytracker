@@ -1,12 +1,15 @@
-import type { Page } from '@playwright/test';
-import { submit } from '../helpers.js';
+import type { Locator, Page } from '@playwright/test';
+import { openSheet, submit } from '../helpers.js';
 import { ANA, CLEO, LEO, MIA, moveStubClock } from '../stub-api.js';
 import { as, at, kidPath, must, type Api } from './seed.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
 
 const url = (kid: string, rest = '') => `/kids/${kid}/medication${rest}`;
-const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const save = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+const field = (where: Locator, label: string) => where.getByLabel(label, { exact: true });
+const save = (sheet: Locator) => submit(sheet.getByRole('button', { name: 'Save', exact: true }));
+const link = (name: string) => (p: Page) => p.getByRole('link', { name, exact: true });
+const doseLink = (id: string) => (p: Page) =>
+	p.locator(`a[href="${url(MIA.id, `/doses/${id}`)}"]:visible`).first();
 
 async function open(page: Page, path: string) {
 	await page.goto(path);
@@ -88,69 +91,89 @@ test('course list and doses', async ({ page }) => {
 		'05-dose-logged-now',
 		'Log dose now: the course shows the dose just logged'
 	);
-	await open(page, url(MIA.id, `/doses/${rows.morning.id}`));
-	await shot(page, 'medication', '06-dose-edit', 'Edit a dose: time, amount and note');
-	await field(page, 'Amount').fill('a'.repeat(81));
-	await save(page);
-	await expect(page.getByRole('alert').first()).toBeVisible();
+	const dose = await openSheet(page, url(MIA.id), doseLink(rows.morning.id), 'Edit dose');
+	await shot(
+		page,
+		'medication',
+		'06-dose-edit',
+		'The Edit dose sheet over the Medication page: time, amount and note'
+	);
+	await field(dose, 'Amount').fill('a'.repeat(81));
+	await save(dose);
+	await expect(dose.getByRole('alert').first()).toBeVisible();
 	await shot(
 		page,
 		'medication',
 		'07-dose-edit-error',
-		'Refused: an 81-character amount, the typed values kept'
+		'Refused in the sheet: an 81-character amount, the typed values kept'
 	);
-	await open(page, url(MIA.id, `/doses/${rows.morning.id}`));
+	await openSheet(page, url(MIA.id), doseLink(rows.morning.id), 'Edit dose');
 	await openDetails(page, 'Delete this dose');
-	await shot(page, 'medication', '08-dose-delete-confirm', 'Delete dose opened: the confirm step');
-	await open(page, url(MIA.id, `/${rows.calpol.id}`));
-	await shot(page, 'medication', '09-course-edit', 'Edit course: fixed times 08:00 and 20:00');
+	await shot(
+		page,
+		'medication',
+		'08-dose-delete-confirm',
+		'Delete dose opened inside the Edit dose sheet: the confirm step'
+	);
+	await openSheet(page, url(MIA.id), link('Edit Calpol'), 'Edit course');
+	await shot(
+		page,
+		'medication',
+		'09-course-edit',
+		'The Edit course sheet: fixed times 08:00 and 20:00'
+	);
 	await openDetails(page, 'Delete this course');
 	await shot(
 		page,
 		'medication',
 		'10-course-delete-confirm',
-		'Delete course opened: says how many doses go with it'
+		'Delete course opened inside the Edit course sheet: says how many doses go with it'
 	);
-	await open(page, url(MIA.id, `/${rows.amoxil.id}`));
+	await openSheet(page, url(MIA.id), link('Edit Amoxil'), 'Edit course');
 	await shot(
 		page,
 		'medication',
 		'11-course-edit-every',
-		'Edit an every-8-hours course with a last day'
+		'The Edit course sheet for an every-8-hours course with a last day'
 	);
 });
 
 test('new course form', async ({ page }) => {
 	await signInAs(page, ANA);
-	await open(page, url(MIA.id, '/new'));
-	await shot(page, 'medication', '12-new-course-empty', 'New course: as needed by default');
-	await save(page);
-	await expect(page.getByRole('alert').first()).toBeVisible();
+	const sheet = await openSheet(page, url(MIA.id), link('Add a course'), 'Add a course');
+	await shot(
+		page,
+		'medication',
+		'12-new-course-empty',
+		'The Add a course sheet over the empty Medication page: as needed by default'
+	);
+	await save(sheet);
+	await expect(sheet.getByRole('alert').first()).toBeVisible();
 	await shot(
 		page,
 		'medication',
 		'13-new-course-errors',
-		'Refused: a missing name; the form reports one problem at a time'
+		'Refused in the sheet: a missing name; the form reports one problem at a time'
 	);
-	await field(page, 'Name').fill('Ibuprofen');
-	await field(page, 'Dose').fill('2.5 ml');
-	await page.getByRole('radio', { name: 'At fixed times' }).check();
-	await field(page, 'Time 1').fill('08:00');
-	await field(page, 'Time 2').fill('14:00');
-	await field(page, 'Time 3').fill('20:00');
+	await field(sheet, 'Name').fill('Ibuprofen');
+	await field(sheet, 'Dose').fill('2.5 ml');
+	await sheet.getByRole('radio', { name: 'At fixed times' }).check();
+	await field(sheet, 'Time 1').fill('08:00');
+	await field(sheet, 'Time 2').fill('14:00');
+	await field(sheet, 'Time 3').fill('20:00');
 	await shot(
 		page,
 		'medication',
 		'14-new-course-fixed-times',
-		'At fixed times: the time slots appear; the earlier name error is still shown'
+		'At fixed times in the sheet: the time slots appear; the earlier name error is still shown'
 	);
-	await page.getByRole('radio', { name: 'Every few hours' }).check();
-	await field(page, 'Hours between doses').fill('6');
+	await sheet.getByRole('radio', { name: 'Every few hours' }).check();
+	await field(sheet, 'Hours between doses').fill('6');
 	await shot(
 		page,
 		'medication',
 		'15-new-course-every-hours',
-		'Every few hours: the interval and the start; the earlier name error is still shown'
+		'Every few hours in the sheet: the interval and the start; the earlier name error is still shown'
 	);
 });
 
