@@ -55,6 +55,10 @@ const ROUTES: [RegExp, Loader][] = [
 		() => import('../routes/(app)/kids/[kid]/visits/[visit]/edit/+page.svelte')
 	],
 	[
+		new RegExp(`^${KID}/visits/[^/]+/outcome$`),
+		() => import('../routes/(app)/kids/[kid]/visits/[visit]/outcome/+page.svelte')
+	],
+	[
 		new RegExp(`^${KID}/milestones/new$`),
 		() => import('../routes/(app)/kids/[kid]/milestones/new/+page.svelte')
 	],
