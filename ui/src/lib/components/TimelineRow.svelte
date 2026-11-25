@@ -66,6 +66,10 @@
 		aria-label={name}
 		class="flex min-h-[60px] items-center gap-3 rounded-xl border bg-card px-3 py-2 hover:bg-accent"
 	>
+		<!-- First in the DOM, last on screen: the name leads with the clock, and the visible text must match it. -->
+		{#if line.startsWith(`${clock} `)}
+			<span class="order-last flex-none font-mono text-[13px] text-muted-foreground">{clock}</span>
+		{/if}
 		<span class="tracker-chip {visual.chip}"><Icon aria-hidden="true" class="size-[18px]" /></span>
 		<span class="min-w-0 flex-1">
 			<span class="block text-[14.5px] font-semibold [overflow-wrap:anywhere]">{title}</span>
@@ -80,6 +84,5 @@
 				>
 			{/if}
 		</span>
-		<span class="flex-none font-mono text-[13px] text-muted-foreground">{clock}</span>
 	</a>
 </li>

@@ -6,6 +6,7 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
+	navLink,
 	signIn,
 	submit,
 	untilHydrated
@@ -88,7 +89,7 @@ const itemText = (id: string) => {
 const summaries = (page: Page) => page.locator('main details > summary');
 const list = (page: Page, title: string) =>
 	page.locator('main details').filter({
-		has: page.locator(':scope > summary', { hasText: new RegExp(`^${title}( ·|$)`) })
+		has: page.locator(':scope > summary', { hasText: new RegExp(`^${title}( ·|\\s*$)`) })
 	});
 const item = (scope: Page | Locator, id: string) =>
 	scope.getByRole('listitem').filter({ hasText: itemText(id) });
@@ -383,7 +384,9 @@ test('a 30-month kid with the module off: the page loads from the kid links, the
 	await expect(quickLog(page).getByRole('link', { name: 'Milestones', exact: true })).toHaveCount(
 		0
 	);
-	await page.getByRole('link', { name: `Milestones for ${SAMI.name}` }).click();
+	// A switched-off module has no navigation entry; its page is still reachable.
+	await expect(await navLink(page, 'Milestones')).toHaveCount(0);
+	await page.goto(pageUrl(SAMI.id));
 	await onPage(page, SAMI);
 	await expect(page.getByText(NOTE_OFF(SAMI.name))).toBeVisible();
 	await expect(summaries(page)).toHaveCount(12);

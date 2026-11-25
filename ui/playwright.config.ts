@@ -20,6 +20,8 @@ export default defineConfig({
 	workers: 1,
 	use: {
 		baseURL: UI_ORIGIN,
+		// The design's motion is user-triggered and honours this; tests assert the settled page.
+		reducedMotion: 'reduce',
 		extraHTTPHeaders: { 'x-forwarded-proto': 'http', 'x-forwarded-for': '203.0.113.10' },
 		launchOptions: process.env.PW_CHROMIUM_PATH
 			? { executablePath: process.env.PW_CHROMIUM_PATH }

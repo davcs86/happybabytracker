@@ -148,23 +148,23 @@
 								<!-- eslint-disable svelte/no-navigation-without-resolve -- the dose page's path helper, absolute like the other links to pages without JavaScript -->
 								<a
 									href={doseEntryPath(data.kid.id, dose.id)}
-									aria-label="{nameOf(dose.medication)}, {when}"
-									class="flex min-h-15 items-center gap-3 rounded-xl border bg-card px-3 py-2 [overflow-wrap:anywhere]"
+									aria-label="{nameOf(dose.medication)}, {when}{dose.amount
+										? ` ${dose.amount}`
+										: ''}{dose.note ? ` ${dose.note}` : ''}"
+									class="grid min-h-15 grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-0.5 rounded-xl border bg-card px-3 py-2 [overflow-wrap:anywhere]"
 								>
 									<span
 										aria-hidden="true"
-										class="grid size-10 shrink-0 place-items-center rounded-xl bg-accent text-primary-ink"
+										class="row-span-3 grid size-10 shrink-0 place-items-center self-center rounded-xl bg-accent text-primary-ink"
 									>
 										<NotebookPenIcon class="size-5" />
 									</span>
-									<span class="flex min-w-0 flex-1 flex-col gap-0.5">
-										<span class="text-[15px] font-semibold">{nameOf(dose.medication)}</span>
-										{#if dose.amount}<span class="text-sm">{dose.amount}</span>{/if}
-										{#if dose.note}
-											<span class="text-[13.5px] text-muted-foreground">{dose.note}</span>
-										{/if}
-									</span>
-									<span class="shrink-0 text-sm text-muted-foreground">{when}</span>
+									<span class="text-[15px] font-semibold">{nameOf(dose.medication)}</span>
+									<span class="text-sm text-muted-foreground">{when}</span>
+									{#if dose.amount}<span class="col-span-2 text-sm">{dose.amount}</span>{/if}
+									{#if dose.note}
+										<span class="col-span-2 text-[13.5px] text-muted-foreground">{dose.note}</span>
+									{/if}
 								</a>
 								<!-- eslint-enable svelte/no-navigation-without-resolve -->
 							</li>

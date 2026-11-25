@@ -3,7 +3,7 @@ import { expect, test, type Download, type Page } from '@playwright/test';
 import { EXPORT_MODULES, MODULE_LABEL } from '../src/lib/constants.js';
 import { todayIn } from '../src/lib/format.js';
 import { EXPORT_DEFAULT_DAYS } from '../src/lib/server/constants.js';
-import { expectAccessible, expectNotFoundPage, signIn, untilHydrated } from './helpers.js';
+import { expectAccessible, expectNotFoundPage, navLink, signIn, untilHydrated } from './helpers.js';
 import {
 	ADMIN,
 	ANA,
@@ -90,7 +90,7 @@ test('every module is listed; a switched-off one is unticked under its sub-headi
 test('the kid links lead to the page', async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}`);
-	await page.getByRole('link', { name: `Export PDF for ${IVY.name}` }).click();
+	await (await navLink(page, 'Export PDF')).click();
 	await expect(
 		page.getByRole('heading', { name: 'Export PDF', exact: true, level: 1 })
 	).toBeVisible();

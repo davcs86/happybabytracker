@@ -11,6 +11,7 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
+	navLink,
 	signIn,
 	submit,
 	untilHydrated
@@ -268,18 +269,23 @@ test('an inactive course shows no next due and an ended one waits behind the det
 	await expectAccessible(page);
 });
 
-test('a course may be dosed with the medication module off, and the page still lists it', async ({
+test('with the medication module off the page says so and the course is kept and still accepts a dose', async ({
 	page
 }) => {
 	const api = await stubAs(ANA);
-	await seedCourse(api, { name: 'Calpol' });
+	const course = await seedCourse(api, { name: 'Calpol' });
 	const off = await api('PUT', `/v1/kids/${MIA.id}/modules/medication`, { enabled: false });
 	expect(off.status).toBeLessThan(300);
 	await signIn(page, ANA);
 	await page.goto(pageUrl());
-	await expect(card(page, 'Calpol')).toBeVisible();
-	await submit(logNow(card(page, 'Calpol')));
-	await onMedication(page);
+	await expect(
+		page.getByRole('heading', { name: `Medication is switched off for ${MIA.name}`, level: 2 })
+	).toBeVisible();
+	await expect(card(page, 'Calpol')).toHaveCount(0);
+	await expect(page.getByRole('link', { name: 'Add a course' })).toHaveCount(0);
+	await expectAccessible(page);
+	// The data is kept: the API still takes a dose for the course.
+	await seedDose(api, course.id);
 	expect(await doses(api)).toHaveLength(1);
 });
 
@@ -578,7 +584,7 @@ test('the kid page links to the medication page for every role', async ({ page }
 	await signIn(page, ANA);
 	for (const kid of [MIA, LEO]) {
 		await page.goto(`/kids/${kid.id}`);
-		await page.getByRole('link', { name: `Medication for ${kid.name}` }).click();
+		await (await navLink(page, 'Medication')).click();
 		await expect(page).toHaveURL(pageUrl(kid.id));
 		await expect(
 			page.getByRole('heading', { name: 'Medication', exact: true, level: 1 })

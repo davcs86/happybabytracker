@@ -66,7 +66,7 @@ test('a child not born early has no weeks at birth row', async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/profile`);
 	await expect(region(page, 'Details').getByText('Female', { exact: true })).toBeVisible();
-	await expect(page.getByText('Weeks at birth')).toHaveCount(0);
+	await expect(region(page, 'Details').getByText('Weeks at birth', { exact: true })).toHaveCount(0);
 	await expectAccessible(page);
 });
 

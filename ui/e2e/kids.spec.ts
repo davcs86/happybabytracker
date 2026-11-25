@@ -114,7 +114,7 @@ test('the kid home shows name and age; only guardians get the profile, settings 
 }) => {
 	await signIn(page, ANA);
 	await expectLanding(page, { kid: MIA });
-	await expect(page.getByText(ageOf(MIA))).toBeVisible();
+	await expect(page.getByRole('main').getByText(ageOf(MIA))).toBeVisible();
 	let entries = await moreEntries(page);
 	for (const [name, path] of [
 		['Modules', 'modules'],
@@ -125,20 +125,20 @@ test('the kid home shows name and age; only guardians get the profile, settings 
 	]) {
 		await expect(entry(entries, name)).toHaveAttribute('href', `/kids/${MIA.id}/${path}`);
 	}
-	await expectAccessible(page);
-
 	if (await entries.getByRole('button', { name: 'Close' }).isVisible()) {
 		await page.keyboard.press('Escape');
 	}
+	await expectAccessible(page);
 	const sheet = await openSwitcher(page, MIA.name);
 	await sheet.getByRole('link', { name: new RegExp(`^${LEO.name}`) }).click();
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
-	await expect(page.getByText(ageOf(LEO))).toBeVisible();
+	await expect(page.getByRole('main').getByText(ageOf(LEO))).toBeVisible();
 	entries = await moreEntries(page);
 	await expect(
 		entries.getByRole('link', { name: /^\s*(Modules|Child profile|Settings)/ })
 	).toHaveCount(0);
-	await expect(entry(entries, 'Milestones')).toHaveAttribute('href', `/kids/${LEO.id}/milestones`);
+	// Leo is past the milestone lists, so his Milestones module is off and the entry is hidden.
+	await expect(entry(entries, 'Milestones')).toHaveCount(0);
 	await expect(entry(entries, 'Export PDF')).toHaveAttribute('href', `/kids/${LEO.id}/export`);
 	await expectAccessible(page);
 });
@@ -225,7 +225,9 @@ test.describe('a device zone ICU lists only under an older name', () => {
 		await page.getByRole('button', { name: 'Add child' }).click();
 		await expect(page.getByRole('heading', { name: 'Anu', level: 1 })).toBeVisible();
 		await page.goto('/');
-		await expect(page.getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))).toBeVisible();
+		await expect(
+			page.getByRole('main').getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))
+		).toBeVisible();
 		await expectAccessible(page);
 	});
 });
@@ -262,7 +264,9 @@ test('settings keeps a stored zone missing from the ICU list selected', async ({
 	await page.reload();
 	await expect(page.getByLabel('Time zone')).toHaveValue('Asia/Kolkata');
 	await page.goto('/');
-	await expect(page.getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))).toBeVisible();
+	await expect(
+		page.getByRole('main').getByText(formatAge('2026-09-01', todayIn('Asia/Kolkata')))
+	).toBeVisible();
 });
 
 test('create a child without "born early"', async ({ page }) => {
@@ -274,7 +278,9 @@ test('create a child without "born early"', async ({ page }) => {
 	await fillKid(page, { name: '  Noa ', birthDate: '2026-10-01', sex: 'Female', timeZone: 'UTC' });
 	await page.getByRole('button', { name: 'Add child' }).click();
 	await expect(page.getByRole('heading', { name: 'Noa', level: 1 })).toBeVisible();
-	await expect(page.getByText(formatAge('2026-10-01', todayIn('UTC')))).toBeVisible();
+	await expect(
+		page.getByRole('main').getByText(formatAge('2026-10-01', todayIn('UTC')))
+	).toBeVisible();
 	await expectAccessible(page);
 
 	await entry(await moreEntries(page), 'Settings').click();
@@ -617,7 +623,9 @@ test.describe('without JavaScript', () => {
 		await page.getByRole('button', { name: 'Add child' }).click();
 		await expect(page.getByRole('heading', { name: 'Zoe', level: 1 })).toBeVisible();
 		await page.goto('/');
-		await expect(page.getByText(formatAge('2026-08-01', todayIn('UTC')))).toBeVisible();
+		await expect(
+			page.getByRole('main').getByText(formatAge('2026-08-01', todayIn('UTC')))
+		).toBeVisible();
 	});
 
 	test('settings renders a stored zone missing from the ICU list as selected', async ({ page }) => {

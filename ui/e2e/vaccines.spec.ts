@@ -4,6 +4,7 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
+	navLink,
 	signIn,
 	submit,
 	untilHydrated
@@ -538,10 +539,11 @@ test('the page is linked from the kid home and stays reachable with the module o
 	).toBe(204);
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}`);
-	await page.getByRole('link', { name: `Vaccines for ${IVY.name}` }).click();
+	await expect(await navLink(page, 'Vaccines')).toHaveCount(0);
+	await page.goto(pageUrl(IVY.id));
 	await onPage(page);
 	await page.goto(`/kids/${LEO.id}`);
-	const leo = page.getByRole('link', { name: `Vaccines for ${LEO.name}` });
+	const leo = await navLink(page, 'Vaccines');
 	expect(await href(leo)).toBe(`${UI_ORIGIN}${pageUrl(LEO.id)}`);
 	const row = await seed(api, { given_on: AT_TWO_MONTHS, antigens: ['hib'] });
 	for (const path of [pageUrl(IVY.id), newUrl(IVY.id), editUrl(IVY.id, row.id)]) {

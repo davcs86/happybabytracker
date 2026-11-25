@@ -32,7 +32,7 @@
 				class="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-sm font-semibold text-primary-ink after:content-[attr(data-initial)]"
 			></span>
 			<span class="min-w-0 truncate">{kid.name}</span>
-			<ChevronDownIcon aria-hidden="true" class="size-4 shrink-0" />
+			<ChevronDownIcon aria-hidden="true" data-chrome class="size-4 shrink-0" />
 		</a>
 	{/if}
 	<div class="ml-auto flex items-center gap-2">
@@ -44,7 +44,7 @@
 				? 'border-primary text-primary'
 				: ''}"
 		>
-			<BellIcon aria-hidden="true" class="size-5" />
+			<BellIcon aria-hidden="true" data-chrome class="size-5" />
 		</a>
 		{#if kid}<Badge>{kid.role === 'guardian' ? 'Guardian' : 'Caregiver'}</Badge>{/if}
 	</div>

@@ -293,6 +293,9 @@ test('no grant, an unknown entry and another kid’s entry are the same 404 page
 test('kid settings offer who and cdc; saving cdc changes the growth page’s source and curves', async ({
 	page
 }) => {
+	const api = await stubAs(ANA);
+	// The chart appears with the first measurement.
+	await seed(api, { measured_on: TODAY, weight: { unit: 'kg', amount: 9200 } });
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}/settings`);
 	await untilHydrated(field(page, 'Name'));
@@ -350,7 +353,13 @@ test('a corrected kid shows the corrected age beside the age on the home and the
 	const ages = `${formatAge(born, todayIn('UTC'))} (corrected ${formatAge(addDays(born, 70), todayIn('UTC'))})`;
 	await signIn(page, ANA);
 	await page.goto(`/kids/${kid.body.id}`);
-	await expect(page.getByText(ages, { exact: true })).toBeVisible();
+	// Home puts the corrected age on its own line, with the weeks at birth.
+	await expect(page.getByText(formatAge(born, todayIn('UTC')), { exact: true })).toBeVisible();
+	await expect(
+		page.getByText(`Corrected age ${formatAge(addDays(born, 70), todayIn('UTC'))} · born 30w 0d`, {
+			exact: true
+		})
+	).toBeVisible();
 	await expectAccessible(page);
 	await page.goto(`/kids/${kid.body.id}/growth`);
 	await expect(page.getByText(ages, { exact: true })).toBeVisible();
@@ -380,11 +389,13 @@ test('a preterm kid before the due date says before expected term, never a zero 
 	expect(kid.status).toBe(201);
 	const ages = `${formatAge(born, today)} (before expected term)`;
 	await signIn(page, ANA);
-	for (const path of [`/kids/${kid.body.id}`, `/kids/${kid.body.id}/growth`]) {
-		await page.goto(path);
-		await expect(page.getByText(ages, { exact: true })).toBeVisible();
-		await expect(page.getByText(/corrected 0 days/)).toHaveCount(0);
-	}
+	await page.goto(`/kids/${kid.body.id}`);
+	await expect(page.getByText(formatAge(born, today), { exact: true })).toBeVisible();
+	await expect(page.getByText('Before expected term · born 30w 0d', { exact: true })).toBeVisible();
+	await expect(page.getByText(/corrected 0 days/i)).toHaveCount(0);
+	await page.goto(`/kids/${kid.body.id}/growth`);
+	await expect(page.getByText(ages, { exact: true })).toBeVisible();
+	await expect(page.getByText(/corrected 0 days/)).toHaveCount(0);
 	await expectAccessible(page);
 });
 
@@ -394,10 +405,10 @@ test('the Growth tile follows Sickness and Medication in the 24+ band and is gon
 	await signIn(page, ANA);
 	await page.goto(`/kids/${LEO.id}`);
 	await expect(quickLog(page).getByRole('listitem')).toHaveText([
-		'Sickness',
-		'Medication',
-		'Growth',
-		'Vaccination'
+		/^\s*Sickness/,
+		/^\s*Medication/,
+		/^\s*Growth/,
+		/^\s*Vaccination/
 	]);
 	await expect(quickLog(page).getByRole('link', { name: 'Growth', exact: true })).toHaveAttribute(
 		'href',
@@ -412,9 +423,9 @@ test('the Growth tile follows Sickness and Medication in the 24+ band and is gon
 	await page.reload();
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(quickLog(page).getByRole('listitem')).toHaveText([
-		'Sickness',
-		'Medication',
-		'Vaccination'
+		/^\s*Sickness/,
+		/^\s*Medication/,
+		/^\s*Vaccination/
 	]);
 });
 

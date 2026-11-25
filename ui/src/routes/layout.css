@@ -235,3 +235,13 @@
 		--h: var(--hue-symptom);
 	}
 }
+
+/* Reduced motion: the sheet and the chevron turn are the only motion, and they stop. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation: none !important;
+		transition: none !important;
+	}
+}
