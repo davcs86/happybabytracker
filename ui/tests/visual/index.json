@@ -1,0 +1,1430 @@
+[
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/access/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/access/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/access/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/access/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/access/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/access/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/access/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/access/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/access/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "access",
+		"route": "/kids/{kid}/access",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/access/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/add-a-child/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/add-a-child/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/add-a-child/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/add-a-child/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "add-a-child",
+		"route": "/kids/new",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/add-a-child/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/admin/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/admin/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/admin/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/admin/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/admin/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/admin/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/admin/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/admin/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/admin/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/admin/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/admin/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "admin",
+		"route": "/admin/parents",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/admin/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-profile/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "child-profile",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/child-profile/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/child-settings/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/child-settings/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/child-settings/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/child-settings/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "child-settings",
+		"route": "/kids/{kid}/settings",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/child-settings/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "choose-child",
+		"route": "/kids",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/choose-child/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/course/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/course/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/course/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/course/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/course/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/course/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/course/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/course/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/course/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "course",
+		"route": "/kids/{kid}/medication/new",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/course/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/dose/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/dose/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/dose/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/dose/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/dose/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "dose",
+		"route": "/kids/{kid}/medication/doses/{dose}",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/dose/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/error/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/error/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/error/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/error/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/error/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "error",
+		"route": "/does-not-exist",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/error/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/export/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/export/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/export/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/export/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/export/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "export",
+		"route": "/kids/{kid}/export",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/export/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/growth/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/growth/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/growth/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/growth/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/growth/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/growth/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/growth/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/growth/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/growth/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/growth/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/growth/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "growth",
+		"route": "/kids/{kid}/growth",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/growth/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/kid-home/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "kid-home",
+		"route": "/kids/{kid}",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/kid-home/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/medication/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/medication/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/medication/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/medication/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/medication/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/medication/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/medication/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/medication/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/medication/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/medication/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/medication/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "medication",
+		"route": "/kids/{kid}/medication",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/medication/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "milestone-form",
+		"route": "/kids/{kid}/milestones/new",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestone-form/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/milestones/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestones/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/milestones/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestones/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/milestones/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/milestones/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "milestones",
+		"route": "/kids/{kid}/milestones",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/milestones/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/my-profile/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "my-profile",
+		"route": "/account",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/my-profile/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/notifications/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/notifications/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/notifications/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/notifications/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/notifications/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "notifications",
+		"route": "/account/notifications",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/notifications/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/set-password/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/set-password/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/set-password/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/set-password/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/set-password/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "set-password",
+		"route": "/invite/{token}",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/set-password/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "sign-in",
+		"route": "/login",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/sign-in/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/symptom/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/symptom/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/symptom/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/symptom/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/symptom/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/symptom/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/symptom/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "symptom",
+		"route": "/kids/{kid}/log/symptom",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/symptom/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/timeline/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/timeline/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/timeline/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/timeline/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/timeline/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/timeline/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "timeline",
+		"route": "/kids/{kid}/timeline",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/timeline/wide-dark/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "phone-light",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/phone-light/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "phone-dark",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/phone-dark/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "desktop-light",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/desktop-light/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "desktop-dark",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/desktop-dark/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "wide-light",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/wide-light/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "wide-dark",
+		"state": "default-frame",
+		"file": "screenshots/vaccines/wide-dark/01-default-frame.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "phone-light",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/phone-light/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "phone-dark",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/phone-dark/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "desktop-light",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/desktop-light/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "desktop-dark",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/desktop-dark/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "wide-light",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/wide-light/02-default-full-height.png"
+	},
+	{
+		"page": "vaccines",
+		"route": "/kids/{kid}/vaccines",
+		"variant": "wide-dark",
+		"state": "default-full-height",
+		"file": "screenshots/vaccines/wide-dark/02-default-full-height.png"
+	}
+]
