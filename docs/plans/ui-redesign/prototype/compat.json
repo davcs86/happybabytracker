@@ -1,0 +1,115 @@
+{
+  "v": 1,
+  "mode": "omelette",
+  "root": "project/",
+  "title": "Scope form decisions needed",
+  "entry": "Kid Home.dc.html",
+  "pages": [
+    {
+      "path": "Kid Home.dc.html",
+      "title": "Kid Home",
+      "kind": "page"
+    },
+    {
+      "path": "Choose Child.dc.html",
+      "title": "Choose Child",
+      "kind": "page"
+    },
+    {
+      "path": "Vaccines.dc.html",
+      "title": "Vaccines",
+      "kind": "page"
+    },
+    {
+      "path": "Growth.dc.html",
+      "title": "Growth",
+      "kind": "page"
+    },
+    {
+      "path": "Timeline.dc.html",
+      "title": "Timeline",
+      "kind": "page"
+    },
+    {
+      "path": "My Profile.dc.html",
+      "title": "My profile",
+      "kind": "page"
+    },
+    {
+      "path": "Child Profile.dc.html",
+      "title": "Child profile",
+      "kind": "page"
+    },
+    {
+      "path": "Admin.dc.html",
+      "title": "Admin (separate sign-in)",
+      "kind": "page"
+    },
+    {
+      "path": "Symptom.dc.html",
+      "title": "Sickness: log a symptom",
+      "kind": "page"
+    },
+    {
+      "path": "Medication.dc.html",
+      "title": "Medication",
+      "kind": "page"
+    },
+    {
+      "path": "Course.dc.html",
+      "title": "Medication: course",
+      "kind": "page"
+    },
+    {
+      "path": "Dose.dc.html",
+      "title": "Medication: edit dose",
+      "kind": "page"
+    },
+    {
+      "path": "Notifications.dc.html",
+      "title": "Notifications",
+      "kind": "page"
+    },
+    {
+      "path": "Milestones.dc.html",
+      "title": "Milestones",
+      "kind": "page"
+    },
+    {
+      "path": "Milestone Form.dc.html",
+      "title": "Milestones: mark, add, edit",
+      "kind": "page"
+    },
+    {
+      "path": "Export.dc.html",
+      "title": "Export PDF",
+      "kind": "page"
+    },
+    {
+      "path": "PDF Export.dc.html",
+      "title": "PDF layout (reference)",
+      "kind": "page"
+    }
+  ],
+  "migratorVersion": "artifact-migrator (claude-design-backend 1e4e97bf9cb8)",
+  "createdAt": "2026-11-22T17:59:04.997Z",
+  "source": {
+    "v": 1,
+    "app": "claude-design",
+    "url": "https://claude.ai/design/p/b5519964-f875-44a5-9837-8f6375c22bee",
+    "projectId": "b5519964-f875-44a5-9837-8f6375c22bee",
+    "exportedAt": "2026-11-22T17:59:04.997Z"
+  },
+  "report": {
+    "itemsVersion": 2,
+    "pages": {
+      "total": 1,
+      "ok": 1,
+      "partial": 0,
+      "notMigrated": 0
+    },
+    "items": [],
+    "truncated": 0,
+    "truncatedLeftOut": 0
+  }
+}

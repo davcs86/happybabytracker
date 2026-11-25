@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Child profile</title>
+<script src="./react.production.min.js"></script><script src="./react-dom.production.min.js"></script><script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+<script src="./hbt-med.js"></script>
+<script src="./hbt-ms.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select{font-family:inherit;color:inherit}summary{cursor:pointer}button[aria-disabled=true]{opacity:.55;cursor:not-allowed}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Child profile · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<button onClick="{{ resetAll }}" style="min-height:34px;border-radius:8px;border:1px solid #d8d0c8;background:#fff;color:#2a2420;font-size:12px;font-weight:600;cursor:pointer">Reset sample data</button>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>shadcn-svelte parts</b><br>Card, Badge, Button, Alert, Sheet (details, add person), <b>AlertDialog</b> (remove access, both delete steps), Input, Label, Checkbox, Sonner (undo for role change, remove, add).<br><br><b>No-JS baseline</b><br>Every sheet is a route (<code>/children/:id/edit</code>, <code>/access/:person/remove</code>, <code>/delete</code>, <code>/delete/confirm</code>). Step 2 is a separate page; the server checks the typed name, so the disabled button is a convenience.<br><br><b>Facts applied</b><br>Caregivers get no child profile. Delete is permanent and immediate, confirmed by typing the name. The time zone is editable by guardians. The last active guardian’s role and remove controls show disabled with a line; the API stays the authority (a click still returns its refusal).<br><br><b>Assumptions</b><br>1) “Read-only for caregivers” is a drawn variant, needs an owner decision. 2) “Export a PDF first” is a placeholder until export exists; a grace period is an open owner question. 3) Adding a person is by an existing parent’s username (the app has no email). 4) The time-zone notice has no extra confirmation. 5) Refusal wording is mine.<br><br>Sample data. The prototype keeps showing times in the original zone after a change.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<sc-if value="{{ desktop }}" hint-placeholder-val="{{ false }}"><div data-hbt="side" role="navigation" aria-label="Primary" style="width:200px;flex:none;border-right:1px solid var(--border);padding:20px 12px;display:flex;flex-direction:column;gap:4px;background:var(--card)"><div style="font-weight:700;font-size:16px;padding:0 10px 14px">Happy baby</div>
+<sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.sideStyle }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div></sc-if>
+<div data-hbt="frame" style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+<div role="main" style="flex:1;overflow:auto;padding:16px 16px 28px;display:flex;flex-direction:column;gap:18px">
+<div data-hbt="head" style="display:flex;align-items:center;gap:8px;min-height:48px;margin-bottom:8px"><a href="{{ hdr.href }}" data-drawer="Switch child" data-drawer-fit aria-label="Child: {{ hdr.name }}. Switch child" data-shadcn="Button" style="min-height:48px;min-width:0;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 8px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);text-decoration:none;font-size:15px;font-weight:600"><span aria-hidden="true" style="width:32px;height:32px;border-radius:99px;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex:none">{{ hdr.initial }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ hdr.name }}</span><span style="flex:none;color:var(--muted);display:inline-flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></a><div data-hbt-bell style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px"><a href="Notifications.dc.html" aria-label="Notification settings" data-shadcn="Button" style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></a><span data-role style="font-size:12px;font-weight:600;padding:4px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)">{{ roleLabel }}</span></div></div>
+<sc-if value="{{ deleted }}" hint-placeholder-val="{{ false }}"><div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><div style="font-size:17px;font-weight:600">{{ deletedTitle }}</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5">{{ deletedText }}</div><a href="Kid Home.dc.html" style="min-height:44px;display:inline-flex;align-items:center;font-size:14px;color:var(--fg);text-decoration:underline">Go to Home</a></div></sc-if>
+
+<sc-if value="{{ blocked }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1">Child profile</h1></div><div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><div style="font-size:17px;font-weight:600">{{ blockedTitle }}</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5">{{ blockedText }}</div></div></sc-if>
+
+<sc-if value="{{ ok }}" hint-placeholder-val="{{ true }}"><div data-w="grid" style="display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1">{{ kid }}</h1><div data-sub style="font-size:14px;color:var(--muted);line-height:1.4">{{ subAge }}</div></div><div style="font-size:14px;color:var(--muted);line-height:1.5">{{ subtitle }}</div></div>
+
+
+<div data-w="l"><div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:center"><div style="font-size:16px;font-weight:600;flex:1">Details</div><sc-if value="{{ canEdit }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openDetails }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Edit details</button></sc-if></div>
+<sc-for list="{{ detailRows }}" as="d" hint-placeholder-count="5"><div><div style="font-size:12px;color:var(--muted)">{{ d.label }}</div><div style="font-size:15px">{{ d.value }}</div></div></sc-for>
+<div style="font-size:12.5px;color:var(--muted);line-height:1.5">The birth date and weeks at birth set corrected age on Home. Times for everyone follow the time zone.</div></div>
+
+<div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px;gap:0"><div style="font-size:16px;font-weight:600;padding-bottom:8px">Settings for {{ kid }}</div>
+<sc-for list="{{ settings }}" as="m" hint-placeholder-count="3"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;gap:10px;min-height:52px;border-top:1px solid var(--border);color:var(--fg);text-decoration:none"><div style="flex:1"><div style="font-size:14.5px;font-weight:500">{{ m.label }}</div><div style="font-size:12.5px;color:var(--muted)">{{ m.note }}</div></div><span aria-hidden="true">›</span></a></sc-for></div></div>
+
+<div data-w="r"><sc-if value="{{ canEdit }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:18px">
+<div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px;gap:0"><div style="font-size:16px;font-weight:600">People with access</div><div style="font-size:13px;color:var(--muted);line-height:1.5;padding:4px 0 8px">Guardians can change who sees {{ kid }}. Caregivers can log, view and export. A child always keeps at least one active guardian.</div>
+<sc-for list="{{ people }}" as="p" hint-placeholder-count="4"><div style="border-top:1px solid var(--border);padding:8px 0;display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div style="font-size:15px;font-weight:500">{{ p.name }}</div><span data-shadcn="Badge" style="font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted);white-space:nowrap">{{ p.role }}</span><sc-if value="{{ p.you }}" hint-placeholder-val="{{ false }}"><span data-shadcn="Badge" style="font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted);white-space:nowrap">You</span></sc-if><sc-if value="{{ p.off }}" hint-placeholder-val="{{ false }}"><span data-shadcn="Badge" style="border:1.5px dashed var(--fg);font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;white-space:nowrap">Account disabled</span></sc-if></div>
+<div style="font-size:12.5px;color:var(--muted);font-family:'Geist Mono',monospace">{{ p.username }}</div>
+<sc-if value="{{ p.canAct }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:8px;flex-wrap:wrap"><button onClick="{{ p.onRole }}" aria-disabled="{{ p.sole }}" aria-label="{{ p.roleAria }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">{{ p.roleLabel }}</button><button onClick="{{ p.onRemove }}" aria-disabled="{{ p.sole }}" aria-label="{{ p.removeAria }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Remove access</button></div>
+<sc-if value="{{ p.sole }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted)">This is {{ kid }}’s only active guardian, so these can’t be changed.</div></sc-if></sc-if>
+<sc-if value="{{ p.soleYou }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">You are {{ kid }}’s only active guardian. Give another person guardian access before you leave or change your role.</div></sc-if></div></sc-for>
+<button onClick="{{ openInvite }}" data-shadcn="Button" style="margin-top:12px;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px;color:var(--fg)">Add a person</button></div>
+
+<div data-shadcn="Card" style="border:1.5px solid var(--fg);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:10px"><div style="font-size:16px;font-weight:600">Delete all data for {{ kid }}</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5">Removes {{ kid }} and everything logged for them, for everyone who has access. It is permanent and immediate. You confirm twice.</div><button onClick="{{ openDelete }}" data-shadcn="Button" style="min-height:52px;border-radius:12px;border:1.5px solid var(--fg);background:var(--card);font-size:15px;font-weight:600;cursor:pointer">Delete all data for {{ kid }}…</button></div>
+</div></sc-if></div>
+</div></sc-if>
+</div>
+<div data-hbt="tabs" role="navigation" aria-label="Primary" style="flex:none;display:{{ phoneDisplay }};border-top:1px solid var(--border);background:var(--card);padding:6px 6px 10px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a href="{{ t.href }}" onClick="{{ t.on }}" style="{{ t.tabStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div>
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(20,12,8,.5);display:flex;align-items:flex-end;justify-content:center;z-index:5"><div onClick="{{ stop }}" role="dialog" aria-label="{{ sheetTitle }}" data-shadcn="Sheet" style="width:100%;max-width:480px;max-height:92%;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 32px rgba(0,0,0,.2)">
+<div style="width:36px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+<div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:600;flex:1">{{ sheetTitle }}</div><button onClick="{{ closeSheet }}" aria-label="Close" style="width:44px;height:44px;border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5"><b>Couldn’t save.</b> {{ formErr }}</div></sc-if>
+<sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<sc-if value="{{ form.note }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;line-height:1.5">{{ form.note }}</div></sc-if>
+<sc-if value="{{ form.hasList }}" hint-placeholder-val="{{ false }}"><ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6"><sc-for list="{{ form.list }}" as="li" hint-placeholder-count="3"><li>{{ li.text }}</li></sc-for></ul></sc-if>
+<sc-for list="{{ form.groups }}" as="g" hint-placeholder-count="1"><div role="group" aria-label="{{ g.label }}"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ g.label }}</div><div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ g.pills }}" as="p" hint-placeholder-count="3"><button onClick="{{ p.on }}" aria-pressed="{{ p.pressed }}" class="hbt-chip" style="{{ p.style }}">{{ p.label }}</button></sc-for></div><sc-if value="{{ g.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;margin-top:6px;font-weight:600">{{ g.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.fields }}" as="f" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;gap:6px"><label for="{{ f.id }}" style="font-size:12px;color:var(--muted)">{{ f.label }}</label><input id="{{ f.id }}" type="{{ f.type }}" inputmode="{{ f.mode }}" autocomplete="{{ f.auto }}" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px"><sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ f.hint }}</div></sc-if><sc-if value="{{ f.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;font-weight:600">{{ f.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.checks }}" as="c" hint-placeholder-count="1"><label style="display:flex;align-items:center;gap:10px;min-height:44px;font-size:14px"><input type="checkbox" checked="{{ c.checked }}" onChange="{{ c.on }}" style="width:24px;height:24px;flex:none">{{ c.label }}</label></sc-for>
+<sc-if value="{{ form.extra }}" hint-placeholder-val="{{ false }}"><button onClick="{{ form.onExtra }}" aria-disabled="true" data-shadcn="Button" style="min-height:48px;border-radius:12px;border:1px dashed var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer">{{ form.extra }}</button></sc-if>
+<div style="display:flex;gap:8px"><button onClick="{{ closeSheet }}" data-shadcn="Button" style="flex:1;min-height:56px;border-radius:14px;border:1px solid var(--border);background:var(--card);font-size:16px;font-weight:600;cursor:pointer;padding:0 16px;color:var(--fg)">{{ form.cancel }}</button><button onClick="{{ form.submit }}" aria-disabled="{{ form.off }}" data-shadcn="Button" style="{{ form.submitStyle }}">{{ form.label }}</button></div>
+<sc-if value="{{ form.offHint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ form.offHint }}</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ isTheme }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><fieldset data-shadcn="RadioGroup" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:8px">Choose how Happy baby looks. It applies to every screen.</legend><sc-for list="{{ themeOpts }}" as="o" hint-placeholder-count="3"><label class="hbt-radiorow"><input type="radio" name="hbt-theme" value="{{ o.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}"><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">{{ o.label }}</span><span style="font-size:13px;color:var(--muted);line-height:1.4">{{ o.hint }}</span></span><span aria-hidden="true" style="{{ o.swatch }}"></span></label></sc-for></fieldset><button onClick="{{ closeSheet }}" data-shadcn="Button" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer">Done</button></div></sc-if>
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="5"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;min-height:52px;border-top:1px solid var(--border);color:var(--fg);text-decoration:none;font-size:15px">{{ m.label }}<span style="margin-left:auto;font-size:12px;color:var(--muted)">{{ m.note }}</span></a></sc-for></div></sc-if>
+</div></div></sc-if>
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}"><div role="{{ toastRole }}" style="position:absolute;left:12px;right:12px;bottom:84px;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9"><span style="flex:1">{{ toastText }}</span><sc-if value="{{ toastRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doRetry }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Try again</button></sc-if><sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doUndo }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Undo</button></sc-if></div></sc-if>
+</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={dark:false,desktop:false,cg:false,sheet:null,toast:null,undo:null,retry:null,toastErr:false,formErr:null,f:{},err:{},pk:null,deleted:null,ro:false};
+  componentWillUnmount(){clearTimeout(this.tt);}
+  toast(text,undo){clearTimeout(this.tt);this.setState({toast:text,undo:undo||null,retry:null,toastErr:false});this.tt=setTimeout(()=>this.setState({toast:null,undo:null}),6000);}
+  fail(er,retry){clearTimeout(this.tt);if(this.state.sheet){this.setState({formErr:er.msg});}else{const c=er.code==='network'||er.code==='server';this.setState({toast:er.msg,undo:null,retry:c?retry:null,toastErr:true});this.tt=setTimeout(()=>this.setState({toast:null,retry:null,toastErr:false}),c?12000:6000);}}
+
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false;
+    const H=window.HBT,A=window.HBTA,s=this.state,fp=H.pref('fail')||'off',self=this,P=h=>({__html:h}),now=Date.now(),D=s.desktop,f=s.f||{},er=s.err||{};
+    const R=fn=>(...a)=>{fn(...a);this.setState({});};
+    const IC={Home:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',Timeline:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',Growth:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',More:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'};
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)',tl:'oklch(0.45 0.15 38)',soft:'oklch(0.3 0.05 55)',ink:'oklch(0.84 0.11 55)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)',tl:'oklch(0.8 0.12 55)',soft:'oklch(0.95 0.04 55)',ink:'oklch(0.42 0.12 38)'};
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--toast-link:${L.tl};--soft:${L.soft};--ink:${L.ink};--destructive:${DK?'oklch(0.76 0.14 25)':'oklch(0.46 0.17 27)'};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const pill=on=>'';
+    const btn='min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer';
+    const btnP='min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    const badge='font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted);white-space:nowrap';
+    const card='border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px';
+    const opt=(label,on,cur)=>({label,on,style:seg(cur)});
+    const W=fn=>{const e=H.tryWrite('other');if(e)return self.fail(e,()=>W(fn));fn();};
+    const isG=!s.cg;
+    const toggles=[
+      {title:'Next save',opts:[opt('Works',R(()=>H.setPref('fail','off')),fp==='off'),opt('Offline',R(()=>H.setPref('fail','network')),fp==='network'),opt('Error',R(()=>H.setPref('fail','server')),fp==='server')]},
+
+      {title:'Role',opts:[opt('Guardian',()=>this.setState({cg:false}),!s.cg),opt('Caregiver',()=>this.setState({cg:true}),s.cg)]},
+      {title:'Caregiver view',opts:[opt('No page',()=>this.setState({ro:false}),!s.ro),opt('Read-only',()=>this.setState({ro:true}),s.ro)]},
+      {title:'Theme',opts:[opt('Light',()=>HBTUI.setTheme('light'),HBTUI.theme()==='light'),opt('Dark',()=>HBTUI.setTheme('dark'),HBTUI.theme()==='dark'),opt('Auto',()=>HBTUI.setTheme('auto'),HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const tabDefs=[['Home','Kid Home.dc.html'],['Timeline','Timeline.dc.html'],['Growth','Growth.dc.html'],['More','']];
+    const tabs=tabDefs.map(([l,h])=>({label:l,icon:P(IC[l]),href:h||'#more',on:l==='More'?(e=>{e.preventDefault();this.setState({sheet:'more',f:{},err:{},formErr:null});}):undefined,
+      tabStyle:`flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;text-decoration:none;color:${l==='More'?'var(--primary)':'var(--muted)'}`,
+      sideStyle:`display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;background:${l==='More'?'var(--bg)':'transparent'};color:${l==='More'?'var(--primary)':'var(--fg)'}`}));
+    const setF=(k,v)=>this.setState({f:{...this.state.f,[k]:v}});
+    const fld=(id,label,key,o)=>({id,label,type:(o&&o.type)||'text',mode:(o&&o.mode)||'text',auto:(o&&o.auto)||'off',value:f[key]===undefined?'':f[key],on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',hint:(o&&o.hint)||''});
+    const grp=(label,items,cur,key,err)=>({label,err:err||'',pills:items.map(i=>({label:i[0],pressed:cur===i[1],style:pill(cur===i[1]),on:()=>setF(key,i[1])}))});
+    const bad=e=>this.setState({err:e,formErr:'Check the fields with a message.'});
+    const open=(sh,f0)=>()=>this.setState({sheet:sh,f:f0||{},err:{},formErr:null});
+    const done=(msg,undo)=>{this.setState({sheet:null,f:{},err:{},formErr:null});this.toast(msg,undo);};
+    const guard=(fn,okMsg,keepSnap)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err&&typeof r.err==='string')return self.fail({code:'rule',msg:r.err});if(r&&r.err)return bad(r.err);done(typeof okMsg==='function'?okMsg(r):okMsg,keepSnap?snap:null);});
+    const act=(fn,okMsg,undo)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err)return self.fail({code:'rule',msg:typeof r.err==='string'?r.err:'Check the fields.'});this.toast(typeof okMsg==='function'?okMsg(r):okMsg,undo?snap:null);});
+    const dangerStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--fg);color:var(--bg);font-size:15px;font-weight:600;cursor:pointer';
+    const okStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    let form={note:'',hasList:false,list:[],groups:[],fields:[],checks:[],extra:'',onExtra:()=>{},cancel:'Cancel',label:'',submit:()=>{},submitStyle:okStyle,off:false,offHint:''};
+    let titles={more:'More',theme:'Change theme',theme:'Change theme'},X={};
+    const dt=t=>A.when(t,now);
+    const myKids=H.kids();
+
+    const canTry=s.cg?myKids.filter(k=>A.myRole(k.id)):myKids.filter(k=>A.myRole(k.id)==='Guardian');
+    const roView=!!(s.cg&&s.ro);
+    const gKids=canTry;
+    const kidId=gKids.some(k=>k.id===s.pk)?s.pk:(gKids.some(k=>k.id===H.kid())?H.kid():(gKids[0]&&gKids[0].id));
+    const kn=kidId?H.kidName(kidId):'';
+    const mt=kidId?H.kidMeta(kidId):null;
+    const blocked=!s.deleted&&((s.cg&&!s.ro)||gKids.length===0);
+    const ok=!s.deleted&&!blocked;
+    const canEdit=!roView;
+    const ppl=kidId?A.accessFor(kidId):[];
+    const bornTxt=mt&&mt.born?new Date(mt.born+'T12:00:00Z').toLocaleDateString('en-US',{timeZone:'UTC',month:'long',day:'numeric',year:'numeric'}):'Not set';
+    const detailRows=mt?[{label:'Name',value:mt.name},{label:'Born',value:bornTxt},{label:'Weeks at birth',value:mt.gaw+' weeks '+mt.gad+(mt.gad===1?' day':' days')},{label:'Sex (optional)',value:mt.sex||'Not set'},{label:'Time zone',value:mt.zone}]:[];
+    const settings=roView?[{label:'Growth chart source',note:'Set by a guardian. See the Growth page.',href:'Growth.dc.html'},{label:'Vaccination schedule',note:'Set by a guardian. See the Vaccines page.',href:'Vaccines.dc.html'}]:[{label:'Trackers',note:'Choose which trackers show on Home',href:'Kid Home.dc.html'},{label:'Growth chart source',note:'On the Growth page',href:'Growth.dc.html'},{label:'Vaccination schedule',note:'On the Vaccines page',href:'Vaccines.dc.html'},{label:'Show a missed dose as overdue for (minutes)',note:(window.HBTM?window.HBTM.overdueMin(kidId):60)+' minutes',href:'#overdue',on:e=>{e.preventDefault();this.setState({sheet:'overdue',f:{od:String(window.HBTM?window.HBTM.overdueMin(kidId):60)},err:{},formErr:null});}}];
+    const people=ppl.map(p=>({name:p.name,username:p.username,role:p.role,you:p.you,off:p.status==='disabled',canAct:!p.you,sole:p.sole&&!p.you,soleYou:p.sole&&p.you,
+      roleLabel:p.role==='Guardian'?'Make caregiver':'Make guardian',roleAria:(p.role==='Guardian'?'Make '+p.name+' a caregiver':'Make '+p.name+' a guardian'),removeAria:'Remove '+p.name+'’s access to '+kn,
+      onRole:()=>{const to=p.role==='Guardian'?'Caregiver':'Guardian';act(()=>A.setRole(p.id,kidId,to),p.name+' is now a '+to.toLowerCase()+' for '+kn,true);},
+      onRemove:()=>this.setState({sheet:'remove',f:{pid:p.id},err:{},formErr:null})}));
+    titles={more:'More',theme:'Change theme',overdue:'Overdue window',details:'Edit details',remove:'Remove access',invite:'Add a person',del1:'Delete all data · step 1 of 2',del2:'Delete all data · step 2 of 2'};
+    const sh1=s.sheet;
+    if(sh1==='overdue'){form={...form,fields:[fld('f-od','Show a missed dose as overdue for (minutes)','od',{type:'number',mode:'numeric',hint:'From 5 to 1440 (24 hours). A missed dose leaves the home list after this time, or when the next dose of that course is due, whichever comes first.'})],label:'Save',
+      submit:()=>guard(()=>{const r=window.HBTM.setOverdue(kidId,f.od);return r.err?{err:{od:r.err}}:r;},'Saved')};}
+    if(sh1==='details'){const gp=[['Not set',''],['Female','Female'],['Male','Male'],['Another','Another']];
+      form={...form,note:'Corrected age on Home uses the birth date and weeks at birth. If '+(f.name||kn)+' was born at 37 weeks or later, enter the weeks as they were.',
+      groups:[grp('Sex (optional)',gp,f.sex||'','sex',er.sex)],
+      fields:[fld('f-name','Name','name'),fld('f-born','Birth date','born',{type:'date',hint:'Year-month-day'}),fld('f-gaw','Weeks at birth','gaw',{type:'number',mode:'numeric'}),fld('f-gad','Extra days (0 to 6)','gad',{type:'number',mode:'numeric'}),
+        fld('f-zone','Time zone','zone',{hint:'Times are shown in this time zone. Changing it moves how past entries are grouped by day; it does not change when they happened. Use a name like America/New_York.'})],label:'Save',
+      submit:()=>guard(()=>H.setKidMeta(kidId,f),'Saved for everyone with access to '+(String(f.name||'').trim()||kn))};}
+    const rp=f.pid?A.person(f.pid):null;
+    if(sh1==='remove'&&rp){form={...form,note:'Remove '+rp.name+'’s access to '+kn+'?',hasList:true,list:[{text:rp.name+' stops seeing '+kn+' right away.'},{text:'Entries '+rp.name+' logged stay and keep their name.'},{text:'A guardian can add them again.'}],
+      label:'Remove '+rp.name,submitStyle:dangerStyle,submit:()=>guard(()=>A.revoke(rp.id,kidId),rp.name+' no longer has access to '+kn,true)};}
+    if(sh1==='invite'){form={...form,note:'Give an existing parent access to '+kn+'. Parent accounts are created by the admin. A guardian can change the role later.',
+      groups:[grp('Role',[['Caregiver','Caregiver'],['Guardian','Guardian']],f.role||'Caregiver','role')],fields:[fld('f-un','Parent’s username','username',{auto:'off'})],label:'Give access',
+      submit:()=>guard(()=>A.grant(kidId,f.username,f.role||'Caregiver'),r=>r.name+' now has access to '+kn,true)};}
+    const nEnt=kidId?H.entryCount(kidId):0;
+    if(sh1==='del1'){form={...form,note:'This is permanent and immediate. All data for '+kn+' is deleted for everyone who has access. Nothing is kept.',hasList:true,
+      list:[{text:nEnt+(nEnt===1?' logged entry':' logged entries')+': feeds, sleep, diapers, solids and pumping, including entries other people logged'},{text:'Growth measurements and vaccination records'},{text:'Notes, the trackers you chose, and the details on this page'},{text:'Access for '+ppl.length+(ppl.length===1?' person':' people')}],
+      extra:'Export a PDF first',onExtra:()=>this.setState({formErr:'Export isn’t built yet. This button turns on when PDF export exists.'}),
+      label:'Continue',submitStyle:dangerStyle,submit:()=>this.setState({sheet:'del2',f:{},err:{},formErr:null})};}
+    if(sh1==='del2'){const typed=String(f.confirm||'').trim()===kn&&!!f.sure;
+      form={...form,note:'Step 2 of 2. Type '+kn+' and tick the box to delete everything for '+kn+'.',fields:[fld('f-confirm','Type the name: '+kn,'confirm')],checks:[{label:'I understand this is permanent and immediate',checked:!!f.sure,on:()=>setF('sure',!f.sure)}],
+      label:'Delete all data for '+kn,submitStyle:dangerStyle,off:!typed,offHint:typed?'':'The button works after you type the name exactly and tick the box.',
+      submit:()=>{if(!typed)return bad({confirm:'Type '+kn+' exactly as written, and tick the box.'});W(()=>{const n=H.deleteKid(kidId);A.dropKid(kidId);this.setState({sheet:null,f:{},err:{},formErr:null,deleted:{name:kn,n}});this.toast('All data for '+kn+' was deleted');});}};}
+    X={deleted:!!s.deleted,deletedTitle:s.deleted?s.deleted.name+'’s data was deleted':'',deletedText:s.deleted?s.deleted.n+(s.deleted.n===1?' entry was':' entries were')+' removed, and everyone’s access to '+s.deleted.name+' ended.':'',
+      blocked,blockedTitle:s.cg?'Only guardians can open this page':'You aren’t a guardian of any child yet',blockedText:s.cg?'A guardian manages the child’s details and who has access. You can still log, view and export, and you can leave a child from Home.':'Ask a guardian to give you guardian access.',
+      ok,kid:kn,canEdit,subtitle:roView?'Read-only view for caregivers · needs owner decision':'Child profile · guardians only',multi:gKids.length>1,kids:gKids.map(k=>({name:k.name,pressed:k.id===kidId,style:pill(k.id===kidId),on:()=>this.setState({pk:k.id})})),
+      detailRows,settings,people,
+      openDetails:open('details',mt?{name:mt.name,born:mt.born,gaw:String(mt.gaw),gad:String(mt.gad),sex:mt.sex,zone:mt.zone}:{}),openInvite:open('invite',{role:'Caregiver'}),openDelete:open('del1')};
+
+    const sh=s.sheet;
+    const NV=window.HBTUI.nav({cg:s.cg,sheets:['theme'],open:id=>this.setState({sheet:id,f:{},err:{},formErr:null})});
+    const moreItems=NV.more;
+    const sideTabs=tabs.length?[...tabs.filter(t=>t.label!=='More'),...NV.side]:[];
+    return {subAge:(window.HBTUI?window.HBTUI.age(H.kid()):''),toggles,tabs,appStyle,desktop:D,phoneDisplay:D?'none':'flex',roleLabel:s.cg?'Caregiver':'Guardian',guardian:isG,caregiver:s.cg,formErr:s.formErr,
+      resetAll:()=>{H.reset();A.reset();this.setState({sheet:null,toast:null,undo:null,f:{},err:{},formErr:null,pk:null,deleted:null});},
+      sheet:!!sh,isForm:!!sh&&sh!=='more'&&sh!=='theme',isMore:sh==='more',...window.HBTUI.themeVals(sh),sheetTitle:titles[sh]||'',form,moreItems,sideTabs,closeSheet:()=>this.setState({sheet:null,f:{},err:{},formErr:null}),stop:e=>e.stopPropagation(),
+      toast:!!s.toast,toastText:s.toast,toastUndo:!!s.undo,toastRole:s.toastErr?'alert':'status',toastRetry:!!s.retry,
+      doRetry:()=>{const r=s.retry;this.setState({toast:null,retry:null,toastErr:false});if(r)r();},
+      doUndo:()=>{const u=s.undo;if(!u)return;W(()=>{A.restore(u);this.setState({undo:null});this.toast('Undone');});},
+      ...X};
+  }
+}
+</script>
+</body>
+</html>
