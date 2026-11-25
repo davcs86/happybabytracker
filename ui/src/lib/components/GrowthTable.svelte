@@ -87,6 +87,7 @@
 				</div>
 				<Button
 					href={growthEntryPath(kidId, row.id)}
+					data-drawer="Edit measurement"
 					variant="outline"
 					size="icon"
 					title="Edit the measurement of {date}"
