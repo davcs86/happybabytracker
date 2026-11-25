@@ -95,3 +95,21 @@ jobs:
             echo "$digest"
             echo "$digest" >> "$GITHUB_STEP_SUMMARY"
           done
+
+  # The only check the `main` ruleset should require; skipped upstream jobs count as passing.
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs: [api, ui, images]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate upstream results
+        run: |
+          echo "api:    ${{ needs.api.result }}"
+          echo "ui:     ${{ needs.ui.result }}"
+          echo "images: ${{ needs.images.result }}"
+      - name: Fail on upstream failure or cancellation
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo "::error::One or more CI jobs failed or were cancelled"
+          exit 1
