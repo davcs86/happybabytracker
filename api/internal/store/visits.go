@@ -254,3 +254,73 @@ func (s *Store) DeleteVisit(ctx context.Context, kidID, actorID, id string, dele
 		return oneRow(res, err)
 	})
 }
+
+// VisitOutcome is what one "after the visit" save adds: notes when NotesSet, and rows the caller has validated.
+type VisitOutcome struct {
+	NotesSet     bool
+	Notes        *string
+	Growth       *model.Growth
+	Vaccinations []model.Administration
+	Medications  []model.Medication
+}
+
+// OutcomeRowError names the outcome row a store refusal belongs to; Index is -1 for growth.
+type OutcomeRowError struct {
+	Section string
+	Index   int
+	Err     error
+}
+
+func (e *OutcomeRowError) Error() string { return "store: outcome " + e.Section + ": " + e.Err.Error() }
+func (e *OutcomeRowError) Unwrap() error { return e.Err }
+
+// RecordOutcome adds o to the visit in one transaction: ErrStale unless revision is the stored one, ErrNotPast for
+// a visit that is not past, an OutcomeRowError for a refused row. It adds 1 to the revision.
+func (s *Store) RecordOutcome(ctx context.Context, kidID, actorID, visitID string, revision int, o VisitOutcome, now time.Time) (VisitDetail, error) {
+	var out VisitDetail
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
+			return err
+		}
+		v, err := readVisit(ctx, tx, kidID, visitID)
+		if err != nil {
+			return err
+		}
+		if v.Revision != revision {
+			return ErrStale
+		}
+		if !isPast(v, now) {
+			return ErrNotPast
+		}
+		if o.Growth != nil {
+			if _, err := createGrowthTx(ctx, tx, kidID, actorID, *o.Growth, &visitID, now); err != nil {
+				return &OutcomeRowError{"growth", -1, err}
+			}
+		}
+		for i, a := range o.Vaccinations {
+			if _, err := createAdministrationTx(ctx, tx, kidID, actorID, a, &visitID, now); err != nil {
+				return &OutcomeRowError{"vaccinations", i, err}
+			}
+		}
+		for i, m := range o.Medications {
+			if _, err := createMedicationTx(ctx, tx, kidID, actorID, m, &visitID, now); err != nil {
+				return &OutcomeRowError{"medications", i, err}
+			}
+		}
+		notes := v.OutcomeNotes
+		if o.NotesSet {
+			notes = o.Notes
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE visits SET outcome_notes = ?, revision = revision + 1, updated_by = ?, updated_at = ?
+			WHERE kid_id = ? AND id = ?`, notes, actorID, now.Unix(), kidID, visitID)
+		if err := oneRow(res, err); err != nil {
+			return err
+		}
+		out, err = readVisitDetail(ctx, tx, kidID, visitID)
+		return err
+	})
+	if err != nil {
+		return VisitDetail{}, err
+	}
+	return out, nil
+}

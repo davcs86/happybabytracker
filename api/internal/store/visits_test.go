@@ -7,6 +7,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/schedule"
 )
 
 func newVisit(at time.Time) model.Visit {
@@ -298,5 +299,92 @@ func TestUpdateAdministrationKeepsVisitID(t *testing.T) {
 	got, err := s.Administration(ctx, k.ID, a.ID)
 	if err != nil || got.VisitID == nil || *got.VisitID != v.ID {
 		t.Errorf("administration read back with visit %v, err %v", got.VisitID, err)
+	}
+}
+
+func TestOutcomeCreatesLinkedRows(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	v := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	g := newGrowth(t, "2026-11-20")
+	o := VisitOutcome{NotesSet: true, Notes: strp("Healthy"), Growth: &g,
+		Vaccinations: []model.Administration{{GivenOn: "2026-11-20", Antigens: []string{"dtap", "ipv"}}, {GivenOn: "2026-11-20", Antigens: []string{"hepb"}}},
+		Medications:  []model.Medication{timesCourse(v.StartsAt, "08:00", "20:00")}}
+	d, err := s.RecordOutcome(ctx, k.ID, ana.ID, v.ID, 0, o, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Revision != 1 || d.OutcomeNotes == nil || *d.OutcomeNotes != "Healthy" || len(d.Links.Growth) != 1 ||
+		len(d.Links.Vaccinations) != 2 || len(d.Links.Medications) != 1 {
+		t.Fatalf("detail %+v", d)
+	}
+	var reminders int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM reminders WHERE medication_id = ?`, d.Links.Medications[0].ID).Scan(&reminders); err != nil || reminders == 0 {
+		t.Errorf("the course's reminders: %d, err %v; want materialised", reminders, err)
+	}
+}
+
+func TestOutcomeSecondSubmitWritesNothing(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	v := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	o := VisitOutcome{Vaccinations: []model.Administration{{GivenOn: "2026-11-20", Antigens: []string{"dtap"}}}}
+	if _, err := s.RecordOutcome(ctx, k.ID, ana.ID, v.ID, 0, o, t0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordOutcome(ctx, k.ID, ana.ID, v.ID, 0, o, t0); !errors.Is(err, ErrStale) {
+		t.Fatalf("second submit: %v, want ErrStale", err)
+	}
+	var n int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM vaccine_doses WHERE kid_id = ?`, k.ID).Scan(&n); err != nil || n != 1 {
+		t.Errorf("vaccine rows after a double submit: %d, err %v; want 1", n, err)
+	}
+}
+
+func TestOutcomeRollsBackOnLimit(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	v := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	for range constants.MaxMedicationsPerKid {
+		mustCourse(t, s, k.ID, ana.ID, model.Medication{Name: "Saline", Dose: "1 drop", StartAt: t0, Schedule: schedule.Schedule{Kind: schedule.KindNone}}, t0)
+	}
+	g := newGrowth(t, "2026-11-20")
+	o := VisitOutcome{NotesSet: true, Notes: strp("Healthy"), Growth: &g, Medications: []model.Medication{timesCourse(t0, "08:00")}}
+	_, err := s.RecordOutcome(ctx, k.ID, ana.ID, v.ID, 0, o, t0)
+	var row *OutcomeRowError
+	if !errors.As(err, &row) || row.Section != "medications" || row.Index != 0 || !errors.Is(err, ErrConflict) {
+		t.Fatalf("over the course cap: %v, want OutcomeRowError{medications, 0, ErrConflict}", err)
+	}
+	d, _ := s.Visit(ctx, k.ID, v.ID)
+	if d.OutcomeNotes != nil || d.Revision != 0 || len(d.Links.Growth) != 0 {
+		t.Errorf("a refused outcome left %+v", d)
+	}
+}
+
+func TestOutcomeRefusals(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	upcoming := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(time.Hour)))
+	notes := VisitOutcome{NotesSet: true, Notes: strp("x")}
+	if _, err := s.RecordOutcome(ctx, k.ID, ana.ID, upcoming.ID, 0, notes, t0); !errors.Is(err, ErrNotPast) {
+		t.Errorf("upcoming: %v, want ErrNotPast", err)
+	}
+	past := mustVisit(t, s, k.ID, ana.ID, newVisit(t0.Add(-time.Hour)))
+	bad := VisitOutcome{Vaccinations: []model.Administration{{GivenOn: "2026-11-20", Antigens: []string{"dtap"}}, {GivenOn: "2026-11-20", Antigens: []string{"ipv", "ipv"}}}}
+	_, err := s.RecordOutcome(ctx, k.ID, ana.ID, past.ID, 0, bad, t0)
+	var row *OutcomeRowError
+	if !errors.As(err, &row) || row.Section != "vaccinations" || row.Index != 1 || !errors.Is(err, ErrInvalidAntigens) {
+		t.Errorf("a repeated antigen in row 1: %v", err)
+	}
+	if _, err := s.RecordOutcome(ctx, k.ID, ana.ID, "vi-missing", 0, notes, t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown visit: %v", err)
+	}
+	cy := mustParent(t, s, "cy")
+	if _, err := s.RecordOutcome(ctx, k.ID, cy.ID, past.ID, 0, notes, t0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("no grant: %v", err)
 	}
 }
