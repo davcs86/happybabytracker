@@ -144,7 +144,7 @@ The app shell: tab bar on mobile, side navigation on desktop; its sheets (Switch
 
 ### sheets
 
-The forms that open in a bottom sheet over the page they were opened from: record forms, child details, modules, access and Add a child. Without JavaScript the same forms are the pages shown in the other areas.
+The forms that open in a bottom sheet over the page they were opened from: record forms, child details, modules, access and Add a child. The record forms appear as sheets, state by state, in their own areas too.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
@@ -189,50 +189,50 @@ Kid homes in every age band and role: quick log, running timers, Due, Today.
 
 ### trackers
 
-Log and edit forms of every tracker (Ana, Mia), with their errors, advanced modes and units.
+Log and edit sheets of every tracker (Ana, Mia), opened from Home and the Timeline, with their errors, advanced modes and units; Log sleep, which no link opens, as a page.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
-| `01-bottle-new-empty` | Log a bottle: the empty form, time prefilled | [mobile](trackers/01-bottle-new-empty-mobile.png) | [desktop](trackers/01-bottle-new-empty-desktop.png) |
-| `02-bottle-new-filled` | Log a bottle: formula, 120 ml and a note typed | [mobile](trackers/02-bottle-new-filled-mobile.png) | [desktop](trackers/02-bottle-new-filled-desktop.png) |
-| `03-bottle-new-no-contents` | Refused: no content ticked, said on the boxes | [mobile](trackers/03-bottle-new-no-contents-mobile.png) | [desktop](trackers/03-bottle-new-no-contents-desktop.png) |
-| `04-bottle-new-volume-range` | Refused: a volume out of range names the range | [mobile](trackers/04-bottle-new-volume-range-mobile.png) | [desktop](trackers/04-bottle-new-volume-range-desktop.png) |
-| `05-bottle-new-future-time` | Refused: a time an hour ahead, other values kept | [mobile](trackers/05-bottle-new-future-time-mobile.png) | [desktop](trackers/05-bottle-new-future-time-desktop.png) |
-| `06-bottle-new-advanced` | Advanced bottle: a volume per source; the total is worked out on save | [mobile](trackers/06-bottle-new-advanced-mobile.png) | [desktop](trackers/06-bottle-new-advanced-desktop.png) |
-| `07-bottle-edit` | Edit bottle: a stored formula bottle | [mobile](trackers/07-bottle-edit-mobile.png) | [desktop](trackers/07-bottle-edit-desktop.png) |
-| `08-bottle-edit-advanced` | Edit bottle with volumes per source (opens advanced) | [mobile](trackers/08-bottle-edit-advanced-mobile.png) | [desktop](trackers/08-bottle-edit-advanced-desktop.png) |
-| `09-bottle-delete-confirm` | Delete opened: the confirm step | [mobile](trackers/09-bottle-delete-confirm-mobile.png) | [desktop](trackers/09-bottle-delete-confirm-desktop.png) |
-| `10-bottle-new-imperial` | Log a bottle for a parent who uses fluid ounces | [mobile](trackers/10-bottle-new-imperial-mobile.png) | [desktop](trackers/10-bottle-new-imperial-desktop.png) |
-| `11-bottle-edit-imperial` | A 120 ml bottle on the edit page of a fl oz parent | [mobile](trackers/11-bottle-edit-imperial-mobile.png) | [desktop](trackers/11-bottle-edit-imperial-desktop.png) |
-| `12-nursing-new-empty` | Log nursing: start a timer on a side, or record a finished one | [mobile](trackers/12-nursing-new-empty-mobile.png) | [desktop](trackers/12-nursing-new-empty-desktop.png) |
-| `13-nursing-new-error` | Refused: neither a side nor an end time | [mobile](trackers/13-nursing-new-error-mobile.png) | [desktop](trackers/13-nursing-new-error-desktop.png) |
-| `14-nursing-new-weigh-ins` | Advanced nursing: weigh before and after | [mobile](trackers/14-nursing-new-weigh-ins-mobile.png) | [desktop](trackers/14-nursing-new-weigh-ins-desktop.png) |
-| `15-nursing-edit-estimate` | Edit nursing: minutes per side, weigh-ins and the milk estimate | [mobile](trackers/15-nursing-edit-estimate-mobile.png) | [desktop](trackers/15-nursing-edit-estimate-desktop.png) |
-| `16-nursing-edit-running` | Edit a running nursing timer: no minutes, an end time ends it | [mobile](trackers/16-nursing-edit-running-mobile.png) | [desktop](trackers/16-nursing-edit-running-desktop.png) |
-| `17-nursing-second-timer` | A second nursing timer is refused with a link to the running one | [mobile](trackers/17-nursing-second-timer-mobile.png) | [desktop](trackers/17-nursing-second-timer-desktop.png) |
-| `18-pumping-new-empty` | Log pumping: the empty form | [mobile](trackers/18-pumping-new-empty-mobile.png) | [desktop](trackers/18-pumping-new-empty-desktop.png) |
-| `19-pumping-new-error` | Refused: the first missing required field (Minutes) is marked; the form reports one problem at a time | [mobile](trackers/19-pumping-new-error-mobile.png) | [desktop](trackers/19-pumping-new-error-desktop.png) |
-| `20-pumping-new-advanced` | Advanced pumping: a volume per side; the total is worked out on save | [mobile](trackers/20-pumping-new-advanced-mobile.png) | [desktop](trackers/20-pumping-new-advanced-desktop.png) |
-| `21-pumping-edit` | Edit pumping: 20 minutes, 70 ml left and 55 ml right | [mobile](trackers/21-pumping-edit-mobile.png) | [desktop](trackers/21-pumping-edit-desktop.png) |
-| `22-diaper-new-empty` | Log a diaper: the kinds | [mobile](trackers/22-diaper-new-empty-mobile.png) | [desktop](trackers/22-diaper-new-empty-desktop.png) |
-| `23-diaper-new-error` | Refused: no kind chosen | [mobile](trackers/23-diaper-new-error-mobile.png) | [desktop](trackers/23-diaper-new-error-desktop.png) |
-| `24-diaper-edit` | Edit diaper: dirty, with a note | [mobile](trackers/24-diaper-edit-mobile.png) | [desktop](trackers/24-diaper-edit-desktop.png) |
-| `25-sleep-new-empty` | Log sleep: started and ended | [mobile](trackers/25-sleep-new-empty-mobile.png) | [desktop](trackers/25-sleep-new-empty-desktop.png) |
-| `26-sleep-edit-finished` | Edit sleep: an overnight sleep that ended this morning | [mobile](trackers/26-sleep-edit-finished-mobile.png) | [desktop](trackers/26-sleep-edit-finished-desktop.png) |
-| `27-sleep-edit-running` | Edit a running sleep timer | [mobile](trackers/27-sleep-edit-running-mobile.png) | [desktop](trackers/27-sleep-edit-running-desktop.png) |
-| `28-sleep-second-timer` | A second sleep timer is refused with a link to the running one | [mobile](trackers/28-sleep-second-timer-mobile.png) | [desktop](trackers/28-sleep-second-timer-desktop.png) |
-| `29-sleep-edit-overrun` | A timer over 24 hours: set the end time or delete it | [mobile](trackers/29-sleep-edit-overrun-mobile.png) | [desktop](trackers/29-sleep-edit-overrun-desktop.png) |
-| `30-meal-new-empty` | Log a meal: what and reaction | [mobile](trackers/30-meal-new-empty-mobile.png) | [desktop](trackers/30-meal-new-empty-desktop.png) |
-| `31-meal-new-error` | Refused: what was eaten is required | [mobile](trackers/31-meal-new-error-mobile.png) | [desktop](trackers/31-meal-new-error-desktop.png) |
-| `32-meal-edit` | Edit meal: pureed carrot, liked it | [mobile](trackers/32-meal-edit-mobile.png) | [desktop](trackers/32-meal-edit-desktop.png) |
-| `33-meal-edit-long-text` | A 200-character unbroken meal and note stay inside their single-line fields: the page does not overflow | [mobile](trackers/33-meal-edit-long-text-mobile.png) | [desktop](trackers/33-meal-edit-long-text-desktop.png) |
-| `34-symptom-new-empty` | Log a symptom: symptom and severity | [mobile](trackers/34-symptom-new-empty-mobile.png) | [desktop](trackers/34-symptom-new-empty-desktop.png) |
-| `35-symptom-new-error` | Refused: no symptom chosen | [mobile](trackers/35-symptom-new-error-mobile.png) | [desktop](trackers/35-symptom-new-error-desktop.png) |
-| `36-symptom-fever-no-temperature` | Fever chosen: temperature and method appear and are required | [mobile](trackers/36-symptom-fever-no-temperature-mobile.png) | [desktop](trackers/36-symptom-fever-no-temperature-desktop.png) |
-| `37-symptom-fever-filled` | Fever, 38.5 °C, oral, moderate typed; the earlier refusal stays on screen until the next save | [mobile](trackers/37-symptom-fever-filled-mobile.png) | [desktop](trackers/37-symptom-fever-filled-desktop.png) |
-| `38-symptom-other` | Other: a free-text symptom | [mobile](trackers/38-symptom-other-mobile.png) | [desktop](trackers/38-symptom-other-desktop.png) |
-| `39-symptom-edit-fever` | Edit symptom: a fever with its temperature and method | [mobile](trackers/39-symptom-edit-fever-mobile.png) | [desktop](trackers/39-symptom-edit-fever-desktop.png) |
-| `40-symptom-edit-fahrenheit` | The same fever for a parent who uses °F | [mobile](trackers/40-symptom-edit-fahrenheit-mobile.png) | [desktop](trackers/40-symptom-edit-fahrenheit-desktop.png) |
+| `01-bottle-new-empty` | The Log a bottle sheet over Home: the empty form, time prefilled | [mobile](trackers/01-bottle-new-empty-mobile.png) | [desktop](trackers/01-bottle-new-empty-desktop.png) |
+| `02-bottle-new-filled` | The Log a bottle sheet: formula, 120 ml and a note typed | [mobile](trackers/02-bottle-new-filled-mobile.png) | [desktop](trackers/02-bottle-new-filled-desktop.png) |
+| `03-bottle-new-no-contents` | Refused in the sheet: no content ticked, said on the boxes | [mobile](trackers/03-bottle-new-no-contents-mobile.png) | [desktop](trackers/03-bottle-new-no-contents-desktop.png) |
+| `04-bottle-new-volume-range` | Refused in the sheet: a volume out of range names the range | [mobile](trackers/04-bottle-new-volume-range-mobile.png) | [desktop](trackers/04-bottle-new-volume-range-desktop.png) |
+| `05-bottle-new-future-time` | Refused in the sheet: a time an hour ahead, other values kept | [mobile](trackers/05-bottle-new-future-time-mobile.png) | [desktop](trackers/05-bottle-new-future-time-desktop.png) |
+| `06-bottle-new-advanced` | Advanced bottle in the sheet: a volume per source; the total is worked out on save | [mobile](trackers/06-bottle-new-advanced-mobile.png) | [desktop](trackers/06-bottle-new-advanced-desktop.png) |
+| `07-bottle-edit` | The Edit bottle sheet over the Timeline: a stored formula bottle | [mobile](trackers/07-bottle-edit-mobile.png) | [desktop](trackers/07-bottle-edit-desktop.png) |
+| `08-bottle-edit-advanced` | The Edit bottle sheet for volumes per source (opens advanced) | [mobile](trackers/08-bottle-edit-advanced-mobile.png) | [desktop](trackers/08-bottle-edit-advanced-desktop.png) |
+| `09-bottle-delete-confirm` | Delete opened inside the Edit bottle sheet: the confirm step | [mobile](trackers/09-bottle-delete-confirm-mobile.png) | [desktop](trackers/09-bottle-delete-confirm-desktop.png) |
+| `10-bottle-new-imperial` | The Log a bottle sheet for a parent who uses fluid ounces | [mobile](trackers/10-bottle-new-imperial-mobile.png) | [desktop](trackers/10-bottle-new-imperial-desktop.png) |
+| `11-bottle-edit-imperial` | A 120 ml bottle in the Edit bottle sheet of a fl oz parent | [mobile](trackers/11-bottle-edit-imperial-mobile.png) | [desktop](trackers/11-bottle-edit-imperial-desktop.png) |
+| `12-nursing-new-empty` | The Log nursing sheet: start a timer on a side, or record a finished one | [mobile](trackers/12-nursing-new-empty-mobile.png) | [desktop](trackers/12-nursing-new-empty-desktop.png) |
+| `13-nursing-new-error` | Refused in the sheet: neither a side nor an end time | [mobile](trackers/13-nursing-new-error-mobile.png) | [desktop](trackers/13-nursing-new-error-desktop.png) |
+| `14-nursing-new-weigh-ins` | Advanced nursing in the sheet: weigh before and after | [mobile](trackers/14-nursing-new-weigh-ins-mobile.png) | [desktop](trackers/14-nursing-new-weigh-ins-desktop.png) |
+| `15-nursing-edit-estimate` | The Edit nursing sheet: minutes per side, weigh-ins and the milk estimate | [mobile](trackers/15-nursing-edit-estimate-mobile.png) | [desktop](trackers/15-nursing-edit-estimate-desktop.png) |
+| `16-nursing-edit-running` | The Edit nursing sheet for a running timer: no minutes, an end time ends it | [mobile](trackers/16-nursing-edit-running-mobile.png) | [desktop](trackers/16-nursing-edit-running-desktop.png) |
+| `17-nursing-second-timer` | A timer started on another device meanwhile: the sheet refuses a second one, with a link to the running one | [mobile](trackers/17-nursing-second-timer-mobile.png) | [desktop](trackers/17-nursing-second-timer-desktop.png) |
+| `18-pumping-new-empty` | The Log pumping sheet: the empty form | [mobile](trackers/18-pumping-new-empty-mobile.png) | [desktop](trackers/18-pumping-new-empty-desktop.png) |
+| `19-pumping-new-error` | Refused in the sheet: the first missing required field (Minutes) is marked; the form reports one problem at a time | [mobile](trackers/19-pumping-new-error-mobile.png) | [desktop](trackers/19-pumping-new-error-desktop.png) |
+| `20-pumping-new-advanced` | Advanced pumping in the sheet: a volume per side; the total is worked out on save | [mobile](trackers/20-pumping-new-advanced-mobile.png) | [desktop](trackers/20-pumping-new-advanced-desktop.png) |
+| `21-pumping-edit` | The Edit pumping sheet: 20 minutes, 70 ml left and 55 ml right | [mobile](trackers/21-pumping-edit-mobile.png) | [desktop](trackers/21-pumping-edit-desktop.png) |
+| `22-diaper-new-empty` | The Log a diaper sheet: the kinds | [mobile](trackers/22-diaper-new-empty-mobile.png) | [desktop](trackers/22-diaper-new-empty-desktop.png) |
+| `23-diaper-new-error` | Refused in the sheet: no kind chosen | [mobile](trackers/23-diaper-new-error-mobile.png) | [desktop](trackers/23-diaper-new-error-desktop.png) |
+| `24-diaper-edit` | The Edit diaper sheet: dirty, with a note | [mobile](trackers/24-diaper-edit-mobile.png) | [desktop](trackers/24-diaper-edit-desktop.png) |
+| `25-sleep-new-empty` | The Log sleep page, opened by its address (no link opens it in a sheet): started and ended | [mobile](trackers/25-sleep-new-empty-mobile.png) | [desktop](trackers/25-sleep-new-empty-desktop.png) |
+| `26-sleep-edit-finished` | The Edit sleep sheet over the Timeline: an overnight sleep that ended this morning | [mobile](trackers/26-sleep-edit-finished-mobile.png) | [desktop](trackers/26-sleep-edit-finished-desktop.png) |
+| `27-sleep-edit-running` | The Edit sleep sheet for a running timer | [mobile](trackers/27-sleep-edit-running-mobile.png) | [desktop](trackers/27-sleep-edit-running-desktop.png) |
+| `28-sleep-second-timer` | The Log sleep page (opened by its address) refuses a second sleep timer, with a link to the running one | [mobile](trackers/28-sleep-second-timer-mobile.png) | [desktop](trackers/28-sleep-second-timer-desktop.png) |
+| `29-sleep-edit-overrun` | The Edit sleep sheet for a timer over 24 hours: set the end time or delete it | [mobile](trackers/29-sleep-edit-overrun-mobile.png) | [desktop](trackers/29-sleep-edit-overrun-desktop.png) |
+| `30-meal-new-empty` | The Log a meal sheet: what and reaction | [mobile](trackers/30-meal-new-empty-mobile.png) | [desktop](trackers/30-meal-new-empty-desktop.png) |
+| `31-meal-new-error` | Refused in the sheet: what was eaten is required | [mobile](trackers/31-meal-new-error-mobile.png) | [desktop](trackers/31-meal-new-error-desktop.png) |
+| `32-meal-edit` | The Edit meal sheet: pureed carrot, liked it | [mobile](trackers/32-meal-edit-mobile.png) | [desktop](trackers/32-meal-edit-desktop.png) |
+| `33-meal-edit-long-text` | A 200-character unbroken meal and note stay inside their single-line fields: the sheet does not overflow | [mobile](trackers/33-meal-edit-long-text-mobile.png) | [desktop](trackers/33-meal-edit-long-text-desktop.png) |
+| `34-symptom-new-empty` | The Log a symptom sheet: symptom and severity | [mobile](trackers/34-symptom-new-empty-mobile.png) | [desktop](trackers/34-symptom-new-empty-desktop.png) |
+| `35-symptom-new-error` | Refused in the sheet: no symptom chosen | [mobile](trackers/35-symptom-new-error-mobile.png) | [desktop](trackers/35-symptom-new-error-desktop.png) |
+| `36-symptom-fever-no-temperature` | Fever chosen in the sheet: temperature and method appear and are required | [mobile](trackers/36-symptom-fever-no-temperature-mobile.png) | [desktop](trackers/36-symptom-fever-no-temperature-desktop.png) |
+| `37-symptom-fever-filled` | Fever, 38.5 °C, oral, moderate typed in the sheet; the earlier refusal stays until the next save | [mobile](trackers/37-symptom-fever-filled-mobile.png) | [desktop](trackers/37-symptom-fever-filled-desktop.png) |
+| `38-symptom-other` | Other in the sheet: a free-text symptom | [mobile](trackers/38-symptom-other-mobile.png) | [desktop](trackers/38-symptom-other-desktop.png) |
+| `39-symptom-edit-fever` | The Edit symptom sheet: a fever with its temperature and method | [mobile](trackers/39-symptom-edit-fever-mobile.png) | [desktop](trackers/39-symptom-edit-fever-desktop.png) |
+| `40-symptom-edit-fahrenheit` | The same fever in the Edit symptom sheet for a parent who uses °F | [mobile](trackers/40-symptom-edit-fahrenheit-mobile.png) | [desktop](trackers/40-symptom-edit-fahrenheit-desktop.png) |
 
 ### timeline
 
@@ -255,7 +255,7 @@ The timeline: ranges, filters, paging, units and errors.
 
 ### growth
 
-Growth charts, the measurement list and forms, both sources and preterm ages.
+Growth charts, the measurement list and its sheets, both sources and preterm ages.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
@@ -266,14 +266,14 @@ Growth charts, the measurement list and forms, both sources and preterm ages.
 | `05-ivy-weight-cdc` | The CDC source: its lines and attribution | [mobile](growth/05-ivy-weight-cdc-mobile.png) | [desktop](growth/05-ivy-weight-cdc-desktop.png) |
 | `06-ivy-bmi-cdc-no-table` | CDC has no BMI table under 24 months: points only, rows unscored | [mobile](growth/06-ivy-bmi-cdc-no-table-mobile.png) | [desktop](growth/06-ivy-bmi-cdc-no-table-desktop.png) |
 | `07-ivy-imperial` | Pounds and ounces and inches for an imperial parent | [mobile](growth/07-ivy-imperial-mobile.png) | [desktop](growth/07-ivy-imperial-desktop.png) |
-| `08-edit-imperial` | Edit a measurement for an imperial parent: it keeps the unit it was typed in (kg and cm); the empty head box shows inches | [mobile](growth/08-edit-imperial-mobile.png) | [desktop](growth/08-edit-imperial-desktop.png) |
-| `09-edit` | Edit measurement: 9.5 kg, 76 cm, a note | [mobile](growth/09-edit-mobile.png) | [desktop](growth/09-edit-desktop.png) |
-| `10-edit-delete-confirm` | Delete opened: the confirm step | [mobile](growth/10-edit-delete-confirm-mobile.png) | [desktop](growth/10-edit-delete-confirm-desktop.png) |
+| `08-edit-imperial` | The Edit measurement sheet for an imperial parent: it keeps the unit it was typed in (kg and cm); the empty head box shows inches | [mobile](growth/08-edit-imperial-mobile.png) | [desktop](growth/08-edit-imperial-desktop.png) |
+| `09-edit` | The Edit measurement sheet over the Growth page: 9.5 kg, 76 cm, a note | [mobile](growth/09-edit-mobile.png) | [desktop](growth/09-edit-desktop.png) |
+| `10-edit-delete-confirm` | Delete opened inside the Edit measurement sheet: the confirm step | [mobile](growth/10-edit-delete-confirm-mobile.png) | [desktop](growth/10-edit-delete-confirm-desktop.png) |
 | `11-empty` | No measurement yet: the WHO lines alone | [mobile](growth/11-empty-mobile.png) | [desktop](growth/11-empty-desktop.png) |
-| `12-new-empty` | Add a measurement: date prefilled to today | [mobile](growth/12-new-empty-mobile.png) | [desktop](growth/12-new-empty-desktop.png) |
-| `13-new-nothing-measured` | Refused: no measurement typed | [mobile](growth/13-new-nothing-measured-mobile.png) | [desktop](growth/13-new-nothing-measured-desktop.png) |
-| `14-new-future-date` | Refused: a future date, the values kept | [mobile](growth/14-new-future-date-mobile.png) | [desktop](growth/14-new-future-date-desktop.png) |
-| `15-new-filled` | Weight, length and head typed and the date corrected; the earlier refusal stays on screen until the next save | [mobile](growth/15-new-filled-mobile.png) | [desktop](growth/15-new-filled-desktop.png) |
+| `12-new-empty` | The Add a measurement sheet over the empty Growth page: date prefilled to today | [mobile](growth/12-new-empty-mobile.png) | [desktop](growth/12-new-empty-desktop.png) |
+| `13-new-nothing-measured` | Refused in the sheet: no measurement typed; the sheet stays open | [mobile](growth/13-new-nothing-measured-mobile.png) | [desktop](growth/13-new-nothing-measured-desktop.png) |
+| `14-new-future-date` | Refused in the sheet: a future date, the values kept | [mobile](growth/14-new-future-date-mobile.png) | [desktop](growth/14-new-future-date-desktop.png) |
+| `15-new-filled` | Weight, length and head typed in the sheet and the date corrected; the earlier refusal stays until the next save | [mobile](growth/15-new-filled-mobile.png) | [desktop](growth/15-new-filled-desktop.png) |
 | `16-leo-preterm-caregiver` | Born at 35 weeks: both ages, plotted at corrected age, seen by a caregiver | [mobile](growth/16-leo-preterm-caregiver-mobile.png) | [desktop](growth/16-leo-preterm-caregiver-desktop.png) |
 | `17-before-expected-term` | Born at 30 weeks two weeks ago: before expected term | [mobile](growth/17-before-expected-term-mobile.png) | [desktop](growth/17-before-expected-term-desktop.png) |
 | `18-who-head-after-5-unscored` | WHO has no head table after five years: the latest row is unscored; a long note wraps | [mobile](growth/18-who-head-after-5-unscored-mobile.png) | [desktop](growth/18-who-head-after-5-unscored-desktop.png) |
@@ -282,7 +282,7 @@ Growth charts, the measurement list and forms, both sources and preterm ages.
 
 ### vaccines
 
-Vaccine schedules, dismissals and the vaccination forms.
+Vaccine schedules, dismissals and the vaccination sheets.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
@@ -295,18 +295,18 @@ Vaccine schedules, dismissals and the vaccination forms.
 | `07-retired-schedule` | A stored schedule the app no longer ships reads as no schedule | [mobile](vaccines/07-retired-schedule-mobile.png) | [desktop](vaccines/07-retired-schedule-desktop.png) |
 | `08-no-schedule-caregiver` | No schedule: a caregiver gets a sentence, no link | [mobile](vaccines/08-no-schedule-caregiver-mobile.png) | [desktop](vaccines/08-no-schedule-caregiver-desktop.png) |
 | `09-caregiver-on-schedule` | A caregiver on a schedule: no dismiss controls | [mobile](vaccines/09-caregiver-on-schedule-mobile.png) | [desktop](vaccines/09-caregiver-on-schedule-desktop.png) |
-| `10-new-dose-empty` | Record a vaccination: date, product shortcut, vaccines, lot, product, note | [mobile](vaccines/10-new-dose-empty-mobile.png) | [desktop](vaccines/10-new-dose-empty-desktop.png) |
-| `11-new-dose-errors` | Refused: no date and no vaccine ticked; the date is the first problem shown | [mobile](vaccines/11-new-dose-errors-mobile.png) | [desktop](vaccines/11-new-dose-errors-desktop.png) |
-| `12-new-dose-from-record-link` | Opened from a visit’s Record link: its outstanding vaccines ticked | [mobile](vaccines/12-new-dose-from-record-link-mobile.png) | [desktop](vaccines/12-new-dose-from-record-link-desktop.png) |
-| `13-edit-administration` | Edit vaccination: lot, product and note read back | [mobile](vaccines/13-edit-administration-mobile.png) | [desktop](vaccines/13-edit-administration-desktop.png) |
-| `14-edit-delete-confirm` | Delete opened: the confirm step | [mobile](vaccines/14-edit-delete-confirm-mobile.png) | [desktop](vaccines/14-edit-delete-confirm-desktop.png) |
+| `10-new-dose-empty` | The Record a vaccination sheet over the Vaccines page: date, product shortcut, vaccines, lot, product, note | [mobile](vaccines/10-new-dose-empty-mobile.png) | [desktop](vaccines/10-new-dose-empty-desktop.png) |
+| `11-new-dose-errors` | Refused in the sheet: no date and no vaccine ticked; the date is the first problem shown | [mobile](vaccines/11-new-dose-errors-mobile.png) | [desktop](vaccines/11-new-dose-errors-desktop.png) |
+| `12-new-dose-from-record-link` | The sheet opened from a visit’s Record button: its outstanding vaccines ticked | [mobile](vaccines/12-new-dose-from-record-link-mobile.png) | [desktop](vaccines/12-new-dose-from-record-link-desktop.png) |
+| `13-edit-administration` | The Edit vaccination sheet: lot, product and note read back | [mobile](vaccines/13-edit-administration-mobile.png) | [desktop](vaccines/13-edit-administration-desktop.png) |
+| `14-edit-delete-confirm` | Delete opened inside the Edit vaccination sheet: the confirm step | [mobile](vaccines/14-edit-delete-confirm-mobile.png) | [desktop](vaccines/14-edit-delete-confirm-desktop.png) |
 | `15-long-product-on-page` | An 80-character product under Other wraps on the page | [mobile](vaccines/15-long-product-on-page-mobile.png) | [desktop](vaccines/15-long-product-on-page-desktop.png) |
-| `16-long-note-edit` | A 200-character note on the edit page wraps | [mobile](vaccines/16-long-note-edit-mobile.png) | [desktop](vaccines/16-long-note-edit-desktop.png) |
+| `16-long-note-edit` | A 200-character note and an 80-character product stay inside their single-line fields in the Edit vaccination sheet | [mobile](vaccines/16-long-note-edit-mobile.png) | [desktop](vaccines/16-long-note-edit-desktop.png) |
 | `17-completed-open` | Completed visits opened: given and dismissed lines with Undo | [mobile](vaccines/17-completed-open-mobile.png) | [desktop](vaccines/17-completed-open-desktop.png) |
 
 ### medication
 
-Medication courses, doses and their forms.
+Medication courses, doses and their sheets.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
@@ -315,16 +315,16 @@ Medication courses, doses and their forms.
 | `03-ended-courses-open` | The ended course behind its details | [mobile](medication/03-ended-courses-open-mobile.png) | [desktop](medication/03-ended-courses-open-desktop.png) |
 | `04-doses-filtered-by-course` | Recent doses filtered to one course | [mobile](medication/04-doses-filtered-by-course-mobile.png) | [desktop](medication/04-doses-filtered-by-course-desktop.png) |
 | `05-dose-logged-now` | Log dose now: the course shows the dose just logged | [mobile](medication/05-dose-logged-now-mobile.png) | [desktop](medication/05-dose-logged-now-desktop.png) |
-| `06-dose-edit` | Edit a dose: time, amount and note | [mobile](medication/06-dose-edit-mobile.png) | [desktop](medication/06-dose-edit-desktop.png) |
-| `07-dose-edit-error` | Refused: an 81-character amount, the typed values kept | [mobile](medication/07-dose-edit-error-mobile.png) | [desktop](medication/07-dose-edit-error-desktop.png) |
-| `08-dose-delete-confirm` | Delete dose opened: the confirm step | [mobile](medication/08-dose-delete-confirm-mobile.png) | [desktop](medication/08-dose-delete-confirm-desktop.png) |
-| `09-course-edit` | Edit course: fixed times 08:00 and 20:00 | [mobile](medication/09-course-edit-mobile.png) | [desktop](medication/09-course-edit-desktop.png) |
-| `10-course-delete-confirm` | Delete course opened: says how many doses go with it | [mobile](medication/10-course-delete-confirm-mobile.png) | [desktop](medication/10-course-delete-confirm-desktop.png) |
-| `11-course-edit-every` | Edit an every-8-hours course with a last day | [mobile](medication/11-course-edit-every-mobile.png) | [desktop](medication/11-course-edit-every-desktop.png) |
-| `12-new-course-empty` | New course: as needed by default | [mobile](medication/12-new-course-empty-mobile.png) | [desktop](medication/12-new-course-empty-desktop.png) |
-| `13-new-course-errors` | Refused: a missing name; the form reports one problem at a time | [mobile](medication/13-new-course-errors-mobile.png) | [desktop](medication/13-new-course-errors-desktop.png) |
-| `14-new-course-fixed-times` | At fixed times: the time slots appear; the earlier name error is still shown | [mobile](medication/14-new-course-fixed-times-mobile.png) | [desktop](medication/14-new-course-fixed-times-desktop.png) |
-| `15-new-course-every-hours` | Every few hours: the interval and the start; the earlier name error is still shown | [mobile](medication/15-new-course-every-hours-mobile.png) | [desktop](medication/15-new-course-every-hours-desktop.png) |
+| `06-dose-edit` | The Edit dose sheet over the Medication page: time, amount and note | [mobile](medication/06-dose-edit-mobile.png) | [desktop](medication/06-dose-edit-desktop.png) |
+| `07-dose-edit-error` | Refused in the sheet: an 81-character amount, the typed values kept | [mobile](medication/07-dose-edit-error-mobile.png) | [desktop](medication/07-dose-edit-error-desktop.png) |
+| `08-dose-delete-confirm` | Delete dose opened inside the Edit dose sheet: the confirm step | [mobile](medication/08-dose-delete-confirm-mobile.png) | [desktop](medication/08-dose-delete-confirm-desktop.png) |
+| `09-course-edit` | The Edit course sheet: fixed times 08:00 and 20:00 | [mobile](medication/09-course-edit-mobile.png) | [desktop](medication/09-course-edit-desktop.png) |
+| `10-course-delete-confirm` | Delete course opened inside the Edit course sheet: says how many doses go with it | [mobile](medication/10-course-delete-confirm-mobile.png) | [desktop](medication/10-course-delete-confirm-desktop.png) |
+| `11-course-edit-every` | The Edit course sheet for an every-8-hours course with a last day | [mobile](medication/11-course-edit-every-mobile.png) | [desktop](medication/11-course-edit-every-desktop.png) |
+| `12-new-course-empty` | The Add a course sheet over the empty Medication page: as needed by default | [mobile](medication/12-new-course-empty-mobile.png) | [desktop](medication/12-new-course-empty-desktop.png) |
+| `13-new-course-errors` | Refused in the sheet: a missing name; the form reports one problem at a time | [mobile](medication/13-new-course-errors-mobile.png) | [desktop](medication/13-new-course-errors-desktop.png) |
+| `14-new-course-fixed-times` | At fixed times in the sheet: the time slots appear; the earlier name error is still shown | [mobile](medication/14-new-course-fixed-times-mobile.png) | [desktop](medication/14-new-course-fixed-times-desktop.png) |
+| `15-new-course-every-hours` | Every few hours in the sheet: the interval and the start; the earlier name error is still shown | [mobile](medication/15-new-course-every-hours-mobile.png) | [desktop](medication/15-new-course-every-hours-desktop.png) |
 | `16-module-off-guardian` | Medication switched off: the courses and doses are kept but not listed; a guardian gets Open modules | [mobile](medication/16-module-off-guardian-mobile.png) | [desktop](medication/16-module-off-guardian-desktop.png) |
 | `17-module-off-caregiver-long-name` | A caregiver with the module off: a note without a link; courses and doses are not listed | [mobile](medication/17-module-off-caregiver-long-name-mobile.png) | [desktop](medication/17-module-off-caregiver-long-name-desktop.png) |
 
@@ -354,7 +354,7 @@ Medical visits: the list, a visit before and after it happens, cancelled, the de
 
 ### milestones
 
-Milestone checklists by age, marks and custom milestones.
+Milestone checklists by age, and the sheets for marks and custom milestones.
 
 | Shot | What it shows | Mobile | Desktop |
 |---|---|---|---|
@@ -368,13 +368,13 @@ Milestone checklists by age, marks and custom milestones.
 | `08-sami-off-guardian` | 30 months with the module off: a guardian gets a link to Modules | [mobile](milestones/08-sami-off-guardian-mobile.png) | [desktop](milestones/08-sami-off-guardian-desktop.png) |
 | `09-sami-off-caregiver` | The same for a caregiver: a sentence, no link | [mobile](milestones/09-sami-off-caregiver-mobile.png) | [desktop](milestones/09-sami-off-caregiver-desktop.png) |
 | `10-reached-and-custom` | Items reached with a date, Your milestones with a 200-character unbroken text | [mobile](milestones/10-reached-and-custom-mobile.png) | [desktop](milestones/10-reached-and-custom-desktop.png) |
-| `11-mark-with-date` | Mark as reached: choose a date and a note | [mobile](milestones/11-mark-with-date-mobile.png) | [desktop](milestones/11-mark-with-date-desktop.png) |
-| `12-mark-future-date` | Refused: a future date | [mobile](milestones/12-mark-future-date-mobile.png) | [desktop](milestones/12-mark-future-date-desktop.png) |
-| `13-new-custom` | Add a milestone: text, date, note | [mobile](milestones/13-new-custom-mobile.png) | [desktop](milestones/13-new-custom-desktop.png) |
-| `14-new-custom-201-chars` | Refused: 201 characters | [mobile](milestones/14-new-custom-201-chars-mobile.png) | [desktop](milestones/14-new-custom-201-chars-desktop.png) |
-| `15-edit-item-mark` | Edit milestone: a catalogue item’s date and note | [mobile](milestones/15-edit-item-mark-mobile.png) | [desktop](milestones/15-edit-item-mark-desktop.png) |
-| `16-undo-reached-confirm` | Undo reached opened: the confirm step | [mobile](milestones/16-undo-reached-confirm-mobile.png) | [desktop](milestones/16-undo-reached-confirm-desktop.png) |
-| `17-edit-custom-delete-confirm` | Edit a custom milestone, delete opened | [mobile](milestones/17-edit-custom-delete-confirm-mobile.png) | [desktop](milestones/17-edit-custom-delete-confirm-desktop.png) |
+| `11-mark-with-date` | The Mark as reached sheet over the list: choose a date and a note | [mobile](milestones/11-mark-with-date-mobile.png) | [desktop](milestones/11-mark-with-date-desktop.png) |
+| `12-mark-future-date` | Refused in the sheet: a future date | [mobile](milestones/12-mark-future-date-mobile.png) | [desktop](milestones/12-mark-future-date-desktop.png) |
+| `13-new-custom` | The Add a milestone sheet: text, date, note | [mobile](milestones/13-new-custom-mobile.png) | [desktop](milestones/13-new-custom-desktop.png) |
+| `14-new-custom-201-chars` | Refused in the sheet: 201 characters | [mobile](milestones/14-new-custom-201-chars-mobile.png) | [desktop](milestones/14-new-custom-201-chars-desktop.png) |
+| `15-edit-item-mark` | The Edit milestone sheet: a catalogue item’s date and note | [mobile](milestones/15-edit-item-mark-mobile.png) | [desktop](milestones/15-edit-item-mark-desktop.png) |
+| `16-undo-reached-confirm` | Undo reached opened inside the sheet: the confirm step | [mobile](milestones/16-undo-reached-confirm-mobile.png) | [desktop](milestones/16-undo-reached-confirm-desktop.png) |
+| `17-edit-custom-delete-confirm` | The Edit milestone sheet for a custom milestone, delete opened | [mobile](milestones/17-edit-custom-delete-confirm-mobile.png) | [desktop](milestones/17-edit-custom-delete-confirm-desktop.png) |
 
 ### export
 

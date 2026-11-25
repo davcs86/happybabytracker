@@ -34,17 +34,17 @@ export const ABOUT_AREAS: Record<Area, string> = {
 	shell:
 		'The app shell: tab bar on mobile, side navigation on desktop; its sheets (Switch child, More, Change theme) and the Choose a child pages. Every other shot shows the shell too (guardian and caregiver; the admin has none).',
 	sheets:
-		'The forms that open in a bottom sheet over the page they were opened from: record forms, child details, modules, access and Add a child. Without JavaScript the same forms are the pages shown in the other areas.',
+		'The forms that open in a bottom sheet over the page they were opened from: record forms, child details, modules, access and Add a child. The record forms appear as sheets, state by state, in their own areas too.',
 	home: 'Kid homes in every age band and role: quick log, running timers, Due, Today.',
 	trackers:
-		'Log and edit forms of every tracker (Ana, Mia), with their errors, advanced modes and units.',
+		'Log and edit sheets of every tracker (Ana, Mia), opened from Home and the Timeline, with their errors, advanced modes and units; Log sleep, which no link opens, as a page.',
 	timeline: 'The timeline: ranges, filters, paging, units and errors.',
-	growth: 'Growth charts, the measurement list and forms, both sources and preterm ages.',
-	vaccines: 'Vaccine schedules, dismissals and the vaccination forms.',
-	medication: 'Medication courses, doses and their forms.',
+	growth: 'Growth charts, the measurement list and its sheets, both sources and preterm ages.',
+	vaccines: 'Vaccine schedules, dismissals and the vaccination sheets.',
+	medication: 'Medication courses, doses and their sheets.',
 	visits:
 		'Medical visits: the list, a visit before and after it happens, cancelled, the delete confirm, its three sheets, and visits on Home, the Timeline and a Growth record.',
-	milestones: 'Milestone checklists by age, marks and custom milestones.',
+	milestones: 'Milestone checklists by age, and the sheets for marks and custom milestones.',
 	export:
 		'The PDF export page and its refusals. The PDF itself (POST /kids/[kid]/export/pdf) is a download, not a page: nothing is captured for it.',
 	'kid-admin':
