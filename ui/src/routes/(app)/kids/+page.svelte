@@ -51,7 +51,9 @@
 	</div>
 	<div class="contents xl:block">
 		{#if guardian}
-			<Button href="/kids/new" variant="outline" class="mt-4 w-full">Add a child</Button>
+			<Button href="/kids/new" data-drawer="Add a child" variant="outline" class="mt-4 w-full"
+				>Add a child</Button
+			>
 		{:else}
 			<p class="mt-4 text-[13.5px] text-muted-foreground">Ask a guardian to add a child.</p>
 		{/if}
