@@ -38,9 +38,11 @@
 		</select>
 	{/snippet}
 </Field>
-<fieldset class="flex flex-col gap-2">
-	<legend class="mb-1 text-sm font-medium">Volume per side</legend>
-	<p class="text-sm text-muted-foreground">Enter at least one side; leave the other blank</p>
+<fieldset class="flex flex-col gap-3.5">
+	<legend class="mb-0.5 text-[13px] leading-4 text-muted-foreground">Volume per side</legend>
+	<p class="text-[12.5px] leading-normal text-muted-foreground">
+		Enter at least one side; leave the other blank
+	</p>
 	{#each NURSING_SIDES as side (side)}
 		<Field id="entry-sides_{side}" label="{SIDE_LABEL[side]} volume">
 			{#snippet children(control)}

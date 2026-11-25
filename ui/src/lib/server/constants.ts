@@ -32,3 +32,8 @@ export const UNREACHABLE_MESSAGE = 'The app cannot reach its server, try again s
 export const PUSH_DEVICE_COOKIE = 'hbt_push_device';
 // Renewed on each visit that re-sends the subscription; a lapsed cookie only stops the automatic re-send.
 export const PUSH_DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+// Holds the display theme only: light, dark or auto.
+export const THEME_COOKIE = 'hbt_theme';
+export const THEME_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+// A same-origin path with its query: one leading slash, no backslash, no whitespace.
+export const RETURN_PATH_PATTERN = /^\/(?![/\\])[^\s\\]*$/;

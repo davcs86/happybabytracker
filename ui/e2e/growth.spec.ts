@@ -52,7 +52,7 @@ test('three measurements are listed newest first with scores over the source’s
 	const latest = await seedIvy(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(growthUrl(IVY.id));
-	await expect(page.getByRole('heading', { name: 'Growth for Ivy', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Growth', level: 1 })).toBeVisible();
 	await expect(rows(page)).toHaveCount(3);
 	await expect(rows(page)).toHaveText([
 		new RegExp(formatDayHeading(TODAY)),
@@ -264,7 +264,7 @@ test('the page stays with the growth module switched off', async ({ page }) => {
 	const response = await page.goto(growthUrl(IVY.id));
 	expect(response?.status()).toBe(200);
 	expect(response?.headers()['cache-control']).toBe('no-store');
-	await expect(page.getByRole('heading', { name: 'Growth for Ivy', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Growth', level: 1 })).toBeVisible();
 });
 
 test('an unknown measure falls back to weight; an unknown kid is the 404 page', async ({

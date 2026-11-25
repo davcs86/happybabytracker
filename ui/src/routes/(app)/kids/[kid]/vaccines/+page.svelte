@@ -1,11 +1,15 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import Field from '#lib/components/entry/Field.svelte';
-	import { ERROR_CLASS, SELECT_CLASS } from '#lib/components/field.js';
+	import { SELECT_CLASS } from '#lib/components/field.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import VaccineGroup from '#lib/components/vaccines/VaccineGroup.svelte';
+	import { formatAge } from '#lib/format.js';
 	import { vaccineNewPath } from '#lib/paths.js';
 	import type { VaccineGroup as Group } from '#lib/types.js';
 	import { antigenName, windowLabel } from '#lib/vaccines.js';
@@ -17,6 +21,8 @@
 	const schema = $derived(data.chosen ? data.vaccines.schema : null);
 	const done = (g: Group) => ['given', 'dismissed', 'available'].includes(g.status);
 	const active = $derived(data.vaccines.groups.filter((g) => !done(g)));
+	const dueGroups = $derived(active.filter((g) => g.status !== 'upcoming'));
+	const upcoming = $derived(active.filter((g) => g.status === 'upcoming'));
 	const completed = $derived(data.vaccines.groups.filter(done));
 	const name = (id: string) => antigenName(id, data.catalogue);
 	const edit = (administration: string) =>
@@ -35,180 +41,275 @@
 	);
 	const beforeError = (name: string) =>
 		beforeFailure?.field === name ? (beforeFailure.message ?? null) : null;
+
+	const LABEL = 'text-xs font-semibold tracking-[0.06em] text-muted-foreground uppercase';
+	const COLUMN = 'contents xl:flex xl:flex-col xl:gap-[18px]';
 </script>
 
 <svelte:head>
 	<title>Vaccines · {data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<p class="mb-2 text-sm">
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="underline">{data.kid.name}</a>
-</p>
-<div class="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-	<h1 class="text-xl font-semibold">Vaccines for {data.kid.name}</h1>
-	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
-	<a href={vaccineNewPath(data.kid.id)} class="text-sm underline">Record a vaccination</a>
-</div>
+{#snippet note(title: string, body: Snippet)}
+	<details class="group overflow-hidden rounded-2xl border bg-card">
+		<summary
+			class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-2.5 px-3.5 text-[15px] font-semibold [&::-webkit-details-marker]:hidden"
+		>
+			{title}
+			<ChevronDownIcon
+				aria-hidden="true"
+				class="size-4 shrink-0 text-muted-foreground group-open:rotate-180 motion-safe:transition-transform"
+			/>
+		</summary>
+		<div
+			class="flex flex-col gap-1 px-3.5 pb-3.5 text-[13px] [overflow-wrap:anywhere] text-muted-foreground"
+		>
+			{@render body()}
+		</div>
+	</details>
+{/snippet}
 
-{#if lineFailure}
-	<p class="{ERROR_CLASS} mb-4" role="alert">{lineFailure}</p>
-{/if}
-{#if dismissed !== null}
-	<p class="mb-4 text-sm" role="status">
-		{`Dismissed ${dismissed} ${dismissed === 1 ? 'line' : 'lines'}.`}
-	</p>
-{/if}
+{#snippet visits(groups: Group[], openFirstOnly: boolean)}
+	<div class="flex flex-col gap-3">
+		{#each groups as group, i (group.fromDate)}
+			<VaccineGroup
+				{group}
+				kidId={data.kid.id}
+				catalogue={data.catalogue}
+				{guardian}
+				open={!openFirstOnly || i === 0}
+			/>
+		{/each}
+	</div>
+{/snippet}
 
-{#if schema}
-	<div class="mb-6 flex flex-col gap-2 text-sm">
-		<p>
-			Schedule: {schema.authority}, {schema.edition}
-			<span class="text-muted-foreground">(retrieved {schema.retrieved})</span>
+<div
+	class="flex max-w-[720px] flex-col gap-[18px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+>
+	<div class="mt-5 flex flex-col gap-1.5 xl:col-span-2">
+		<h1>Vaccines</h1>
+		<p class="text-sm text-muted-foreground">
+			{formatAge(data.kid.birthDate, data.vaccines.today)} · from birth, not corrected age
 		</p>
-		<details>
-			<summary class="cursor-pointer">About this schedule</summary>
-			<div class="mt-1 flex flex-col gap-1 [overflow-wrap:anywhere] text-muted-foreground">
-				<p>Licence: {schema.licence}</p>
-				<p>{schema.attribution}</p>
-			</div>
-		</details>
-		{#if schema.omitted.length > 0}
-			<details>
-				<summary class="cursor-pointer">What is not included</summary>
-				<ul class="mt-1 list-disc pl-5 text-muted-foreground">
-					{#each schema.omitted as item, i (i)}
-						<li>{item}</li>
-					{/each}
-				</ul>
-			</details>
+		{#if schema}
+			<p class="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
+				Schedule: {schema.authority}, {schema.edition}
+				<span>(retrieved {schema.retrieved})</span>
+			</p>
 		{/if}
 	</div>
 
-	{#each active as group (group.fromDate)}
-		<VaccineGroup {group} kidId={data.kid.id} catalogue={data.catalogue} {guardian} />
-	{/each}
-	{#if completed.length > 0}
-		<details class="mb-6">
-			<summary class="mb-2 cursor-pointer font-semibold">Completed ({completed.length})</summary>
-			{#each completed as group (group.fromDate)}
-				<VaccineGroup {group} kidId={data.kid.id} catalogue={data.catalogue} {guardian} />
-			{/each}
-		</details>
-	{/if}
-
-	{#if data.vaccines.also.length > 0}
-		<section aria-labelledby="also-heading" class="mb-6">
-			<h2 id="also-heading" class="mb-2 font-semibold">Also available</h2>
-			<ul class="flex flex-col gap-2">
-				{#each data.vaccines.also as line (line.id)}
-					<li
-						aria-labelledby="vline-{line.id}-name vline-{line.id}-status"
-						class="rounded-lg border p-3"
-					>
-						<p id="vline-{line.id}-name" class="font-medium">
-							{name(line.antigen)}, dose {line.series}
-						</p>
-						<p id="vline-{line.id}-status" class="text-sm">
-							{#if line.status === 'given' && line.givenOn && line.administration}
-								<a href={edit(line.administration)} class="underline">Given {line.givenOn}</a>
-							{:else if line.status === 'given' && line.givenOn}
-								Given {line.givenOn}
-							{:else}
-								{windowLabel(line)}
-							{/if}
-						</p>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-
-	{#if data.vaccines.recurring.length > 0}
-		<section aria-labelledby="season-heading" class="mb-6">
-			<h2 id="season-heading" class="mb-2 font-semibold">Every season</h2>
-			<ul class="flex flex-col gap-2">
-				{#each data.vaccines.recurring as r (r.lineId)}
-					<li class="rounded-lg border p-3">
-						<p class="font-medium">{name(r.antigen)}</p>
-						{#if r.doses.length === 0}
-							<p class="text-sm text-muted-foreground">None recorded yet</p>
-						{:else}
-							<ul class="flex flex-wrap gap-x-4 text-sm">
-								{#each r.doses as dose (dose.administration)}
-									<li>
-										<a href={edit(dose.administration)} class="underline">Given {dose.givenOn}</a>
-									</li>
-								{/each}
-							</ul>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-{:else}
-	<p class="mb-6">
-		No vaccination schedule chosen yet.
-		{#if guardian}
-			<a href={resolve('/(app)/kids/[kid]/settings', { kid: data.kid.id })} class="underline"
-				>Choose a schedule<span class="sr-only"> for {data.kid.name}</span></a
-			>
-		{:else}
-			Ask a guardian to choose one.
-		{/if}
-	</p>
-{/if}
-
-<section aria-labelledby="other-heading" class="mb-6">
-	<h2 id="other-heading" class="mb-2 font-semibold">Other recorded vaccinations</h2>
-	{#if data.vaccines.other.length === 0}
-		<p class="text-sm text-muted-foreground">None</p>
-	{:else}
-		<ul class="flex flex-col gap-2">
-			{#each data.vaccines.other as dose (`${dose.administration}:${dose.antigen}`)}
-				<li class="rounded-lg border p-3 text-sm [overflow-wrap:anywhere]">
-					<a href={edit(dose.administration)} class="font-medium underline"
-						>{name(dose.antigen)}, given {dose.givenOn}</a
-					>
-					{#if dose.product}<p class="text-muted-foreground">{dose.product}</p>{/if}
-				</li>
-			{/each}
-		</ul>
-	{/if}
-</section>
-
-{#if schema && guardian}
-	<section aria-labelledby="before-heading" class="max-w-md rounded-lg border p-3">
-		<h2 id="before-heading" class="mb-1 font-semibold">Dismiss older lines</h2>
-		<p class="mb-3 text-sm text-muted-foreground">
-			Dismisses every line due before the date that is not given or dismissed yet. Each one can be
-			undone on its own.
+	{#if lineFailure}
+		<p
+			class="rounded-xl border-[1.5px] border-foreground bg-background px-3 py-2.5 text-[13.5px] leading-normal xl:col-span-2"
+			role="alert"
+		>
+			{lineFailure}
 		</p>
-		<form method="POST" action="?/dismissBefore" class="flex flex-col gap-3" novalidate use:enhance>
-			<Field id="vaccine-before" label="Due before" error={beforeError('before')}>
-				{#snippet children(control)}
-					<Input
-						{...control}
-						name="before"
-						type="date"
-						value={beforeFailure?.values?.before ?? ''}
-					/>
-				{/snippet}
-			</Field>
-			<Field id="vaccine-before-reason" label="Reason" error={beforeError('reason')}>
-				{#snippet children(control)}
-					<select
-						{...control}
-						name="reason"
-						class={SELECT_CLASS}
-						value={beforeFailure?.values?.reason ?? 'not_needed'}
+	{/if}
+	{#if dismissed !== null}
+		<p class="rounded-xl border bg-background px-3 py-2.5 text-[13px] xl:col-span-2" role="status">
+			{`Dismissed ${dismissed} ${dismissed === 1 ? 'line' : 'lines'}.`}
+		</p>
+	{/if}
+
+	<div class={COLUMN}>
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
+		<Button href={vaccineNewPath(data.kid.id)}>Record a vaccination</Button>
+
+		{#if schema}
+			{#if dueGroups.length > 0}
+				<div class="flex flex-col gap-2">
+					<h2 class={LABEL}>Due and overdue</h2>
+					{@render visits(dueGroups, false)}
+				</div>
+			{/if}
+			{#if upcoming.length > 0}
+				<div class="flex flex-col gap-2">
+					<h2 class={LABEL}>Coming up</h2>
+					{@render visits(upcoming, true)}
+				</div>
+			{/if}
+			{#if completed.length > 0}
+				<section aria-labelledby="completed-heading" class="flex flex-col gap-2">
+					<h2 id="completed-heading" class={LABEL}>Completed ({completed.length})</h2>
+					<div class="flex flex-col gap-3">
+						{#each completed as group (group.fromDate)}
+							<VaccineGroup
+								{group}
+								kidId={data.kid.id}
+								catalogue={data.catalogue}
+								{guardian}
+								open={false}
+							/>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		{:else}
+			<div
+				class="flex flex-col items-start gap-3 rounded-2xl border border-dashed bg-card p-5 [overflow-wrap:anywhere]"
+			>
+				<span
+					class="flex size-10 items-center justify-center rounded-xl bg-accent text-accent-foreground"
+				>
+					<ShieldCheckIcon aria-hidden="true" class="size-[22px]" />
+				</span>
+				<p class="text-[17px] font-semibold">No vaccination schedule chosen yet.</p>
+				<p class="text-[13.5px] leading-normal text-muted-foreground">
+					A schedule is only a list of what is usually offered and when. You can switch later;
+					recorded doses always stay.
+				</p>
+				{#if guardian}
+					<Button href={resolve('/(app)/kids/[kid]/settings', { kid: data.kid.id })}
+						>Choose a schedule<span class="sr-only"> for {data.kid.name}</span></Button
 					>
-						<option value="not_needed">Not needed</option>
-						<option value="given_unknown">Given, date unknown</option>
-					</select>
+				{:else}
+					<p class="text-sm font-medium">Ask a guardian to choose one.</p>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	<div class={COLUMN}>
+		{#if schema}
+			{#snippet about()}
+				<p>Licence: {schema.licence}</p>
+				<p>{schema.attribution}</p>
+			{/snippet}
+			{@render note('About this schedule', about)}
+			{#if schema.omitted.length > 0}
+				{#snippet omitted()}
+					<ul class="list-disc pl-5">
+						{#each schema.omitted as item, i (i)}
+							<li>{item}</li>
+						{/each}
+					</ul>
 				{/snippet}
-			</Field>
-			<Button type="submit" variant="outline" class="self-start">Dismiss lines</Button>
-		</form>
-	</section>
-{/if}
+				{@render note('What is not included', omitted)}
+			{/if}
+
+			{#if data.vaccines.also.length > 0}
+				<section aria-labelledby="also-heading" class="flex flex-col gap-2">
+					<h2 id="also-heading" class={LABEL}>Also available</h2>
+					<ul class="overflow-hidden rounded-xl border bg-card">
+						{#each data.vaccines.also as line (line.id)}
+							<li
+								aria-labelledby="vline-{line.id}-name vline-{line.id}-status"
+								class="border-t p-3 first:border-t-0"
+							>
+								<p id="vline-{line.id}-name" class="text-sm font-medium">
+									{name(line.antigen)}, dose {line.series}
+								</p>
+								<p id="vline-{line.id}-status" class="text-[12.5px] text-muted-foreground">
+									{#if line.status === 'given' && line.givenOn && line.administration}
+										<a
+											href={edit(line.administration)}
+											class="inline-flex min-h-11 items-center underline">Given {line.givenOn}</a
+										>
+									{:else if line.status === 'given' && line.givenOn}
+										Given {line.givenOn}
+									{:else}
+										{windowLabel(line)}
+									{/if}
+								</p>
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+
+			{#if data.vaccines.recurring.length > 0}
+				<section aria-labelledby="season-heading" class="flex flex-col gap-2">
+					<h2 id="season-heading" class={LABEL}>Every season</h2>
+					<ul class="overflow-hidden rounded-xl border bg-card">
+						{#each data.vaccines.recurring as r (r.lineId)}
+							<li class="border-t p-3 first:border-t-0">
+								<p class="text-sm font-medium">{name(r.antigen)}</p>
+								{#if r.doses.length === 0}
+									<p class="text-[12.5px] text-muted-foreground">None recorded yet</p>
+								{:else}
+									<ul class="flex flex-wrap gap-x-4 text-[13px]">
+										{#each r.doses as dose (dose.administration)}
+											<li>
+												<a
+													href={edit(dose.administration)}
+													class="inline-flex min-h-11 items-center underline"
+													>Given {dose.givenOn}</a
+												>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
+		{/if}
+
+		<section aria-labelledby="other-heading" class="flex flex-col gap-2">
+			<h2 id="other-heading" class={LABEL}>Other recorded vaccinations</h2>
+			{#if data.vaccines.other.length === 0}
+				<p class="text-[13px] text-muted-foreground">None</p>
+			{:else}
+				<ul class="overflow-hidden rounded-xl border bg-card">
+					{#each data.vaccines.other as dose (`${dose.administration}:${dose.antigen}`)}
+						<li class="border-t p-3 text-sm [overflow-wrap:anywhere] first:border-t-0">
+							<a
+								href={edit(dose.administration)}
+								class="inline-flex min-h-11 items-center font-medium underline"
+								>{name(dose.antigen)}, given {dose.givenOn}</a
+							>
+							{#if dose.product}<p class="text-[12.5px] text-muted-foreground">
+									{dose.product}
+								</p>{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
+
+		{#if schema && guardian}
+			<section aria-labelledby="before-heading" class="rounded-2xl border bg-card p-3.5">
+				<h2 id="before-heading" class="mb-1 text-base font-semibold">Dismiss older lines</h2>
+				<p class="mb-3 text-[13.5px] leading-normal text-muted-foreground">
+					Dismisses every line due before the date that is not given or dismissed yet. Each one can
+					be undone on its own.
+				</p>
+				<form
+					method="POST"
+					action="?/dismissBefore"
+					class="flex flex-col gap-3.5"
+					novalidate
+					use:enhance
+				>
+					<Field id="vaccine-before" label="Due before" error={beforeError('before')}>
+						{#snippet children(control)}
+							<Input
+								{...control}
+								name="before"
+								type="date"
+								value={beforeFailure?.values?.before ?? ''}
+							/>
+						{/snippet}
+					</Field>
+					<Field id="vaccine-before-reason" label="Reason" error={beforeError('reason')}>
+						{#snippet children(control)}
+							<select
+								{...control}
+								name="reason"
+								class={SELECT_CLASS}
+								value={beforeFailure?.values?.reason ?? 'not_needed'}
+							>
+								<option value="not_needed">Not needed</option>
+								<option value="given_unknown">Given, date unknown</option>
+							</select>
+						{/snippet}
+					</Field>
+					<Button type="submit" variant="outline" class="self-start">Dismiss lines</Button>
+				</form>
+			</section>
+		{/if}
+	</div>
+</div>

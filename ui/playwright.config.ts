@@ -20,6 +20,8 @@ export default defineConfig({
 	workers: 1,
 	use: {
 		baseURL: UI_ORIGIN,
+		// The design's motion is user-triggered and honours this; tests assert the settled page.
+		reducedMotion: 'reduce',
 		extraHTTPHeaders: { 'x-forwarded-proto': 'http', 'x-forwarded-for': '203.0.113.10' },
 		launchOptions: process.env.PW_CHROMIUM_PATH
 			? { executablePath: process.env.PW_CHROMIUM_PATH }
@@ -27,7 +29,12 @@ export default defineConfig({
 	},
 	projects: [
 		{ name: 'phone', use: { viewport: { width: 390, height: 844 } } },
-		{ name: 'desktop', use: { viewport: { width: 1280, height: 800 } } }
+		{ name: 'desktop', use: { viewport: { width: 1280, height: 800 } } },
+		{
+			name: 'side-nav',
+			testMatch: /(shell|theme)\.spec\.ts/,
+			use: { viewport: { width: 980, height: 800 } }
+		}
 	],
 	webServer: [
 		{

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
-	import TrackerFields from '#lib/components/entry/TrackerFields.svelte';
 	import TrackerForm from '#lib/components/entry/TrackerForm.svelte';
 	import { TRACKER_TITLE } from '#lib/constants.js';
 	import { advancedToggle } from '#lib/entry-edit.js';
@@ -18,18 +16,17 @@
 	<title>{title} · {data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<p class="mb-2 text-sm">
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="underline">{data.kid.name}</a>
-</p>
-<h1 class="mb-4 text-xl font-semibold">{title}</h1>
 <TrackerForm
 	kid={data.kid}
+	kind={data.kind}
+	stage="new"
+	{title}
+	age={data.ages[data.kid.id]}
 	zone={data.kid.timeZone}
 	{values}
 	{error}
 	{toggle}
 	message={form && !form.field ? form.message : null}
+	refused={!!form?.field}
 	running={!!form && 'running' in form}
->
-	<TrackerFields kind={data.kind} stage="new" {values} {error} />
-</TrackerForm>
+/>

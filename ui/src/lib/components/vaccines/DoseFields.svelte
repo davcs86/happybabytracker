@@ -34,76 +34,82 @@
 	}
 </script>
 
-<Field id="vaccine-given_on" label="Date given" error={error('given_on')}>
-	{#snippet children(control)}
-		<Input
-			{...control}
-			name="given_on"
-			type="date"
-			value={text('given_on')}
-			min={birthDate}
-			max={today}
-			required
-		/>
-	{/snippet}
-</Field>
-
-<Field
-	id="vaccine-product_shortcut"
-	label="Product shortcut"
-	hint="With JavaScript on, choosing a product ticks the vaccines it covers; you can always tick them yourself."
->
-	{#snippet children(control)}
-		<select {...control} name="product_shortcut" class={SELECT_CLASS} onchange={tick}>
-			<option value="">Choose a product</option>
-			{#each catalogue.products as p (p.id)}
-				<option value={p.id} data-antigens={p.antigens.join(',')}>{p.name}</option>
-			{/each}
-		</select>
-	{/snippet}
-</Field>
-
-<fieldset
-	class="flex flex-col gap-2"
-	aria-describedby={error('antigens') ? ANTIGENS_ERROR : undefined}
->
-	<legend class="mb-2 text-sm font-medium">Vaccines given</legend>
-	{#if error('antigens')}
-		<p id={ANTIGENS_ERROR} class={ERROR_CLASS} role="alert">{error('antigens')}</p>
-	{/if}
-	{#each catalogue.antigens as a (a.id)}
-		<label class="flex min-h-8 items-center gap-2 text-sm">
-			<input
-				type="checkbox"
-				name="antigens"
-				value={a.id}
-				checked={values.antigens.includes(a.id)}
-				aria-invalid={error('antigens') ? 'true' : undefined}
-				aria-describedby={error('antigens') ? ANTIGENS_ERROR : undefined}
-				class="size-4"
+<div class="flex flex-col gap-3.5">
+	<Field id="vaccine-given_on" label="Date given" error={error('given_on')}>
+		{#snippet children(control)}
+			<Input
+				{...control}
+				name="given_on"
+				type="date"
+				value={text('given_on')}
+				min={birthDate}
+				max={today}
+				required
 			/>
-			{a.name}
-		</label>
-	{/each}
-</fieldset>
+		{/snippet}
+	</Field>
 
-<Field id="vaccine-lot" label="Lot number" error={error('lot')}>
-	{#snippet children(control)}
-		<Input {...control} name="lot" autocomplete="off" value={text('lot')} />
-	{/snippet}
-</Field>
+	<Field
+		id="vaccine-product_shortcut"
+		label="Product shortcut"
+		hint="With JavaScript on, choosing a product ticks the vaccines it covers; you can always tick them yourself."
+	>
+		{#snippet children(control)}
+			<select {...control} name="product_shortcut" class={SELECT_CLASS} onchange={tick}>
+				<option value="">Choose a product</option>
+				{#each catalogue.products as p (p.id)}
+					<option value={p.id} data-antigens={p.antigens.join(',')}>{p.name}</option>
+				{/each}
+			</select>
+		{/snippet}
+	</Field>
 
-<Field id="vaccine-product" label="Product name" error={error('product')}>
-	{#snippet children(control)}
-		<Input {...control} name="product" autocomplete="off" value={text('product')} />
-	{/snippet}
-</Field>
+	<fieldset
+		class="flex flex-col gap-2"
+		aria-describedby={error('antigens') ? ANTIGENS_ERROR : undefined}
+	>
+		<legend class="mb-1.5 text-[13px] text-muted-foreground">Vaccines given</legend>
+		{#if error('antigens')}
+			<p id={ANTIGENS_ERROR} class={ERROR_CLASS} role="alert">{error('antigens')}</p>
+		{/if}
+		{#each catalogue.antigens as a (a.id)}
+			<label
+				class="flex min-h-12 items-center gap-3 rounded-xl border bg-card px-3 text-[14.5px] [overflow-wrap:anywhere]"
+			>
+				<input
+					type="checkbox"
+					name="antigens"
+					value={a.id}
+					checked={values.antigens.includes(a.id)}
+					aria-invalid={error('antigens') ? 'true' : undefined}
+					aria-describedby={error('antigens') ? ANTIGENS_ERROR : undefined}
+					class="size-5 shrink-0 accent-primary"
+				/>
+				{a.name}
+			</label>
+		{/each}
+	</fieldset>
+</div>
 
-<Field id="vaccine-note" label="Note" error={error('note')}>
-	{#snippet children(control)}
-		<Input {...control} name="note" autocomplete="off" value={text('note')} />
-	{/snippet}
-</Field>
+<div class="flex flex-col gap-3.5 xl:row-span-2">
+	<Field id="vaccine-lot" label="Lot number" error={error('lot')}>
+		{#snippet children(control)}
+			<Input {...control} name="lot" autocomplete="off" value={text('lot')} />
+		{/snippet}
+	</Field>
+
+	<Field id="vaccine-product" label="Product name" error={error('product')}>
+		{#snippet children(control)}
+			<Input {...control} name="product" autocomplete="off" value={text('product')} />
+		{/snippet}
+	</Field>
+
+	<Field id="vaccine-note" label="Note" error={error('note')}>
+		{#snippet children(control)}
+			<Input {...control} name="note" autocomplete="off" value={text('note')} />
+		{/snippet}
+	</Field>
+</div>
 
 {#if values.given_on_original !== undefined}
 	{#each ORIGINALS as name (name)}

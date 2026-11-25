@@ -2,8 +2,9 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import CourseFields from '#lib/components/medication/CourseFields.svelte';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { keepValues } from '#lib/components/field.js';
+	import { Alert } from '#lib/components/ui/alert/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
 	import { doseCountLabel } from '#lib/medication.js';
 	import type { PageProps } from './$types';
 
@@ -26,50 +27,53 @@
 	<title>Edit course · {data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<p class="mb-2 text-sm">
-	<a href={medication} class="underline">Medication for {data.kid.name}</a>
-</p>
-<h1 class="text-xl font-semibold">Edit course</h1>
-<p class="mb-4 text-sm [overflow-wrap:anywhere] text-muted-foreground">{data.course.name}</p>
-<form
-	method="POST"
-	action="?/save"
-	class="flex max-w-md flex-col gap-4"
-	novalidate
-	use:enhance={keepValues}
->
-	{#if save && !save.field && save.message}
-		<p class={ERROR_CLASS} role="alert">{save.message}</p>
-	{/if}
-	<CourseFields
-		{values}
-		{error}
-		zone={data.kid.timeZone}
-		startHint="Leave blank to keep the current start"
-	/>
-	{#each ['name', 'dose', 'schedule', 'start_at', 'end_on', 'active', 'note'] as const as k (k)}
-		<input type="hidden" name="{k}_original" value={data.values[`${k}_original`]} />
-	{/each}
-	<div class="flex items-center gap-4">
-		<Button type="submit">Save</Button>
-		<a href={medication} class="text-sm underline">Cancel</a>
+<div class="flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:w-[920px] xl:max-w-none">
+	<div class="mt-5 flex flex-col gap-1.5">
+		<h1>Edit course</h1>
+		<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
+		<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">{data.course.name}</p>
+		<p class="text-[13.5px] text-muted-foreground">Times are in {data.kid.timeZone}</p>
 	</div>
-</form>
-
-<!-- Two steps without JavaScript: the button exists only inside the opened details.
-     A failure reopens it, so its message shows after a full-page POST too. -->
-<details class="mt-6 max-w-md rounded-lg border p-3" open={!!del?.message}>
-	<summary class="cursor-pointer text-sm font-medium">Delete this course</summary>
-	<form method="POST" action="?/delete" class="mt-3 flex flex-col gap-3" use:enhance>
-		{#if del?.message}
-			<p class={ERROR_CLASS} role="alert">{del.message}</p>
-		{/if}
-		<p class="text-sm">This removes the course for everyone with access to {data.kid.name}.</p>
-		<p class="text-sm">
-			This also deletes the {doseCountLabel(data.course.doseCount)} logged for this course.
-		</p>
-		<Button type="submit" variant="outline" class="self-start border-destructive text-destructive"
-			>Yes, delete this course</Button
-		>
+	{#if save && !save.field && save.message}
+		<Alert class="[overflow-wrap:anywhere]">{save.message}</Alert>
+	{/if}
+	<form
+		method="POST"
+		action="?/save"
+		class="flex flex-col gap-[18px] xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6"
+		novalidate
+		use:enhance={keepValues}
+	>
+		<CourseFields {values} {error} startHint="Leave blank to keep the current start" />
+		{#each ['name', 'dose', 'schedule', 'start_at', 'end_on', 'active', 'note'] as const as k (k)}
+			<input type="hidden" name="{k}_original" value={data.values[`${k}_original`]} />
+		{/each}
+		<div class="flex gap-2">
+			<Button type="submit" class="flex-1">Save</Button>
+			<Button href={medication} variant="outline">Cancel</Button>
+		</div>
 	</form>
-</details>
+
+	<!-- Two steps without JavaScript: the button exists only inside the opened details.
+     A failure reopens it, so its message shows after a full-page POST too. -->
+	<details class="max-w-[448px] border-t pt-4" open={!!del?.message}>
+		<summary
+			class="{buttonVariants({
+				variant: 'destructive'
+			})} w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+			>Delete this course</summary
+		>
+		<form method="POST" action="?/delete" class="flex flex-col gap-2.5 pt-3" use:enhance>
+			{#if del?.message}
+				<Alert class="[overflow-wrap:anywhere]">{del.message}</Alert>
+			{/if}
+			<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
+				This removes the course for everyone with access to {data.kid.name}.
+			</p>
+			<p class="text-[13.5px] text-muted-foreground">
+				This also deletes the {doseCountLabel(data.course.doseCount)} logged for this course.
+			</p>
+			<Button type="submit" variant="destructive">Yes, delete this course</Button>
+		</form>
+	</details>
+</div>

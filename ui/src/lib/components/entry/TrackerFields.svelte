@@ -12,12 +12,15 @@
 	let {
 		kind,
 		stage,
+		part,
 		values,
 		error,
 		estimate = null
 	}: {
 		kind: TrackerKind;
 		stage: EntryStage;
+		// The primary fields sit in the left column from 1280 px, the optional ones in the right.
+		part: 'primary' | 'optional';
 		values: EntryValues;
 		error: (name: string) => string | null;
 		estimate?: string | null;
@@ -25,17 +28,17 @@
 </script>
 
 {#if kind === 'bottles'}
-	<BottleFields {values} {error} />
+	{#if part === 'primary'}<BottleFields {values} {error} />{/if}
 {:else if kind === 'diapers'}
-	<DiaperFields {values} {error} />
+	{#if part === 'primary'}<DiaperFields {values} {error} />{/if}
 {:else if kind === 'meals'}
-	<MealFields {values} {error} />
+	<MealFields {part} {values} {error} />
 {:else if kind === 'pumping'}
-	<PumpingFields {values} {error} />
+	{#if part === 'primary'}<PumpingFields {values} {error} />{/if}
 {:else if kind === 'symptoms'}
-	<SymptomFields {values} {error} />
+	<SymptomFields {part} {values} {error} />
 {:else if kind === 'sleep'}
-	<SleepFields {stage} {values} {error} />
+	{#if part === 'primary'}<SleepFields {stage} {values} {error} />{/if}
 {:else}
-	<NursingFields {stage} {values} {error} {estimate} />
+	<NursingFields {part} {stage} {values} {error} {estimate} />
 {/if}

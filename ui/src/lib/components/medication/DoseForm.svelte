@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance, type SubmitFunction } from '$app/forms';
 	import { page } from '$app/state';
+	import type { Snippet } from 'svelte';
 	import Field from '#lib/components/entry/Field.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
@@ -10,8 +11,15 @@
 		id,
 		name,
 		value = '',
-		error = null
-	}: { id: string; name: string; value?: string; error?: string | null } = $props();
+		error = null,
+		actions
+	}: {
+		id: string;
+		name: string;
+		value?: string;
+		error?: string | null;
+		actions?: Snippet;
+	} = $props();
 
 	let amount = $derived(value);
 	let sending = $state(false);
@@ -34,7 +42,7 @@
 <form
 	method="POST"
 	action="?/log"
-	class="mt-3 flex max-w-md flex-col gap-2"
+	class="flex flex-col gap-3"
 	aria-label="Log a dose of {name}"
 	novalidate
 	use:enhance={clearWhenLogged}
@@ -46,8 +54,11 @@
 			<Input {...control} name="amount" autocomplete="off" bind:value={amount} />
 		{/snippet}
 	</Field>
-	<!-- No fade: re-enabled after its request, the button must be at full contrast at once. -->
-	<Button type="submit" class="self-start transition-none" disabled={sending}
-		>Log dose now<span class="sr-only"> of {name}</span></Button
-	>
+	<div class="flex flex-wrap items-center gap-2">
+		<!-- No fade: re-enabled after its request, the button must be at full contrast at once. -->
+		<Button type="submit" class="transition-none" disabled={sending}
+			>Log dose now<span class="sr-only"> of {name}</span></Button
+		>
+		{@render actions?.()}
+	</div>
 </form>

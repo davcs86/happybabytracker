@@ -4,6 +4,7 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
+	navLink,
 	signIn,
 	submit,
 	untilHydrated
@@ -48,9 +49,21 @@ const group = (page: Page, title: string) =>
 	page.getByRole('region', { name: new RegExp(`^${title}`) });
 const line = (scope: Page | Locator, name: string) =>
 	scope.getByRole('listitem', { name: new RegExp(`^${name.replace(/[()]/g, '\\$&')}`) });
+const completedGroups = (page: Page) => page.getByRole('region', { name: /^Completed \(\d+\)$/ });
 const overflows = (page: Page) =>
 	page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 const href = (link: Locator) => link.evaluate((a) => (a as HTMLAnchorElement).href);
+
+// A visit is a disclosure card: only the current ones are open, so a test opens the one it reads.
+async function openGroup(region: Locator) {
+	const details = region.locator('details').first();
+	await expect(async () => {
+		if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) {
+			await region.locator('summary').first().click();
+		}
+		await expect(details).toHaveAttribute('open', '', { timeout: 1000 });
+	}).toPass();
+}
 
 // Rendered as the page alert, not only in the serialised form data.
 const SHOWN_REFUSAL = /role="alert"[^>]*>Only a guardian can dismiss vaccines</;
@@ -71,16 +84,20 @@ const written = async (method: string, path: string) => {
 	return JSON.parse(writes.at(-1)?.body ?? 'null') as Row;
 };
 
-async function onPage(page: Page, kid = IVY.id, name = IVY.name) {
+async function onPage(page: Page, kid = IVY.id) {
 	await page.waitForURL((u) => u.pathname === pageUrl(kid) && u.search === '');
-	await expect(page.getByRole('heading', { name: `Vaccines for ${name}`, level: 1 })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Vaccines', level: 1, exact: true })
+	).toBeVisible();
 }
 
 test('a kid on a schedule sees the visits in age order with status texts', async ({ page }) => {
 	await onSchedule(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(pageUrl(IVY.id));
-	await expect(page.getByRole('heading', { name: 'Vaccines for Ivy', level: 1 })).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Vaccines', level: 1, exact: true })
+	).toBeVisible();
 	await expect(page.getByText('Schedule: Stub authority, Stub edition')).toBeVisible();
 	await page.getByText('About this schedule', { exact: true }).click();
 	await expect(page.getByText('Stub licence')).toBeVisible();
@@ -164,11 +181,13 @@ test('a visit whose remaining lines are all available folds under Completed', as
 	await seed(api, { given_on: AT_TWO_MONTHS, antigens: ['diphtheria', 'hib'] });
 	await signIn(page, ANA);
 	await page.goto(pageUrl(IVY.id));
-	await expect(groups(page)).toHaveCount(2);
-	const completed = page.locator('details').filter({ hasText: 'Completed (1)' });
-	await completed.getByText('Completed (1)').click();
+	await expect(groups(page)).toHaveCount(3);
+	const completed = completedGroups(page);
+	await expect(completed).toHaveCount(1);
+	await expect(completed.getByRole('region')).toHaveCount(1);
 	const eight = group(completed, '8-week vaccines');
 	await expect(eight.getByRole('heading', { level: 2 })).toHaveText(/Available/);
+	await openGroup(eight);
 	await expect(line(eight, 'Diphtheria, dose 1')).toContainText(`Given ${AT_TWO_MONTHS}`);
 	await expect(line(eight, 'Diphtheria, dose 1')).not.toContainText('Due from');
 	await expect(line(eight, 'Diphtheria, dose 1').getByRole('button')).toHaveCount(0);
@@ -192,20 +211,20 @@ test('dismissing a visit’s last open line folds it under Completed; undo unfol
 	const hib = line(twelve, `${HIB}, dose 2`);
 	await hib.getByLabel(`Reason for ${HIB}, dose 2`).selectOption('not_needed');
 	await hib.getByRole('button', { name: `Dismiss ${HIB}, dose 2` }).click();
-	const completed = page.locator('details').filter({ hasText: 'Completed (1)' });
+	const completed = completedGroups(page);
 	await expect(completed).toHaveCount(1);
-	await expect(groups(page)).toHaveCount(2);
-	await completed.getByText('Completed (1)').click();
 	await expect(groups(page)).toHaveCount(3);
+	await expect(completed.getByRole('region')).toHaveCount(1);
 	const folded = group(completed, '12-month vaccines');
 	await expect(folded.getByRole('heading', { level: 2 })).toHaveText(/Dismissed/);
+	await openGroup(folded);
 	await expect(line(folded, `${HIB}, dose 2`)).toContainText('Dismissed: not needed');
 	await expectAccessible(page);
 
 	await line(folded, `${HIB}, dose 2`)
 		.getByRole('button', { name: `Undo dismissal of ${HIB}, dose 2` })
 		.click();
-	await expect(page.getByText(/^Completed/)).toHaveCount(0);
+	await expect(completedGroups(page)).toHaveCount(0);
 	await expect(group(page, '12-month vaccines').getByRole('heading', { level: 2 })).toHaveText(
 		/Due/
 	);
@@ -288,8 +307,8 @@ test('a 6-in-1 recorded through the product shortcut fills its lines', async ({ 
 	await field(page, 'Date given').fill(AT_TWO_MONTHS);
 	await save(page);
 	await onPage(page);
-	await page.getByText('Completed (1)').click();
 	const eight = group(page, '8-week vaccines');
+	await openGroup(eight);
 	await expect(line(eight, 'Diphtheria, dose 1')).toHaveAccessibleName(/Given/);
 	await expect(line(eight, `${HIB}, dose 1`)).toContainText(`Given ${AT_TWO_MONTHS}`);
 	expect(await written('POST', apiPath(IVY.id))).toEqual({
@@ -410,7 +429,7 @@ test('a caregiver records a dose but gets no dismiss controls, and a posted dism
 	await page.waitForURL((u) => u.pathname === newUrl(LEO.id));
 	await field(page, 'Diphtheria').check();
 	await save(page);
-	await onPage(page, LEO.id, LEO.name);
+	await onPage(page, LEO.id);
 	await expect(line(page, 'Diphtheria, dose 1')).toHaveAccessibleName(/Given/);
 
 	const response = await page.request.post(`${pageUrl(LEO.id)}?/dismiss`, {
@@ -520,10 +539,11 @@ test('the page is linked from the kid home and stays reachable with the module o
 	).toBe(204);
 	await signIn(page, ANA);
 	await page.goto(`/kids/${IVY.id}`);
-	await page.getByRole('link', { name: `Vaccines for ${IVY.name}` }).click();
+	await expect(await navLink(page, 'Vaccines')).toHaveCount(0);
+	await page.goto(pageUrl(IVY.id));
 	await onPage(page);
 	await page.goto(`/kids/${LEO.id}`);
-	const leo = page.getByRole('link', { name: `Vaccines for ${LEO.name}` });
+	const leo = await navLink(page, 'Vaccines');
 	expect(await href(leo)).toBe(`${UI_ORIGIN}${pageUrl(LEO.id)}`);
 	const row = await seed(api, { given_on: AT_TWO_MONTHS, antigens: ['hib'] });
 	for (const path of [pageUrl(IVY.id), newUrl(IVY.id), editUrl(IVY.id, row.id)]) {
@@ -548,18 +568,18 @@ test.describe('without JavaScript', () => {
 		await field(page, 'Date given').fill(AT_TWO_MONTHS);
 		await save(page);
 		await onPage(page);
-		await page.getByText('Completed (1)').click();
+		await openGroup(group(page, '8-week vaccines'));
 		await expect(line(page, 'Diphtheria, dose 1')).toHaveAccessibleName(/Given/);
 		expect((await stored(api))[0]).toMatchObject({ antigens: ['diphtheria', 'hib'] });
 
 		const rota = line(page, 'Rotavirus, dose 1');
 		await rota.getByRole('button', { name: 'Dismiss Rotavirus, dose 1' }).click();
 		await onPage(page);
-		await page.getByText('Completed (1)').click();
+		await openGroup(group(page, '8-week vaccines'));
 		await expect(line(page, 'Rotavirus, dose 1')).toContainText('Dismissed: not needed');
 		await page.getByRole('button', { name: 'Undo dismissal of Rotavirus, dose 1' }).click();
 		await onPage(page);
-		await page.getByText('Completed (1)').click();
+		await openGroup(group(page, '8-week vaccines'));
 		await expect(line(page, 'Rotavirus, dose 1')).toHaveAccessibleName(/Available/);
 
 		const form = page.getByRole('region', { name: 'Dismiss older lines' });

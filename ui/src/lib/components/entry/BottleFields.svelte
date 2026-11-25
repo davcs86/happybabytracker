@@ -2,7 +2,7 @@
 	import EntryTimeField from '#lib/components/entry/EntryTimeField.svelte';
 	import SourceVolumes from '#lib/components/entry/SourceVolumes.svelte';
 	import VolumeField from '#lib/components/entry/VolumeField.svelte';
-	import { ERROR_CLASS } from '#lib/components/field.js';
+	import { CHOICE_CLASS, ERROR_CLASS } from '#lib/components/field.js';
 	import { BOTTLE_CONTENTS, BOTTLE_CONTENT_LABEL } from '#lib/constants.js';
 	import type { EntryValues } from '#lib/entry-edit.js';
 
@@ -19,13 +19,14 @@
 	<SourceVolumes {values} {error} />
 {:else}
 	<!-- Each box carries the error: a plain group has no invalid state of its own. -->
-	<fieldset class="flex flex-col gap-1">
-		<legend class="mb-1 text-sm font-medium">Contents</legend>
-		<div class="grid grid-cols-2 gap-x-4">
+	<fieldset class="flex flex-col gap-1.5">
+		<legend class="mb-0.5 text-[13px] leading-4 text-muted-foreground">Contents</legend>
+		<div class="grid grid-cols-2 gap-x-3">
 			{#each BOTTLE_CONTENTS as content (content)}
-				<label class="flex min-h-11 items-center gap-2 text-sm">
+				<label class="flex min-h-11 items-center gap-3 text-[15px]">
 					<input
 						type="checkbox"
+						class={CHOICE_CLASS}
 						name="contents"
 						value={content}
 						checked={chosen.includes(content)}

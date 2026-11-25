@@ -1,54 +1,78 @@
 <script lang="ts">
 	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import * as Card from '#lib/components/ui/card/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import type { PageProps } from './$types';
 
 	let { form }: PageProps = $props();
+
+	const usernameError = $derived(form && 'usernameError' in form ? form.usernameError : null);
+	const passwordError = $derived(form && 'passwordError' in form ? form.passwordError : null);
+	const message = $derived(form && 'message' in form ? form.message : null);
 </script>
 
 <svelte:head>
 	<title>Sign in · happybabytracker</title>
 </svelte:head>
 
-<main class="flex min-h-screen items-center justify-center p-4">
-	<Card.Root class="w-full max-w-sm">
-		<Card.Header>
-			<h1 class="leading-none font-semibold">happybabytracker</h1>
-			<Card.Description>Sign in to continue</Card.Description>
-		</Card.Header>
-		<Card.Content>
-			<form method="POST" class="flex flex-col gap-4">
-				{#if form?.message}
-					<Alert.Root variant="destructive" role="alert">
-						<Alert.Description>{form.message}</Alert.Description>
-					</Alert.Root>
+<main class="flex min-h-screen flex-col justify-center px-5 py-6">
+	<div class="mx-auto flex w-full max-w-[400px] flex-col gap-4">
+		<p class="text-base font-bold">Happy baby</p>
+		<h1>Sign in</h1>
+		<p class="text-sm leading-normal text-muted-foreground">Sign in to continue.</p>
+		<form method="POST" novalidate class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4">
+			{#if message}
+				<Alert.Root id="login-message">
+					<Alert.Description>{message}</Alert.Description>
+				</Alert.Root>
+			{/if}
+			<div class="grid gap-1.5">
+				<Label for="username" class="text-xs">Username</Label>
+				<Input
+					id="username"
+					name="username"
+					autocomplete="username"
+					autocapitalize="none"
+					spellcheck={false}
+					value={form?.username ?? ''}
+					aria-invalid={usernameError ? 'true' : undefined}
+					aria-describedby={usernameError
+						? 'username-error'
+						: message
+							? 'login-message'
+							: undefined}
+				/>
+				{#if usernameError}
+					<p id="username-error" class="text-[12.5px] font-semibold text-destructive">
+						{usernameError}
+					</p>
 				{/if}
-				<div class="flex flex-col gap-2">
-					<Label for="username">Username</Label>
-					<Input
-						id="username"
-						name="username"
-						autocomplete="username"
-						autocapitalize="none"
-						value={form?.username ?? ''}
-						required
-					/>
-				</div>
-				<div class="flex flex-col gap-2">
-					<Label for="password">Password</Label>
-					<Input
-						id="password"
-						name="password"
-						type="password"
-						autocomplete="current-password"
-						required
-					/>
-				</div>
-				<Button type="submit">Sign in</Button>
-			</form>
-		</Card.Content>
-	</Card.Root>
+			</div>
+			<div class="grid gap-1.5">
+				<Label for="password" class="text-xs">Password</Label>
+				<Input
+					id="password"
+					name="password"
+					type="password"
+					autocomplete="current-password"
+					aria-invalid={passwordError ? 'true' : undefined}
+					aria-describedby={passwordError
+						? 'password-error'
+						: message
+							? 'login-message'
+							: undefined}
+				/>
+				{#if passwordError}
+					<p id="password-error" class="text-[12.5px] font-semibold text-destructive">
+						{passwordError}
+					</p>
+				{/if}
+			</div>
+			<Button type="submit" size="xl">Sign in</Button>
+		</form>
+		<p class="text-[12.5px] leading-normal text-muted-foreground">
+			No account yet? A guardian or the administrator sends you a one-time link.
+		</p>
+	</div>
 </main>

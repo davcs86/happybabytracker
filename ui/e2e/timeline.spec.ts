@@ -61,6 +61,12 @@ const day = (page: Page, date: string) =>
 	page.getByRole('region', { name: formatDayHeading(date) });
 const entries = (page: Page, date: string) =>
 	day(page, date).getByRole('list', { name: 'Entries' }).getByRole('listitem');
+// A row's accessible name is its timeline line, with the note after it.
+const entryNames = (page: Page, date: string) =>
+	entries(page, date)
+		.getByRole('link')
+		.evaluateAll((links) => links.map((a) => a.getAttribute('aria-label')));
+const link = (page: Page, name: string | RegExp) => page.getByRole('link', { name });
 const totals = (page: Page, date: string) =>
 	day(page, date).getByRole('list', { name: 'Totals' }).getByRole('listitem');
 const show = (page: Page) => page.getByRole('button', { name: 'Show', exact: true }).click();
@@ -76,20 +82,24 @@ test('six entries on two days sit under two headings, newest first, with their d
 	await signIn(page, ANA);
 	const response = await page.goto(timelineUrl(RANGE));
 	expect(response?.headers()['cache-control']).toBe('no-store');
-	await expect(page.getByRole('heading', { name: 'Timeline for Mia', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 
 	const headings = page.getByRole('heading', { level: 2 });
 	await expect(headings).toHaveText([formatDayHeading(DAY2), formatDayHeading(DAY1)]);
-	await expect(entries(page, DAY2)).toHaveText([
-		'12:15 Solids: pear · liked it',
-		'10:00 Pumping 20 min, 90 ml (both)',
-		'08:00 Nursing L 8 min · R 5 min'
-	]);
-	await expect(entries(page, DAY1)).toHaveText([
-		'Sleep 13:05–14:40 (1 h 35 min)',
-		'11:30 Diaper wet',
-		/^09:05 Bottle 120 ml, breast milk \+ formula\s+woke hungry$/
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY2))
+		.toEqual([
+			'12:15 Solids: pear · liked it',
+			'10:00 Pumping 20 min, 90 ml (both)',
+			'08:00 Nursing L 8 min · R 5 min'
+		]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'Sleep 13:05–14:40 (1 h 35 min)',
+			'11:30 Diaper wet',
+			'09:05 Bottle 120 ml, breast milk + formula woke hungry'
+		]);
 	await expect(totals(page, DAY2)).toHaveText(['Nursing 1 · 13 min']);
 	await expect(totals(page, DAY1)).toHaveText([
 		'Bottles 1 · 120 ml',
@@ -131,7 +141,9 @@ test('the default range is the kid’s today', async ({ page }) => {
 	const today = todayIn(MIA.timeZone);
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(today);
 	await expect(page.getByLabel('To', { exact: true })).toHaveValue(today);
-	await expect(entries(page, today)).toHaveText([/Diaper dirty\s*$/]);
+	await expect
+		.poll(() => entryNames(page, today))
+		.toEqual([expect.stringMatching(/Diaper dirty$/)]);
 });
 
 test('unticking a tracker hides its entries, ticking it again brings them back', async ({
@@ -141,20 +153,20 @@ test('unticking a tracker hides its entries, ticking it again brings them back',
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
 	await untilHydrated(page.getByLabel('From', { exact: true }));
-	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toBeVisible();
 
 	await box(page, 'Bottle').uncheck();
 	await show(page);
 	await page.waitForURL(/types=/);
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Sleep')).toBeChecked();
-	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toHaveCount(0);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)', 'Sleep 1 h 35 min']);
 
 	await box(page, 'Bottle').check();
 	await show(page);
-	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toBeVisible();
 	await expect(totals(page, DAY1).first()).toHaveText('Bottles 1 · 120 ml');
 });
 
@@ -169,14 +181,14 @@ test('a switched-off module’s entries stay hidden until its box is ticked', as
 	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Diaper')).toBeChecked();
-	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toHaveCount(0);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)', 'Sleep 1 h 35 min']);
 
 	await box(page, 'Bottle').check();
 	await show(page);
-	await expect(page.getByText('09:05 Bottle 120 ml')).toBeVisible();
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, '09:05 Bottle 120 ml')).toBeVisible();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1).first()).toHaveText('Bottles 1 · 120 ml');
 });
 
@@ -210,7 +222,9 @@ async function pageThroughOlder(page: Page) {
 	const second = await rowLinks(page);
 	expect(first).not.toContain(second[0]);
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(PAGE_DAY);
-	await expect(entries(page, PAGE_DAY).first()).toHaveText('06:00 Diaper wet');
+	await expect(entries(page, PAGE_DAY).first().getByRole('link')).toHaveAccessibleName(
+		'06:00 Diaper wet'
+	);
 
 	await page.getByRole('link', { name: 'Back to newest' }).click();
 	await expect(page).not.toHaveURL(/cursor=/);
@@ -243,7 +257,7 @@ test('Older carries a narrowed filter to the next page', async ({ page }) => {
 	await expect(page).not.toHaveURL(/types=bottle/);
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect.poll(() => rowLinks(page)).toHaveLength(1);
-	await expect(page.getByText('Bottle 60 ml')).toHaveCount(0);
+	await expect(link(page, /Bottle 60 ml/)).toHaveCount(0);
 });
 
 test('an invalid date, a reversed range and a long range show a message on the field', async ({
@@ -252,7 +266,7 @@ test('an invalid date, a reversed range and a long range show a message on the f
 	await seedTwoDays(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(timelineUrl('from=garbage&to=2026-10-15'));
-	await expect(page.getByRole('heading', { name: 'Timeline for Mia', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 	await expectFieldError(page.getByLabel('From', { exact: true }), 'Enter a valid date');
 	await expect(page.getByLabel('To', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
 	await expect(page.getByRole('list', { name: 'Entries' })).toHaveCount(0);
@@ -296,7 +310,7 @@ test('a row opens its edit page, and saving returns to the timeline with the cha
 	await page.getByRole('radio', { name: 'Both' }).check();
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL(timelineUrl(`from=${DAY1}&to=${DAY1}`));
-	await expect(entries(page, DAY1)).toHaveText(['11:30 Diaper both']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['11:30 Diaper both']);
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 both)']);
 });
 
@@ -319,7 +333,9 @@ test('a Madrid day of 23 hours holds an entry at 00:30 and one at 23:30 under on
 	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
 		formatDayHeading('2026-03-29')
 	]);
-	await expect(entries(page, '2026-03-29')).toHaveText(['23:30 Diaper dirty', '00:30 Diaper wet']);
+	await expect
+		.poll(() => entryNames(page, '2026-03-29'))
+		.toEqual(['23:30 Diaper dirty', '00:30 Diaper wet']);
 	await expect(totals(page, '2026-03-29')).toHaveText(['Diapers 2 (1 wet, 1 dirty)']);
 
 	await page.goto(timelineUrl('from=2026-03-28&to=2026-03-30&types=diaper', LEO.id));
@@ -328,8 +344,8 @@ test('a Madrid day of 23 hours holds an entry at 00:30 and one at 23:30 under on
 		formatDayHeading('2026-03-29'),
 		formatDayHeading('2026-03-28')
 	]);
-	await expect(entries(page, '2026-03-28')).toHaveText(['23:30 Diaper dry']);
-	await expect(entries(page, '2026-03-30')).toHaveText(['00:00 Diaper both']);
+	await expect.poll(() => entryNames(page, '2026-03-28')).toEqual(['23:30 Diaper dry']);
+	await expect.poll(() => entryNames(page, '2026-03-30')).toEqual(['00:00 Diaper both']);
 });
 
 test('a parent without a grant and an unknown kid get the same 404 page', async ({ page }) => {
@@ -342,7 +358,7 @@ test('a caregiver sees the kid’s timeline', async ({ page }) => {
 	await seed(await stubAs(CLEO), 'diapers', { at: `${DAY1}T11:30:00Z`, kind: 'wet' }, LEO.id);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}&types=diaper`, LEO.id));
-	await expect(entries(page, DAY1)).toHaveText(['13:30 Diaper wet']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['13:30 Diaper wet']);
 });
 
 test.describe('without JavaScript', () => {
@@ -392,17 +408,21 @@ test('symptoms read in the parent unit, and a row opens the symptom edit page', 
 	const { fever } = await seedSymptoms(api);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1)).toHaveText([
-		'12:00 Other: hiccups',
-		'11:30 Diaper wet',
-		/^10:30 Cough, moderate\s+at night$/,
-		'09:12 Fever 38.4 °C (ear)'
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'12:00 Other: hiccups',
+			'11:30 Diaper wet',
+			'10:30 Cough, moderate at night',
+			'09:12 Fever 38.4 °C (ear)'
+		]);
 	await expectAccessible(page);
 
 	expect((await api('PATCH', '/v1/me', { units: { temp: 'f' } })).status).toBe(200);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1).last()).toHaveText('09:12 Fever 101.12 °F (ear)');
+	await expect(entries(page, DAY1).last().getByRole('link')).toHaveAccessibleName(
+		'09:12 Fever 101.12 °F (ear)'
+	);
 	await expect(page.getByRole('link', { name: /^09:12 Fever/ })).toHaveAttribute(
 		'href',
 		`/kids/${MIA.id}/log/symptoms/${fever.id}`
@@ -420,11 +440,13 @@ test('the Symptom box narrows the timeline to symptoms, and unticking it hides t
 	await page.goto(timelineUrl(`${RANGE}&types=symptom`));
 	await expect(box(page, 'Symptom')).toBeChecked();
 	await expect(box(page, 'Diaper')).not.toBeChecked();
-	await expect(entries(page, DAY1)).toHaveText([
-		'12:00 Other: hiccups',
-		/^10:30 Cough, moderate/,
-		'09:12 Fever 38.4 °C (ear)'
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'12:00 Other: hiccups',
+			expect.stringMatching(/^10:30 Cough, moderate/),
+			'09:12 Fever 38.4 °C (ear)'
+		]);
 
 	await page.goto(timelineUrl(RANGE));
 	await untilHydrated(page.getByLabel('From', { exact: true }));
@@ -432,7 +454,7 @@ test('the Symptom box narrows the timeline to symptoms, and unticking it hides t
 	await show(page);
 	await page.waitForURL(/types=/);
 	await expect(box(page, 'Symptom')).not.toBeChecked();
-	await expect(entries(page, DAY1)).toHaveText(['11:30 Diaper wet']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['11:30 Diaper wet']);
 });
 
 test('a sleep that ends the next day marks its end', async ({ page }) => {
@@ -440,7 +462,7 @@ test('a sleep that ends the next day marks its end', async ({ page }) => {
 	await seed(api, 'sleep', { started_at: `${DAY1}T22:00:00Z`, ended_at: `${DAY2}T06:00:00Z` });
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1)).toHaveText(['Sleep 22:00–06:00 +1 day (8 h)']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['Sleep 22:00–06:00 +1 day (8 h)']);
 });
 
 test('a long unbroken meal and note wrap on a phone', async ({ page }, testInfo) => {
