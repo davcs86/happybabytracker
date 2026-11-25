@@ -109,7 +109,7 @@ test('home with no kids says "Add your first child"', async ({ page }) => {
 	await expectAccessible(page);
 });
 
-test('the kid home shows name and age; only guardians get the profile, settings and modules', async ({
+test('the kid home shows name and age; only guardians get the profile and modules', async ({
 	page
 }) => {
 	await signIn(page, ANA);
@@ -119,7 +119,6 @@ test('the kid home shows name and age; only guardians get the profile, settings 
 	for (const [name, path] of [
 		['Modules', 'modules'],
 		['Child profile', 'profile'],
-		['Settings', 'settings'],
 		['Milestones', 'milestones'],
 		['Export PDF', 'export']
 	]) {
@@ -283,7 +282,8 @@ test('create a child without "born early"', async ({ page }) => {
 	).toBeVisible();
 	await expectAccessible(page);
 
-	await entry(await moreEntries(page), 'Settings').click();
+	await entry(await moreEntries(page), 'Child profile').click();
+	await page.getByRole('link', { name: 'Edit details' }).click();
 	await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Noa');
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).not.toBeChecked();
 	await expect(page.getByLabel('Weeks')).toBeHidden();
@@ -306,7 +306,8 @@ test('create a child born early', async ({ page }) => {
 	});
 	await page.getByRole('button', { name: 'Add child' }).click();
 	await expect(page.getByRole('heading', { name: 'Ivo', level: 1 })).toBeVisible();
-	await entry(await moreEntries(page), 'Settings').click();
+	await entry(await moreEntries(page), 'Child profile').click();
+	await page.getByRole('link', { name: 'Edit details' }).click();
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).toBeChecked();
 	await expect(page.getByLabel('Weeks')).toHaveValue('34');
 	await expect(page.getByLabel('Days')).toHaveValue('5');
