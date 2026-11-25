@@ -63,6 +63,7 @@ A guide and a screen reference, built from screenshots the e2e flow captures. St
 
 - Getting started: [Sign in and invites](docs/wiki/Sign-in-and-invites.md),
   [Navigation and shell](docs/wiki/Navigation-and-shell.md),
+  [Forms in sheets](docs/wiki/Forms-in-sheets.md),
   [Roles, layouts and conventions](docs/wiki/Roles-and-layouts.md).
 - Every day: [Kid home](docs/wiki/Kid-home.md), [Logging trackers](docs/wiki/Logging-trackers.md),
   [Timeline](docs/wiki/Timeline.md).

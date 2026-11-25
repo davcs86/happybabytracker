@@ -2,6 +2,7 @@
 export const AREAS = [
 	'auth',
 	'shell',
+	'sheets',
 	'home',
 	'trackers',
 	'timeline',

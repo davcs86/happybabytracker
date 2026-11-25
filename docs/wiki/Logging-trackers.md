@@ -2,6 +2,8 @@
 
 How to log, edit and delete a bottle, nursing, pumping, diaper, sleep, meal or symptom entry, what each form refuses, and what the advanced modes add. All screenshots show fake data (for example Mia, 4 months old, on a frozen day, 24 November 2026, in the UTC time zone). The full list of 40 captured tracker screens is in the [screenshot catalogue](../screenshots/README.md); this page shows the most instructive ones and names the others by id.
 
+With JavaScript, the log and edit forms of every tracker open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 ## Guide
 
 ### How do I open a log form?

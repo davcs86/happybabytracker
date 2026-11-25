@@ -16,6 +16,7 @@ Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Sc
 
 - [Sign in and invites](Sign-in-and-invites.md): signing in, one-time invite and reset links.
 - [Navigation and shell](Navigation-and-shell.md): the tab bar, the side navigation, the header, switching child, the More sheet and the theme.
+- [Forms in sheets](Forms-in-sheets.md): how forms open over the page, what Save does, closing, and every form that uses a sheet.
 - [Roles, layouts and conventions](Roles-and-layouts.md): who can see what, the three layouts, modules, units and times.
 
 **Every day**

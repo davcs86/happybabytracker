@@ -2,6 +2,8 @@
 
 Everything about one child's setup: which trackers are on (Modules), the Child profile, Edit details, who has access, deleting a child, and adding a child. Examples use fake data: Mia (4 months), Leo (2 years 3 months, born early) and the parents Ana, Cleo and Dan.
 
+With JavaScript, Edit details, Modules, Access and Add a child open in a sheet over the page you were on, and saving closes the sheet and shows a short message ([Forms in sheets](Forms-in-sheets.md)). The steps are the same. The form screenshots below show the same form as a page, which is what you get without JavaScript, in a new tab or when you open the address directly; after a save on the page you land where the steps say.
+
 Modules, Child profile, Edit details and Access are **guardian** pages. A caregiver does not see them in the menu, and if a caregiver opens one by its address they get the same "Not found" page as for a child that does not exist (see [Error pages](Error-pages.md)). Adding a child is open to every signed-in parent.
 
 ## Guide

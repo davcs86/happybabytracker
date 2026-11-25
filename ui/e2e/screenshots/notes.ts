@@ -33,6 +33,8 @@ export const ABOUT_AREAS: Record<Area, string> = {
 	auth: 'Sign-in, invite and password-reset pages, signed out.',
 	shell:
 		'The app shell: tab bar on mobile, side navigation on desktop; its sheets (Switch child, More, Change theme) and the Choose a child pages. Every other shot shows the shell too (guardian and caregiver; the admin has none).',
+	sheets:
+		'The forms that open in a bottom sheet over the page they were opened from: record forms, child details, modules, access and Add a child. Without JavaScript the same forms are the pages shown in the other areas.',
 	home: 'Kid homes in every age band and role: quick log, running timers, Due, Today.',
 	trackers:
 		'Log and edit forms of every tracker (Ana, Mia), with their errors, advanced modes and units.',

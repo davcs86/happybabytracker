@@ -4,6 +4,7 @@
 
 - [Sign in and invites](Sign-in-and-invites.md)
 - [Navigation and shell](Navigation-and-shell.md)
+- [Forms in sheets](Forms-in-sheets.md)
 - [Roles, layouts and conventions](Roles-and-layouts.md)
 
 **Every day**
