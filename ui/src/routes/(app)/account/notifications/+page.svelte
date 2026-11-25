@@ -272,7 +272,7 @@
 				<Button type="submit" class="self-start">Save</Button>
 			</form>
 			<form method="POST" action="?/ntfy_off" use:enhance>
-				<Button type="submit" variant="outline" size="sm">Turn off ntfy</Button>
+				<Button type="submit" variant="outline">Turn off ntfy</Button>
 			</form>
 			<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
 			<details class="rounded-lg border p-3" open={regenerateFailed}>
@@ -301,7 +301,7 @@
 		<h2 id="ntfy-heading" class="font-semibold">ntfy</h2>
 		<p class="text-sm">A topic from earlier is still stored for your account. Remove it.</p>
 		<form method="POST" action="?/ntfy_off" use:enhance>
-			<Button type="submit" variant="outline" size="sm">Remove the stored topic</Button>
+			<Button type="submit" variant="outline">Remove the stored topic</Button>
 		</form>
 	</section>
 {/if}

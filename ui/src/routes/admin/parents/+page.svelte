@@ -73,9 +73,7 @@
 		</p>
 		{#if canCopy}
 			<div class="flex items-center gap-2">
-				<Button type="button" size="sm" variant="outline" onclick={() => copy(link.url)}
-					>Copy link</Button
-				>
+				<Button type="button" variant="outline" onclick={() => copy(link.url)}>Copy link</Button>
 				<span aria-live="polite" class="text-sm">
 					{copied === 'yes' ? 'Copied' : copied === 'no' ? 'Copy failed, select the link' : ''}
 				</span>
@@ -149,13 +147,13 @@
 					<form method="POST" action="?/link" use:enhance>
 						<input type="hidden" name="parent_id" value={p.id} />
 						<input type="hidden" name="username" value={p.username} />
-						<Button type="submit" variant="outline" size="sm"
+						<Button type="submit" variant="outline"
 							>Reset link<span class="sr-only"> for {p.username}</span></Button
 						>
 					</form>
 					<form method="POST" action={p.disabled ? '?/enable' : '?/disable'} use:enhance>
 						<input type="hidden" name="parent_id" value={p.id} />
-						<Button type="submit" variant="outline" size="sm"
+						<Button type="submit" variant="outline"
 							>{p.disabled ? 'Enable' : 'Disable'}<span class="sr-only"> {p.username}</span></Button
 						>
 					</form>

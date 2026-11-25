@@ -108,14 +108,14 @@
 									<option value="not_needed">Not needed</option>
 									<option value="given_unknown">Given, date unknown</option>
 								</select>
-								<Button type="submit" variant="outline" size="sm"
+								<Button type="submit" variant="outline"
 									>Dismiss<span class="sr-only"> {name(line)}</span></Button
 								>
 							</form>
 						{:else if guardian && line.status === 'dismissed'}
 							<form method="POST" action="?/undoDismiss" use:enhance>
 								<input type="hidden" name="line" value={line.id} />
-								<Button type="submit" variant="outline" size="sm"
+								<Button type="submit" variant="outline"
 									>Undo<span class="sr-only"> dismissal of {name(line)}</span></Button
 								>
 							</form>

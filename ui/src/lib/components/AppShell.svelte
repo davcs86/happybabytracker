@@ -51,7 +51,7 @@
 		<header class="flex items-center gap-2 border-b px-4 py-2">
 			<p class="mr-auto font-semibold md:invisible">happybabytracker</p>
 			<form method="POST" action="/logout">
-				<Button type="submit" variant="ghost" size="sm">
+				<Button type="submit" variant="ghost">
 					<LogOutIcon aria-hidden="true" />
 					Sign out
 				</Button>

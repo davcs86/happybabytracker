@@ -48,7 +48,7 @@
 				{#if self}
 					<form method="POST" action="?/remove" use:enhance>
 						<input type="hidden" name="parent_id" value={g.parentId} />
-						<Button type="submit" variant="outline" size="sm">Leave</Button>
+						<Button type="submit" variant="outline">Leave</Button>
 					</form>
 				{:else}
 					<form method="POST" action="?/role" class="flex items-center gap-2" use:enhance>
@@ -59,13 +59,13 @@
 								<option {value}>{label}</option>
 							{/each}
 						</select>
-						<Button type="submit" variant="outline" size="sm"
+						<Button type="submit" variant="outline"
 							>Change role<span class="sr-only"> for {g.displayName}</span></Button
 						>
 					</form>
 					<form method="POST" action="?/remove" use:enhance>
 						<input type="hidden" name="parent_id" value={g.parentId} />
-						<Button type="submit" variant="outline" size="sm"
+						<Button type="submit" variant="outline"
 							>Remove<span class="sr-only"> {g.displayName}</span></Button
 						>
 					</form>

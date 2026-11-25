@@ -225,7 +225,7 @@
 				{#if !s.current}
 					<form method="POST" action="?/signout" use:enhance>
 						<input type="hidden" name="session_id" value={s.id} />
-						<Button type="submit" variant="outline" size="sm"
+						<Button type="submit" variant="outline"
 							>Sign out<span class="sr-only">
 								the session started {formatInstant(s.createdAt)}</span
 							></Button

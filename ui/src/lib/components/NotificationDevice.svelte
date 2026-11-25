@@ -81,7 +81,7 @@
 {/if}
 <form method="POST" action="?/remove" use:enhance={afterRemove}>
 	<input type="hidden" name="device" value={device.id} />
-	<Button type="submit" variant="outline" size="sm"
+	<Button type="submit" variant="outline"
 		>{#if editable}Turn off on this device{:else}Remove<span class="sr-only">
 				{device.label}</span
 			>{/if}</Button
