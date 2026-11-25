@@ -477,9 +477,9 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	await expect(row).toContainText(reachedLabel(past));
 
 	await editLink(row, itemText(id)).click();
-	const sheet = page.getByRole('dialog', { name: 'Edit milestone' });
-	await expect(sheet).toBeVisible();
-	await expect(sheet.getByText(itemText(id), { exact: true })).toBeVisible();
+	const editing = page.getByRole('dialog', { name: 'Edit milestone' });
+	await expect(editing).toBeVisible();
+	await expect(editing.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Milestone')).toHaveCount(0);
 	await expect(field(page, 'Date reached')).toHaveValue(past);
 	await expect(field(page, 'Note')).toHaveValue('at the park');

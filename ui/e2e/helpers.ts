@@ -36,6 +36,8 @@ export async function submit(button: Locator) {
 	);
 	await button.click();
 	await (await response).finished();
+	// A toast under the pointer stays until the pointer leaves it.
+	await page.mouse.move(0, 0);
 }
 
 // Hydration resets prefilled controls, then drops the SSR value or checked attribute: edit them after.
