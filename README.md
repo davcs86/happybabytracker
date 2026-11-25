@@ -376,7 +376,8 @@ docker build -t hbt-api:dev api && docker build -t hbt-ui:dev ui && \
 `gofmt -l` must print nothing. The UI's e2e runs against a stub API (it needs
 `pnpm exec playwright install chromium`, or `PW_CHROMIUM_PATH` pointing at a Chromium); the smoke script
 runs the real API and the real UI together and prints one `PASS:` line per assertion. CI
-(`.github/workflows/ci.yml`) runs all three on every pull request and on `main`.
+(`.github/workflows/ci.yml`) runs all three on every pull request and on `main`. Its `CI Gate` job fails when
+any of the `api`, `ui` or `images` jobs fails or is cancelled; it is the one check `main` should require.
 
 Memory readings: the smoke's step 10 reads each container's cgroup high-water mark
 (`memory.max_usage_in_bytes`), which includes page cache, so it varies between runs. Three runs on
