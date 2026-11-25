@@ -1,7 +1,6 @@
 <script lang="ts">
 	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import * as Card from '#lib/components/ui/card/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { MIN_PASSWORD_LEN } from '#lib/constants.js';
@@ -17,12 +16,14 @@
 		heading,
 		description,
 		valid,
+		lifetime,
 		username,
 		form
 	}: {
 		heading: string;
 		description: string;
 		valid: boolean;
+		lifetime: string;
 		username?: string;
 		form: FormResult;
 	} = $props();
@@ -45,72 +46,84 @@
 	<title>{heading} · happybabytracker</title>
 </svelte:head>
 
-<main class="flex min-h-screen items-center justify-center p-4">
-	<Card.Root class="w-full max-w-sm">
-		<Card.Header>
-			<h1 class="leading-none font-semibold">{heading}</h1>
-			{#if valid && !form?.invalid}
-				<Card.Description>{description}</Card.Description>
-			{/if}
-		</Card.Header>
-		<Card.Content>
-			{#if !valid || form?.invalid}
-				<Alert.Root variant="destructive" role="alert">
-					<Alert.Title>This link is no longer valid</Alert.Title>
-					<Alert.Description>Ask the person who sent it for a new one.</Alert.Description>
+<main class="flex min-h-screen flex-col justify-center px-5 py-6">
+	<div class="mx-auto flex w-full max-w-[400px] flex-col gap-4">
+		<p class="text-base font-bold">Happy baby</p>
+		<h1>{heading}</h1>
+		{#if valid && !form?.invalid}
+			<p class="text-sm leading-normal text-muted-foreground">{description}</p>
+		{/if}
+		{#if !valid || form?.invalid}
+			<div class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4">
+				<Alert.Root>
+					<Alert.Description>
+						<b>This link is no longer valid.</b> Ask the person who sent it for a new one. This kind
+						of link lasts {lifetime}.
+					</Alert.Description>
 				</Alert.Root>
-			{:else}
-				<form method="POST" class="flex flex-col gap-4" novalidate {onsubmit}>
-					{#if problem && !problem.field}
-						<Alert.Root variant="destructive" role="alert">
-							<Alert.Description>{problem.message}</Alert.Description>
-						</Alert.Root>
-					{/if}
-					<div class="flex flex-col gap-2">
-						<Label for="username">Username</Label>
-						<Input id="username" value={username} autocomplete="username" readonly />
-					</div>
-					<div class="flex flex-col gap-2">
-						<Label for="password">New password</Label>
-						<Input
-							id="password"
-							name="password"
-							type="password"
-							autocomplete="new-password"
-							required
-							bind:value={password}
-							aria-invalid={fieldError('password') ? 'true' : undefined}
-							aria-describedby="password-help"
-						/>
-						<p
-							id="password-help"
-							class="text-sm text-muted-foreground"
-							role={fieldError('password') ? 'alert' : undefined}
-						>
-							{fieldError('password') ?? `At least ${MIN_PASSWORD_LEN} characters`}
+				<Button href="/login" variant="outline" size="xl">Go to sign in</Button>
+			</div>
+		{:else}
+			<form
+				method="POST"
+				class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4"
+				novalidate
+				{onsubmit}
+			>
+				{#if problem && !problem.field}
+					<Alert.Root>
+						<Alert.Description>{problem.message}</Alert.Description>
+					</Alert.Root>
+				{/if}
+				<div class="grid gap-1.5">
+					<Label for="username" class="text-xs">Username</Label>
+					<Input
+						id="username"
+						value={username}
+						autocomplete="username"
+						readonly
+						class="text-muted-foreground"
+					/>
+				</div>
+				<div class="grid gap-1.5">
+					<Label for="password" class="text-xs">New password</Label>
+					<Input
+						id="password"
+						name="password"
+						type="password"
+						autocomplete="new-password"
+						bind:value={password}
+						aria-invalid={fieldError('password') ? 'true' : undefined}
+						aria-describedby="password-help"
+					/>
+					<p
+						id="password-help"
+						class="text-xs leading-normal {fieldError('password')
+							? 'font-semibold text-destructive'
+							: 'text-muted-foreground'}"
+					>
+						{fieldError('password') ?? `At least ${MIN_PASSWORD_LEN} characters`}
+					</p>
+				</div>
+				<div class="grid gap-1.5">
+					<Label for="confirm" class="text-xs">Confirm password</Label>
+					<Input
+						id="confirm"
+						name="confirm"
+						type="password"
+						autocomplete="new-password"
+						bind:value={confirm}
+						aria-invalid={fieldError('confirm') ? 'true' : undefined}
+						aria-describedby={fieldError('confirm') ? 'confirm-error' : undefined}
+					/>
+					{#if fieldError('confirm')}
+						<p id="confirm-error" class="text-[12.5px] font-semibold text-destructive">
+							{fieldError('confirm')}
 						</p>
-					</div>
-					<div class="flex flex-col gap-2">
-						<Label for="confirm">Confirm password</Label>
-						<Input
-							id="confirm"
-							name="confirm"
-							type="password"
-							autocomplete="new-password"
-							required
-							bind:value={confirm}
-							aria-invalid={fieldError('confirm') ? 'true' : undefined}
-							aria-describedby={fieldError('confirm') ? 'confirm-error' : undefined}
-						/>
-						{#if fieldError('confirm')}
-							<p id="confirm-error" class="text-sm text-destructive" role="alert">
-								{fieldError('confirm')}
-							</p>
-						{/if}
-					</div>
-					<Button type="submit">Set password</Button>
-				</form>
-			{/if}
-		</Card.Content>
-	</Card.Root>
+					{/if}
+				</div>
+				<Button type="submit" size="xl">Set password</Button>
+			</form>
+		{/if}
+	</div>
 </main>
