@@ -454,13 +454,13 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	const id = '9m-lc-stub-1';
 	const [past, earlier] = [addDays(TODAY, -3), addDays(TODAY, -5)];
 	await signIn(page, CLEO);
-	await openSheet(
+	const sheet = await openSheet(
 		page,
 		pageUrl(NELL.id),
 		(p) => item(p, id).getByRole('link', { name: `Choose a date for ${itemText(id)}` }),
 		'Mark as reached'
 	);
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	await expect(sheet.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));

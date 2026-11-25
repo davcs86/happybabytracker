@@ -733,14 +733,14 @@ test('a fixed-times course is created through the form and listed with its times
 }) => {
 	const api = await stubAs(ANA);
 	await signIn(page, ANA);
-	await openSheet(
+	const sheet = await openSheet(
 		page,
 		pageUrl(),
 		(p) => p.getByRole('link', { name: 'Add a course' }),
 		'Add a course'
 	);
 	await expect(page).toHaveURL(newUrl());
-	await expect(page.getByText('Times are in UTC')).toBeVisible();
+	await expect(sheet.getByText('Times are in UTC')).toBeVisible();
 	await expect(kindRadio(page, AS_NEEDED)).toBeChecked();
 	await expect(field(page, 'Active')).toBeChecked();
 	await expectAccessible(page);
