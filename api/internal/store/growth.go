@@ -10,15 +10,15 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/units"
 )
 
-const growthColumns = entryColumns + `, measured_on, weight_g, weight_oz_h, weight_typed, length_mm, length_in_h, length_typed, head_mm, head_in_h, head_typed`
+const growthColumns = entryColumns + `, measured_on, weight_g, weight_oz_h, weight_typed, length_mm, length_in_h, length_typed, head_mm, head_in_h, head_typed, visit_id`
 
 func scanGrowth(row rowScanner) (model.Growth, error) {
 	var (
 		g                      model.Growth
 		wg, wo, lm, li, hm, hi sql.NullInt64
-		wt, lt, ht             sql.NullString
+		wt, lt, ht, visit      sql.NullString
 	)
-	e, err := scanEntry(row, &g.MeasuredOn, &wg, &wo, &wt, &lm, &li, &lt, &hm, &hi, &ht)
+	e, err := scanEntry(row, &g.MeasuredOn, &wg, &wo, &wt, &lm, &li, &lt, &hm, &hi, &ht, &visit)
 	if err != nil {
 		return model.Growth{}, err
 	}
@@ -26,7 +26,7 @@ func scanGrowth(row rowScanner) (model.Growth, error) {
 	if wg.Valid {
 		g.Weight = &units.Weight{Grams: wg.Int64, OzHundredths: wo.Int64, Typed: units.Unit(wt.String)}
 	}
-	g.Length, g.Head = nullableLength(lm, li, lt), nullableLength(hm, hi, ht)
+	g.Length, g.Head, g.VisitID = nullableLength(lm, li, lt), nullableLength(hm, hi, ht), nullableString(visit)
 	return g, nil
 }
 
@@ -69,9 +69,9 @@ func (s *Store) CreateGrowth(ctx context.Context, kidID, actorID string, g model
 		if n >= constants.MaxGrowthPerKid {
 			return ErrConflict
 		}
-		args := append([]any{g.ID, kidID, g.Note, actorID, actorID, g.CreatedAt.Unix(), g.UpdatedAt.Unix(), g.MeasuredOn}, measureArgs(g)...)
+		args := append(append([]any{g.ID, kidID, g.Note, actorID, actorID, g.CreatedAt.Unix(), g.UpdatedAt.Unix(), g.MeasuredOn}, measureArgs(g)...), g.VisitID)
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO growth_measurements(`+growthColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
+			`INSERT INTO growth_measurements(`+growthColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...)
 		return err
 	})
 	if err != nil {

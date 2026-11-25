@@ -205,6 +205,23 @@ const MilestoneTextMaxLen = 200
 // MaxMilestonesPerKid caps a kid's reached milestones, catalog and custom together.
 const MaxMilestonesPerKid = 1000
 
+// Medical visits (visits spec 5.1, 8, 9): lengths in minutes, text in characters, the Home look-ahead in kid-local
+// days, the rows one outcome may add.
+const (
+	DefaultVisitDurationMin = 30
+	MinVisitDurationMin     = 5
+	MaxVisitDurationMin     = 720
+	VisitProviderMaxLen     = 120
+	VisitLocationMaxLen     = 200
+	VisitOutcomeNotesMaxLen = 4000
+	MaxVisitsPerKid         = 2000
+	VisitHorizon            = 731 * 24 * time.Hour
+	VisitDueLookAheadDays   = 7
+	MaxOutcomeVaccinations  = 10
+	MaxOutcomeMedications   = 5
+	VisitAlarmBefore        = 24 * time.Hour
+)
+
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 

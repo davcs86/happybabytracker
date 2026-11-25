@@ -15,18 +15,19 @@ import (
 
 var errKidZone = errors.New("store: the kid's time zone is not a real zone")
 
-const medicationColumns = entryColumns + `, name, dose, schedule_kind, schedule_times, every_hours, start_at, end_on, active`
+const medicationColumns = entryColumns + `, name, dose, schedule_kind, schedule_times, every_hours, start_at, end_on, active, visit_id`
 
 func scanMedication(row rowScanner) (model.Medication, error) {
 	var (
 		v            model.Medication
 		kind         string
 		times, endOn sql.NullString
+		visit        sql.NullString
 		hours        sql.NullInt64
 		start        int64
 		active       int
 	)
-	e, err := scanEntry(row, &v.Name, &v.Dose, &kind, &times, &hours, &start, &endOn, &active)
+	e, err := scanEntry(row, &v.Name, &v.Dose, &kind, &times, &hours, &start, &endOn, &active, &visit)
 	if err != nil {
 		return model.Medication{}, err
 	}
@@ -34,7 +35,7 @@ func scanMedication(row rowScanner) (model.Medication, error) {
 	if times.Valid {
 		v.Times = strings.Split(times.String, ",")
 	}
-	v.StartAt, v.EndOn, v.Active = unixTime(start), nullableString(endOn), active != 0
+	v.StartAt, v.EndOn, v.Active, v.VisitID = unixTime(start), nullableString(endOn), active != 0, nullableString(visit)
 	return v, nil
 }
 
@@ -355,8 +356,8 @@ func (s *Store) CreateMedication(ctx context.Context, kidID, actorID string, v m
 			return err
 		}
 		args := append(append([]any{v.ID, kidID, v.Note, actorID, actorID, v.CreatedAt.Unix(), v.UpdatedAt.Unix(), v.Name, v.Dose}, scheduleArgs(sc)...),
-			v.StartAt.Unix(), v.EndOn, v.Active)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO medications(`+medicationColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...); err != nil {
+			v.StartAt.Unix(), v.EndOn, v.Active, v.VisitID)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO medications(`+medicationColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, args...); err != nil {
 			return err
 		}
 		if err := materialiseCourse(ctx, tx, v.ID, loc, now); err != nil {
