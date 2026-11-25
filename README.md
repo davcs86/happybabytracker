@@ -56,6 +56,29 @@ The browser talks only to the UI; the UI calls the API with a shared token. Both
 read-only root filesystem; the API writes only to `/data`. Design:
 `docs/superpowers/specs/2026-11-20-happybabytracker-design.md`; plans: `docs/superpowers/plans/`.
 
+## Wiki
+
+A guide and a screen reference, built from screenshots the e2e flow captures. Start at
+[docs/wiki/Home.md](docs/wiki/Home.md).
+
+- Getting started: [Sign in and invites](docs/wiki/Sign-in-and-invites.md),
+  [Navigation and shell](docs/wiki/Navigation-and-shell.md),
+  [Roles, layouts and conventions](docs/wiki/Roles-and-layouts.md).
+- Every day: [Kid home](docs/wiki/Kid-home.md), [Logging trackers](docs/wiki/Logging-trackers.md),
+  [Timeline](docs/wiki/Timeline.md).
+- Health records: [Growth](docs/wiki/Growth.md), [Vaccines](docs/wiki/Vaccines.md),
+  [Medication](docs/wiki/Medication.md), [Milestones](docs/wiki/Milestones.md),
+  [Export PDF](docs/wiki/Export-PDF.md).
+- Setup and account: [Children and access](docs/wiki/Children-and-access.md),
+  [My profile](docs/wiki/My-profile.md), [Notifications](docs/wiki/Notifications.md).
+- Admin and errors: [Admin](docs/wiki/Admin.md), [Error pages](docs/wiki/Error-pages.md).
+- About the wiki: [Before and after](docs/wiki/Before-and-after.md),
+  [Not built yet](docs/wiki/Not-built-yet.md),
+  [How these screenshots are made](docs/wiki/How-these-screenshots-are-made.md).
+
+All captures are listed with captions in [docs/screenshots/README.md](docs/screenshots/README.md); the
+first-pass set is kept in [docs/screenshots-legacy/README.md](docs/screenshots-legacy/README.md).
+
 ## Growth
 
 A measurement is a date (in the kid's zone, not in the future and not before the birth date) with any
