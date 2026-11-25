@@ -14,7 +14,8 @@ import {
 	navLink,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	formView
 } from './helpers.js';
 import {
 	ANA,
@@ -335,7 +336,7 @@ test('an edit of the note alone sends only the note, and the amount and time go 
 	await page.getByRole('link', { name: /^Calpol, / }).click();
 	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(doseUrl(dose.id));
-	await expect(page.getByRole('heading', { name: 'Edit dose', level: 1 })).toBeVisible();
+	await expect(formView(page, 'Edit dose')).toBeVisible();
 	await expect(page.getByText('Dose of Calpol')).toBeVisible();
 	await expect(field(page, 'Given at')).toHaveValue(instantToLocalInput(given, 'UTC'));
 	await expect(field(page, 'Amount')).toHaveValue('2.5 ml');
@@ -737,8 +738,8 @@ test('a fixed-times course is created through the form and listed with its times
 	await page.goto(pageUrl());
 	await page.getByRole('link', { name: 'Add a course' }).click();
 	await expect(page).toHaveURL(newUrl());
-	await expect(page.getByRole('heading', { name: 'Add a course', level: 1 })).toBeVisible();
-	await expect(page.getByText('Times are in UTC')).toBeVisible();
+	await expect(formView(page, 'Add a course')).toBeVisible();
+	await expect(formView(page, 'Add a course').getByText('Times are in UTC')).toBeVisible();
 	await expect(kindRadio(page, AS_NEEDED)).toBeChecked();
 	await expect(field(page, 'Active')).toBeChecked();
 	await expectAccessible(page);
@@ -960,7 +961,7 @@ test('the edit page shows the stored course and an edit of the note alone sends 
 	await page.getByRole('link', { name: 'Edit Calpol', exact: true }).click();
 	await untilHydrated(field(page, 'Note'));
 	await expect(page).toHaveURL(courseUrl(calpol.id));
-	await expect(page.getByRole('heading', { name: 'Edit course', level: 1 })).toBeVisible();
+	await expect(formView(page, 'Edit course')).toBeVisible();
 	await expect(field(page, 'Name')).toHaveValue('Calpol');
 	await expect(field(page, 'Dose')).toHaveValue('2.5 ml');
 	await expect(kindRadio(page, FIXED)).toBeChecked();

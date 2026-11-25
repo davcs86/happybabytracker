@@ -6,7 +6,8 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	untilHydrated
+	untilHydrated,
+	formView
 } from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
 
@@ -429,7 +430,7 @@ test('symptoms read in the parent unit, and a row opens the symptom edit page', 
 	);
 	await page.getByRole('link', { name: /^09:12 Fever/ }).click();
 	await expect(page).toHaveURL(`/kids/${MIA.id}/log/symptoms/${fever.id}`);
-	await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
+	await expect(formView(page, 'Edit symptom')).toBeVisible();
 });
 
 test('the Symptom box narrows the timeline to symptoms, and unticking it hides them', async ({

@@ -6,7 +6,8 @@ import {
 	expectNotFoundPage,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	formView
 } from './helpers.js';
 import {
 	ANA,
@@ -2542,7 +2543,7 @@ test.describe('the sickness tracker', () => {
 		await page.goto(`/kids/${LEO.id}`);
 		await page.getByRole('link', { name: 'Sickness', exact: true }).click();
 		await expect(page).toHaveURL(`/kids/${LEO.id}/log/symptoms`);
-		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
+		await expect(formView(page, 'Log a symptom')).toBeVisible();
 		await expect(field(page, 'Symptom')).toBeVisible();
 		await expect(field(page, 'Left minutes')).toHaveCount(0);
 		await expectAccessible(page);

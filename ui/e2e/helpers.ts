@@ -16,6 +16,15 @@ export async function expectAccessible(page: Page): Promise<void> {
 	expect(results.violations).toEqual([]);
 }
 
+export const sheet = (page: Page, name: string) =>
+	page.getByRole('dialog', { name }).and(page.locator('[data-state="open"]'));
+
+// A data-drawer link opens its sheet; clicked before hydration it navigates to the page.
+export const formView = (page: Page, title: string): Locator =>
+	sheet(page, title).or(
+		page.getByRole('main').filter({ has: page.getByRole('heading', { name: title, level: 1 }) })
+	);
+
 export async function sessionCookie(context: BrowserContext) {
 	return (await context.cookies()).find((c) => c.name === SESSION_COOKIE);
 }

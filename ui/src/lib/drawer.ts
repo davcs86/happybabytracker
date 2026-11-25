@@ -67,8 +67,12 @@ export const isEmbed = () => getContext<boolean>(EMBED) === true;
 
 export const closeDrawer = () => history.back();
 
+// On a form page itself, a link to the same form (the advanced toggle) navigates: never a sheet over its own page.
 export const isDrawerLink = (a: HTMLAnchorElement) =>
-	!!loaderFor(a.pathname) && a.pathname + a.search !== page.url.pathname + page.url.search;
+	!!loaderFor(a.pathname) &&
+	(page.state.drawer
+		? a.pathname + a.search !== page.url.pathname + page.url.search
+		: a.pathname !== page.url.pathname);
 
 export async function openDrawer(a: HTMLAnchorElement): Promise<void> {
 	const href = a.pathname + a.search;

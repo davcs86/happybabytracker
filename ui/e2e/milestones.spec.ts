@@ -9,7 +9,8 @@ import {
 	navLink,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	formView
 } from './helpers.js';
 import {
 	ANA,
@@ -117,6 +118,13 @@ async function open(page: Page, title: string) {
 }
 async function onPage(page: Page, kid: { id: string; name: string }) {
 	await page.waitForURL((u) => u.pathname === pageUrl(kid.id) && u.search === '');
+	await expect(
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
+	).toBeVisible();
+}
+// A sheet saved over the list returns to the list as it was, query included.
+async function onList(page: Page, kid: { id: string; name: string }) {
+	await page.waitForURL((u) => u.pathname === pageUrl(kid.id));
 	await expect(
 		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
@@ -450,8 +458,10 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	await item(page, id)
 		.getByRole('link', { name: `Choose a date for ${itemText(id)}` })
 		.click();
-	await expect(page.getByRole('heading', { name: 'Mark as reached', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	await expect(formView(page, 'Mark as reached')).toBeVisible();
+	await expect(
+		formView(page, 'Mark as reached').getByText(itemText(id), { exact: true })
+	).toBeVisible();
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -468,8 +478,10 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	await expect(row).toContainText(reachedLabel(past));
 
 	await editLink(row, itemText(id)).click();
-	await expect(page.getByRole('heading', { name: 'Edit milestone', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	await expect(formView(page, 'Edit milestone')).toBeVisible();
+	await expect(
+		formView(page, 'Edit milestone').getByText(itemText(id), { exact: true })
+	).toBeVisible();
 	await expect(field(page, 'Milestone')).toHaveCount(0);
 	await expect(field(page, 'Date reached')).toHaveValue(past);
 	await expect(field(page, 'Note')).toHaveValue('at the park');
@@ -541,7 +553,7 @@ test('a custom milestone is added, edited and deleted; 201 characters are refuse
 	await page.goto(pageUrl(NELL.id));
 	await expect(custom(page)).toContainText('No milestones added');
 	await custom(page).getByRole('link', { name: 'Add a milestone' }).click();
-	await expect(page.getByRole('heading', { name: 'Add a milestone', level: 1 })).toBeVisible();
+	await expect(formView(page, 'Add a milestone')).toBeVisible();
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -588,12 +600,12 @@ test('a caregiver marks, edits, undoes and adds milestones', async ({ page }) =>
 	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('with Ana');
 	await save(page);
-	await onPage(page, NELL);
+	await onList(page, NELL);
 	expect((await stored(ana, NELL.id)).reached('9m-se-stub-1')).toMatchObject({ note: 'with Ana' });
 	await editLink(item(page, '9m-se-stub-1'), itemText('9m-se-stub-1')).click();
 	await page.getByText('Undo reached', { exact: true }).click();
 	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
-	await onPage(page, NELL);
+	await onList(page, NELL);
 	await expect(reachButton(page, '9m-se-stub-1')).toBeVisible();
 
 	await page.goto(newUrl(NELL.id));
