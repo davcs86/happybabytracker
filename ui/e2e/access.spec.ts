@@ -66,7 +66,9 @@ test('grant, change role and remove', async ({ page }) => {
 
 	await grant(page, 'Dan').getByRole('button', { name: 'Make Dan a guardian' }).click();
 	await expect(grant(page, 'Dan')).toContainText('Guardian');
-	await expect(grant(page, 'Dan').getByRole('button', { name: 'Make Dan a caregiver' })).toBeVisible();
+	await expect(
+		grant(page, 'Dan').getByRole('button', { name: 'Make Dan a caregiver' })
+	).toBeVisible();
 
 	await grant(page, 'Dan')
 		.getByRole('button', { name: `Remove Dan’s access to ${MIA.name}` })
@@ -90,7 +92,9 @@ test(`the only guardian cannot leave: "${LAST_GUARDIAN}"`, async ({ page }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}/access`);
 	await expect(
-		page.getByText(`You are ${MIA.name}’s only active guardian. Give another person guardian access`)
+		page.getByText(
+			`You are ${MIA.name}’s only active guardian. Give another person guardian access`
+		)
 	).toBeVisible();
 	await grant(page, 'Ana').getByRole('button', { name: 'Leave' }).click();
 	await expect(page.getByRole('alert')).toHaveText(LAST_GUARDIAN);

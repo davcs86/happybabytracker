@@ -57,7 +57,7 @@ const save = (page: Page) => page.getByRole('button', { name: 'Save', exact: tru
 // The save lands on a timeline page that exists, not just on its URL.
 async function onTimeline(page: Page) {
 	await page.waitForURL(TIMELINE_DAY);
-	await expect(page.getByRole('heading', { name: /^Timeline for /, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 }
 
 async function deleteEntry(page: Page) {
@@ -371,7 +371,7 @@ test('a time in the skipped hour of a Madrid night saves an hour later, in the k
 	await page.getByRole('radio', { name: 'Wet' }).check();
 	await save(page);
 	await page.waitForURL(/\/timeline\?from=2026-03-29&to=2026-03-29$/);
-	await expect(page.getByRole('heading', { name: 'Timeline for Leo', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 	const [stored] = await rows(api, 'diapers', LEO.id);
 	expect(stored.at).toBe('2026-03-29T01:30:00Z');
 
@@ -2327,7 +2327,10 @@ test.describe('the sickness tracker', () => {
 		await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
 		await expect(field(page, 'Temperature unit')).toHaveAttribute('aria-invalid', 'true');
 		await expect(field(page, 'Temperature unit')).toHaveAccessibleDescription(TEMP_MESSAGE);
-		await expect(page.getByRole('alert')).toHaveText(TEMP_MESSAGE);
+		await expect(page.getByRole('alert')).toHaveText([
+			'Check the fields with a message.',
+			TEMP_MESSAGE
+		]);
 		await expect(field(page, 'Symptom')).toHaveValue('fever');
 		await expect(field(page, 'Temperature')).toHaveValue('50');
 		await expect(field(page, 'Method')).toHaveValue('rectal');
@@ -2356,7 +2359,11 @@ test.describe('the sickness tracker', () => {
 			await saveAndWait(page);
 			await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
 			await expect(field(page, 'Temperature')).toHaveValue(typed);
-			if (typed !== '') await expect(page.getByRole('alert')).not.toContainText(typed);
+			if (typed !== '') {
+				await expect(page.getByRole('alert').filter({ hasText: TEMP_MESSAGE })).not.toContainText(
+					typed
+				);
+			}
 		}
 		expect(await rows(api, 'symptoms')).toEqual([]);
 		const posts = (await receivedRequests()).filter(

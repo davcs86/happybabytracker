@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { formatAge, todayIn } from '../src/lib/format.js';
 import {
 	KID_COOKIE,
@@ -33,7 +33,30 @@ test.beforeEach(async () => {
 
 const ageOf = (kid: { birthDate: string; timeZone: string }) =>
 	formatAge(kid.birthDate, todayIn(kid.timeZone));
-const switcherOf = (page: Page) => page.getByRole('navigation', { name: 'Children' });
+
+// The header switcher opens a sheet; a click before hydration is the Choose a child page, so it retries.
+async function openSwitcher(page: Page, current: string): Promise<Locator> {
+	const sheet = page.getByRole('dialog', { name: 'Switch child' });
+	await expect(async () => {
+		await page.getByRole('link', { name: `Child: ${current}. Switch child` }).click();
+		await expect(sheet).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	return sheet;
+}
+
+// The More entries sit in the More sheet on a phone and in the side navigation from 768 px.
+async function moreEntries(page: Page): Promise<Locator> {
+	const more = page.getByRole('button', { name: 'More', exact: true });
+	if (!(await more.isVisible())) return page.getByRole('navigation', { name: 'Primary' });
+	const sheet = page.getByRole('dialog', { name: 'More' });
+	await expect(async () => {
+		await more.click();
+		await expect(sheet).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	return sheet;
+}
+const entry = (entries: Locator, name: string) =>
+	entries.getByRole('link', { name: new RegExp(`^\\s*${name}`) });
 
 type KidForm = {
 	name?: string;
@@ -86,51 +109,48 @@ test('home with no kids says "Add your first child"', async ({ page }) => {
 	await expectAccessible(page);
 });
 
-test('the kid home shows name and age; only guardians get settings, access and modules', async ({
+test('the kid home shows name and age; only guardians get the profile, settings and modules', async ({
 	page
 }) => {
 	await signIn(page, ANA);
 	await expectLanding(page, { kid: MIA });
 	await expect(page.getByText(ageOf(MIA))).toBeVisible();
+	let entries = await moreEntries(page);
 	for (const [name, path] of [
+		['Modules', 'modules'],
+		['Child profile', 'profile'],
 		['Settings', 'settings'],
-		['Access', 'access'],
-		['Modules', 'modules']
+		['Milestones', 'milestones'],
+		['Export PDF', 'export']
 	]) {
-		await expect(page.getByRole('link', { name: `${name} for ${MIA.name}` })).toHaveAttribute(
-			'href',
-			`/kids/${MIA.id}/${path}`
-		);
+		await expect(entry(entries, name)).toHaveAttribute('href', `/kids/${MIA.id}/${path}`);
 	}
-	await expect(page.getByRole('link', { name: `Milestones for ${MIA.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${MIA.id}/milestones`
-	);
-	await expect(page.getByRole('link', { name: `Export PDF for ${MIA.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${MIA.id}/export`
-	);
-	await expect(switcherOf(page).getByRole('link')).toHaveText([MIA.name, LEO.name, IVY.name]);
 	await expectAccessible(page);
 
-	await switcherOf(page).getByRole('link', { name: LEO.name }).click();
+	if (await entries.getByRole('button', { name: 'Close' }).isVisible()) {
+		await page.keyboard.press('Escape');
+	}
+	const sheet = await openSwitcher(page, MIA.name);
+	await sheet.getByRole('link', { name: new RegExp(`^${LEO.name}`) }).click();
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByText(ageOf(LEO))).toBeVisible();
-	await expect(page.getByRole('link', { name: /Settings|Access|Modules/ })).toHaveCount(0);
-	await expect(page.getByRole('link', { name: `Milestones for ${LEO.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${LEO.id}/milestones`
-	);
-	await expect(page.getByRole('link', { name: `Export PDF for ${LEO.name}` })).toHaveAttribute(
-		'href',
-		`/kids/${LEO.id}/export`
-	);
+	entries = await moreEntries(page);
+	await expect(
+		entries.getByRole('link', { name: /^\s*(Modules|Child profile|Settings)/ })
+	).toHaveCount(0);
+	await expect(entry(entries, 'Milestones')).toHaveAttribute('href', `/kids/${LEO.id}/milestones`);
+	await expect(entry(entries, 'Export PDF')).toHaveAttribute('href', `/kids/${LEO.id}/export`);
 	await expectAccessible(page);
 });
 
 test('/ and a kid page are sent with Cache-Control: no-store', async ({ page }) => {
 	await signIn(page, ANA);
-	for (const path of ['/', `/kids/${MIA.id}`, `/kids/${MIA.id}/settings`]) {
+	for (const path of [
+		'/',
+		`/kids/${MIA.id}`,
+		`/kids/${MIA.id}/settings`,
+		`/kids/${MIA.id}/profile`
+	]) {
 		const response = await page.request.get(path);
 		expect(response.status()).toBe(200);
 		expect(response.headers()['cache-control']).toBe('no-store');
@@ -142,12 +162,12 @@ test('the last visited kid is remembered in hbt_kid and preselected on /', async
 	context
 }) => {
 	await signIn(page, ANA);
-	const switcher = switcherOf(page);
-	await expect(switcher.getByRole('link', { name: MIA.name })).toHaveAttribute(
+	const sheet = await openSwitcher(page, MIA.name);
+	await expect(sheet.getByRole('link', { name: new RegExp(`^${MIA.name}`) })).toHaveAttribute(
 		'aria-current',
 		'true'
 	);
-	await switcher.getByRole('link', { name: LEO.name }).click();
+	await sheet.getByRole('link', { name: new RegExp(`^${LEO.name}`) }).click();
 	await expect(page).toHaveURL(new RegExp(`/kids/${LEO.id}$`));
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expectAccessible(page);
@@ -164,11 +184,14 @@ test('the last visited kid is remembered in hbt_kid and preselected on /', async
 	expect(days).toBeLessThanOrEqual(30);
 
 	await page.goto('/');
-	await expect(switcher.getByRole('link', { name: LEO.name })).toHaveAttribute(
+	const again = await openSwitcher(page, LEO.name);
+	await expect(again.getByRole('link', { name: new RegExp(`^${LEO.name}`) })).toHaveAttribute(
 		'aria-current',
 		'true'
 	);
-	await expect(switcher.getByRole('link', { name: MIA.name })).not.toHaveAttribute('aria-current');
+	await expect(again.getByRole('link', { name: new RegExp(`^${MIA.name}`) })).not.toHaveAttribute(
+		'aria-current'
+	);
 });
 
 test.describe('the time zone', () => {
@@ -244,7 +267,7 @@ test('settings keeps a stored zone missing from the ICU list selected', async ({
 
 test('create a child without "born early"', async ({ page }) => {
 	await signIn(page, ANA);
-	await page.getByRole('link', { name: 'Add a child' }).click();
+	await (await openSwitcher(page, MIA.name)).getByRole('link', { name: 'Add a child' }).click();
 	await expect(page.getByRole('heading', { name: 'Add a child', level: 1 })).toBeVisible();
 	await expect(page.getByLabel('Weeks')).toBeHidden();
 	await expectAccessible(page);
@@ -254,7 +277,7 @@ test('create a child without "born early"', async ({ page }) => {
 	await expect(page.getByText(formatAge('2026-10-01', todayIn('UTC')))).toBeVisible();
 	await expectAccessible(page);
 
-	await page.getByRole('link', { name: 'Settings for Noa' }).click();
+	await entry(await moreEntries(page), 'Settings').click();
 	await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Noa');
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).not.toBeChecked();
 	await expect(page.getByLabel('Weeks')).toBeHidden();
@@ -277,7 +300,7 @@ test('create a child born early', async ({ page }) => {
 	});
 	await page.getByRole('button', { name: 'Add child' }).click();
 	await expect(page.getByRole('heading', { name: 'Ivo', level: 1 })).toBeVisible();
-	await page.getByRole('link', { name: 'Settings for Ivo' }).click();
+	await entry(await moreEntries(page), 'Settings').click();
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).toBeChecked();
 	await expect(page.getByLabel('Weeks')).toHaveValue('34');
 	await expect(page.getByLabel('Days')).toHaveValue('5');
@@ -343,7 +366,7 @@ test('settings saves the full set; turning off "born early" clears the gestation
 	await signIn(page, CLEO);
 	await page.goto(`/kids/${LEO.id}/settings`);
 	await untilHydrated(page.getByLabel('Name', { exact: true }));
-	await expect(page.getByRole('heading', { name: `Settings for ${LEO.name}` })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Edit details', level: 1 })).toBeVisible();
 	await expect(page.getByRole('checkbox', { name: 'Born early?' })).toBeChecked();
 	await expect(page.getByLabel('Time zone')).toHaveValue(LEO.timeZone);
 	await expectAccessible(page);
@@ -376,21 +399,35 @@ test('settings shows a 422 on its field', async ({ page }) => {
 	await expectAccessible(page);
 });
 
-test('delete needs the exact name', async ({ page, context }) => {
+const removeButton = (page: Page, name: string) =>
+	page.getByRole('button', { name: `Delete all data for ${name}`, exact: true });
+const openDelete = (page: Page, name: string) =>
+	page.getByText(`Delete all data for ${name}…`, { exact: true }).click();
+const tick = (page: Page) =>
+	page.getByRole('checkbox', { name: 'I understand this is permanent and immediate' });
+
+test('delete needs the tick and the exact name', async ({ page, context }) => {
 	await signIn(page, ANA);
 	await page.goto(`/kids/${MIA.id}`);
 	await page.goto(`/kids/${MIA.id}/settings`);
 	await untilHydrated(page.getByLabel('Name', { exact: true }));
+	await expect(page.getByLabel(`Type ${MIA.name} to confirm`)).toBeHidden();
+	await openDelete(page, MIA.name);
 	const confirm = page.getByLabel(`Type ${MIA.name} to confirm`);
+	await expect(removeButton(page, MIA.name)).toBeDisabled();
+	await tick(page).check();
+	await expect(removeButton(page, MIA.name)).toBeEnabled();
 	await confirm.fill(MIA.name.toLowerCase());
-	await page.getByRole('button', { name: `Delete ${MIA.name}` }).click();
+	await removeButton(page, MIA.name).click();
 	await expectFieldError(confirm, 'The name does not match');
 	await expectAccessible(page);
 
 	await confirm.fill(MIA.name);
-	await page.getByRole('button', { name: `Delete ${MIA.name}` }).click();
+	await removeButton(page, MIA.name).click();
 	await expectLanding(page, { kid: LEO });
-	await expect(switcherOf(page).getByRole('link')).toHaveText([LEO.name, IVY.name]);
+	const sheet = await openSwitcher(page, LEO.name);
+	await expect(sheet.getByRole('link', { name: new RegExp(`^${MIA.name}`) })).toHaveCount(0);
+	await expect(sheet.getByRole('link', { name: new RegExp(`^${IVY.name}`) })).toBeVisible();
 	// The landing remembers the kid it showed, so this cannot tell whether the deleted kid's cookie was cleared.
 	expect((await context.cookies()).find((c) => c.name === KID_COOKIE)?.value).toBe(LEO.id);
 	await expectNotFoundPage(page, `/kids/${MIA.id}`);
@@ -410,6 +447,7 @@ test('a caregiver sees the kid without settings or access; direct visits are 404
 	const unknown = await expectNotFoundPage(page, '/kids/k-unknown/settings');
 	expect(forbidden).toBe(unknown);
 	await expectNotFoundPage(page, `/kids/${LEO.id}/access`);
+	expect(await expectNotFoundPage(page, `/kids/${LEO.id}/profile`)).toBe(unknown);
 	await expectNotFoundPage(page, '/kids/k-unknown');
 	await expectNotFoundPage(page, '/kids/not.an.id');
 });
@@ -617,6 +655,21 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByRole('status')).toHaveText('Saved');
 		expect(await storedOverdue(MIA.id)).toBe(15);
 		await expect(overdue(page)).toHaveValue('15');
+	});
+
+	test('delete is a plain form post that still checks the name', async ({ page }) => {
+		await signIn(page, ANA);
+		await page.goto(`/kids/${MIA.id}/settings`);
+		await openDelete(page, MIA.name);
+		const confirm = page.getByLabel(`Type ${MIA.name} to confirm`);
+		await tick(page).check();
+		await confirm.fill('Nope');
+		await removeButton(page, MIA.name).click();
+		await expectFieldError(confirm, 'The name does not match');
+		await confirm.fill(MIA.name);
+		await removeButton(page, MIA.name).click();
+		await expectLanding(page, { kid: LEO });
+		expect((await page.goto(`/kids/${MIA.id}`))?.status()).toBe(404);
 	});
 
 	test('a 422 lands on its field without JavaScript', async ({ page }) => {
