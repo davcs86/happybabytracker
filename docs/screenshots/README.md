@@ -149,7 +149,7 @@ Kid homes in every age band and role: quick log, running timers, Due, Today.
 | `05-newborn` | A 10-day-old: age in days, under-12-month quick log | [mobile](home/05-newborn-mobile.png) | [desktop](home/05-newborn-desktop.png) |
 | `06-ivy-13-months` | A 13-month-old: Feeding leads the quick log; vaccine visits due | [mobile](home/06-ivy-13-months-mobile.png) | [desktop](home/06-ivy-13-months-desktop.png) |
 | `07-due-many` | More due than fit: three lines and a link per hidden kind | [mobile](home/07-due-many-mobile.png) | [desktop](home/07-due-many-desktop.png) |
-| `08-leo-caregiver` | A caregiver on a 2-year-old: the Leave this child card; no Modules, Child profile or Settings entries | [mobile](home/08-leo-caregiver-mobile.png) | [desktop](home/08-leo-caregiver-desktop.png) |
+| `08-leo-caregiver` | A caregiver on a 2-year-old: the Leave this child card; no Modules or Child profile entries | [mobile](home/08-leo-caregiver-mobile.png) | [desktop](home/08-leo-caregiver-desktop.png) |
 | `09-leo-caregiver-leave-confirm` | Leave this child opened: the confirm step | [mobile](home/09-leo-caregiver-leave-confirm-mobile.png) | [desktop](home/09-leo-caregiver-leave-confirm-desktop.png) |
 | `10-leo-leave-refused` | Leaving fails (the API is unreachable): the message in the opened step | [mobile](home/10-leo-leave-refused-mobile.png) | [desktop](home/10-leo-leave-refused-desktop.png) |
 | `11-leo-guardian-24-plus` | A guardian on a 2-year-old born at 35 weeks: older-band tiles; past the second birthday only the age shows, with no corrected age | [mobile](home/11-leo-guardian-24-plus-mobile.png) | [desktop](home/11-leo-guardian-24-plus-desktop.png) |
