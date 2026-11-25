@@ -152,7 +152,7 @@ All `Caregiver` class in `routes.go`, pinned in `routeClasses` and `matrixParams
 
 | Route | Does |
 |---|---|
-| `GET /v1/kids/{kid}/visits` | lists by `starts_at` with the trackers' `from`/`to`/cursor paging |
+| `GET /v1/kids/{kid}/visits` | lists by `starts_at` with the trackers' `from`/`to`/cursor paging; unlike the trackers, `to` may lie in the future, up to the scheduling horizon |
 | `POST /v1/kids/{kid}/visits` | creates |
 | `GET /v1/kids/{kid}/visits/{entry}` | one visit, with its linked rows (5.5) |
 | `PATCH /v1/kids/{kid}/visits/{entry}` | edits; an absent key keeps the stored value, `null` clears an optional one |
@@ -194,9 +194,9 @@ deleting the visit would take it too.
 {
   "revision": 3,
   "outcome_notes": "Healthy. Next check at 6 months.",
-  "growth": { "weight": { "unit": "g", "amount": 6400 }, "length": { "unit": "mm", "amount": 630 } },
-  "vaccinations": [{ "antigens": ["dtap", "ipv"], "product": "Pediarix", "lot": "A1B2" }],
-  "medications": [{ "name": "Vitamin D", "dose": "1 drop", "schedule": { "kind": "times", "times": ["08:00"] } }]
+  "growth": { …the body of POST /growth… },
+  "vaccinations": [{ …the body of POST /vaccinations… }],
+  "medications": [{ …the body of POST /medications… }]
 }
 ```
 
@@ -252,7 +252,9 @@ This visit recorded:
 ```
 
 The checkbox is ticked by default and absent when nothing is linked. A row deleted in its own module
-simply leaves the visit; a row edited there stays linked.
+simply leaves the visit; a row edited there stays linked. That includes a vaccine administration whose
+antigens change: `UpdateAdministration` deletes and inserts dose rows, and the inserted ones must
+carry the administration's `visit_id`.
 
 ## 8. Calendar file
 
@@ -360,7 +362,8 @@ providers only. It was queried from the build environment on 2026-11-25 and answ
     on any hop can hold them. Body: `kind` (`person` or `organization`), `last_name` and optional
     `first_name` (person) or `organization`, `state` (required, two letters), optional `city` and
     `postal_code`. Names are 2 to 60 letters, spaces, hyphens, apostrophes and periods. While the
-    flag is off it answers the 404 an unknown route answers.
+    flag is off the route is not registered, as `/v1/_test/pushes` is not without its flag, so it
+    answers what an unknown route answers.
 - **Upstream call.** Package `api/internal/npi`. The host is a code constant, not configuration, so
   there is nothing to point elsewhere. Trailing-wildcard match on names, `limit=20`. Client timeout
   4 seconds, redirects not followed, response read up to 1 MiB, at most 4 calls in flight.
@@ -391,7 +394,7 @@ providers only. It was queried from the build environment on 2026-11-25 and answ
 | Status | Code | When |
 |---|---|---|
 | 404 | `not_found` | no grant, unknown kid, unknown visit, a visit of another kid: identical bodies |
-| 400 | `invalid` + `field` | validation, with the field paths of 5.4 and 6 |
+| 422 | `invalid` + `field` | validation, with the field paths of 5.4 and 6 |
 | 409 | `limit` | a per-kid cap |
 | 409 | `stale` | outcome `revision` mismatch |
 | 409 | `has_outcome` | cancel, or move to the future, a visit that has an outcome |
