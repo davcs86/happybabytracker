@@ -16,13 +16,13 @@ With nothing logged, the page says "Nothing logged in this range" and offers a *
 
 | Phone |
 |---|
-| <img src="../screenshots/timeline/01-empty-today-mobile.png" alt="Timeline for Mia on the default range, 11/24/2026 to 11/24/2026, all seven trackers ticked and the card Nothing logged in this range" width="260"> |
+| <img src="../screenshots/timeline/01-empty-today-mobile.png" alt="Timeline for Mia on the default range, 11/24/2026 to 11/24/2026, all eight chips ticked and the card Nothing logged in this range" width="260"> |
 
 The timeline of an empty day. The **Log something** button at the top and in the card goes to the child's Home page, where the trackers are.
 
 ### How do I read an entry?
 
-Each entry is one card: an icon and a name (Bottle, Nursing, Pumping, Sleep, Diaper, Solids, or the symptom's name), a detail line, and the time on the right. A sleep shows its start and end instead of a single time. A sleep that ends on a later day reads, for example, "20:15–05:40 +1 day (9 h 25 min)" and stays under the day it began. A note you typed appears as a last line on the card.
+Each entry is one card: an icon and a name (Bottle, Nursing, Pumping, Sleep, Diaper, Solids, the symptom's name, or the kind of a medical visit), a detail line, and the time on the right. A sleep shows its start and end instead of a single time. A sleep that ends on a later day reads, for example, "20:15–05:40 +1 day (9 h 25 min)" and stays under the day it began. A note you typed appears as a last line on the card.
 
 Tap a card to open that entry on its edit page, where you can change or delete it.
 
@@ -45,7 +45,7 @@ The range can be at most 93 days. If **To** is before **From**, the page shows "
 
 ### How do I show only some kinds of entry?
 
-The **Show** row has one chip per tracker: Bottle, Nursing, Pumping, Sleep, Diaper, Solids and Symptom. A ticked chip has a check mark and a coloured border.
+The **Show** row has one chip per tracker: Bottle, Nursing, Pumping, Sleep, Diaper, Solids, Symptom and Visits. A ticked chip has a check mark and a coloured border.
 
 1. Tap a chip to tick or untick it.
 2. Press **Show**.
@@ -54,13 +54,21 @@ For example, with only Symptom ticked the page lists the fever, cough and other 
 
 If you untick every chip and press **Show**, the page goes back to the trackers the child uses.
 
+### Where are medical visits?
+
+Each medical visit is a row on its day, at its time, named by its kind ("Well-child visit", "Sick visit" and so on), with "Cancelled" under a cancelled one. Tick only **Visits** to list them alone. Tapping the row opens the visit's page, not an edit form ([Medical visits](Medical-visits.md)).
+
+| Phone |
+|---|
+| <img src="../screenshots/visits/14-timeline-visits-mobile.png" alt="Timeline on a phone from 11/10/2026 to 12/15/2026 with only the Visits chip ticked: Dental visit on Mon 14 Dec, Specialist visit marked Cancelled on Thu 3 Dec, Well-child visit on Fri 27 Nov, Sick visit on Thu 19 Nov and Other visit on Thu 12 Nov" width="260"> |
+
 ### What if a tracker is switched off for this child?
 
 A guardian can switch a tracker off for a child. Its chip then starts unticked and its entries are hidden. Tick the chip and press **Show** to see them anyway.
 
 | Phone |
 |---|
-| <img src="../screenshots/timeline/12-module-off-unticked-mobile.png" alt="Timeline for Leo, a caregiver view: Bottle, Nursing, Pumping, Sleep and Diaper unticked, Solids and Symptom ticked, listing a meal and a rash" width="260"> |
+| <img src="../screenshots/timeline/12-module-off-unticked-mobile.png" alt="Timeline for Leo, a caregiver view: Bottle, Nursing, Pumping, Sleep and Diaper unticked, Solids, Symptom and Visits ticked, listing a meal and a rash" width="260"> |
 
 In this example Diapers has been switched off for Leo. His diaper entry from the earlier screenshot (`11-caregiver`) is gone from the list, and nothing was deleted.
 
@@ -97,7 +105,7 @@ Yes. A caregiver reads and opens the entries of the children they were added to,
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/timeline/11-caregiver-mobile.png" alt="Timeline for Leo with the role badge Caregiver: Diaper, Solids and Symptom ticked, three entries: a dirty diaper, toast and banana, a mild rash" width="260"> | <img src="../screenshots/timeline/11-caregiver-desktop.png" alt="The same caregiver view on a wide screen, filter on the left and the three entries on the right" width="460"> |
+| <img src="../screenshots/timeline/11-caregiver-mobile.png" alt="Timeline for Leo with the role badge Caregiver: Diaper, Solids, Symptom and Visits ticked, three entries: a dirty diaper, toast and banana, a mild rash" width="260"> | <img src="../screenshots/timeline/11-caregiver-desktop.png" alt="The same caregiver view on a wide screen, filter on the left and the three entries on the right" width="460"> |
 
 ## Screens
 
@@ -112,7 +120,7 @@ Yes. A caregiver reads and opens the entries of the children they were added to,
 - **Query**: the filter is a plain form (`from`, `to`, repeated `types`) so it works without JavaScript, and **Older** and **Back to newest** are plain links.
 - **Order and paging**: newest first, 50 entries per page. Totals per day come from a separate summary of the whole range and cover the trackers shown.
 - **Validation messages**: "Enter a valid date" (a date that cannot be read), "The end date is before the start date" (on **To**), "Pick at most 93 days" (on **To**), "That page link no longer works" (an Older link the API refuses, with **Back to newest**). None of them is an error page.
-- **Filter chips**: Bottle, Nursing, Pumping, Sleep, Diaper, Solids, Symptom. With no chip ticked, the child's enabled trackers apply. A switched-off module starts unticked.
+- **Filter chips**: Bottle, Nursing, Pumping, Sleep, Diaper, Solids, Symptom, Visits. With no chip ticked, the child's enabled trackers apply. A switched-off module starts unticked.
 - **Sleep**: shows `start–end`, plus `+N day` when it ends on a later day, and "Sleep since HH:MM" while it runs. It sits under the day it started.
 - **Units**: the viewer's own units for volume, weight and temperature.
 - **Long text**: a 200-character meal or note wraps inside its card (shot `09-first-page-older`, phone width).

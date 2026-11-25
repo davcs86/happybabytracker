@@ -18,6 +18,7 @@
 - [Growth](Growth.md)
 - [Vaccines](Vaccines.md)
 - [Medication](Medication.md)
+- [Medical visits](Medical-visits.md)
 - [Milestones](Milestones.md)
 - [Export PDF](Export-PDF.md)
 

@@ -1,6 +1,6 @@
 # happybabytracker wiki
 
-A self-hosted tracker for a baby's feeds, sleep, diapers, growth, vaccines, medication and milestones. This wiki shows every screen of the redesigned app, as captured by the project's own end-to-end screenshot flow, and explains it twice: as a short guide for a parent and as a reference for owners and reviewers.
+A self-hosted tracker for a baby's feeds, sleep, diapers, growth, vaccines, medication, medical visits and milestones. This wiki shows every screen of the redesigned app, as captured by the project's own end-to-end screenshot flow, and explains it twice: as a short guide for a parent and as a reference for owners and reviewers.
 
 | Phone | Desktop |
 |---|---|
@@ -8,7 +8,7 @@ A self-hosted tracker for a baby's feeds, sleep, diapers, growth, vaccines, medi
 
 ## How the pages are built
 
-Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Screens** section (route, who can open it, the states captured and the rules the screens show, for owners and reviewers). Every picture is a capture of the real user interface, running against a stub of the API that holds fake data, so what you see is what the interface does. The full list of 230 captured screens, with captions, is in the [screenshot catalogue](../screenshots/README.md).
+Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Screens** section (route, who can open it, the states captured and the rules the screens show, for owners and reviewers). Every picture is a capture of the real user interface, running against a stub of the API that holds fake data, so what you see is what the interface does. The full list of 247 captured screens, with captions, is in the [screenshot catalogue](../screenshots/README.md).
 
 ## Pages
 
@@ -30,6 +30,7 @@ Each page has a **Guide** (how do I...? in plain steps, for a parent) and a **Sc
 - [Growth](Growth.md): charts and measurements.
 - [Vaccines](Vaccines.md): the schedule, what is due, recording a vaccination.
 - [Medication](Medication.md): courses and doses.
+- [Medical visits](Medical-visits.md): appointments, a calendar file, and what was recorded at each visit.
 - [Milestones](Milestones.md): checklists by age.
 - [Export PDF](Export-PDF.md): a PDF of a date range, for the modules you choose.
 

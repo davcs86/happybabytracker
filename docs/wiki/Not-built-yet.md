@@ -21,6 +21,10 @@ A separate piece of work is deciding, for each item, whether it needs a new API 
 - Selecting a point on the chart to highlight its row.
 - The chart's tick labels are 11 units in a fixed drawing, so they read at about 9 px on a phone.
 
+## Medical visits
+
+- **Looking up a doctor** in the US provider registry (NPI) while adding a visit. It is a separate, later plan (the visits design, section 10), to sit behind a server switch; today **Doctor or clinic** is typed by hand ([Medical visits](Medical-visits.md)).
+
 ## Access and children
 
 - Undo toasts after a role change, removing access, adding a person or marking a milestone.
