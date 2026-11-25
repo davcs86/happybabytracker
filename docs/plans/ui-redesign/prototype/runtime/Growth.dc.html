@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Growth</title>
+<script src="./react.production.min.js"></script><script src="./react-dom.production.min.js"></script><script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select,textarea{font-family:inherit;color:inherit}summary{cursor:pointer}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 8px;border-top:1px solid var(--border);font-size:12px}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Growth · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="7"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="2"><button onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>shadcn-svelte parts</b><br>Tabs (measure), Card, Badge, Button, Collapsible (help, chart data, reference data), Sheet (measurement form, source), ToggleGroup (units), Input, Label, Textarea, Alert, Sonner.<br><br><b>No-JS baseline</b><br>Measure tabs are links (<code>?measure=</code>); the chart is server-built SVG; tapping a row or point is a link to <code>?sel=&lt;id&gt;</code>; the form is its own route.<br><br><b>New vs as-built</b><br>Row ↔ point sync; labels only on 3 / 50 / 97 (other lines live in the table); plain-language help; both ages shown wherever corrected age applies.<br><br>Curves are illustrative, not WHO or CDC tables.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<sc-if value="{{ desktop }}" hint-placeholder-val="{{ false }}"><div data-hbt="side" role="navigation" aria-label="Primary" style="width:200px;flex:none;border-right:1px solid var(--border);padding:20px 12px;display:flex;flex-direction:column;gap:4px;background:var(--card)"><div style="font-weight:700;font-size:16px;padding:0 10px 14px">Happy baby</div>
+<sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.sideStyle }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div></sc-if>
+<div data-hbt="frame" style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+<div role="main" style="flex:1;overflow:auto;padding:16px 16px 28px;display:flex;flex-direction:column;gap:18px">
+
+<div style="display:flex;flex-direction:column;gap:6px">
+<div data-hbt="head" style="display:flex;align-items:center;gap:8px;min-height:48px;margin-bottom:8px"><a href="{{ hdr.href }}" data-drawer="Switch child" data-drawer-fit aria-label="Child: {{ hdr.name }}. Switch child" data-shadcn="Button" style="min-height:48px;min-width:0;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 8px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);text-decoration:none;font-size:15px;font-weight:600"><span aria-hidden="true" style="width:32px;height:32px;border-radius:99px;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex:none">{{ hdr.initial }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ hdr.name }}</span><span style="flex:none;color:var(--muted);display:inline-flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></a><div data-hbt-bell style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px"><a href="Notifications.dc.html" aria-label="Notification settings" data-shadcn="Button" style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></a><span data-role style="font-size:12px;font-weight:600;padding:4px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)">{{ roleLabel }}</span></div></div>
+<div style="display:flex;align-items:flex-end;gap:10px"><div style="flex:1;min-width:0"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1">Growth</h1><div style="font-size:14px;color:var(--muted);margin-top:4px">{{ ageLine }}</div><sc-if value="{{ preterm }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--muted);margin-top:2px">{{ corrLine }}</div></sc-if></div>
+<button onClick="{{ openAdd }}" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;flex:none">Add measurement</button></div>
+</div>
+
+<nav aria-label="Measures" data-shadcn="Tabs" style="display:flex;padding:4px;border-radius:12px;background:var(--soft2);gap:4px"><sc-for list="{{ measures }}" as="m" hint-placeholder-count="4"><button onClick="{{ m.on }}" aria-current="{{ m.cur }}" style="{{ m.style }}">{{ m.label }}</button></sc-for></nav>
+
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div data-w="l" data-shadcn="Card" style="border:1px dashed var(--border);border-radius:16px;background:var(--card);padding:22px;display:flex;flex-direction:column;gap:10px;align-items:flex-start"><span style="{{ chipStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ icGrowth }}"></svg></span><div style="font-size:17px;font-weight:600">No measurements yet</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5">Add a weight, length or head size from a check-up or from home. The chart appears with the first one.</div></div></sc-if>
+
+<sc-if value="{{ hasRows }}" hint-placeholder-val="{{ true }}"><div data-w="grid" style="display:flex;flex-direction:column;gap:18px">
+<div data-w="l"><section style="display:flex;flex-direction:column;gap:10px">
+<h2 style="margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ measureTitle }}</h2>
+<sc-if value="{{ !covered }}" hint-placeholder-val="{{ false }}"><div role="status" data-shadcn="Alert" style="padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:13.5px;line-height:1.5">{{ srcName }} has no table for this measure at this age. Your measurements are listed below.</div></sc-if>
+<div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:12px 8px 8px;display:flex;flex-direction:column;gap:8px">
+<div style="position:relative">
+<svg viewBox="0 0 340 250" role="img" aria-label="{{ chartLabel }}" style="width:100%;height:auto;display:block" dangerouslySetInnerHTML="{{ chartSvg }}"></svg>
+<sc-for list="{{ dots }}" as="d" hint-placeholder-count="5"><button onClick="{{ d.on }}" aria-label="{{ d.label }}" aria-pressed="{{ d.pressed }}" style="{{ d.style }}"></button></sc-for>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:6px 14px;padding:0 8px 4px;font-size:12px;color:var(--muted)"><span style="display:inline-flex;align-items:center;gap:5px"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="2.2"/></svg>{{ kid }}</span><span style="display:inline-flex;align-items:center;gap:5px"><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 3"/></svg>{{ srcName }} percentiles: {{ pctList }}</span></div>
+</div>
+<sc-if value="{{ selCard }}" hint-placeholder-val="{{ false }}"><div role="status" data-shadcn="Card" style="border:1.5px solid var(--primary);border-radius:14px;background:var(--card);padding:12px 14px"><div style="font-size:12px;color:var(--muted)">Selected · {{ selDate }}</div><div style="font-size:20px;font-weight:600;margin-top:2px">{{ selValue }}</div><div style="font-size:13px;color:var(--muted);margin-top:2px">{{ selScore }}</div></div></sc-if>
+<details data-shadcn="Collapsible" style="font-size:13px"><summary style="min-height:48px;display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;list-style:none;cursor:pointer">Chart data<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--muted);flex:none" data-chev><path d="m6 9 6 6 6-6"/></svg></summary>
+<div style="overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--card)"><table><thead><tr><th scope="col">Date</th><th scope="col">{{ axisName }}</th><th scope="col">{{ measureTitle }}</th><th scope="col">z</th><th scope="col">Percentile</th></tr></thead><tbody><sc-for list="{{ tableRows }}" as="r" hint-placeholder-count="3"><tr><td>{{ r.date }}</td><td>{{ r.age }}</td><td>{{ r.val }}</td><td>{{ r.z }}</td><td>{{ r.pct }}</td></tr></sc-for></tbody></table></div></details>
+</section>
+
+<details data-shadcn="Collapsible" style="border:1px solid var(--border);border-radius:14px;background:var(--card);padding:0 14px"><summary style="min-height:52px;display:flex;align-items:center;gap:10px;font-size:14.5px;font-weight:600;list-style:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ icInfo }}"></svg><span style="flex:1">What do these numbers mean?</span><svg data-chev width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="color:var(--muted)"><path d="m6 9 6 6 6-6"/></svg></summary>
+<div style="display:flex;flex-direction:column;gap:10px;padding:0 0 14px;font-size:13.5px;line-height:1.55;color:var(--muted)">
+<div><b style="color:var(--fg)">Percentile.</b> Compares one measurement with a reference group of children of the same age and sex. A percentile of 50 is the middle of that group.</div>
+<div><b style="color:var(--fg)">z-score.</b> The same comparison counted in steps from the middle. 0 is the middle; each step up or down is one standard deviation.</div>
+<sc-if value="{{ preterm }}" hint-placeholder-val="{{ false }}"><div><b style="color:var(--fg)">Corrected age.</b> For a baby born early, this app subtracts the weeks of early birth from age until the second birthday. WHO and CDC do not publish this rule; it is this app’s own choice. Both ages are shown.</div></sc-if>
+<div>This page shows the numbers and does not interpret them. Questions about what they mean for {{ kid }} are for your clinic.</div></div></details></div>
+
+<div data-w="r"><section style="display:flex;flex-direction:column;gap:10px"><h2 style="margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Measurements</h2>
+<div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ list }}" as="r" hint-placeholder-count="4">
+<div data-shadcn="Card" style="{{ r.cardStyle }}">
+<div style="display:flex;align-items:center;gap:8px"><button onClick="{{ r.onPick }}" aria-pressed="{{ r.pressed }}" style="flex:1;min-height:44px;border:0;background:transparent;text-align:left;padding:0;cursor:pointer"><span style="display:block;font-size:15px;font-weight:600">{{ r.date }}</span><span style="display:block;font-size:12.5px;color:var(--muted)">{{ r.ages }}</span></button><button onClick="{{ r.onEdit }}" aria-label="{{ r.editLabel }}" title="{{ r.editLabel }}" style="min-width:48px;min-height:48px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);cursor:pointer;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg></button></div>
+<sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><div style="{{ ln.style }}">{{ ln.text }}</div></sc-for>
+<sc-if value="{{ r.note }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--muted)">{{ r.note }}</div></sc-if>
+</div></sc-for></div></section>
+
+<div style="font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center">Growth source: {{ srcName }}<sc-if value="{{ guardian }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openSource }}" style="min-height:44px;padding:0;border:0;background:transparent;text-decoration:underline;font-size:14px;cursor:pointer">Change the growth source</button></sc-if></div>
+<details data-shadcn="Collapsible" style="border:1px solid var(--border);border-radius:14px;background:var(--card);padding:0 14px;font-size:13px"><summary style="min-height:48px;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;list-style:none;cursor:pointer"><span style="flex:1">About the reference data</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--muted);flex:none" data-chev><path d="m6 9 6 6 6-6"/></svg></summary><div style="color:var(--muted);line-height:1.55;padding-bottom:12px">{{ srcName }}: sample name and version. Sample attribution and licence text appear here, as the licence requires. Always shown, never hidden behind a setting.</div></details></div>
+</div></sc-if>
+</div>
+
+<div data-hbt="tabs" role="navigation" aria-label="Primary" style="flex:none;display:{{ phoneDisplay }};border-top:1px solid var(--border);background:var(--card);padding:6px 6px 10px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.tabStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div>
+
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(20,12,8,.5);display:flex;align-items:flex-end;justify-content:center;z-index:5"><div onClick="{{ stop }}" role="dialog" aria-label="{{ sheetTitle }}" data-shadcn="Sheet" style="width:100%;max-width:480px;max-height:92%;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 32px rgba(0,0,0,.2)">
+<div style="width:36px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+<div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:600;flex:1">{{ sheetTitle }}</div><button onClick="{{ closeSheet }}" aria-label="Close" style="width:44px;height:44px;border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+
+<sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:12px;color:var(--muted)">Times and dates are in {{ kid }}’s time zone (America/Los_Angeles).</div>
+<div style="display:flex;flex-direction:column;gap:6px"><label for="gdate" style="font-size:12px;color:var(--muted)">Date</label><input id="gdate" type="date" value="{{ f.date }}" onChange="{{ setDate }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"></div>
+<fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:12px"><legend style="font-size:12px;color:var(--muted);padding:0;margin-bottom:8px">Measurements · fill at least one</legend>
+<div style="display:flex;gap:6px" role="group" aria-label="Units"><sc-for list="{{ unitOpts }}" as="u" hint-placeholder-count="2"><button onClick="{{ u.on }}" aria-pressed="{{ u.pressed }}" style="{{ u.style }}">{{ u.label }}</button></sc-for></div>
+<sc-if value="{{ !fLb }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:6px"><label for="gkg" style="font-size:13px">Weight, kilograms</label><input id="gkg" type="text" inputmode="decimal" value="{{ f.kg }}" onChange="{{ setKg }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"></div></sc-if>
+<sc-if value="{{ fLb }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:10px"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="glb" style="font-size:13px">Weight, pounds</label><input id="glb" type="text" inputmode="decimal" value="{{ f.lb }}" onChange="{{ setLb }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="goz" style="font-size:13px">Ounces</label><input id="goz" type="text" inputmode="decimal" value="{{ f.oz }}" onChange="{{ setOz }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div></div></sc-if>
+<div style="display:flex;gap:10px"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="glen" style="font-size:13px">Length or height, {{ lenUnit }}</label><input id="glen" type="text" inputmode="decimal" value="{{ f.len }}" onChange="{{ setLen }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="ghead" style="font-size:13px">Head, {{ lenUnit }}</label><input id="ghead" type="text" inputmode="decimal" value="{{ f.head }}" onChange="{{ setHead }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div></div>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:13.5px;font-weight:600">{{ formErr }}</div></sc-if></fieldset>
+<div style="display:flex;flex-direction:column;gap:6px"><label for="gnote" style="font-size:12px;color:var(--muted)">Note (optional)</label><input id="gnote" type="text" value="{{ f.note }}" onChange="{{ setNote }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"></div>
+<sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted)">Changing the unit reads the number in the new unit.</div></sc-if>
+<button onClick="{{ saveForm }}" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer;padding:0 20px">Save</button>
+<sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:10px"><sc-if value="{{ !delAsk }}" hint-placeholder-val="{{ true }}"><button onClick="{{ askDelete }}" style="min-height:48px;border-radius:12px;border:1px solid var(--border);background:transparent;font-size:15px;font-weight:600;cursor:pointer">Delete this measurement</button></sc-if>
+<sc-if value="{{ delAsk }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px"><div style="font-size:13.5px;line-height:1.5">This removes the measurement for everyone with access to {{ kid }}.</div><div style="display:flex;gap:8px"><button onClick="{{ keepRow }}" style="flex:1;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;padding:0 16px;color:var(--fg)">Keep</button><button onClick="{{ doDelete }}" style="flex:1;min-height:48px;border-radius:10px;border:0;background:var(--fg);color:var(--bg);font-size:14px;font-weight:600;cursor:pointer">Delete</button></div></div></sc-if></div></sc-if>
+</div></sc-if>
+
+<sc-if value="{{ isSource }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:10px"><div style="font-size:13.5px;color:var(--muted);line-height:1.5">Changes every curve and score at once. No measurement is edited.</div>
+<sc-for list="{{ srcOpts }}" as="o" hint-placeholder-count="2"><button onClick="{{ o.on }}" aria-pressed="{{ o.pressed }}" style="{{ o.style }}"><span style="flex:1;text-align:left"><span style="display:block;font-size:15px;font-weight:600">{{ o.label }}</span><span style="display:block;font-size:12px;color:var(--muted)">{{ o.sub }}</span></span><span aria-hidden="true">{{ o.mark }}</span></button></sc-for></div></sc-if>
+
+<sc-if value="{{ isTheme }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><fieldset data-shadcn="RadioGroup" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:8px">Choose how Happy baby looks. It applies to every screen.</legend><sc-for list="{{ themeOpts }}" as="o" hint-placeholder-count="3"><label class="hbt-radiorow"><input type="radio" name="hbt-theme" value="{{ o.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}"><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">{{ o.label }}</span><span style="font-size:13px;color:var(--muted);line-height:1.4">{{ o.hint }}</span></span><span aria-hidden="true" style="{{ o.swatch }}"></span></label></sc-for></fieldset><button onClick="{{ closeSheet }}" data-shadcn="Button" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer">Done</button></div></sc-if>
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="4"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;min-height:52px;border-top:1px solid var(--border);font-size:15px;color:var(--fg);text-decoration:none">{{ m.label }}<span style="margin-left:auto;font-size:12px;color:var(--muted)">{{ m.note }}</span></a></sc-for></div></sc-if>
+</div></div></sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}"><div role="{{ toastRole }}" style="position:absolute;left:12px;right:12px;bottom:84px;display:flex;align-items:center;gap:12px;padding:6px 6px 6px 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9"><span style="flex:1">{{ toastText }}</span><sc-if value="{{ toastRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doRetry }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Try again</button></sc-if><sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doUndo }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Undo</button></sc-if></div></sc-if>
+</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={retry:null,toastErr:false,dark:false,desktop:false,cg:false,us:false,kid:'Leo',src:'who',measure:'weight',sel:null,empty:false,sheet:null,editId:null,delAsk:false,formErr:null,toast:null,undo:null,
+    f:{date:'2026-11-22',kg:'',lb:'',oz:'',len:'',head:'',note:'',wUnit:'kg',lUnit:'cm'},
+    rows:[{id:1,m:0.1,w:2.8,l:47.5,h:33.5,note:''},{id:2,m:1,w:3.6,l:51.5,h:36,note:''},{id:3,m:2,w:4.7,l:56,h:38.2,note:'2-month check-up'},{id:4,m:3.1,w:5.8,l:60,h:40,note:''},{id:5,m:4.2,w:6.6,l:63,h:41.2,note:''}],nid:6};
+  componentWillUnmount(){clearTimeout(this.tt);}
+  toast(text,undo){clearTimeout(this.tt);this.setState({toast:text,undo:undo||null,retry:null,toastErr:false});this.tt=setTimeout(()=>this.setState({toast:null,undo:null}),6000);}
+  fail(er,retry){clearTimeout(this.tt);if(this.state.sheet){this.setState({formErr:er.msg});}else{const c=er.code==='network'||er.code==='server';this.setState({toast:er.msg,undo:null,retry:c?retry:null,toastErr:true});this.tt=setTimeout(()=>this.setState({toast:null,retry:null,toastErr:false}),9000);}}
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false;
+    const self=this,HB=window.HBT,kn=HB.kidName(),s0=this.state;
+    const s={...s0,kid:kn,us:HB.pref('us'),empty:s0.empty||(kn!=='Leo'&&kn!=='Ivy'&&s0.nid===6)};
+    const P=h=>({__html:h}),fp=HB.pref('fail')||'off';
+    const km=HB.kidMeta(HB.kid());
+    const addM=(d,m)=>{const x=new Date(d),w=Math.floor(m);x.setMonth(x.getMonth()+w);x.setDate(x.getDate()+Math.round((m-w)*30.4));return x;};
+    const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const birth=new Date((km.born||'2026-07-11')+'T12:00:00');
+    const isoD=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const addD=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
+    const earlyD=km.gaw<37?(40-km.gaw)*7-(km.gad||0):0;
+    const pre=earlyD>0,OFF=pre?earlyD/30.44:0;
+    const IC={Home:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',Timeline:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',Growth:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',More:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'};
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)',tl:'oklch(0.45 0.15 38)',soft:'oklch(0.3 0.05 55)',soft2:'oklch(0.27 0.015 50)',ink:'oklch(0.84 0.11 55)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)',tl:'oklch(0.8 0.12 55)',soft:'oklch(0.95 0.04 55)',soft2:'oklch(0.95 0.01 60)',ink:'oklch(0.42 0.12 38)'};
+    const D=s.desktop;
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--toast-link:${L.tl};--soft:${L.soft};--soft2:${L.soft2};--ink:${L.ink};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const opt=(label,on,cur)=>({label,on,style:seg(cur)});
+    const toggles=[
+      {title:'Child',opts:HB.kids().slice(0,3).map(k=>opt(k.name+(k.name==='Leo'?' · preterm':''),()=>{HB.setKid(k.id);this.setState({sel:null});},k.name===kn))},
+      {title:'Next save',opts:[opt('Works',()=>{HB.setPref('fail','off');this.setState({sel:null});},fp==='off'),opt('Offline',()=>{HB.setPref('fail','network');this.setState({sel:null});},fp==='network'),opt('Error',()=>{HB.setPref('fail','server');this.setState({sel:null});},fp==='server')]},
+      {title:'Source',opts:[opt('WHO',()=>this.setState({src:'who'}),s.src==='who'),opt('CDC',()=>this.setState({src:'cdc'}),s.src==='cdc')]},
+      {title:'Data',opts:[opt('Rows',()=>this.setState({empty:false}),!s.empty),opt('Empty',()=>this.setState({empty:true}),s.empty)]},
+      {title:'Units',opts:[opt('ml · kg',()=>{HB.setPref('us',false);this.setState({sel:null});},!s.us),opt('fl oz · lb',()=>{HB.setPref('us',true);this.setState({sel:null});},s.us)]},
+      {title:'Role',opts:[opt('Guardian',()=>this.setState({cg:false}),!s.cg),opt('Caregiver',()=>this.setState({cg:true}),s.cg)]},
+      {title:'Theme',opts:[opt('Light',()=>HBTUI.setTheme('light'),HBTUI.theme()==='light'),opt('Dark',()=>HBTUI.setTheme('dark'),HBTUI.theme()==='dark'),opt('Auto',()=>HBTUI.setTheme('auto'),HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const tabDefs=[['Home','Kid Home.dc.html'],['Timeline','Timeline.dc.html'],['Growth','Growth.dc.html'],['More','']];
+    const tabs=tabDefs.map(([l,h])=>({label:l,cur:l==='Growth'?'page':undefined,icon:P(IC[l]),href:h||'#more',on:l==='More'?(e=>{e.preventDefault();this.setState({sheet:'more'});}):undefined,
+      tabStyle:`flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;text-decoration:none;color:${l==='Growth'?'var(--primary)':'var(--muted)'}`,
+      sideStyle:`display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;background:${l==='Growth'?'var(--bg)':'transparent'};color:${l==='Growth'?'var(--primary)':'var(--fg)'}`}));
+    // curves
+    const KN=[0,1,2,3,4,6,9,12,15,18,21,24];
+    const M={weight:{t:'Weight',med:[3.3,4.5,5.6,6.4,7.0,7.9,8.9,9.6,10.3,10.9,11.5,12.2],sd:[0.4,0.55,0.65,0.7,0.75,0.85,0.95,1.0,1.1,1.2,1.3,1.4],key:'w'},
+      length:{t:'Length',med:[49.9,54.7,58.4,61.4,63.9,67.6,72,75.7,79.1,82.3,85.1,87.8],sd:[1.9,2,2.1,2.2,2.3,2.4,2.5,2.6,2.8,3,3.1,3.3],key:'l'},
+      head:{t:'Head',med:[34.5,37.3,39.1,40.5,41.6,43.3,45,46.1,46.8,47.4,47.8,48.3],sd:[1.2,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25,1.25],key:'h'},
+      bmi:{t:'BMI',med:[13.4,16.3,16.9,17.2,17.3,17.3,17,16.8,16.5,16.3,16.1,16],sd:[1.1,1.15,1.15,1.15,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1],key:'b'}}[s.measure];
+    const ZW=[[-1.88,3],[-1.04,15],[0,50],[1.04,85],[1.88,97]],ZC=[[-1.88,3],[-1.64,5],[-1.28,10],[-0.67,25],[0,50],[0.67,75],[1.28,90],[1.64,95],[1.88,97]];
+    const ZS=s.src==='who'?ZW:ZC;
+    const covered=!(s.src==='cdc'&&s.measure==='bmi');
+    const interp=(arr,x)=>{if(x<=0)return arr[0];for(let i=1;i<KN.length;i++){if(x<=KN[i]){const t=(x-KN[i-1])/(KN[i]-KN[i-1]);return arr[i-1]+t*(arr[i]-arr[i-1]);}}return arr[arr.length-1];};
+    const erf=x=>{const t=1/(1+0.3275911*Math.abs(x));const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x>=0?y:-y;};
+    const cdf=z=>0.5*(1+erf(z/Math.SQRT2));
+    // rows
+    const val=(r,k)=>k==='b'?(r.w&&r.l?r.w/Math.pow(r.l/100,2):null):r[k];
+    const rows=s.empty?[]:s.rows.map(r=>{const cm=r.m-OFF,before=pre&&cm<0;return {...r,cm,before};}).sort((a,b)=>a.m-b.m);
+    const score=(r,k)=>{const v=val(r,k);if(v==null)return null;if(r.before)return {no:'before expected term'};const mm={w:'weight',l:'length',h:'head',b:'bmi'}[k];if(s.src==='cdc'&&mm==='bmi'&&r.cm<24)return {no:'this source has no table for this age'};if(mm==='head'&&r.cm>(s.src==='who'?60:36))return {no:'this source has no table for this age'};const X={weight:M0('weight'),length:M0('length'),head:M0('head'),bmi:M0('bmi')}[mm];const med=interp(X.med,r.cm),sd=interp(X.sd,r.cm);const z=(v-med)/sd;return {z,p:cdf(z)*100,v};};
+    function M0(n){return {weight:{med:[3.3,4.5,5.6,6.4,7.0,7.9,8.9,9.6,10.3,10.9,11.5,12.2],sd:[0.4,0.55,0.65,0.7,0.75,0.85,0.95,1.0,1.1,1.2,1.3,1.4]},length:{med:[49.9,54.7,58.4,61.4,63.9,67.6,72,75.7,79.1,82.3,85.1,87.8],sd:[1.9,2,2.1,2.2,2.3,2.4,2.5,2.6,2.8,3,3.1,3.3]},head:{med:[34.5,37.3,39.1,40.5,41.6,43.3,45,46.1,46.8,47.4,47.8,48.3],sd:Array(12).fill(1.25)},bmi:{med:[13.4,16.3,16.9,17.2,17.3,17.3,17,16.8,16.5,16.3,16.1,16],sd:[1.1,1.15,1.15,1.15,1.1,1.1,1.1,1.1,1.1,1.1,1.1,1.1]}}[n];}
+    const fmtZ=z=>(z>=0?'':'−')+Math.abs(z).toFixed(2);
+    const fmtP=p=>p<0.1?'<0.1':p>99.9?'>99.9':p.toFixed(1);
+    const vtxt=(k,v)=>{if(k==='w'){if(!s.us)return v.toFixed(1)+' kg';const lb=v*2.20462,w=Math.floor(lb);return w+' lb '+((lb-w)*16).toFixed(1)+' oz';}if(k==='b')return v.toFixed(1);return s.us?(v/2.54).toFixed(2)+' in':v.toFixed(1)+' cm';};
+    const ageTxt=m=>{const mo=Math.floor(m),d=Math.round((m-mo)*30);return mo+' mo '+d+' d';};
+    // chart
+    const W=340,H=250,ML=34,MR=40,MT=14,MB=34;
+    const maxCm=Math.max(0,...rows.map(r=>r.cm)),XM=maxCm<=5?6:maxCm<=11?12:24;
+    const plotted=rows.filter(r=>!r.before&&val(r,M.key)!=null&&r.cm<=XM);
+    const XS=Array.from({length:XM*2+1},(_,i)=>i/2);
+    const lines=covered?ZS.map(([z,p])=>({p,pts:XS.map(x=>[x,interp(M.med,x)+z*interp(M.sd,x)])})):[];
+    const allY=[...lines.flatMap(l=>l.pts.map(q=>q[1])),...plotted.map(r=>val(r,M.key))];
+    let y0=Math.min(...allY),y1=Math.max(...allY);const span=y1-y0||1;y0-=span*0.04;y1+=span*0.04;
+    const step=[0.5,1,2,5,10].find(t=>span/t<=6)||10;const ty0=Math.ceil(y0/step)*step;
+    const px=x=>ML+(x/XM)*(W-ML-MR),py=y=>MT+(1-(y-y0)/(y1-y0))*(H-MT-MB);
+    let svg='';for(let t=ty0;t<=y1;t+=step){svg+=`<line x1="${ML}" x2="${W-MR}" y1="${py(t)}" y2="${py(t)}" stroke="${L.border}" stroke-width="1"/><text x="${ML-5}" y="${py(t)+3.5}" text-anchor="end" font-size="11" fill="${L.muted}">${step<1?t.toFixed(1):Math.round(t*10)/10}</text>`;}
+    ({6:[0,1,2,3,4,5,6],12:[0,2,4,6,8,10,12],24:[0,6,12,18,24]})[XM].forEach(x=>{svg+=`<text x="${px(x)}" y="${H-MB+15}" text-anchor="middle" font-size="11" fill="${L.muted}">${x}</text>`;});
+    svg+=`<text x="${(ML+W-MR)/2}" y="${H-5}" text-anchor="middle" font-size="11" fill="${L.muted}">${pre?'Corrected age, months':'Age, months'}</text>`;
+    const DASH={3:'3 3',5:'5 3',10:'2 3',15:'4 3',25:'6 3',50:'',75:'6 3',85:'4 3',90:'2 3',95:'5 3',97:'3 3'};
+    lines.forEach(l=>{const d=l.pts.map((q,i)=>(i?'L':'M')+px(q[0]).toFixed(1)+' '+py(q[1]).toFixed(1)).join(' ');svg+=`<path d="${d}" fill="none" stroke="${L.muted}" stroke-width="${l.p===50?1.6:1}" ${DASH[l.p]?`stroke-dasharray="${DASH[l.p]}"`:''} opacity="${l.p===50?0.9:0.7}"/>`;
+      if([3,50,97].includes(l.p)){const q=l.pts[l.pts.length-1];svg+=`<text x="${px(q[0])+4}" y="${py(q[1])+3.5}" font-size="11" fill="${L.muted}">${l.p}</text>`;}});
+    if(plotted.length>1)svg+=`<path d="${plotted.map((r,i)=>(i?'L':'M')+px(r.cm).toFixed(1)+' '+py(val(r,M.key)).toFixed(1)).join(' ')}" fill="none" stroke="${L.primary}" stroke-width="2.2"/>`;
+    plotted.forEach(r=>{const on=s.sel===r.id;svg+=`<circle cx="${px(r.cm)}" cy="${py(val(r,M.key))}" r="${on?7:4.5}" fill="${on?L.card:L.primary}" stroke="${L.primary}" stroke-width="${on?3:0}"/>`;});
+    const dots=plotted.map(r=>({label:'Select '+fmt(addM(birth,r.m))+' measurement',pressed:s.sel===r.id,on:()=>this.setState({sel:r.id}),style:`position:absolute;left:${(px(r.cm)/W*100).toFixed(2)}%;top:${(py(val(r,M.key))/H*100).toFixed(2)}%;width:44px;height:44px;transform:translate(-50%,-50%);border:0;background:transparent;padding:0;cursor:pointer`}));
+    // list
+    const lineDefs=[['w','Weight'],['l','Length'],['h','Head'],['b','BMI']];
+    const list=[...rows].sort((a,b)=>b.m-a.m).map(r=>{const on=s.sel===r.id;
+      const ls=lineDefs.map(([k,n])=>{const v=val(r,k);if(v==null)return null;const sc=score(r,k);const st='font-size:13.5px;'+(k===M.key?'font-weight:600':'');
+        return {style:st+(sc&&sc.no?';color:var(--muted)':''),text:n+' '+vtxt(k,v)+': '+(sc?(sc.no?sc.no:'z '+fmtZ(sc.z)+', percentile '+fmtP(sc.p)):'')};}).filter(Boolean);
+      return {date:fmt(addM(birth,r.m)),ages:pre?(r.before?ageTxt(r.m)+' (before expected term)':ageTxt(r.m)+' (corrected '+ageTxt(r.cm)+')'):ageTxt(r.m),lines:ls,note:r.note,pressed:on,
+        cardStyle:`border:${on?'1.5px solid var(--primary)':'1px solid var(--border)'};border-radius:14px;background:var(--card);padding:10px 12px;display:flex;flex-direction:column;gap:3px;${r.before?'background-image:repeating-linear-gradient(135deg,transparent 0 8px,var(--soft2) 8px 9px)':''}`,
+        editLabel:'Edit the measurement of '+fmt(addM(birth,r.m)),onPick:()=>this.setState({sel:on?null:r.id}),
+        onEdit:()=>{const kg=r.w;const lbT=kg?kg*2.20462:null;this.setState({sheet:'form',editId:r.id,delAsk:false,formErr:null,f:{date:iso(addM(birth,r.m)),kg:kg?String(kg):'',lb:lbT?String(Math.floor(lbT)):'',oz:lbT?((lbT-Math.floor(lbT))*16).toFixed(1):'',len:r.l!=null?String(r.l):'',head:r.h!=null?String(r.h):'',note:r.note||'',wUnit:'kg',lUnit:'cm'}});}};});
+    function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+    const tableRows=plotted.map(r=>{const sc=score(r,M.key);return {date:fmt(addM(birth,r.m)),age:ageTxt(r.cm),val:vtxt(M.key,val(r,M.key)),z:sc&&!sc.no?fmtZ(sc.z):'–',pct:sc&&!sc.no?fmtP(sc.p):'–'};});
+    const selR=rows.find(r=>r.id===s.sel);let selValue='',selScore='',selDate='';
+    if(selR){selDate=fmt(addM(birth,selR.m));const v=val(selR,M.key);if(v==null){selValue='No '+M.t.toLowerCase()+' recorded that day';}else{selValue=M.t+' '+vtxt(M.key,v);const sc=score(selR,M.key);selScore=sc.no?sc.no:'z '+fmtZ(sc.z)+' · percentile '+fmtP(sc.p);}}
+    const measures=[['weight','Weight'],['length','Length'],['head','Head'],['bmi','BMI']].map(([k,l])=>({label:l,cur:s.measure===k?'page':'false',on:()=>this.setState({measure:k}),style:`flex:1;min-height:44px;border-radius:9px;border:0;background:${s.measure===k?'var(--card)':'transparent'};box-shadow:${s.measure===k?'0 1px 3px rgba(0,0,0,.15)':'none'};color:${s.measure===k?'var(--fg)':'var(--muted)'};font-size:14px;font-weight:600;cursor:pointer`}));
+    // form
+    const f=s.f,lenUnit=f.lUnit;
+    const setF=k=>e=>this.setState({f:{...s.f,[k]:e.target.value}});
+    const num=t=>{const x=parseFloat(String(t).replace(',','.'));return isNaN(x)?null:x;};
+    const unitOpts=[['kg','kg · cm'],['lb','lb · in']].map(([k,l])=>({label:l,pressed:f.wUnit===k,on:()=>this.setState({f:{...s.f,wUnit:k,lUnit:k==='kg'?'cm':'in'}}),style:`flex:1;min-height:44px;border-radius:10px;border:${f.wUnit===k?'1.5px solid var(--primary)':'1px solid var(--border)'};background:${f.wUnit===k?'var(--soft)':'var(--bg)'};font-size:14px;font-weight:600;cursor:pointer`}));
+    const saveForm=()=>{let w=f.wUnit==='kg'?num(f.kg):(num(f.lb)!=null||num(f.oz)!=null?((num(f.lb)||0)+(num(f.oz)||0)/16)/2.20462:null);let l=num(f.len),h=num(f.head);if(f.lUnit==='in'){l=l!=null?l*2.54:null;h=h!=null?h*2.54:null;}
+      if(w==null&&l==null&&h==null){this.setState({formErr:'Enter at least one measurement.'});return;}
+       const dd=f.date?new Date(f.date+'T00:00:00'):null;if(!dd||isNaN(dd)){this.setState({formErr:'Enter a date.'});return;}
+       if(dd.getTime()>Date.now()){this.setState({formErr:'The date can’t be in the future.'});return;}
+       if(dd.getTime()<new Date(isoD(birth)+'T00:00:00').getTime()){this.setState({formErr:'The date can’t be before the birth date.'});return;}
+      const m=Math.max(0,(new Date(f.date+'T00:00:00')-birth)/(30.44*864e5));
+      const er=HB.tryWrite('other');if(er)return this.fail(er,saveForm);
+      const snap=s.rows;
+      if(s.editId){this.setState({rows:s.rows.map(r=>r.id===s.editId?{...r,m,w:w!=null?Math.round(w*1000)/1000:null,l:l!=null?Math.round(l*10)/10:null,h:h!=null?Math.round(h*10)/10:null,note:f.note}:r),sheet:null,undo:{rows:snap}});this.toast('Measurement updated',true);}
+      else{this.setState({rows:[...s.rows,{id:s.nid,m,w:w!=null?Math.round(w*1000)/1000:null,l:l!=null?Math.round(l*10)/10:null,h:h!=null?Math.round(h*10)/10:null,note:f.note}],nid:s.nid+1,sheet:null,empty:false,sel:s.nid,undo:{rows:snap}});this.toast('Measurement added',true);}};
+    const srcOpts=[['who','WHO','Standards 0–5 y, reference 5–19 y. Head circumference to about 5 y.'],['cdc','CDC','0–20 y. No BMI under 24 months; head circumference to 36 months.']].map(([k,l,sub])=>({label:l,sub,pressed:s.src===k,mark:s.src===k?'✓':'',on:()=>{this.setState({src:k,sheet:null});this.toast('Growth source set to '+l);},style:`display:flex;align-items:center;min-height:64px;border-radius:12px;padding:0 14px;cursor:pointer;border:${s.src===k?'1.5px solid var(--primary)':'1px solid var(--border)'};background:${s.src===k?'var(--soft)':'var(--bg)'};color:var(--fg)`}));
+    const NV=window.HBTUI.nav({cg:s.cg,sheets:['theme'],open:id=>this.setState({sheet:id,formErr:null})});
+    const sideTabs=[...tabs.filter(t=>t.label!=='More'),...NV.side];
+    const sheet=s.sheet;
+    return {toggles,tabs,appStyle,desktop:D,phoneDisplay:D?'none':'flex',roleLabel:s.cg?'Caregiver':'Guardian',guardian:!s.cg,kid:s.kid,preterm:pre,
+      chipStyle:`width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:${DK?'oklch(0.3 0.05 200)':'oklch(0.95 0.04 200)'};color:${DK?'oklch(0.84 0.11 200)':'oklch(0.42 0.12 200)'}`,
+      icGrowth:P(IC.Growth),icInfo:P(IC.info),ageLine:(window.HBTUI?window.HBTUI.ageFrom(isoD(birth)):'14 months'),corrLine:(window.HBTUI&&pre?'Corrected age '+window.HBTUI.ageFrom(isoD(addD(birth,earlyD)))+' · born '+km.gaw+'w '+(km.gad||0)+'d':''),isEmpty:s.empty,hasRows:!s.empty,
+      measures,measureTitle:M.t==='Length'?'Length or height for age':M.t==='BMI'?'BMI for age':M.t+' for age',covered,srcName:s.src==='who'?'WHO':'CDC',
+      chartSvg:P(svg),chartLabel:M.t+' for age chart with '+plotted.length+' measurements'+(covered?' and '+ZS.length+' reference percentile lines':''),dots,
+      pctList:ZS.map(z=>z[1]).join(', '),selCard:!!selR,selDate,selValue,selScore,axisName:pre?'Corrected age':'Age',tableRows,list,
+      openSource:()=>this.setState({sheet:'source'}),
+      sheet:!!sheet,isForm:sheet==='form',isSource:sheet==='source',isMore:sheet==='more',...window.HBTUI.themeVals(sheet),sheetTitle:{form:s.editId?'Edit measurement':'Add measurement',source:'Growth chart source',more:'More',theme:'Change theme'}[sheet]||'',
+      f,editing:!!s.editId,fLb:f.wUnit==='lb',unitOpts,lenUnit,formErr:s.formErr,delAsk:s.delAsk,
+      setDate:setF('date'),setKg:setF('kg'),setLb:setF('lb'),setOz:setF('oz'),setLen:setF('len'),setHead:setF('head'),setNote:setF('note'),saveForm,
+      openAdd:()=>this.setState({sheet:'form',editId:null,delAsk:false,formErr:null,f:{date:isoD(new Date()),kg:'',lb:'',oz:'',len:'',head:'',note:'',wUnit:s.us?'lb':'kg',lUnit:s.us?'in':'cm'}}),
+      askDelete:()=>this.setState({delAsk:true}),keepRow:()=>this.setState({delAsk:false}),
+      doDelete:function del(){const er=HB.tryWrite('other');if(er)return self.fail(er,del);const snap=s.rows;self.setState({rows:s.rows.filter(r=>r.id!==s.editId),sheet:null,sel:null,undo:{rows:snap}});self.toast('Measurement deleted',true);},
+      srcOpts,moreItems:NV.more,sideTabs,closeSheet:()=>this.setState({sheet:null,formErr:null}),stop:e=>e.stopPropagation(),
+      toastRole:s.toastErr?'alert':'status',toastRetry:!!s.retry,doRetry:()=>{const r=s.retry;this.setState({toast:null,retry:null,toastErr:false});if(r)r();},toast:!!s.toast,toastText:s.toast,toastUndo:!!s.undo,doUndo:function und(){const u=s.undo;if(!u)return;const er=HB.tryWrite('other');if(er)return self.fail(er,und);self.setState({rows:u.rows,toast:'Undone',undo:null});}
+    };
+  }
+}
+</script>
+</body>
+</html>

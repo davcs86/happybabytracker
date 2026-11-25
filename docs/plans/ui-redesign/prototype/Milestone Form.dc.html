@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mark as reached</title>
+<script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+<script src="./hbt-med.js"></script>
+<script src="./hbt-ms.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select{font-family:inherit;color:inherit}summary{cursor:pointer}button[aria-disabled=true]{opacity:.55;cursor:not-allowed}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Mark as reached · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<button onClick="{{ resetAll }}" style="min-height:34px;border-radius:8px;border:1px solid #d8d0c8;background:#fff;color:#2a2420;font-size:12px;font-weight:600;cursor:pointer">Reset sample data</button>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>Plan 7 §4.2 and §4.3</b><br>One form for “Mark as reached” (CDC text, date, note), “Add a milestone” (text, date, note) and “Edit milestone”. Try a future date or a blank text for the field messages.<br><br><b>Undo / delete</b><br>A bordered <code>&lt;details&gt;</code> with the consequence sentence and a confirm button; a failed delete reopens it with the message inside.<br><br><b>No JS</b><br>Identical: a POST and a 303 back to Milestones; <code>novalidate</code>, so the messages come from the server.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<sc-if value="{{ desktop }}" hint-placeholder-val="{{ false }}"><div data-hbt="side" role="navigation" aria-label="Primary" style="width:200px;flex:none;border-right:1px solid var(--border);padding:20px 12px;display:flex;flex-direction:column;gap:4px;background:var(--card)"><div style="font-weight:700;font-size:16px;padding:0 10px 14px">Happy baby</div>
+<sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.sideStyle }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div></sc-if>
+<div data-hbt="frame" style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+<div role="main" style="flex:1;overflow:auto;padding:16px 16px 28px;display:flex;flex-direction:column;gap:18px">
+<div data-hbt="head" style="display:flex;align-items:center;gap:8px;min-height:48px;margin-bottom:8px"><a href="Milestones.dc.html" style="min-height:44px;display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--fg);text-decoration:underline"><span aria-hidden="true">‹</span><span>{{ backLabel }}</span></a><div data-hbt-bell style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px"><a href="Notifications.dc.html" aria-label="Notification settings" data-shadcn="Button" style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></a><span data-role style="font-size:12px;font-weight:600;padding:4px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)">{{ roleLabel }}</span></div></div>
+<div data-w="form" style="display:flex;flex-direction:column;gap:16px;max-width:448px;width:100%">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1;overflow-wrap:anywhere">{{ title }}</h1><div data-sub style="font-size:14px;color:var(--muted);line-height:1.4">{{ subAge }}</div></div></div>
+<sc-if value="{{ notFound }}" hint-placeholder-val="{{ false }}"><div data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><div style="font-size:17px;font-weight:600">Not found</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">This milestone doesn’t exist, or you no longer have access to {{ kidName }}.</div></div></sc-if>
+<sc-if value="{{ showForm }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:14px">
+<sc-if value="{{ pageErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere">{{ pageErr }}</div></sc-if>
+<sc-if value="{{ saved }}" hint-placeholder-val="{{ false }}"><div role="status" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere">{{ saved }} <a href="Milestones.dc.html" style="color:var(--fg)">Milestones for {{ kidName }}</a></div></sc-if>
+<sc-if value="{{ showItem }}" hint-placeholder-val="{{ true }}"><p style="margin:0;font-size:15px;line-height:1.5;overflow-wrap:anywhere">{{ itemText }}</p></sc-if>
+<form data-w="grid2" onSubmit="{{ noSubmit }}" novalidate style="display:flex;flex-direction:column;gap:14px">
+<div data-w="fa"><sc-for list="{{ fieldsA }}" as="f" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><input id="{{ f.id }}" type="{{ f.type }}" inputmode="{{ f.mode }}" autocomplete="off" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"></sc-if>
+<sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><select id="{{ f.id }}" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select></sc-if>
+<sc-if value="{{ f.isTemp }}" hint-placeholder-val="{{ false }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><div style="display:flex;gap:8px"><input id="{{ f.id }}" type="text" inputmode="decimal" autocomplete="off" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box;flex:1"><select aria-label="Temperature unit" value="{{ f.unit }}" onChange="{{ f.onUnit }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box;width:96px;flex:none"><sc-for list="{{ f.unitOpts }}" as="o" hint-placeholder-count="2"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select></div></sc-if>
+<sc-if value="{{ f.isRadios }}" hint-placeholder-val="{{ false }}"><fieldset id="{{ f.id }}" aria-describedby="{{ f.desc }}" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:2px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:4px">{{ f.label }}</legend><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input type="radio" name="{{ f.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}" style="width:22px;height:22px;flex:none">{{ o.label }}</label></sc-for></fieldset></sc-if>
+<sc-if value="{{ f.isCheck }}" hint-placeholder-val="{{ false }}"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input id="{{ f.id }}" type="checkbox" checked="{{ f.checked }}" onChange="{{ f.on }}" style="width:24px;height:24px;flex:none">{{ f.label }}</label></sc-if>
+<sc-if value="{{ f.isGrid }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:repeat({{ f.cols }},minmax(0,1fr));gap:10px"><sc-for list="{{ f.cells }}" as="c" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:4px"><label for="{{ c.id }}" style="font-size:13px;color:var(--muted)">{{ c.label }}</label><input id="{{ c.id }}" type="time" value="{{ c.value }}" onChange="{{ c.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"></div></sc-for></div></sc-if>
+<sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--muted);line-height:1.5">{{ f.hint }}</div></sc-if>
+<sc-if value="{{ f.err }}" hint-placeholder-val="{{ false }}"><div id="{{ f.desc }}" role="alert" style="font-size:13px;font-weight:600;line-height:1.4">{{ f.err }}</div></sc-if>
+</div></sc-for></div><div data-w="fb"><sc-for list="{{ fieldsB }}" as="f" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:6px">
+<sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><input id="{{ f.id }}" type="{{ f.type }}" inputmode="{{ f.mode }}" autocomplete="off" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"></sc-if>
+<sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><select id="{{ f.id }}" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select></sc-if>
+<sc-if value="{{ f.isTemp }}" hint-placeholder-val="{{ false }}"><label for="{{ f.id }}" style="font-size:13px;color:var(--muted)">{{ f.label }}</label><div style="display:flex;gap:8px"><input id="{{ f.id }}" type="text" inputmode="decimal" autocomplete="off" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box;flex:1"><select aria-label="Temperature unit" value="{{ f.unit }}" onChange="{{ f.onUnit }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box;width:96px;flex:none"><sc-for list="{{ f.unitOpts }}" as="o" hint-placeholder-count="2"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select></div></sc-if>
+<sc-if value="{{ f.isRadios }}" hint-placeholder-val="{{ false }}"><fieldset id="{{ f.id }}" aria-describedby="{{ f.desc }}" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:2px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:4px">{{ f.label }}</legend><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input type="radio" name="{{ f.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}" style="width:22px;height:22px;flex:none">{{ o.label }}</label></sc-for></fieldset></sc-if>
+<sc-if value="{{ f.isCheck }}" hint-placeholder-val="{{ false }}"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input id="{{ f.id }}" type="checkbox" checked="{{ f.checked }}" onChange="{{ f.on }}" style="width:24px;height:24px;flex:none">{{ f.label }}</label></sc-if>
+<sc-if value="{{ f.isGrid }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:repeat({{ f.cols }},minmax(0,1fr));gap:10px"><sc-for list="{{ f.cells }}" as="c" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:4px"><label for="{{ c.id }}" style="font-size:13px;color:var(--muted)">{{ c.label }}</label><input id="{{ c.id }}" type="time" value="{{ c.value }}" onChange="{{ c.on }}" aria-invalid="{{ f.invalid }}" aria-describedby="{{ f.desc }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"></div></sc-for></div></sc-if>
+<sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--muted);line-height:1.5">{{ f.hint }}</div></sc-if>
+<sc-if value="{{ f.err }}" hint-placeholder-val="{{ false }}"><div id="{{ f.desc }}" role="alert" style="font-size:13px;font-weight:600;line-height:1.4">{{ f.err }}</div></sc-if>
+</div></sc-for></div>
+<div data-w="ff" style="display:flex;gap:8px"><button type="button" onClick="{{ save }}" data-shadcn="Button" style="min-height:48px;padding:0 16px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;flex:1">Save</button><a href="Milestones.dc.html" style="min-height:48px;padding:0 16px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--fg)">Cancel</a></div>
+</form>
+<sc-if value="{{ isEdit }}" hint-placeholder-val="{{ false }}"><details open="{{ delOpen }}" data-shadcn="Collapsible" style="border:1px solid var(--border);border-radius:12px;padding:4px 12px"><summary style="min-height:44px;display:flex;align-items:center;font-size:14px;font-weight:600">{{ delSummary }}</summary><div style="display:flex;flex-direction:column;gap:10px;padding:4px 0 12px"><div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">{{ delBody }}</div>
+<sc-if value="{{ delErr }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:13.5px;font-weight:600;color:var(--destructive,var(--fg))">{{ delErr }}</div></sc-if>
+<button type="button" onClick="{{ del }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1.5px solid var(--destructive);background:var(--card);color:var(--destructive);font-size:15px;font-weight:600;cursor:pointer;align-self:flex-start">{{ delBtn }}</button></div></details></sc-if>
+</div></sc-if></div></div>
+<div data-hbt="tabs" role="navigation" aria-label="Primary" style="flex:none;display:{{ phoneDisplay }};border-top:1px solid var(--border);background:var(--card);padding:6px 6px 10px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a href="{{ t.href }}" onClick="{{ t.on }}" style="{{ t.tabStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div>
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(20,12,8,.5);display:flex;align-items:flex-end;justify-content:center;z-index:5"><div onClick="{{ stop }}" role="dialog" aria-label="{{ sheetTitle }}" data-shadcn="Sheet" style="width:100%;max-width:480px;max-height:92%;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 32px rgba(0,0,0,.2)">
+<div style="width:36px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+<div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:600;flex:1">{{ sheetTitle }}</div><button onClick="{{ closeSheet }}" aria-label="Close" style="width:44px;height:44px;border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5"><b>Couldn’t save.</b> {{ formErr }}</div></sc-if>
+<sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<sc-if value="{{ form.note }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;line-height:1.5">{{ form.note }}</div></sc-if>
+<sc-if value="{{ form.hasList }}" hint-placeholder-val="{{ false }}"><ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6"><sc-for list="{{ form.list }}" as="li" hint-placeholder-count="3"><li>{{ li.text }}</li></sc-for></ul></sc-if>
+<sc-for list="{{ form.groups }}" as="g" hint-placeholder-count="1"><div role="group" aria-label="{{ g.label }}"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ g.label }}</div><div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ g.pills }}" as="p" hint-placeholder-count="3"><button onClick="{{ p.on }}" aria-pressed="{{ p.pressed }}" class="hbt-chip" style="{{ p.style }}">{{ p.label }}</button></sc-for></div><sc-if value="{{ g.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;margin-top:6px;font-weight:600">{{ g.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.fields }}" as="f" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;gap:6px"><label for="{{ f.id }}" style="font-size:12px;color:var(--muted)">{{ f.label }}</label><input id="{{ f.id }}" type="{{ f.type }}" inputmode="{{ f.mode }}" autocomplete="{{ f.auto }}" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px"><sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ f.hint }}</div></sc-if><sc-if value="{{ f.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;font-weight:600">{{ f.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.checks }}" as="c" hint-placeholder-count="1"><label style="display:flex;align-items:center;gap:10px;min-height:44px;font-size:14px"><input type="checkbox" checked="{{ c.checked }}" onChange="{{ c.on }}" style="width:24px;height:24px;flex:none">{{ c.label }}</label></sc-for>
+<sc-if value="{{ form.extra }}" hint-placeholder-val="{{ false }}"><button onClick="{{ form.onExtra }}" aria-disabled="true" data-shadcn="Button" style="min-height:48px;border-radius:12px;border:1px dashed var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer">{{ form.extra }}</button></sc-if>
+<div style="display:flex;gap:8px"><button onClick="{{ closeSheet }}" data-shadcn="Button" style="flex:1;min-height:56px;border-radius:14px;border:1px solid var(--border);background:var(--card);font-size:16px;font-weight:600;cursor:pointer;padding:0 16px;color:var(--fg)">{{ form.cancel }}</button><button onClick="{{ form.submit }}" aria-disabled="{{ form.off }}" data-shadcn="Button" style="{{ form.submitStyle }}">{{ form.label }}</button></div>
+<sc-if value="{{ form.offHint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ form.offHint }}</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ isTheme }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><fieldset data-shadcn="RadioGroup" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:8px">Choose how Happy baby looks. It applies to every screen.</legend><sc-for list="{{ themeOpts }}" as="o" hint-placeholder-count="3"><label class="hbt-radiorow"><input type="radio" name="hbt-theme" value="{{ o.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}"><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">{{ o.label }}</span><span style="font-size:13px;color:var(--muted);line-height:1.4">{{ o.hint }}</span></span><span aria-hidden="true" style="{{ o.swatch }}"></span></label></sc-for></fieldset><button onClick="{{ closeSheet }}" data-shadcn="Button" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer">Done</button></div></sc-if>
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="5"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;min-height:52px;border-top:1px solid var(--border);color:var(--fg);text-decoration:none;font-size:15px">{{ m.label }}<span style="margin-left:auto;font-size:12px;color:var(--muted)">{{ m.note }}</span></a></sc-for></div></sc-if>
+</div></div></sc-if>
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}"><div role="{{ toastRole }}" style="position:absolute;left:12px;right:12px;bottom:84px;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9"><span style="flex:1">{{ toastText }}</span><sc-if value="{{ toastRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doRetry }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Try again</button></sc-if><sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doUndo }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Undo</button></sc-if></div></sc-if>
+</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={dark:false,desktop:false,cg:false,sheet:null,toast:null,undo:null,retry:null,toastErr:false,formErr:null,f:{},err:{},mode:'mark',itemId:'',editId:'',delOpen:false,delErr:'',pageErr:null,saved:null};
+  componentWillUnmount(){clearTimeout(this.tt);}
+  toast(text,undo){clearTimeout(this.tt);this.setState({toast:text,undo:undo||null,retry:null,toastErr:false});this.tt=setTimeout(()=>this.setState({toast:null,undo:null}),6000);}
+  fail(er,retry){clearTimeout(this.tt);if(this.state.sheet){this.setState({formErr:er.msg});}else{const c=er.code==='network'||er.code==='server';this.setState({toast:er.msg,undo:null,retry:c?retry:null,toastErr:true});this.tt=setTimeout(()=>this.setState({toast:null,retry:null,toastErr:false}),c?12000:6000);}}
+
+  openEdit(id){const MS=window.HBTMS,m=MS.find(id);if(!m){this.setState({mode:'edit',editId:id,f:{},err:{}});return;}this.setState({mode:m.item?'edit':'editc',editId:id,f:{text:m.text,date:m.date,note:m.note},err:{},saved:null,pageErr:'',delOpen:false,delErr:''});}
+  goMode(k){const MS=window.HBTMS,kid=window.HBT.kid();MS.useSim();
+    if(k==='mark'){const V=MS.view(kid),l=(V.cat||[]).filter(x=>x.open)[0]||(V.cat||[])[0];let id='';if(l)l.domains.forEach(d=>d.items.forEach(i=>{if(!id&&!i.reached)id=i.id;}));this.setState({mode:'mark',itemId:id,f:{date:MS.today()},err:{},saved:null,pageErr:'',delOpen:false,delErr:''});}
+    else if(k==='add'){this.setState({mode:'add',itemId:'',f:{date:MS.today()},err:{},saved:null,pageErr:'',delOpen:false,delErr:''});}
+    else{const ms=MS.marks(kid).filter(m=>k==='edit'?!!m.item:!m.item);this.openEdit(ms[0]?ms[0].id:'none');}}
+  componentDidMount(){const HM=window.HBTM,MS=window.HBTMS;MS.useSim();const e=HM.picked('msEdit'),i=HM.picked('msItem'),a=HM.picked('msAdd');
+    if(e){HM.pick('msEdit','');this.openEdit(e);}else if(i){HM.pick('msItem','');this.setState({mode:'mark',itemId:i,f:{date:MS.today()}});}else if(a){HM.pick('msAdd','');this.setState({mode:'add',f:{date:MS.today()}});}
+    else this.goMode('mark');}
+
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false;
+    const H=window.HBT,A=window.HBTA,s=this.state,fp=H.pref('fail')||'off',self=this,P=h=>({__html:h}),now=Date.now(),D=s.desktop,f=s.f||{},er=s.err||{};
+    const R=fn=>(...a)=>{fn(...a);this.setState({});};
+    const IC={Home:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',Timeline:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',Growth:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',More:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'};
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)',tl:'oklch(0.45 0.15 38)',soft:'oklch(0.3 0.05 55)',ink:'oklch(0.84 0.11 55)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)',tl:'oklch(0.8 0.12 55)',soft:'oklch(0.95 0.04 55)',ink:'oklch(0.42 0.12 38)'};
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--toast-link:${L.tl};--soft:${L.soft};--ink:${L.ink};--destructive:${DK?'oklch(0.76 0.14 25)':'oklch(0.46 0.17 27)'};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const pill=on=>'';
+    const btn='min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer';
+    const btnP='min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    const badge='font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted);white-space:nowrap';
+    const card='border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px';
+    const opt=(label,on,cur)=>({label,on,style:seg(cur)});
+    const W=fn=>{const e=H.tryWrite('other');if(e)return self.fail(e,()=>W(fn));fn();};
+    const isG=!s.cg;
+    const toggles=[
+      {title:'Next save',opts:[opt('Works',R(()=>H.setPref('fail','off')),fp==='off'),opt('Offline',R(()=>H.setPref('fail','network')),fp==='network'),opt('Error',R(()=>H.setPref('fail','server')),fp==='server')]},
+      {title:'Screen',opts:[['mark','Mark as reached'],['add','Add a milestone'],['edit','Edit (catalog)'],['editc','Edit (custom)']].map(([k,l])=>opt(l,R(()=>this.goMode(k==='editc'?'custom':k==='edit'?'edit':k)),(s.mode||'mark')===k))},
+      {title:'Undo / delete confirm',opts:[opt('Closed',()=>this.setState({delOpen:false,delErr:''}),!s.delOpen),opt('Open',()=>this.setState({delOpen:true,delErr:''}),!!s.delOpen&&!s.delErr),opt('Failed',()=>this.setState({delOpen:true,delErr:window.HBTMS.ERR.server}),!!s.delErr)]},
+      {title:'Role',opts:[opt('Guardian',()=>this.setState({cg:false}),!s.cg),opt('Caregiver',()=>this.setState({cg:true}),s.cg)]},
+      {title:'Theme',opts:[opt('Light',()=>HBTUI.setTheme('light'),HBTUI.theme()==='light'),opt('Dark',()=>HBTUI.setTheme('dark'),HBTUI.theme()==='dark'),opt('Auto',()=>HBTUI.setTheme('auto'),HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const tabDefs=[['Home','Kid Home.dc.html'],['Timeline','Timeline.dc.html'],['Growth','Growth.dc.html'],['More','']];
+    const tabs=tabDefs.map(([l,h])=>({label:l,icon:P(IC[l]),href:h||'#more',on:l==='More'?(e=>{e.preventDefault();this.setState({sheet:'more',f:{},err:{},formErr:null});}):undefined,
+      tabStyle:`flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;text-decoration:none;color:${l==='More'?'var(--primary)':'var(--muted)'}`,
+      sideStyle:`display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;background:${l==='More'?'var(--bg)':'transparent'};color:${l==='More'?'var(--primary)':'var(--fg)'}`}));
+    const setF=(k,v)=>this.setState({f:{...this.state.f,[k]:v}});
+    const fld=(id,label,key,o)=>({id,label,type:(o&&o.type)||'text',mode:(o&&o.mode)||'text',auto:(o&&o.auto)||'off',value:f[key]===undefined?'':f[key],on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',hint:(o&&o.hint)||''});
+    const grp=(label,items,cur,key,err)=>({label,err:err||'',pills:items.map(i=>({label:i[0],pressed:cur===i[1],style:pill(cur===i[1]),on:()=>setF(key,i[1])}))});
+    const bad=e=>this.setState({err:e,formErr:'Check the fields with a message.'});
+    const open=(sh,f0)=>()=>this.setState({sheet:sh,f:f0||{},err:{},formErr:null});
+    const done=(msg,undo)=>{this.setState({sheet:null,f:{},err:{},formErr:null});this.toast(msg,undo);};
+    const guard=(fn,okMsg,keepSnap)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err&&typeof r.err==='string')return self.fail({code:'rule',msg:r.err});if(r&&r.err)return bad(r.err);done(typeof okMsg==='function'?okMsg(r):okMsg,keepSnap?snap:null);});
+    const act=(fn,okMsg,undo)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err)return self.fail({code:'rule',msg:typeof r.err==='string'?r.err:'Check the fields.'});this.toast(typeof okMsg==='function'?okMsg(r):okMsg,undo?snap:null);});
+    const dangerStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--fg);color:var(--bg);font-size:15px;font-weight:600;cursor:pointer';
+    const okStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    let form={note:'',hasList:false,list:[],groups:[],fields:[],checks:[],extra:'',onExtra:()=>{},cancel:'Cancel',label:'',submit:()=>{},submitStyle:okStyle,off:false,offHint:''};
+    let titles={more:'More',theme:'Change theme',theme:'Change theme'},X={};
+    const dt=t=>A.when(t,now);
+    const myKids=H.kids();
+
+    const MS=window.HBTMS,HM=window.HBTM;MS.useSim();
+    const kid=H.kid(),kn=H.kidName(kid);
+    const PW=fn=>{const e=H.tryWrite('other');if(e){return e;}fn();return null;};
+
+    const HM2=window.HBTM,v=(k,d)=>f[k]===undefined?d:f[k];
+    const inp=(id,label,key,d,o)=>({isInput:true,id,label,type:(o&&o.type)||'text',mode:'text',value:v(key,d),on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',desc:id+'-err',hint:(o&&o.hint)||''});
+    const AG=MS.age(kid);
+    let mode=s.mode||'mark';
+    const itemId=s.itemId||'';
+    if(mode==='mark'&&(!MS.item(itemId)||AG.over5))mode='add';
+    const tgt=(mode==='edit'||mode==='editc')&&s.editId?MS.find(s.editId):null;
+    const notFound=(mode==='edit'||mode==='editc')&&!tgt;
+    const it=mode==='mark'?MS.item(itemId):(tgt&&tgt.item?MS.item(tgt.item):null);
+    const isCat=mode==='mark'||(tgt&&!!tgt.item);
+    const fs=[];
+    if(!isCat)fs.push(inp('f-text','Milestone','text',''));
+    fs.push(inp('f-date','Date reached','date',MS.today(),{type:'date'}));
+    fs.push(inp('f-note','Note','note',''));
+    const title=mode==='mark'?'Mark as reached':(mode==='add'?'Add a milestone':'Edit milestone');
+    const back=()=>this.setState({});
+    X={title,backLabel:'Milestones for '+kn,kidName:kn,notFound,showForm:!notFound,pageErr:s.pageErr||'',saved:s.saved||'',showItem:isCat&&!!it,itemText:it?it.text:'',fields:fs,fieldsA:fs.filter(f=>!/^f-note$/.test(f.id)),fieldsB:fs.filter(f=>/^f-note$/.test(f.id)),noSubmit:e=>e.preventDefault(),
+      isEdit:(mode==='edit'||mode==='editc')&&!!tgt,delOpen:!!s.delOpen,delErr:s.delErr||'',
+      delSummary:isCat?'Undo reached':'Delete this milestone',delBody:isCat?'This removes the date for everyone with access to '+kn+'.':'This removes the milestone for everyone with access to '+kn+'.',delBtn:isCat?'Yes, undo reached':'Yes, delete this milestone',
+      save:()=>{const e=H.tryWrite('other');if(e){this.setState({pageErr:e.code==='network'?MS.ERR.network:MS.ERR.server,saved:null});return;}
+        const val={date:v('date',MS.today()),note:v('note','')};let r;
+        if(mode==='mark')r=MS.mark(kid,{item:itemId,...val});else if(mode==='add')r=MS.mark(kid,{text:v('text',''),...val});else r=MS.edit(kid,s.editId,isCat?{...val}:{...val,text:v('text',tgt?tgt.text:'')});
+        if(r.gone){this.setState({pageErr:MS.ERR.gone,saved:null});return;}
+        if(r.rowErr){this.setState({pageErr:r.rowErr,err:{},saved:null});return;}
+        if(r.err){this.setState({err:r.err,pageErr:'',saved:null});return;}
+        this.setState({err:{},pageErr:'',saved:'Saved.'});},
+      del:()=>{const e=H.tryWrite('other');if(e){this.setState({delOpen:true,delErr:e.code==='network'?MS.ERR.network:MS.ERR.server});return;}
+        const r=MS.remove(kid,s.editId);if(r.gone){this.setState({delOpen:true,delErr:MS.ERR.gone});return;}this.setState({delOpen:false,delErr:'',editId:'',mode:'add',f:{},saved:isCat?'The date was removed.':'The milestone was deleted.'});}};
+
+    const sh=s.sheet;
+    const NV=window.HBTUI.nav({cg:s.cg,sheets:['theme'],open:id=>this.setState({sheet:id,f:{},err:{},formErr:null})});
+    const moreItems=NV.more;
+    const sideTabs=tabs.length?[...tabs.filter(t=>t.label!=='More'),...NV.side]:[];
+    return {subAge:(window.HBTUI?window.HBTUI.age(H.kid()):''),toggles,tabs,appStyle,desktop:D,phoneDisplay:D?'none':'flex',roleLabel:s.cg?'Caregiver':'Guardian',guardian:isG,caregiver:s.cg,formErr:s.formErr,
+      resetAll:()=>{H.reset();A.reset();this.setState({sheet:null,toast:null,undo:null,f:{},err:{},formErr:null,mode:'mark',itemId:'',editId:'',delOpen:false,delErr:'',pageErr:null,saved:null});},
+      sheet:!!sh,isForm:!!sh&&sh!=='more'&&sh!=='theme',isMore:sh==='more',...window.HBTUI.themeVals(sh),sheetTitle:titles[sh]||'',form,moreItems,sideTabs,closeSheet:()=>this.setState({sheet:null,f:{},err:{},formErr:null}),stop:e=>e.stopPropagation(),
+      toast:!!s.toast,toastText:s.toast,toastUndo:!!s.undo,toastRole:s.toastErr?'alert':'status',toastRetry:!!s.retry,
+      doRetry:()=>{const r=s.retry;this.setState({toast:null,retry:null,toastErr:false});if(r)r();},
+      doUndo:()=>{const u=s.undo;if(!u)return;W(()=>{A.restore(u);this.setState({undo:null});this.toast('Undone');});},
+      ...X};
+  }
+}
+</script>
+</body>
+</html>

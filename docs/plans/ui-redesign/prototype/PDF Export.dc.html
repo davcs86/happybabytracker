@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF layout · happybabytracker</title>
+<script src="./support.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+<script src="./hbt-med.js"></script>
+<script src="./hbt-ms.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}</style></helmet>
+<div style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div style="width:250px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px;position:sticky;top:16px">
+<div style="font-weight:700;font-size:15px">PDF layout · design reference</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="2"><button onClick="{{ o.on }}" aria-pressed="{{ o.cur }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<div style="font-size:11.5px;line-height:1.55;opacity:.85">Sample data, not real measurements. Curves on the chart are illustrative, not WHO values. Nothing here was rendered in a PDF viewer or printed: <b>Unverified</b>.</div>
+<a href="Export.dc.html" style="color:#2a2420;font-size:12px">‹ Export page</a>
+</div>
+<div style="display:flex;flex-direction:column;gap:28px;align-items:flex-start">
+<sc-for list="{{ pages }}" as="p" hint-placeholder-count="2"><div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:12.5px;color:#fff;max-width:{{ p.capW }}px;line-height:1.45">{{ p.cap }}</div>
+<div role="img" aria-label="{{ p.aria }}" style="{{ p.pageStyle }}">
+<sc-if value="{{ guides }}" hint-placeholder-val="{{ true }}"><div style="{{ p.gMargin }}"></div><div style="{{ p.gUse }}"><span style="position:absolute;right:4px;bottom:2px;font:9px/1 Geist,sans-serif;color:#b00">279.4 mm usable (Letter at 100%)</span></div><div style="{{ p.gBreak }}"><span style="position:absolute;right:4px;top:-11px;font:9px/1 Geist,sans-serif;color:#06c">≈260.5 mm page break</span></div></sc-if>
+<div style="{{ p.body }}">
+<sc-for list="{{ p.blocks }}" as="b" hint-placeholder-count="4"><div style="{{ b.style }}">
+<sc-if value="{{ b.isText }}" hint-placeholder-val="{{ true }}"><div>{{ b.text }}</div></sc-if>
+<sc-if value="{{ b.isKv }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="3"><div style="{{ r.style }}"><div style="{{ r.lStyle }}">{{ r.label }}</div><div style="{{ r.vStyle }}">{{ r.value }}</div></div></sc-for></sc-if>
+<sc-if value="{{ b.isTbl }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ b.rows }}" as="r" hint-placeholder-count="3"><div style="{{ r.style }}"><sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="3"><div style="{{ c.style }}">{{ c.text }}</div></sc-for></div></sc-for></sc-if>
+<sc-if value="{{ b.isChart }}" hint-placeholder-val="{{ false }}"><div dangerouslySetInnerHTML="{{ b.svg }}"></div></sc-if>
+</div></sc-for></div>
+<div style="{{ p.foot }}">{{ p.footText }}</div>
+<sc-if value="{{ proposed }}" hint-placeholder-val="{{ false }}"><div style="{{ p.footRule }}"></div></sc-if>
+</div></div></sc-for>
+<div style="background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;max-width:{{ panelW }}px;font-size:13px;line-height:1.55;display:flex;flex-direction:column;gap:8px"><div style="font-weight:700;font-size:15px">{{ panelTitle }}</div>
+<sc-for list="{{ consts }}" as="c" hint-placeholder-count="6"><div style="display:flex;gap:12px;border-top:1px solid #d8d0c8;padding-top:6px"><div style="flex:0 0 38%;font-weight:600">{{ c.k }}</div><div style="flex:1">{{ c.v }}</div></div></sc-for></div>
+</div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={zoom:1,guides:true,variant:'built'};
+  renderVals(){
+    const H=window.HBT,MS=window.HBTMS,s=this.state,kid=H.kid(),kn=H.kidName(kid);MS.useSim();
+    const k=2.6*s.zoom,mm=x=>(x*k).toFixed(2)+'px',pt=x=>(x*0.3528*k).toFixed(2)+'px',pr=s.variant==='proposed';
+    const seg=on=>`min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 8px`;
+    const opt=(label,on,cur)=>({label,on,cur,style:seg(cur)});
+    const toggles=[
+      {title:'Layout',opts:[opt('As built (C.2)',()=>this.setState({variant:'built'}),!pr),opt('Proposed (C.4)',()=>this.setState({variant:'proposed'}),pr)]},
+      {title:'Zoom',opts:[opt('100%',()=>this.setState({zoom:1}),s.zoom===1),opt('150%',()=>this.setState({zoom:1.5}),s.zoom===1.5)]},
+      {title:'Guides',opts:[opt('Margins and limits',()=>this.setState({guides:true}),s.guides),opt('Off',()=>this.setState({guides:false}),!s.guides)]}];
+    const FF="font-family:'Noto Sans','Geist',sans-serif;";
+    const reg=`${FF}font-weight:400;font-size:${pt(9)};line-height:1.4`,bold=`${FF}font-weight:700;font-size:${pt(9)};line-height:1.4`,sm=`${FF}font-weight:400;font-size:${pt(7)};line-height:1.4`,hd=`${FF}font-weight:700;font-size:${pt(12)};line-height:1.4`;
+    const PADV=pr?0.3:0.25;
+    const T=(txt,style)=>({isText:true,text:txt,style});
+    const H1=(txt,first)=>T(txt,hd+(first?'':`;margin-top:${pt(9*1.4)}`)+(pr&&!first?`;border-top:${mm(0.3)} solid #000;padding-top:${pt(4)}`:''));
+    const P9=txt=>T(txt,reg+`;margin-top:${pt(2)}`),P7=txt=>T(txt,sm+`;margin-top:${pt(3)}`);
+    const tbl=(cols,rows)=>{const out=[];const cell=(w,tx,st)=>({text:tx,style:`${st};width:${w}%;box-sizing:border-box;padding:${pt(9*PADV)};overflow-wrap:anywhere;flex:none`});
+      out.push({style:`display:flex;${pr?'background:rgb(235,235,235);':''}border-bottom:${mm(0.2)} solid #000`,cells:cols.map(c=>cell(c[1],c[0],bold))});
+      rows.forEach((r,i)=>out.push({style:`display:flex;${pr&&i<rows.length-1?`border-bottom:${mm(0.1)} solid rgb(200,200,200)`:''}`,cells:r.map((tx,j)=>cell(cols[j][1],tx,reg))}));
+      return {isTbl:true,rows:out,style:`margin-top:${pt(3)}`};};
+    const kv=rows=>({isKv:true,style:pr?`margin-top:${pt(3)};border:${mm(0.2)} solid #000;padding:${pt(2)} ${pt(4)};display:grid;grid-template-columns:1fr 1fr;column-gap:${mm(6)}`:`margin-top:${pt(3)}`,
+      rows:rows.map(([l,v])=>({style:pr?'display:flex;flex-direction:column;padding:'+pt(1.5)+' 0':'display:flex',label:l,value:v,lStyle:`${bold};${pr?'':'width:30%;box-sizing:border-box;padding:'+pt(9*0.25)}`,vStyle:`${reg};${pr?'':'flex:1;padding:'+pt(9*0.25)}`}))});
+    const A=MS.age(kid),V=MS.view(kid),df=MS.exportDefaults(kid),ageLine=A.ok?A.line:'';
+    const when=(d)=>d+' 10:30';
+    const day=(n)=>MS.addDays(df.to,-n);
+    /* ---- sample data (sample values; wording per handoff C.3) ---- */
+    const tT=[['Time',20],['Entry',50],['Note',30]],tD=[['Date',20],['Day total',80]];
+    const pages=[];
+    const mk=(cap,aria,blocks)=>pages.push({cap,aria,blocks});
+    mk('Page 1 · Profile, then the first daily tracker (entries newest first, then one total per day).','Page 1 of 7: Profile and Bottles',[
+      H1('Profile',true),
+      kv([['Name',kn],['Birth date',A.ok?A.born:''],['Sex','Male'],['Time zone','America/Los_Angeles'],['Age today',ageLine],['Growth source','WHO Child Growth Standards (2006) and Growth Reference (2007)'],['Vaccination schedule','No schedule chosen'],['Range',df.from+' to '+df.to],['Modules','Bottles, Nursing, Pumping, Diapers, Sleep, Feeding, Milestones, Growth, Vaccination, Sickness, Medication']]),
+      P7('Some characters cannot be shown in this PDF and appear as ?'),
+      H1('Bottles'),tbl(tT,[[when(day(0)),'Bottle 120 ml, breast milk 60 ml + formula 60 ml',''],[when(day(0)).replace('10:30','06:15'),'Bottle 90 ml, formula','Finished it'],[when(day(1)).replace('10:30','21:40'),'Bottle 110 ml, breast milk',''],[when(day(1)).replace('10:30','17:05'),'Bottle 100 ml, formula',''],[when(day(2)).replace('10:30','13:20'),'Bottle 80 ml, breast milk + formula','Spit up a little']]),
+      tbl(tD,[[day(2),'1 · 80 ml'],[day(1),'2 · 210 ml'],[day(0),'2 · 210 ml']]),
+      H1('Nursing'),tbl(tT,[[when(day(0)).replace('10:30','08:05'),'Nursing L 12 min · R 9 min',''],[when(day(1)).replace('10:30','19:30'),'Nursing L 10 min · R 11 min, weight before 6.3 kg, weight after 6.4 kg, weight gain 100 g, about 100 ml','']]),
+      tbl(tD,[[day(1),'1 · 21 min'],[day(0),'1 · 21 min']])]);
+    mk('Page 2 · Empty state (7 pt), Diapers, Sleep, then Feeding ending in an overflow line (7 pt).','Page 2 of 7: Pumping, Diapers, Sleep, Feeding',[
+      H1('Pumping',true),P7('No entries in this range.'),
+      H1('Diapers'),tbl(tT,[[when(day(0)).replace('10:30','09:10'),'Diaper wet',''],[when(day(0)).replace('10:30','06:20'),'Diaper dirty',''],[when(day(1)).replace('10:30','20:15'),'Diaper both','Rash cream'],[when(day(1)).replace('10:30','11:00'),'Diaper wet','']]),
+      tbl(tD,[[day(1),'2 (1 wet, 1 both)'],[day(0),'2 (1 wet, 1 dirty)']]),
+      H1('Sleep'),tbl(tT,[[when(day(0)).replace('10:30','05:50'),'Sleep until '+day(0)+' 08:20 (2 h 30 min)',''],[when(day(1)).replace('10:30','13:00'),'Sleep until '+day(1)+' 14:30 (1 h 30 min)',''],[when(day(1)).replace('10:30','22:10'),'Sleep, running','']]),
+      tbl(tD,[[day(1),'1 h 30 min'],[day(0),'2 h 30 min']]),
+      H1('Feeding'),tbl(tT,[[when(day(0)).replace('10:30','12:00'),'Solids: oatmeal',''],[when(day(1)).replace('10:30','12:10'),'Solids: pureed carrot','']]),
+      tbl(tD,[[day(1),'1'],[day(0),'1']]),P7('12 more entries in this range are not shown. Export a shorter range to see them.')]);
+    const rr=V.reached.slice(0,3).slice().reverse();
+    const msRows=rr.length?rr.map(r=>{const p=r.sub.split(' · ');return [r.date,p[0],p[1]||'',r.text,''];}):[];
+    mk('Page 3 · Milestones: the CDC sentence and attribution at body size directly under the heading. Only reached rows; no count, no unreached list.','Page 3 of 7: Milestones',[
+      H1('Milestones',true),P9(MS.SCREEN),P9(MS.ATTR),
+      msRows.length?tbl([['Date',14],['Checklist',14],['Domain',18],['Milestone',34],['Note',20]],msRows):P7('No milestones recorded'),
+      V.custom.length?tbl([['Date',14],['Your milestones',66],['Note',20]],V.custom.map(c=>[c.date,c.text,''])):T('',reg)]);
+    /* growth chart: illustrative curves */
+    const W=186,Hh=pr?83.7:102.3,L=12,B=8,pw=W-L-14,ph=Hh-B-6,x=v=>L+v/6*pw,y=v=>6+ph-(v-3)/(11-3)*ph;
+    const curve=(f)=>{let d='';for(let m=0;m<=6;m+=0.5){d+=(m===0?'M':'L')+x(m).toFixed(1)+' '+y(f(m)).toFixed(1);}return d;};
+    const cs=[[3,m=>4.3+0.95*m-0.04*m*m,'3rd'],[15,m=>4.8+1.0*m-0.04*m*m,'15th'],[50,m=>5.2+1.05*m-0.04*m*m,'50th'],[85,m=>5.7+1.1*m-0.04*m*m,'85th'],[97,m=>6.1+1.15*m-0.04*m*m,'97th']];
+    const pts=[[0.5,5.4],[1.5,6.6],[3,8.1],[4.2,8.9]];
+    const lab=cs.map(c=>`<text x="${(x(6)+1).toFixed(1)}" y="${(y(c[1](6))+1).toFixed(1)}" font-size="${(7*0.3528).toFixed(2)}" fill="#000">${c[2]}</text>`).join('');
+    const svg=`<svg width="${mm(W)}" height="${mm(Hh)}" viewBox="0 0 ${W} ${Hh}" style="display:block" aria-hidden="true"><text x="0" y="3" font-size="${(9*0.3528).toFixed(2)}" font-weight="700" font-family="Noto Sans, sans-serif">Weight</text><text x="0" y="6.2" font-size="${(7*0.3528).toFixed(2)}" font-family="Noto Sans, sans-serif">Weight (kg)</text>`+
+      `<g font-family="Noto Sans, sans-serif">`+cs.map(c=>`<path d="${curve(c[1])}" fill="none" stroke="rgb(150,150,150)" stroke-width="0.1"/>`).join('')+lab+
+      `<path d="M${L} ${y(3)-0} L${L} 6 M${L} ${y(3)} L${L+pw} ${y(3)}" fill="none" stroke="#000" stroke-width="0.2"/>`+
+      `<text x="${L-1}" y="${y(11)+2}" font-size="${(7*0.3528).toFixed(2)}" text-anchor="end">11</text><text x="${L-1}" y="${y(3)}" font-size="${(7*0.3528).toFixed(2)}" text-anchor="end">3</text><text x="${L}" y="${y(3)+3.5}" font-size="${(7*0.3528).toFixed(2)}">0</text><text x="${L+pw}" y="${y(3)+3.5}" font-size="${(7*0.3528).toFixed(2)}" text-anchor="end">6</text><text x="${L+pw/2}" y="${y(3)+6.5}" font-size="${(7*0.3528).toFixed(2)}" text-anchor="middle">Age (months)</text>`+
+      pts.map(p=>`<rect x="${(x(p[0])-0.6).toFixed(2)}" y="${(y(p[1])-0.6).toFixed(2)}" width="1.2" height="1.2" fill="#000"/>`).join('')+`</g></svg>`;
+    mk('Page 4 · Growth: table newest first, the source lines (verbatim from the API), then one chart per measure: grey hairline curves labelled at the right edge, black squares for the child.','Page 4 of 7: Growth',[
+      H1('Growth',true),
+      tbl([['Date',14],['Age',18],['Weight',17],['Length',17],['Head circumference',17],['BMI',17]],[['Wed '+'4 Mar 2026'.replace('Mar 2026','Nov 2026'),'4 months 3 days (corrected 3 months 1 day)','8.9 kg: z 0.4, percentile 66th','64.5 cm: z 0.2, percentile 58th','41.2 cm: z -0.1, percentile 46th','21.4 kg/m²: z 0.6, percentile 73rd'],['Mon 5 Oct 2026','2 months 24 days (corrected 1 month 22 days)','8.1 kg: z 0.3, percentile 62nd','60.1 cm: z 0.1, percentile 54th','39.0 cm: z 0, percentile 50th','22.4 kg/m²: z 0.5, percentile 69th']]),
+      P7('[Source attribution, verbatim from the API]'),P7('Licence: [licence name (link), verbatim from the API]'),P7('[WHO adaptation disclaimer, verbatim from the API when the WHO source is chosen]'),
+      {isChart:true,svg:{__html:svg},style:`margin-top:${pt(5)}`}]);
+    mk('Page 5 · Vaccination: schedule and as-of lines, status table, then the doses given (newest first).','Page 5 of 7: Vaccination',[
+      H1('Vaccination',true),P9('Schedule: [authority], [edition]'),P9('Statuses as of '+df.to+'.'),P7('[Schedule attribution, verbatim from the API]'),
+      tbl([['Group',20],['Vaccine',30],['Status',12],['Detail',38]],[['Birth','Hepatitis B, dose 1','Given','Given '+df.from],['2-month vaccines','DTaP, dose 1','Due','Due from '+MS.addDays(df.to,-3)+' · overdue from '+MS.addDays(df.to,12)],['4-month vaccines','DTaP, dose 2','Upcoming','Due from '+MS.addDays(df.to,40)],['Also available','Influenza, dose 1','Available','Available from '+MS.addDays(df.to,60)]]),
+      tbl([['Date',14],['Vaccines',30],['Product',20],['Lot',12],['Note',24]],[[df.from,'Hepatitis B','Product A','A1234','']]),
+      tbl([['Date',14],['Other recorded vaccinations',56],['Product',30]],[[MS.addDays(df.to,-20),'Rotavirus','Product B']])]);
+    mk('Page 6 · Sickness (oldest first) and Medication: courses oldest start first, then the doses given. Nothing about reminders, next due, last dose or counts.','Page 6 of 7: Sickness and Medication',[
+      H1('Sickness',true),tbl(tT,[[when(MS.addDays(df.to,-4)),'Cough, moderate',''],[when(MS.addDays(df.to,-3)),'Fever 38.6 °C (oral), mild','Calpol given'],[when(MS.addDays(df.to,-1)),'Other: sneezing','']]),
+      H1('Medication'),tbl([['Course',20],['Dose',15],['Schedule',20],['Start',17],['Last day',13],['Active',15]],[['Calpol','2.5 ml','08:00, 20:00',MS.addDays(df.to,-4),'','Active'],['Amoxil','5 ml','Every 6 hours from 08:00',MS.addDays(df.to,-3),MS.addDays(df.to,-1),'Not active']]),
+      tbl([['Given at',20],['Course',25],['Amount',20],['Note',35]],[[when(MS.addDays(df.to,-3)),'Calpol','2.5 ml',''],[when(MS.addDays(df.to,-3)).replace('10:30','20:00'),'Amoxil','5 ml','With food']])]);
+    mk('Page 7 · The same sections when there is nothing to print (7 pt lines), as they would stack.','Page 7 of 7: empty states',[
+      H1('Milestones',true),P9(MS.SCREEN),P9(MS.ATTR),P7('No milestones recorded'),
+      H1('Growth'),P7('No measurements recorded.'),
+      H1('Vaccination'),P9('No schedule chosen'),P7('No vaccinations recorded.'),
+      H1('Sickness'),P7('No entries in this range.'),
+      H1('Medication'),P7('No entries in this range.'),P7('1 more entry in this range is not shown. Export a shorter range to see it.')]);
+    const N=pages.length,hm=H.hm(Date.now());
+    const out=pages.map((p,i)=>({cap:p.cap,capW:Math.round(210*k),aria:p.aria,
+      pageStyle:`position:relative;width:${mm(210)};height:${mm(297)};background:#fff;color:#000;box-shadow:0 8px 28px rgba(0,0,0,.35);overflow:hidden`,
+      gMargin:`position:absolute;left:${mm(12)};top:${mm(12)};width:${mm(186)};height:${mm(279.4-12-12)};border:1px dashed rgba(0,0,0,.25);box-sizing:border-box;pointer-events:none`,
+      gUse:`position:absolute;left:0;right:0;top:${mm(279.4)};height:0;border-top:1.5px dashed #b00;pointer-events:none`,
+      gBreak:`position:absolute;left:0;right:0;top:${mm(260.5)};height:0;border-top:1px dotted #06c;pointer-events:none`,
+      body:`position:absolute;left:${mm(12)};top:${mm(12)};width:${mm(186)};bottom:${mm(297-260.5)};overflow:hidden;color:#000`,
+      blocks:p.blocks.filter(b=>!(b.isText&&b.text==='')).map(b=>({isText:!!b.isText,isKv:!!b.isKv,isTbl:!!b.isTbl,isChart:!!b.isChart,text:b.text||'',rows:b.rows||[],svg:b.svg||{__html:''},style:b.style||''})),
+      foot:`position:absolute;left:${mm(12)};top:${mm(267.4-2.4)};${sm};white-space:nowrap;color:#000`,
+      footRule:`position:absolute;left:${mm(12)};width:${mm(186)};top:${mm(263.4)};border-top:${mm(0.1)} solid rgb(150,150,150)`,
+      footText:'Generated '+MS.today()+' '+hm+' (America/Los_Angeles) by happybabytracker · Page '+(i+1)+' of '+N}));
+    const consts=pr?[
+      {k:'Header row',v:'Grey fill, level 235 of 255, behind Bold 9 pt; 0.2 mm black rule stays (as built: rule only).'},
+      {k:'Row separators',v:'0.1 mm grey hairline, level 200, under every body row except the last of a table (as built: none).'},
+      {k:'Cell padding',v:'0.30 × font size on every side (as built 0.25). Row height 9 pt × 1.4 + 2 × 0.30 × 9 pt = 7.9 mm instead of 7.7 mm.'},
+      {k:'Section separation',v:'0.3 mm black rule above each heading (except at a page top) and one 4 pt gap below the rule, then the heading; the 9 pt line of space above stays.'},
+      {k:'Profile block',v:'Boxed with a 0.2 mm black stroke, two columns of label over value (as built: two cells per line, label 30 %).'},
+      {k:'Chart plot height',v:'0.45 × 186 = 83.7 mm (as built 0.55 = 102.3 mm) so a table and one chart fit a page.'},
+      {k:'Footer',v:'Text unchanged, baseline 267.4 mm. A 0.1 mm grey hairline (level 150) at 263.4 mm above it, full width. Page break stays ≈ 260.5 mm.'},
+      {k:'Unchanged',v:'Fonts, 9/12/7 pt, line height 1.4, margins 12 mm, 279.4 mm, greyscale, column content and wording, CDC text, empty-state and overflow wording, section order.'}]:[
+      {k:'As built',v:'Appendix C.2: header rule only, no fills, no row separators, two-cell profile lines, chart plot 102.3 mm, footer text only. Switch to “Proposed” to compare.'}];
+    return {toggles,pages:out,guides:s.guides,proposed:pr,consts,panelTitle:pr?'Proposed changes (C.4 constants)':'Layout as built',panelW:Math.round(210*k)};
+  }
+}
+</script>
+</body>
+</html>

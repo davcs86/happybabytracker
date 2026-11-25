@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Error pages</title>
+<script src="./react.production.min.js"></script><script src="./react-dom.production.min.js"></script><script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select{font-family:inherit;color:inherit}button[aria-disabled=true]{opacity:.55;cursor:not-allowed}a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--primary);outline-offset:2px}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Error pages · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" aria-pressed="{{ o.pressed }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>Two pages, outside the shell</b><br>Both render without the tabs, bell or switcher, so a failing API can’t break them.<br><br><b>404</b><br>An unknown child, a child without access, a path that doesn’t exist, and a parent opening an admin address all show this same page. Nothing says which case it was, so it doesn’t reveal that a child exists.<br><br><b>503</b><br>The API is down, unavailable or slow. The session is kept, so Try again reloads the same address.<br><br><b>Where it applies</b><br>Every page’s “Couldn’t save” and “No connection” toasts stay as they are; this is for a whole page that can’t load.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<div role="main" style="flex:1;min-width:0;overflow:auto;padding:24px 20px;display:flex;flex-direction:column;justify-content:center;gap:16px;box-sizing:border-box">
+<div style="width:100%;max-width:400px;margin:0 auto;display:flex;flex-direction:column;gap:16px">
+<div style="font-weight:700;font-size:16px">Happy baby</div>
+<h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1">{{ title }}</h1>
+<div style="font-size:14.5px;line-height:1.5;color:var(--muted)">{{ lead }}</div>
+<div style="font-size:12.5px;color:var(--muted)">Error {{ code }}</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a href="{{ href }}" onClick="{{ act }}" data-shadcn="Button" style="{{ btnP }}">{{ label }}</a></div>
+</div></div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={desktop:false,code:(/[?&]code=503/.test(location.search||'')?'503':'404')};
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false,s=this.state,D=s.desktop,self=this;
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)'};
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--destructive:${DK?'oklch(0.76 0.14 25)':'oklch(0.46 0.17 27)'};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const opt=(label,on,cur)=>({label,on,pressed:!!cur,style:seg(cur)});
+    const btnP='min-height:52px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box';
+    const btn='min-height:52px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;box-sizing:border-box';
+    const card='border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:14px';
+    const alertSt='border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5';
+    const inputSt=bad=>`min-height:48px;padding:0 12px;border-radius:10px;border:${bad?'1px solid var(--destructive)':'1px solid var(--border)'};background:var(--bg);font-size:16px;color:var(--fg);box-sizing:border-box;width:100%`;
+    const toggles=[
+      {title:'Page',opts:[opt('404 Not found',()=>this.setState({code:'404'}),s.code==='404'),opt('503 Unavailable',()=>this.setState({code:'503'}),s.code==='503')]},
+      {title:'Theme',opts:[opt('Light',()=>window.HBTUI.setTheme('light'),window.HBTUI.theme()==='light'),opt('Dark',()=>window.HBTUI.setTheme('dark'),window.HBTUI.theme()==='dark'),opt('Auto',()=>window.HBTUI.setTheme('auto'),window.HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const nf=s.code==='404';
+    return {toggles,appStyle,btnP,code:s.code,title:nf?'We can’t find that page':'The app can’t reach its server right now',
+      lead:nf?'It may not exist, or you may not have access to it.':'Your sign-in is kept. Try again in a moment.',
+      href:nf?'Kid Home.dc.html':'#',label:nf?'Go to Home':'Try again',act:nf?undefined:(e=>{e.preventDefault();this.setState({});})};
+  }
+
+}
+</script>
