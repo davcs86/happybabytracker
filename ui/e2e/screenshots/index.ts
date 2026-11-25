@@ -136,6 +136,7 @@ const out: string[] = [
 	'',
 	`${sorted.length} screens and states, each at two viewports: **mobile** 390×844 and **desktop** 1280×800,`,
 	'light colour scheme, JavaScript on, device scale factor 1, full-page captures.',
+	'**Initial design:** these screens show the current first-pass design, captured as a baseline for review and later redesign; they are not a final design.',
 	'Every value shown is fake stub data from `ui/e2e/stub-api.ts`; no real person or child appears.',
 	'',
 	'## Regenerate',
