@@ -8,7 +8,7 @@ import { todayInOrUtc } from '#lib/time-zone.js';
 import { FAILURE_MESSAGE, KID_COOKIE, PARENT_HOME } from '#lib/server/constants.js';
 import { clearKidCookie, setKidCookie } from '#lib/server/cookie.js';
 import { failAction, failPage, type ApiFailure } from '#lib/server/outcome.js';
-import type { TimerKind } from '#lib/types.js';
+import type { HomeDue, HomeDueVisit, TimerKind } from '#lib/types.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies, parent }) => {
@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		running: home.data.running,
 		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
-		due: home.data.due,
+		due: home.data.due.filter((e): e is Exclude<HomeDue, HomeDueVisit> => e.kind !== 'visit'),
 		todayDate: today,
 		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')
 	};

@@ -8,6 +8,7 @@
 	import MilkIcon from '@lucide/svelte/icons/milk';
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
+	import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 	import SyringeIcon from '@lucide/svelte/icons/syringe';
 	import UtensilsIcon from '@lucide/svelte/icons/utensils';
 	import { enhance } from '$app/forms';
@@ -46,7 +47,8 @@
 		medication: { icon: NotebookPenIcon, hue: 'tracker-symptom' },
 		milestones: { icon: FlagIcon, hue: '[--h:170]' },
 		growth: { icon: ChartLineIcon, hue: '[--h:200]' },
-		vaccination: { icon: SyringeIcon, hue: '[--h:235]' }
+		vaccination: { icon: SyringeIcon, hue: '[--h:235]' },
+		visits: { icon: StethoscopeIcon, hue: '[--h:235]' }
 	};
 	const HINT: Partial<Record<ModuleId, string>> = {
 		milestones: 'Open Milestones',

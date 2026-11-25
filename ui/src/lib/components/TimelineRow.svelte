@@ -25,7 +25,7 @@
 	import { TRACKER_LABEL, TRACKER_TITLE } from '#lib/constants.js';
 	import { timelineLine } from '#lib/timeline.js';
 	import { formatClock } from '#lib/time-zone.js';
-	import type { TimelineItem, Units } from '#lib/types.js';
+	import type { TrackerTimelineItem, Units } from '#lib/types.js';
 
 	let {
 		item,
@@ -33,7 +33,7 @@
 		zone,
 		units
 	}: {
-		item: TimelineItem;
+		item: TrackerTimelineItem;
 		kidId: string;
 		zone: string;
 		units: Pick<Units, 'weight' | 'volume' | 'temp'>;

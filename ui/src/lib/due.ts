@@ -1,13 +1,13 @@
 import { medicationPath, vaccinesPath } from './paths';
 import { whenLabel } from './medication';
-import type { HomeDue } from './types';
+import type { HomeDue, HomeDueVisit } from './types';
 import { dueLabel } from './vaccines';
 
 export type DueLine = { text: string; href: string };
 
 // The first max entries in API order, then one line per kind hidden; the API alone decides what is listed.
 export function dueLines(
-	due: HomeDue[],
+	due: Exclude<HomeDue, HomeDueVisit>[],
 	max: number,
 	kidId: string,
 	zone: string,

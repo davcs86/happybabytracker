@@ -22,6 +22,8 @@ import type {
 	VaccineDismissReason,
 	VaccineKind,
 	VaccineStatus,
+	VisitKind,
+	VisitStatus,
 	VolumeUnit,
 	WeightUnit
 } from './types';
@@ -160,6 +162,42 @@ export const MILESTONE_POSITIONS = [
 	'next',
 	'later'
 ] as const satisfies readonly MilestonePosition[];
+// Medical visits (constants.go): VisitKinds in the API's order; status is derived by the API.
+export const VISIT_KINDS = [
+	'well_child',
+	'sick',
+	'specialist',
+	'dental',
+	'emergency',
+	'other'
+] as const satisfies readonly VisitKind[];
+export const VISIT_STATUSES = [
+	'upcoming',
+	'past',
+	'cancelled'
+] as const satisfies readonly VisitStatus[];
+export const VISIT_KIND_LABEL: Record<VisitKind, string> = {
+	well_child: 'Well-child visit',
+	sick: 'Sick visit',
+	specialist: 'Specialist visit',
+	dental: 'Dental visit',
+	emergency: 'Emergency visit',
+	other: 'Other visit'
+};
+// Mirrors DefaultVisitDurationMin, MinVisitDurationMin and MaxVisitDurationMin (constants.go), in minutes.
+export const DEFAULT_VISIT_DURATION_MIN = 30;
+export const VISIT_DURATION_MIN = { min: 5, max: 720 } as const;
+// Mirrors VisitProviderMaxLen, VisitLocationMaxLen and VisitOutcomeNotesMaxLen (constants.go), in characters.
+export const VISIT_PROVIDER_MAX_LEN = 120;
+export const VISIT_LOCATION_MAX_LEN = 200;
+export const VISIT_OUTCOME_NOTES_MAX_LEN = 4000;
+// Mirrors MaxVisitsPerKid, VisitHorizon (in days) and VisitDueLookAheadDays (constants.go).
+export const MAX_VISITS_PER_KID = 2000;
+export const VISIT_HORIZON_DAYS = 731;
+export const VISIT_DUE_LOOK_AHEAD_DAYS = 7;
+// Mirrors MaxOutcomeVaccinations and MaxOutcomeMedications (constants.go): the rows one outcome may add.
+export const MAX_OUTCOME_VACCINATIONS = 10;
+export const MAX_OUTCOME_MEDICATIONS = 5;
 // The home shows at most this many due entries.
 export const HOME_DUE_MAX = 3;
 export const INVITE_VALIDITY = '72 hours';
@@ -282,7 +320,8 @@ export const MODULES = [
 	'growth',
 	'vaccination',
 	'sickness',
-	'medication'
+	'medication',
+	'visits'
 ] as const satisfies readonly ModuleId[];
 // Mirrors ExportMaxDays and ExportModules (constants.go): every module id, in MODULES order.
 export const EXPORT_MAX_DAYS = 93;
@@ -298,7 +337,8 @@ export const MODULE_LABEL: Record<ModuleId, string> = {
 	growth: 'Growth',
 	vaccination: 'Vaccination',
 	sickness: 'Sickness',
-	medication: 'Medication'
+	medication: 'Medication',
+	visits: 'Medical visits'
 };
 // Only modules whose tracker exists in this build have an entry point.
 export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {

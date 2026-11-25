@@ -9,7 +9,7 @@ import {
 	timelineLine,
 	timelineSearch
 } from './timeline';
-import type { ModuleId, ModuleState, TimelineItem, TrackerKind } from './types';
+import type { ModuleId, ModuleState, TrackerTimelineItem, TrackerKind } from './types';
 
 const METRIC = { weight: 'kg', volume: 'ml', temp: 'c' } as const;
 const IMPERIAL = { weight: 'lb', volume: 'floz', temp: 'f' } as const;
@@ -18,7 +18,7 @@ const vol = (ml: number, hundredths: number) => ({
 	floz_hundredths: hundredths,
 	typed_unit: 'ml' as const
 });
-const bottle = (at: string, contents: string[], ml = 120): TimelineItem =>
+const bottle = (at: string, contents: string[], ml = 120): TrackerTimelineItem =>
 	({
 		kind: 'bottles',
 		at,
@@ -30,14 +30,14 @@ const bottle = (at: string, contents: string[], ml = 120): TimelineItem =>
 			sources: [],
 			note: null
 		}
-	}) as TimelineItem;
-const sleep = (startedAt: string, endedAt: string | null): TimelineItem =>
+	}) as TrackerTimelineItem;
+const sleep = (startedAt: string, endedAt: string | null): TrackerTimelineItem =>
 	({
 		kind: 'sleep',
 		at: startedAt,
 		entry: { id: 's1', startedAt, endedAt, note: null }
-	}) as TimelineItem;
-const nursing = (over: Record<string, unknown>): TimelineItem =>
+	}) as TrackerTimelineItem;
+const nursing = (over: Record<string, unknown>): TrackerTimelineItem =>
 	({
 		kind: 'nursing',
 		at: '2026-10-14T13:05:00Z',
@@ -55,9 +55,9 @@ const nursing = (over: Record<string, unknown>): TimelineItem =>
 			milk: null,
 			...over
 		}
-	}) as TimelineItem;
-const diaper = (at: string, kind = 'wet'): TimelineItem =>
-	({ kind: 'diapers', at, entry: { id: `d-${at}`, at, kind, note: null } }) as TimelineItem;
+	}) as TrackerTimelineItem;
+const diaper = (at: string, kind = 'wet'): TrackerTimelineItem =>
+	({ kind: 'diapers', at, entry: { id: `d-${at}`, at, kind, note: null } }) as TrackerTimelineItem;
 
 describe('timelineLine', () => {
 	it('appends the milk estimate to a weighed nursing session, in the parent units', () => {
@@ -168,7 +168,7 @@ describe('timelineLine', () => {
 				sides: [],
 				note: null
 			}
-		} as TimelineItem;
+		} as TrackerTimelineItem;
 		expect(timelineLine(pumping, 'UTC', METRIC)).toBe('09:00 Pumping 20 min, 90 ml (both)');
 		expect(timelineLine(diaper('2026-10-14T07:30:00Z'), 'UTC', METRIC)).toBe('07:30 Diaper wet');
 		const meal = (reaction: string | null) =>
@@ -176,14 +176,14 @@ describe('timelineLine', () => {
 				kind: 'meals',
 				at: '2026-10-14T12:15:00Z',
 				entry: { id: 'm1', at: '2026-10-14T12:15:00Z', what: 'pear', reaction, note: null }
-			}) as TimelineItem;
+			}) as TrackerTimelineItem;
 		expect(timelineLine(meal(null), 'UTC', METRIC)).toBe('12:15 Solids: pear');
 		expect(timelineLine(meal('liked it'), 'UTC', METRIC)).toBe('12:15 Solids: pear · liked it');
 	});
 });
 
 describe('timelineLine symptoms', () => {
-	const symptom = (over: Record<string, unknown>): TimelineItem =>
+	const symptom = (over: Record<string, unknown>): TrackerTimelineItem =>
 		({
 			kind: 'symptoms',
 			at: '2026-10-14T09:12:00Z',
@@ -198,7 +198,7 @@ describe('timelineLine symptoms', () => {
 				note: null,
 				...over
 			}
-		}) as TimelineItem;
+		}) as TrackerTimelineItem;
 	const fever = (over: Record<string, unknown> = {}) =>
 		symptom({
 			symptom: 'fever',
@@ -266,7 +266,7 @@ describe('timelineLine pumping with sides', () => {
 				sides: sides.map(([s, ml, floz]) => ({ side: s, volume: vol(ml, floz) })),
 				note: null
 			}
-		}) as TimelineItem;
+		}) as TrackerTimelineItem;
 
 	it('gives each side its own volume in the parent unit instead of the side name', () => {
 		const both = sided('both', [

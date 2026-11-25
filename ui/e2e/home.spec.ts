@@ -624,7 +624,7 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		page.getByRole('heading', { name: `Modules for ${MIA.name}`, level: 1 })
 	).toBeVisible();
 	const box = (name: string) => page.getByRole('checkbox', { name, exact: true });
-	await expect(page.getByRole('checkbox')).toHaveCount(11);
+	await expect(page.getByRole('checkbox')).toHaveCount(12);
 	await expect(box('Diaper')).toBeChecked();
 	await expect(box('Diaper')).toHaveAccessibleDescription('On by default for this age');
 	await expectAccessible(page);

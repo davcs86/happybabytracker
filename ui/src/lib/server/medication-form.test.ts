@@ -553,6 +553,7 @@ describe('readMedicationForm: a new course', () => {
 
 const COURSE: Medication = {
 	id: 'm-1',
+	visitId: null,
 	name: 'Calpol',
 	dose: '2.5 ml',
 	schedule: { kind: 'times', times: ['08:00', '20:00'] },

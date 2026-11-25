@@ -333,6 +333,7 @@ describe('readGrowthForm edit', () => {
 
 const row = (over: Partial<GrowthRow>): GrowthRow => ({
 	id: 'g-1',
+	visitId: null,
 	measuredOn: '2026-11-01',
 	weight: null,
 	length: null,

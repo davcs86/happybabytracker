@@ -12,10 +12,10 @@ import {
 } from '#lib/timeline.js';
 import { setKidCookie } from '#lib/server/cookie.js';
 import { failPage } from '#lib/server/outcome.js';
-import type { TimelineItem } from '#lib/types.js';
+import type { TrackerTimelineItem } from '#lib/types.js';
 import type { PageServerLoad } from './$types';
 
-type Day = { date: string; items: TimelineItem[]; totals: TodayRow[] };
+type Day = { date: string; items: TrackerTimelineItem[]; totals: TodayRow[] };
 
 export const load: PageServerLoad = async ({ locals, params, url, cookies, parent }) => {
 	const [kid, modules, { session }] = await Promise.all([
@@ -70,7 +70,10 @@ export const load: PageServerLoad = async ({ locals, params, url, cookies, paren
 	);
 	return {
 		...view,
-		days: groupByDay(page.data.items, zone).map((g) => ({
+		days: groupByDay(
+			page.data.items.filter((i): i is TrackerTimelineItem => i.kind !== 'visit'),
+			zone
+		).map((g) => ({
 			...g,
 			totals: totals.get(g.date) ?? []
 		})),

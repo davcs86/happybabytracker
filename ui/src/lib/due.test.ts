@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dueLines } from './due';
 import { dueLabel } from './vaccines';
-import type { HomeDue, HomeDueMedication, HomeDueVaccine } from './types';
+import type { HomeDueMedication, HomeDueVaccine } from './types';
 
 const KID = 'k-1';
 const med = (n: number, state: 'due' | 'overdue' = 'due', dueAt?: string): HomeDueMedication => ({
@@ -16,7 +16,8 @@ const vax = (n: number, status: 'due' | 'overdue' = 'due'): HomeDueVaccine => ({
 	status,
 	count: 1
 });
-const lines = (due: HomeDue[], max = 3) => dueLines(due, max, KID, 'UTC', '2026-11-23');
+const lines = (due: (HomeDueMedication | HomeDueVaccine)[], max = 3) =>
+	dueLines(due, max, KID, 'UTC', '2026-11-23');
 const meds = (n: number) => Array.from({ length: n }, (_, i) => med(i + 1));
 const vaxes = (n: number) => Array.from({ length: n }, (_, i) => vax(i + 1));
 

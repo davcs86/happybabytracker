@@ -16,8 +16,8 @@ import type {
 	ModuleId,
 	ModuleState,
 	NursingSide,
-	TimelineItem,
 	TimelineQuery,
+	TrackerTimelineItem,
 	TrackerKind,
 	Units
 } from './types';
@@ -33,7 +33,7 @@ const LONG_RANGE = `Pick at most ${SUMMARY_MAX_DAYS} days`;
 
 // One line per entry. A point entry leads with its clock; a sleep carries its own range.
 export function timelineLine(
-	item: TimelineItem,
+	item: TrackerTimelineItem,
 	zone: string,
 	units: Pick<Units, 'weight' | 'volume' | 'temp'>
 ): string {
@@ -98,10 +98,10 @@ export function timelineLine(
 	}
 }
 
-export type DayGroup = { date: string; items: TimelineItem[] };
+export type DayGroup = { date: string; items: TrackerTimelineItem[] };
 
 // The page is already newest first, so the days of one page are consecutive runs.
-export function groupByDay(items: readonly TimelineItem[], zone: string): DayGroup[] {
+export function groupByDay(items: readonly TrackerTimelineItem[], zone: string): DayGroup[] {
 	const groups: DayGroup[] = [];
 	for (const item of items) {
 		const date = localDate(item.at, zone);

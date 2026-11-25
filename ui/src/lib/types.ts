@@ -149,6 +149,7 @@ export type Symptom = Noted & {
 export type Schedule =
 	{ kind: 'none' } | { kind: 'times'; times: string[] } | { kind: 'every'; hours: number };
 export type Medication = Noted & {
+	visitId: string | null;
 	name: string;
 	dose: string;
 	schedule: Schedule;
@@ -166,6 +167,35 @@ export type MedicationDose = Noted & {
 	amount: string | null;
 };
 export type DoseQuery = ListQuery & { medication?: string };
+
+export type VisitKind = 'well_child' | 'sick' | 'specialist' | 'dental' | 'emergency' | 'other';
+export type VisitStatus = 'upcoming' | 'past' | 'cancelled';
+// note is the reason; startsAt and cancelledAt are instants; revision grows with every write.
+export type Visit = Noted & {
+	startsAt: string;
+	durationMin: number;
+	kind: VisitKind;
+	status: VisitStatus;
+	cancelledAt: string | null;
+	provider: string | null;
+	location: string | null;
+	outcomeNotes: string | null;
+	revision: number;
+};
+// Dates are YYYY-MM-DD in the kid's zone.
+export type VisitLinks = {
+	growth: { id: string; measuredOn: string }[];
+	vaccinations: { id: string; givenOn: string; antigens: string[] }[];
+	medications: { id: string; name: string; doseCount: number }[];
+};
+export type VisitDetail = Visit & { linked: VisitLinks };
+// A list or timeline row carries only how many rows each module holds for the visit.
+export type VisitRow = Visit & {
+	linked: { growth: number; vaccinations: number; medications: number };
+};
+export type VisitQuery = ListQuery & { order?: 'asc' | 'desc' };
+export type VisitCalendarDetail = 'generic' | 'full';
+export type VisitLinkedChoice = 'delete' | 'keep';
 
 // A browser's subscription is a secret of the device: it travels only in the body of an upsert.
 export type PushState = { enabled: false } | { enabled: true; publicKey: string };
@@ -200,9 +230,10 @@ export type ListQuery = { from?: string; to?: string; limit?: number; cursor?: s
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
 export type TimelineQuery = ListQuery & { types?: TimelineType[] };
-export type TimelineItem = {
+export type TrackerTimelineItem = {
 	[K in TrackerKind]: { kind: K; at: string; entry: TrackerEntries[K] };
 }[TrackerKind];
+export type TimelineItem = TrackerTimelineItem | { kind: 'visit'; at: string; entry: VisitRow };
 
 export type ModuleId =
 	| 'bottles'
@@ -215,7 +246,8 @@ export type ModuleId =
 	| 'growth'
 	| 'vaccination'
 	| 'sickness'
-	| 'medication';
+	| 'medication'
+	| 'visits';
 // The export's JSON body: kid-local dates, ids in EXPORT_MODULES order.
 export type ExportInput = { from: string; to: string; modules: ModuleId[] };
 export type ModuleState = {
@@ -260,6 +292,7 @@ export type GrowthWeight = { grams: number; ozHundredths: number; typedUnit: Wei
 export type GrowthLength = { mm: number; inHundredths: number; typedUnit: LengthUnit };
 export type GrowthRow = {
 	id: string;
+	visitId: string | null;
 	measuredOn: string;
 	weight: GrowthWeight | null;
 	length: GrowthLength | null;
@@ -367,6 +400,7 @@ export type VaccineCatalogue = {
 };
 export type Administration = {
 	id: string;
+	visitId: string | null;
 	givenOn: string;
 	antigens: string[];
 	lot: string | null;
@@ -394,7 +428,8 @@ export type HomeDueMedication = {
 	dueAt: string;
 	state: 'due' | 'overdue';
 };
-export type HomeDue = HomeDueVaccine | HomeDueMedication;
+export type HomeDueVisit = { kind: 'visit'; id: string; startsAt: string; visitKind: VisitKind };
+export type HomeDue = HomeDueVaccine | HomeDueMedication | HomeDueVisit;
 
 export type MilestoneDomain =
 	'social_emotional' | 'language_communication' | 'cognitive' | 'movement_physical';

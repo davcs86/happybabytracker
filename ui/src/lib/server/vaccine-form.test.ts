@@ -31,6 +31,7 @@ const create = (fields: Fields) => readVaccineForm(form({ ...base, ...fields }),
 
 const STORED: Administration = {
 	id: 'a1',
+	visitId: null,
 	givenOn: '2026-11-01',
 	antigens: ['diphtheria', 'pertussis', 'tetanus'],
 	lot: 'LOT-7',
