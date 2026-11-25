@@ -44,7 +44,7 @@ test('schedules and dismissals', async ({ page }) => {
 		page,
 		'vaccines',
 		'02-us-schedule',
-		'United States (stub) at 13 months: due and upcoming visits, Completed folded, also available, every season, Other'
+		'United States (stub) at 13 months: due and upcoming visits, Completed collapsed, also available, every season, Other'
 	);
 	await openDetails(page, 'About this schedule');
 	await openDetails(page, 'What is not included');
@@ -74,7 +74,11 @@ test('schedules and dismissals', async ({ page }) => {
 		'05-dismiss-before-result',
 		'Dismiss older lines: says how many it dismissed'
 	);
-	await openDetails(page, /^Completed/);
+	// Completed is a region of collapsed visit cards: open them all.
+	await page
+		.getByRole('region', { name: /^Completed/ })
+		.locator('details')
+		.evaluateAll((ds) => ds.forEach((d) => ((d as HTMLDetailsElement).open = true)));
 	await shot(
 		page,
 		'vaccines',
@@ -140,7 +144,12 @@ test('dose forms', async ({ page }) => {
 	await field(page, 'Date given').fill('');
 	await save(page);
 	await expect(page.getByRole('alert').first()).toBeVisible();
-	await shot(page, 'vaccines', '11-new-dose-errors', 'Refused: no date and no vaccine ticked');
+	await shot(
+		page,
+		'vaccines',
+		'11-new-dose-errors',
+		'Refused: no date and no vaccine ticked; the date is the first problem shown'
+	);
 	await open(page, url(IVY.id, '/new?antigens=hib,measles'));
 	await shot(
 		page,

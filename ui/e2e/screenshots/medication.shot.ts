@@ -126,7 +126,12 @@ test('new course form', async ({ page }) => {
 	await shot(page, 'medication', '12-new-course-empty', 'New course: as needed by default');
 	await save(page);
 	await expect(page.getByRole('alert').first()).toBeVisible();
-	await shot(page, 'medication', '13-new-course-errors', 'Refused: name and dose required');
+	await shot(
+		page,
+		'medication',
+		'13-new-course-errors',
+		'Refused: a missing name; the form reports one problem at a time'
+	);
 	await field(page, 'Name').fill('Ibuprofen');
 	await field(page, 'Dose').fill('2.5 ml');
 	await page.getByRole('radio', { name: 'At fixed times' }).check();
@@ -137,7 +142,7 @@ test('new course form', async ({ page }) => {
 		page,
 		'medication',
 		'14-new-course-fixed-times',
-		'At fixed times: the time slots appear'
+		'At fixed times: the time slots appear; the earlier name error is still shown'
 	);
 	await page.getByRole('radio', { name: 'Every few hours' }).check();
 	await field(page, 'Hours between doses').fill('6');
@@ -145,7 +150,7 @@ test('new course form', async ({ page }) => {
 		page,
 		'medication',
 		'15-new-course-every-hours',
-		'Every few hours: the interval and the start'
+		'Every few hours: the interval and the start; the earlier name error is still shown'
 	);
 });
 
@@ -159,7 +164,7 @@ test('module off and caregiver', async ({ page }) => {
 		page,
 		'medication',
 		'16-module-off-guardian',
-		'Medication switched off: a note with a link to Modules; courses still listed'
+		'Medication switched off: the courses and doses are kept but not listed; a guardian gets Open modules'
 	);
 	const cleo = await as(CLEO);
 	await must(cleo, 'POST', kidPath(LEO.id, 'medications'), {
@@ -173,6 +178,6 @@ test('module off and caregiver', async ({ page }) => {
 		page,
 		'medication',
 		'17-module-off-caregiver-long-name',
-		'A caregiver with the module off: a note without a link; an 80-character name wraps'
+		'A caregiver with the module off: a note without a link; courses and doses are not listed'
 	);
 });

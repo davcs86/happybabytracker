@@ -18,6 +18,11 @@ const testEnv = {
 };
 const freeze = '--import ./e2e/screenshots/freeze-clock.ts';
 
+// The test workers read the frozen clock too: fixtures such as IVY's birth date follow "today" in
+// every process that imports the stub, so a worker on the real day would disagree with the stub.
+process.env.SHOTS_NOW = SHOTS_NOW;
+process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} ${freeze}`.trim();
+
 export default defineConfig({
 	testDir: 'e2e/screenshots',
 	testMatch: '**/*.shot.ts',

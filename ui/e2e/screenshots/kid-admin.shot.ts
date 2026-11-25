@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { submit, untilHydrated } from '../helpers.js';
 import { ANA, CLEO, LEO, MIA } from '../stub-api.js';
 import { as, at, must } from './seed.js';
-import { expect, shot, signInAs, test } from './shots.js';
+import { expect, openDetails, shot, signInAs, test } from './shots.js';
 
 const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
 
@@ -62,7 +62,7 @@ test('settings', async ({ page }) => {
 		page,
 		'kid-admin',
 		'06-settings',
-		'Settings: name, birth date, sex, born early, time zone, growth source, schedule, overdue minutes'
+		'Edit details: name, birth date, time zone, then sex, born early, growth source, schedule and overdue minutes'
 	);
 	await untilHydrated(field(page, 'Show a missed dose as overdue for (minutes)'));
 	await field(page, 'Show a missed dose as overdue for (minutes)').fill('2');
@@ -75,10 +75,19 @@ test('settings', async ({ page }) => {
 		'Refused: 2 overdue minutes, outside 5 to 1440'
 	);
 	await open(page, `/kids/${MIA.id}/settings`);
+	await openDetails(page, `Delete all data for ${MIA.name}…`);
 	await field(page, `Type ${MIA.name} to confirm`).fill('Mila');
-	await submit(page.getByRole('button', { name: `Delete ${MIA.name}` }));
+	await page
+		.getByRole('checkbox', { name: 'I understand this is permanent and immediate' })
+		.check();
+	await submit(page.getByRole('button', { name: `Delete all data for ${MIA.name}`, exact: true }));
 	await expect(page.getByText('The name does not match')).toBeVisible();
-	await shot(page, 'kid-admin', '08-settings-delete-name-mismatch', 'Delete needs the exact name');
+	await shot(
+		page,
+		'kid-admin',
+		'08-settings-delete-name-mismatch',
+		'Delete needs the exact name and the tick'
+	);
 	await page.goto(`/kids/${LEO.id}/settings`);
 	await shot(
 		page,
@@ -113,24 +122,24 @@ test('access', async ({ page }) => {
 		'12-access-last-guardian',
 		'The only guardian cannot leave: a child needs at least one guardian'
 	);
-	await field(page, 'Username').fill('nobody');
-	await submit(page.getByRole('button', { name: 'Add' }));
-	await expect(field(page, 'Username')).toHaveAttribute('aria-invalid', 'true');
+	await field(page, 'Parent’s username').fill('nobody');
+	await submit(page.getByRole('button', { name: 'Give access', exact: true }));
+	await expect(field(page, 'Parent’s username')).toHaveAttribute('aria-invalid', 'true');
 	await shot(
 		page,
 		'kid-admin',
 		'13-access-unknown-username',
-		'Add someone: no active account has that username'
+		'Add a person: no active account has that username'
 	);
-	await field(page, 'Username').fill('dan');
-	await page.getByLabel('Role', { exact: true }).selectOption('caregiver');
-	await submit(page.getByRole('button', { name: 'Add' }));
-	await expect(page.getByRole('button', { name: 'Remove Dan' })).toBeVisible();
+	await field(page, 'Parent’s username').fill('dan');
+	await page.getByRole('radio', { name: 'Caregiver' }).check();
+	await submit(page.getByRole('button', { name: 'Give access', exact: true }));
+	await expect(page.getByRole('button', { name: /^Remove Dan/ })).toBeVisible();
 	await shot(
 		page,
 		'kid-admin',
 		'14-access-caregiver-added',
-		'Dan added as a caregiver: role select, Change role and Remove'
+		'Dan added as a caregiver: Make guardian and Remove access; the Role choice has reset to none (a known gap)'
 	);
 	await page.goto(`/kids/${LEO.id}/access`);
 	await shot(
@@ -161,13 +170,13 @@ test('new kid', async ({ page }) => {
 	await field(page, 'Name').fill('Noa');
 	await field(page, 'Birth date').fill(at('00:00', 20).slice(0, 10));
 	await page.getByLabel('Born early?').check();
-	await field(page, 'Weeks').fill('33');
-	await field(page, 'Days').fill('4');
+	await field(page, 'Weeks at birth').fill('33');
+	await field(page, 'Extra days (0 to 6)').fill('4');
 	await shot(
 		page,
 		'kid-admin',
 		'19-new-kid-born-early',
-		'Born early ticked: weeks and days appear'
+		'Born early ticked: weeks and days appear; the earlier refusals stay on screen until the next save'
 	);
 	const long = await must(ana, 'POST', '/v1/kids', {
 		name: 'N'.repeat(64),
@@ -180,6 +189,24 @@ test('new kid', async ({ page }) => {
 		page,
 		'kid-admin',
 		'20-long-kid-name-home',
-		'A 64-character unbroken kid name: it overflows the kid home and the switcher at phone width (a UI defect this shot documents)'
+		'A 64-character unbroken kid name: the heading wraps, but the header switcher does not truncate it and the page widens past the phone (a UI defect this shot documents; the design truncates the name)'
+	);
+});
+
+test('profile', async ({ page }) => {
+	await signInAs(page, ANA);
+	await open(page, `/kids/${MIA.id}/profile`);
+	await shot(
+		page,
+		'kid-admin',
+		'21-profile-guardian',
+		'Child profile: details, settings shortcuts, people with access and the delete entry'
+	);
+	await page.goto(`/kids/${LEO.id}/profile`);
+	await shot(
+		page,
+		'kid-admin',
+		'22-profile-caregiver-404',
+		'A caregiver gets the 404 page on the Child profile'
 	);
 });
