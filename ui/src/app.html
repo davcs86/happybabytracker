@@ -4,13 +4,13 @@
 		<script>
 			(function () {
 				var d = document.documentElement,
-					t = d.getAttribute('data-theme') || 'auto',
 					m = matchMedia('(prefers-color-scheme: dark)');
 				function r() {
+					var t = d.getAttribute('data-theme') || 'auto';
 					d.setAttribute('data-resolved', t === 'auto' ? (m.matches ? 'dark' : 'light') : t);
 				}
 				r();
-				if (t === 'auto') m.addEventListener('change', r);
+				m.addEventListener('change', r);
 			})();
 		</script>
 		<meta charset="utf-8" />

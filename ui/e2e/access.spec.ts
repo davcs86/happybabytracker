@@ -7,6 +7,7 @@ import {
 	expectLanding,
 	expectNotFoundPage,
 	signIn,
+	signOut,
 	untilHydrated
 } from './helpers.js';
 import {
@@ -102,7 +103,7 @@ test(`once the other guardian left, the remaining one cannot leave: "${LAST_GUAR
 	await grant(page, 'Ana').getByRole('button', { name: 'Leave' }).click();
 	await expectLanding(page, { kid: LEO });
 
-	await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+	await signOut(page);
 	await signIn(page, CLEO);
 	await page.goto(`/kids/${MIA.id}/access`);
 	await expect(grant(page, 'Ana')).toHaveCount(0);
@@ -127,9 +128,9 @@ test('the caregiver view has no admin controls', async ({ page }) => {
 	await page.goto(`/kids/${LEO.id}`);
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
 	await expect(page.getByRole('link', { name: /Access|Settings|Parents/ })).toHaveCount(0);
-	// With the leave panel open every button is exposed: only sign-out and the leave confirmation.
+	// With the leave panel open every button in the page is exposed: only the leave confirmation.
 	await page.getByText('Leave this child', { exact: true }).click();
-	await expect(page.getByRole('button')).toHaveText(['Sign out', `Yes, leave ${LEO.name}`]);
+	await expect(page.getByRole('main').getByRole('button')).toHaveText([`Yes, leave ${LEO.name}`]);
 	await expect(page.getByRole('button', { name: /Remove|Change role|Add|Delete/ })).toHaveCount(0);
 	await expectAccessible(page);
 	await page.goto('/');
@@ -246,7 +247,7 @@ test.describe('a caregiver leaves a kid', () => {
 		expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
 		await expect(page.getByRole('heading', { name: MIA.name, exact: true })).toBeVisible();
 
-		await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+		await signOut(page);
 		await signIn(page, CLEO);
 		await page.goto(`/kids/${LEO.id}/access`);
 		await expect(grant(page, 'Cleo')).toContainText('Guardian');

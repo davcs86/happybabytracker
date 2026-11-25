@@ -29,6 +29,11 @@ import type {
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
 export const THEMES = ['light', 'dark', 'auto'] as const;
 export type Theme = (typeof THEMES)[number];
+// The child switcher shows its search field above this many children.
+export const FIND_CHILD_MIN = 6;
+// Toast display time; a failure that offers Try again stays longer.
+export const TOAST_MS = 6000;
+export const TOAST_FAILURE_MS = 9000;
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 256;
 // The API's limits (api/internal/constants), for the forms' hints and attributes.

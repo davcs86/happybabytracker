@@ -1,11 +1,13 @@
 <script lang="ts">
-	import UsersIcon from '@lucide/svelte/icons/users';
-	import AppShell, { type NavLink } from '#lib/components/AppShell.svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
-
-	const links: NavLink[] = [{ href: '/admin/parents', label: 'Parents', icon: UsersIcon }];
 </script>
 
-<AppShell {links}>{@render children()}</AppShell>
+<main class="mx-auto max-w-[720px] px-4 pt-4 pb-7">
+	{@render children()}
+	<form method="POST" action="/logout" class="mt-6">
+		<Button type="submit" variant="outline">Sign out</Button>
+	</form>
+</main>

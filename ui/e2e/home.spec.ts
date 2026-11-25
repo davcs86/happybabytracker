@@ -29,7 +29,7 @@ test.beforeEach(async () => {
 });
 
 const quickLog = (page: Page) => page.getByRole('region', { name: 'Quick log' });
-const mainNav = (page: Page) => page.getByRole('navigation', { name: 'Main' });
+const mainNav = (page: Page) => page.getByRole('navigation', { name: 'Primary' });
 const running = (page: Page) => page.getByRole('region', { name: 'Running now' });
 const today = (page: Page) => page.getByRole('region', { name: 'Today' });
 const due = (page: Page) => page.getByRole('region', { name: 'Due' });

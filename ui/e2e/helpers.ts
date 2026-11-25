@@ -68,3 +68,21 @@ export async function expectLanding(page: Page, landing: Landing) {
 	await expect(page).toHaveURL(new RegExp(`/kids/${landing.kid.id}$`));
 	await expect(page.getByRole('heading', { name: landing.kid.name, level: 1 })).toBeVisible();
 }
+
+// Sign out sits in the More sheet on a phone and in the side navigation from 768 px.
+export async function signOut(page: Page) {
+	const more = page.getByRole('button', { name: 'More', exact: true });
+	if (await more.isVisible()) {
+		const sheet = page.getByRole('dialog', { name: 'More' });
+		await expect(async () => {
+			await more.click();
+			await expect(sheet).toBeVisible({ timeout: 1000 });
+		}).toPass();
+		await sheet.getByRole('button', { name: /^Sign out/ }).click();
+	} else {
+		await page
+			.getByRole('navigation', { name: 'Primary' })
+			.getByRole('button', { name: 'Sign out' })
+			.click();
+	}
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { TOAST_MS } from '#lib/constants.js';
 	import { Toaster as Sonner, type ToasterProps as SonnerProps } from 'svelte-sonner';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
@@ -10,11 +11,15 @@
 </script>
 
 <Sonner
+	position="bottom-center"
+	offset={84}
+	duration={TOAST_MS}
 	class="toaster group"
-	style="--normal-bg: var(--color-popover); --normal-text: var(--color-popover-foreground); --normal-border: var(--color-border);"
 	toastOptions={{
 		classes: {
-			toast: 'cn-toast'
+			toast:
+				'bg-foreground! text-background! rounded-xl! border-0! shadow-menu! text-[14px]! py-1.5! pr-1.5! pl-4!',
+			actionButton: 'bg-transparent! text-toast-link! min-h-11! px-3! font-semibold!'
 		}
 	}}
 	{...restProps}

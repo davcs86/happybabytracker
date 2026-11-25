@@ -5,7 +5,6 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import DueList from '#lib/components/DueList.svelte';
 	import KidLinks from '#lib/components/KidLinks.svelte';
-	import KidSwitcher from '#lib/components/KidSwitcher.svelte';
 	import QuickLog from '#lib/components/QuickLog.svelte';
 	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
 	import TodaySummary from '#lib/components/TodaySummary.svelte';
@@ -33,7 +32,6 @@
 	<title>{data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<KidSwitcher kids={data.kids} currentId={data.kid.id} />
 <h1 class="text-xl font-semibold">{data.kid.name}</h1>
 <p class="text-muted-foreground">{data.age}</p>
 <KidLinks kid={data.kid} />

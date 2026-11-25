@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, login, sessionCookie } from './helpers.js';
+import { expectAccessible, login, sessionCookie, signOut } from './helpers.js';
 import { ADMIN, ANA, receivedRequests, resetStub } from './stub-api.js';
 
 test.beforeEach(async () => {
@@ -33,7 +33,7 @@ test('the admin is kept inside /admin/ and can sign out from /admin/parents', as
 test('a parent signs out and / then goes to /login', async ({ page, context }) => {
 	await page.goto('/login');
 	await login(page, ANA.username, ANA.password);
-	await page.getByRole('button', { name: 'Sign out' }).click();
+	await signOut(page);
 	await expect(page).toHaveURL(/\/login$/);
 	expect(await sessionCookie(context)).toBeUndefined();
 	await page.goto('/');
