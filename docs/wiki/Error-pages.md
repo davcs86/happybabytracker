@@ -12,7 +12,7 @@ The page says "Not found" and "We can't find that page. It may not exist, or you
 
 - the address does not exist (a mistyped path);
 - the child does not exist, or you have no access to that child;
-- you are a caregiver and open a page only a guardian can use, such as Modules, Child profile, Settings or Access of a child;
+- you are a caregiver and open a page only a guardian can use, such as Modules, Child profile, its settings page or Access of a child;
 - you are a parent and open anything under `/admin`.
 
 A child you cannot see looks exactly the same as a child that does not exist. This is on purpose: the app never confirms whether a child exists to someone who has no access. If you expected to see a child, ask a guardian of that child to give you access (see [Children and access](Children-and-access.md)).
@@ -64,7 +64,7 @@ The shots are in the [screenshot catalogue](../screenshots/README.md#errors). Th
 ### Rules the screens show
 
 - **No grant is a 404.** A child without a grant and an unknown child give the same page, with the same words. A disabled parent counts as having no grant. The end-to-end tests compare the page text for an unknown id with the child just left and its guardian-only pages, and require them to be identical.
-- A caregiver gets the 404 on guardian pages (Modules, Child profile, Settings, Access).
+- A caregiver gets the 404 on guardian pages (Modules, Child profile, its settings page, Access).
 - A parent gets a 404 on every `/admin` path; the admin is redirected to the Parents page from every other path.
 - The 404 for a child has no app menu, so it does not show that the child exists.
 - 503: the sign-in cookie is kept, so a user is not signed out by an outage.

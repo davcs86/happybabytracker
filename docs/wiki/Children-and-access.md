@@ -8,7 +8,7 @@ Modules, Child profile, Edit details and Access are **guardian** pages. A caregi
 
 ### Where do I find these pages?
 
-- On a phone: **More**, then **Modules**, **Child profile** or **Settings** (guardians only).
+- On a phone: **More**, then **Modules** or **Child profile** (guardians only).
 - On a desktop: the same entries in the left menu.
 - **Edit details** and **Manage access** are buttons on the Child profile.
 
@@ -43,7 +43,7 @@ Open **Child profile**. It has four cards:
 
 ### How do I change a child's details?
 
-1. On the Child profile choose **Edit details** (or **Settings** in the menu).
+1. On the Child profile choose **Edit details**.
 2. Change **Name**, **Birth date**, **Time zone**, **Sex**, **Born early?**, **Growth chart source**, **Vaccination schedule** or **Show a missed dose as overdue for (minutes)**.
 3. Choose **Save**. A box says "Saved". **Cancel** goes back to the Child profile.
 

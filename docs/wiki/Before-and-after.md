@@ -19,7 +19,7 @@ Same day, same child (`home/02-mia-busy-day`).
 | <img src="../screenshots-legacy/home/02-mia-busy-day-mobile.png" alt="Before: black child pills, a row of text links, plain quick log buttons, running timers as rows with small End buttons, Due as underlined links, Today as a list" width="260"> | <img src="../screenshots/home/02-mia-busy-day-mobile.png" alt="After: the child switcher, bell and role in the header, running timers as cards with full-width End buttons, coloured quick log tiles, Due rows as cards with icons, Today as a two-by-two grid" width="260"> |
 
 - The running timers moved to the top as cards, with a full-width **End sleep** and **End nursing** (before: a small "End").
-- The row of links to Vaccines, Medication, Milestones, Export PDF, Settings, Access and Modules is gone from the page. They are in More, or in the side navigation.
+- The row of links to Vaccines, Medication, Milestones, Export PDF, Settings, Access and Modules is gone from the page. Vaccines, Medication, Milestones, Export PDF and Modules are in More or in the side navigation; Settings and Access are on the Child profile.
 - Quick log tiles have an icon in the tracker's colour, and the page tiles say what they open ("Add a measurement", "Open Vaccines", "Log a dose").
 - Due rows are cards with an icon (medication or vaccine). Today is a two-by-two grid instead of a list.
 - Not in the redesign yet: the Latest list and the "x ago" subtitles ([Not built yet](Not-built-yet.md)).

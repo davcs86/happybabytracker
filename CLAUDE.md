@@ -29,6 +29,8 @@ No exceptions for small or obvious tasks — honoring the letter while dodging t
 
 # happybabytracker — CLAUDE.md
 
+UI design rules are in `AGENTS.md` and bind as much as this file: read it before touching `ui/`.
+
 Two containers built from one repo. `api/` (Go, module `github.com/davcs86/happybabytracker/api`, main
 in `cmd/happybabytracker-api`): one listener on 9210, SQLite under `DATA_DIR` (`/data`). `ui/`
 (SvelteKit, Node adapter): the only thing the browser talks to, on 9212; it calls the API server-side
