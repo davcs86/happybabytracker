@@ -244,7 +244,7 @@ bottles_on() { # kid-local date -> what that day's Bottles row shows for them
 }
 
 today_value() { # body-name label -> the value the home's Today card shows beside label
-  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<[^>]*>| |g' |
+  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<span[^>]*>Last:.*</span>||; s|<[^>]*>| |g' |
     sed -E "s|^[[:space:]]*$2[[:space:]]*||; s|[[:space:]]+\$||" || true
 }
 
