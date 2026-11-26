@@ -459,3 +459,27 @@ func TestAdminLoginIgnoresTheDeviceLabel(t *testing.T) {
 		t.Fatalf("admin login: %d %q", rec.Code, rec.Body.String())
 	}
 }
+
+func TestLogNeverHoldsTheRedesignFields(t *testing.T) {
+	k := newKit(t)
+	const label = "Zelda Unique Phone"
+	p := k.addParent("zelda-unique-731")
+	kid := k.createKid(k.asParent("ana"), nil)
+	k.grant(k.asParent("ana"), kid, "zelda-unique-731", "guardian")
+	k.createDiaper(k.asParent("ana"), kid, map[string]any{"note": "note-unique-9915"})
+	token := bodyMap(t, k.loginLabelled("zelda-unique-731", label))["token"].(string)
+
+	for _, path := range []string{"/v1/session", "/v1/me/sessions", "/v1/kids/" + kid + "/home", "/v1/kids/" + kid + "/counts", "/v1/kids/" + kid + "/access"} {
+		if rec := k.do(http.MethodGet, path, token, nil); rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %q", path, rec.Code, rec.Body.String())
+		}
+	}
+	k.do(http.MethodGet, "/v1/admin/parents", k.asAdmin(), nil)
+
+	logs := k.Log.String()
+	for _, secret := range []string{label, "note-unique-9915", p.ID, stamp(k.now), "device_label", "password_changed_at", "last_active_at"} {
+		if strings.Contains(logs, secret) {
+			t.Errorf("log contains %q:\n%s", secret, logs)
+		}
+	}
+}
