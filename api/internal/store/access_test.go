@@ -653,3 +653,24 @@ func TestConcurrentDisableAndDelete(t *testing.T) {
 		}
 	}
 }
+
+func TestEntryCountCoversTheDailyTrackersOfOneKid(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	other := mustKid(t, s, ana.ID, "Noa")
+	if n, err := s.EntryCount(ctx, k.ID); err != nil || n != 0 {
+		t.Fatalf("empty kid = %d, %v; want 0", n, err)
+	}
+	mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: t0.Add(-time.Hour), Kind: "wet"})
+	mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: t0.Add(-2 * time.Hour), Kind: "dirty"})
+	mustMeal(t, s, k.ID, ana.ID, model.Meal{At: t0.Add(-time.Hour), What: "pear"})
+	mustSleep(t, s, k.ID, ana.ID, model.SleepSession{StartedAt: t0.Add(-3 * time.Hour)})
+	mustDiaper(t, s, other.ID, ana.ID, model.Diaper{At: t0.Add(-time.Hour), Kind: "wet"})
+	if n, err := s.EntryCount(ctx, k.ID); err != nil || n != 4 {
+		t.Fatalf("count = %d, %v; want 4 and none of the other kid's", n, err)
+	}
+	if n, err := s.EntryCount(ctx, "nobody"); err != nil || n != 0 {
+		t.Fatalf("unknown kid = %d, %v; want 0", n, err)
+	}
+}

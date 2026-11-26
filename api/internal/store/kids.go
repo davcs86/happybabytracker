@@ -128,6 +128,17 @@ func (s *Store) DeleteKid(ctx context.Context, kidID, actorID string) error {
 	})
 }
 
+// EntryCount is the number of the kid's rows in the seven daily-tracker tables.
+func (s *Store) EntryCount(ctx context.Context, kidID string) (int, error) {
+	var n int
+	err := s.r.QueryRowContext(ctx,
+		`SELECT (SELECT COUNT(*) FROM bottle_feeds WHERE kid_id = ?1) + (SELECT COUNT(*) FROM nursing_sessions WHERE kid_id = ?1)
+		 + (SELECT COUNT(*) FROM pumping_sessions WHERE kid_id = ?1) + (SELECT COUNT(*) FROM sleep_sessions WHERE kid_id = ?1)
+		 + (SELECT COUNT(*) FROM diapers WHERE kid_id = ?1) + (SELECT COUNT(*) FROM meals WHERE kid_id = ?1)
+		 + (SELECT COUNT(*) FROM symptoms WHERE kid_id = ?1)`, kidID).Scan(&n)
+	return n, err
+}
+
 // oneRow turns a write that touched no row into ErrNotFound.
 func oneRow(res sql.Result, err error) error {
 	if err != nil {
