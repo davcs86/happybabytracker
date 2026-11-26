@@ -32,7 +32,7 @@ func TestHomeShape(t *testing.T) {
 	kid, _, bob := k.trackerKid() // born 2026-03-04: 8 months at t0
 	k.createBottle(bob, kid, nil)
 	h := k.home(bob, kid)
-	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today", "due")
+	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today", "due", "last")
 	if due, ok := h["due"].([]any); !ok || len(due) != 0 {
 		t.Errorf("due of a kid with no schedule = %#v, want []", h["due"])
 	}
@@ -578,4 +578,58 @@ func TestHomeDueVisitWindowIsKidLocal(t *testing.T) {
 	}
 	k.setModule(ana, kid, "visits", false)
 	k.wantDue(ana, kid, "with the module off")
+}
+
+func TestHomeLast(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	k.createBottle(bob, kid, map[string]any{"at": ts(t0.Add(-3 * time.Hour))})
+	newest := k.createBottle(bob, kid, map[string]any{"at": ts(t0.Add(-time.Hour))})
+	k.createDiaper(bob, kid, nil)
+	k.createSleep(bob, kid, map[string]any{"started_at": ts(t0.Add(-30 * time.Minute))}) // running
+
+	h := k.home(bob, kid)
+	last, ok := h["last"].(map[string]any)
+	if !ok {
+		t.Fatalf("last = %#v, want an object", h["last"])
+	}
+	want := map[string]bool{}
+	for _, it := range h["modules"].([]any) {
+		m := it.(map[string]any)
+		for _, typ := range store.TimelineTypes {
+			if string(timelineModules[typ]) == m["module"] && m["enabled"] == true {
+				want[typ] = true
+			}
+		}
+	}
+	for _, typ := range []string{"bottle", "diaper", "sleep"} {
+		if !want[typ] {
+			t.Fatalf("test premise: %s module is off for an 8-month-old", typ)
+		}
+	}
+	for typ := range last {
+		if !want[typ] {
+			t.Errorf("last has %q although its module is off", typ)
+		}
+	}
+	for typ := range want {
+		if _, present := last[typ]; !present {
+			t.Errorf("last lacks %q although its module is on", typ)
+		}
+	}
+	bottle := last["bottle"].(map[string]any)
+	if bottle["id"] != newest || bottle["type"] != "bottle" || bottle["at"] != ts(t0.Add(-time.Hour)) {
+		t.Errorf("last bottle = %v, want the newest one", bottle)
+	}
+	if sleep := last["sleep"].(map[string]any); sleep["ended_at"] != nil || sleep["at"] != ts(t0.Add(-30*time.Minute)) {
+		t.Errorf("last sleep = %v, want the running one", sleep)
+	}
+	if v, present := last["nursing"]; present && v != nil {
+		t.Errorf("last nursing = %v, want null for a kid with none", v)
+	}
+
+	k.setModule(ana, kid, "diapers", false)
+	if _, present := k.home(bob, kid)["last"].(map[string]any)["diaper"]; present {
+		t.Error("a module switched off must drop its key")
+	}
 }
