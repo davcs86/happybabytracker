@@ -35,12 +35,15 @@ type parentView struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Units       unitsView `json:"units"`
+	// PasswordChangedAt is null when the date is unknown.
+	PasswordChangedAt *string `json:"password_changed_at"`
 }
 
 func newParentView(p model.Parent) parentView {
 	return parentView{
 		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
-		Units: unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
+		Units:             unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
+		PasswordChangedAt: optionalInstant(p.PasswordChangedAt),
 	}
 }
 

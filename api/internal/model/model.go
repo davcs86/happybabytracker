@@ -43,6 +43,7 @@ type Parent struct {
 	Disabled, HasPassword     bool
 	Units                     Units
 	CreatedAt                 time.Time
+	PasswordChangedAt         *time.Time // nil when the local password predates the column or is unset
 }
 
 type SessionInfo struct {

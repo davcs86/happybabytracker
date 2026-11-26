@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -194,7 +195,7 @@ func TestParentLookups(t *testing.T) {
 		t.Errorf("unknown id: %v, want ErrNotFound", err)
 	}
 
-	if err := s.SetPassword(ctx, p.ID, "$hash$one", ""); err != nil {
+	if err := s.SetPassword(ctx, p.ID, "$hash$one", "", t0); err != nil {
 		t.Fatal(err)
 	}
 	got, hash, err = s.ParentByUsername(ctx, "ana")
@@ -202,7 +203,7 @@ func TestParentLookups(t *testing.T) {
 		t.Fatalf("with password: %+v %q %v", got, hash, err)
 	}
 	byID, err := s.ParentByID(ctx, p.ID)
-	if err != nil || byID != got {
+	if err != nil || !reflect.DeepEqual(byID, got) {
 		t.Fatalf("ParentByID = %+v, %v; want %+v", byID, err, got)
 	}
 }
@@ -216,7 +217,7 @@ func TestSetPassword(t *testing.T) {
 	mustSession(t, s, "parent", p.ID, []byte("drop"), exp)
 	mustSession(t, s, "parent", other.ID, []byte("bobs"), exp)
 
-	if err := s.SetPassword(ctx, p.ID, "$hash$one", keep); err != nil {
+	if err := s.SetPassword(ctx, p.ID, "$hash$one", keep, t0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.SessionByToken(ctx, []byte("keep"), t0); err != nil {
@@ -230,7 +231,7 @@ func TestSetPassword(t *testing.T) {
 	}
 
 	// A second call replaces the one local identity rather than adding another.
-	if err := s.SetPassword(ctx, p.ID, "$hash$two", ""); err != nil {
+	if err := s.SetPassword(ctx, p.ID, "$hash$two", "", t0); err != nil {
 		t.Fatal(err)
 	}
 	_, hash, _ := s.ParentByUsername(ctx, "ana")
@@ -245,8 +246,33 @@ func TestSetPassword(t *testing.T) {
 	if _, err := s.SessionByToken(ctx, []byte("keep"), t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf(`keepSessionID "" must keep none; keep survived: %v`, err)
 	}
-	if err := s.SetPassword(ctx, "nobody", "$hash", ""); !errors.Is(err, ErrNotFound) {
+	if err := s.SetPassword(ctx, "nobody", "$hash", "", t0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown parent: %v, want ErrNotFound", err)
+	}
+}
+
+func TestPasswordChangedAt(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	if got, err := s.ParentByID(ctx, p.ID); err != nil || got.PasswordChangedAt != nil {
+		t.Fatalf("before any password: %v, %v; want nil", got.PasswordChangedAt, err)
+	}
+	at := t0.Add(5 * time.Minute)
+	if err := s.SetPassword(ctx, p.ID, "$hash$one", "", at); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ParentByID(ctx, p.ID)
+	if err != nil || got.PasswordChangedAt == nil || !got.PasswordChangedAt.Equal(at) {
+		t.Fatalf("after SetPassword: %v, %v; want %v", got.PasswordChangedAt, err, at)
+	}
+	mustIssue(t, s, model.TokenReset, p.ID, "tok", t0.Add(time.Hour))
+	later := t0.Add(10 * time.Minute)
+	if _, err := s.RedeemToken(ctx, []byte("tok"), "$hash$two", later); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.ParentByID(ctx, p.ID)
+	if got.PasswordChangedAt == nil || !got.PasswordChangedAt.Equal(later) {
+		t.Fatalf("after RedeemToken: %v; want %v", got.PasswordChangedAt, later)
 	}
 }
 

@@ -110,7 +110,7 @@ func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 		respondInternal(w, err)
 		return
 	}
-	if err := d.Store.SetPassword(ctx, p.ParentID, hash, p.SessionID); err != nil {
+	if err := d.Store.SetPassword(ctx, p.ParentID, hash, p.SessionID, d.Now()); err != nil {
 		respondInternal(w, err)
 		return
 	}

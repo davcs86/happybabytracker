@@ -53,7 +53,7 @@ func (s *Store) RedeemToken(ctx context.Context, hash []byte, secretHash string,
 		if err := tx.QueryRowContext(ctx, `SELECT parent_id FROM one_time_tokens WHERE token_hash = ?`, hash).Scan(&parentID); err != nil {
 			return err
 		}
-		return setPassword(ctx, tx, parentID, secretHash, "")
+		return setPassword(ctx, tx, parentID, secretHash, "", now)
 	})
 	if err != nil {
 		return "", err

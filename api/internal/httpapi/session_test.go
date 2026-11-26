@@ -275,9 +275,12 @@ func TestSessionShape(t *testing.T) {
 		t.Fatalf("parent body = %v", m)
 	}
 	parent := m["parent"].(map[string]any)
-	sameKeys(t, parent, "id", "username", "display_name", "units")
+	sameKeys(t, parent, "id", "username", "display_name", "units", "password_changed_at")
 	if parent["id"] != p.ID || parent["username"] != "ana" || parent["display_name"] != "Name of ana" {
 		t.Fatalf("parent = %v", parent)
+	}
+	if parent["password_changed_at"] != stamp(k.now) {
+		t.Fatalf("password_changed_at = %v, want %v", parent["password_changed_at"], stamp(k.now))
 	}
 	units := parent["units"].(map[string]any)
 	sameKeys(t, units, "weight", "length", "volume", "temp")

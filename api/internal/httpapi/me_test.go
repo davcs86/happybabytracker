@@ -40,7 +40,7 @@ func TestAdminCannotReachMe(t *testing.T) {
 
 func parentObject(t *testing.T, m map[string]any, name, display string, units ...string) {
 	t.Helper()
-	sameKeys(t, m, "id", "username", "display_name", "units")
+	sameKeys(t, m, "id", "username", "display_name", "units", "password_changed_at")
 	u := m["units"].(map[string]any)
 	sameKeys(t, u, "weight", "length", "volume", "temp")
 	if m["username"] != name || m["display_name"] != display || m["id"] == "" ||

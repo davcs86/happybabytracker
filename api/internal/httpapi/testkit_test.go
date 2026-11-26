@@ -139,7 +139,7 @@ func (k *kit) addParent(username string) model.Parent {
 	if err != nil {
 		k.t.Fatal(err)
 	}
-	if err := k.Store.SetPassword(context.Background(), p.ID, testHash(), ""); err != nil {
+	if err := k.Store.SetPassword(context.Background(), p.ID, testHash(), "", k.now); err != nil {
 		k.t.Fatal(err)
 	}
 	return p
