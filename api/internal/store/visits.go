@@ -9,7 +9,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
-const visitColumns = entryColumns + `, starts_at, duration_min, kind, provider, location, outcome_notes, cancelled_at, revision`
+const visitColumns = entryColumns + `, starts_at, duration_min, kind, provider, location, outcome_notes, cancelled_at, revision, provider_npi`
 
 // linkedCounts are the three per-visit counts of linked rows, as columns over visits.
 const linkedCounts = `(SELECT COUNT(*) FROM growth_measurements g WHERE g.visit_id = visits.id),
@@ -56,14 +56,15 @@ func scanVisit(row rowScanner, extra ...any) (model.Visit, error) {
 		start, cancelled            sql.NullInt64
 		kind                        string
 		provider, location, outcome sql.NullString
+		providerNPI                 sql.NullString
 	)
-	e, err := scanEntry(row, append([]any{&start, &v.DurationMin, &kind, &provider, &location, &outcome, &cancelled, &v.Revision}, extra...)...)
+	e, err := scanEntry(row, append([]any{&start, &v.DurationMin, &kind, &provider, &location, &outcome, &cancelled, &v.Revision, &providerNPI}, extra...)...)
 	if err != nil {
 		return model.Visit{}, err
 	}
 	v.Entry, v.StartsAt, v.Kind = e, unixTime(start.Int64), model.VisitKind(kind)
 	v.Provider, v.Location, v.OutcomeNotes = nullableString(provider), nullableString(location), nullableString(outcome)
-	v.CancelledAt = nullableTime(cancelled)
+	v.CancelledAt, v.ProviderNPI = nullableTime(cancelled), nullableString(providerNPI)
 	return v, nil
 }
 
@@ -98,9 +99,9 @@ func (s *Store) CreateVisit(ctx context.Context, kidID, actorID string, v model.
 		if n >= constants.MaxVisitsPerKid {
 			return ErrConflict
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO visits(`+visitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		_, err := tx.ExecContext(ctx, `INSERT INTO visits(`+visitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			v.ID, kidID, v.Note, actorID, actorID, v.CreatedAt.Unix(), v.UpdatedAt.Unix(), v.StartsAt.Unix(), v.DurationMin,
-			string(v.Kind), v.Provider, v.Location, v.OutcomeNotes, nullableUnix(v.CancelledAt), 0)
+			string(v.Kind), v.Provider, v.Location, v.OutcomeNotes, nullableUnix(v.CancelledAt), 0, v.ProviderNPI)
 		return err
 	})
 	if err != nil {
@@ -217,9 +218,9 @@ func (s *Store) UpdateVisit(ctx context.Context, kidID, actorID, id string, now 
 			return ErrNotPast
 		}
 		res, err := tx.ExecContext(ctx,
-			`UPDATE visits SET starts_at = ?, duration_min = ?, kind = ?, provider = ?, location = ?, note = ?, outcome_notes = ?,
-			   cancelled_at = ?, revision = revision + 1, updated_by = ?, updated_at = ? WHERE kid_id = ? AND id = ?`,
-			v.StartsAt.Unix(), v.DurationMin, string(v.Kind), v.Provider, v.Location, v.Note, v.OutcomeNotes,
+			`UPDATE visits SET starts_at = ?, duration_min = ?, kind = ?, provider = ?, location = ?, provider_npi = ?, note = ?,
+			   outcome_notes = ?, cancelled_at = ?, revision = revision + 1, updated_by = ?, updated_at = ? WHERE kid_id = ? AND id = ?`,
+			v.StartsAt.Unix(), v.DurationMin, string(v.Kind), v.Provider, v.Location, v.ProviderNPI, v.Note, v.OutcomeNotes,
 			nullableUnix(v.CancelledAt), actorID, now.Unix(), kidID, v.ID)
 		if err := oneRow(res, err); err != nil {
 			return err

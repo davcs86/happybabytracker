@@ -226,6 +226,33 @@ const (
 	VisitAlarmBefore        = 24 * time.Hour
 )
 
+// Provider lookup (visits spec 10, plan 10): the registry call's bounds, the per-parent rate, the cache, the search
+// fields' rules and the request log's fields.
+const (
+	NPISearchLimit       = 20
+	NPITimeout           = 4 * time.Second
+	NPIMaxResponseBytes  = 1 << 20
+	NPIMaxInFlight       = 4
+	NPISearchesPerMinute = 20
+	NPICacheEntries      = 256
+	NPICacheTTL          = 10 * time.Minute
+	NPINameMinLen        = 2
+	NPINameMaxLen        = 60
+	// NPINamePattern and NPIOrgPattern spell NPINameMinLen and NPINameMaxLen; they apply after trimming.
+	NPINamePattern   = `^\p{L}[\p{L} .'-]{1,59}$`
+	NPIOrgPattern    = `^[\p{L}0-9][\p{L}0-9 &.'-]{1,59}$`
+	NPIPostalCodeLen = 5
+	ProviderNPILen   = 10
+
+	LogFieldNPIOutcome = "npi_outcome"
+	LogFieldNPIResults = "npi_results"
+)
+
+// NPIStates lists the state codes a provider search takes: the 50 states, DC, AS, GU, MP, PR and VI.
+var NPIStates = []string{"AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY",
+	"LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR",
+	"PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "AS", "GU", "MP", "PR", "VI"}
+
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}
 
