@@ -81,6 +81,8 @@ var routeClasses = map[string]Access{
 	"PUT /v1/kids/{kid}/push-devices/{device}":            Caregiver,
 	"DELETE /v1/kids/{kid}/push-devices/{device}":         Caregiver,
 	"GET /v1/_test/pushes":                                Internal,
+	"GET /v1/providers":                                   Parent,
+	"POST /v1/providers/search":                           Parent,
 	"GET /v1/me/ntfy":                                     Parent,
 	"PUT /v1/me/ntfy":                                     Parent,
 	"POST /v1/me/ntfy/regenerate":                         Parent,

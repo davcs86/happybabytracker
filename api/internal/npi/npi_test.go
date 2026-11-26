@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -328,9 +329,13 @@ func TestInFlightCap(t *testing.T) {
 	})
 	s := New(rt, fixedNow)
 	finished := make(chan error, constants.NPIMaxInFlight+1)
+	n := 0
+	// Each call is a distinct query, so none is answered from the cache.
 	start := func() {
+		n++
+		q := Query{Kind: Person, LastName: "quill", State: "WA", PostalCode: strconv.Itoa(10000 + n)}
 		go func() {
-			_, _, err := s.Search(context.Background(), waQuery())
+			_, _, err := s.Search(context.Background(), q)
 			finished <- err
 		}()
 		<-entered
@@ -338,7 +343,7 @@ func TestInFlightCap(t *testing.T) {
 	for range constants.NPIMaxInFlight {
 		start()
 	}
-	if _, outcome, err := s.Search(context.Background(), waQuery()); !errors.Is(err, ErrUnavailable) || outcome != UpstreamError {
+	if _, outcome, err := s.Search(context.Background(), Query{Kind: Person, LastName: "other", State: "WA"}); !errors.Is(err, ErrUnavailable) || outcome != UpstreamError {
 		t.Errorf("the call over the cap: %s %v, want upstream_error at once", outcome, err)
 	}
 	mu.Lock()
@@ -367,4 +372,119 @@ func TestEmpty(t *testing.T) {
 	if b, _ := json.Marshal(p); string(b) != `{"results":[],"more":false}` {
 		t.Errorf("marshalled %s", b)
 	}
+}
+
+func TestSearchCachesNormalisedQuery(t *testing.T) {
+	now := clock
+	f := okFake(page(t, person("9123456789", "ANA", "QUILL", addr("LOCATION", "1 A ST", "PORT ANGELES", "WA", "98362"))))
+	s := New(f, func() time.Time { return now })
+	first, outcome, err := s.Search(context.Background(), Query{Kind: Person, LastName: " Quill ", State: "wa", City: "Port  Angeles"})
+	if err != nil || outcome != OK {
+		t.Fatalf("first: %s %v", outcome, err)
+	}
+	second, outcome, err := s.Search(context.Background(), Query{Kind: Person, LastName: "quill", State: "WA", City: "port angeles"})
+	if err != nil || outcome != CacheHit || f.count() != 1 {
+		t.Fatalf("second: %s %v, %d requests; want cache_hit after one", outcome, err, f.count())
+	}
+	if len(first.Results) != len(second.Results) || first.More != second.More {
+		t.Errorf("cached page %+v differs from %+v", second, first)
+	}
+	if _, outcome, _ := s.Search(context.Background(), Query{Kind: Person, LastName: "quill", FirstName: "a", State: "WA", City: "port angeles"}); outcome == CacheHit {
+		t.Error("another first name hit the cache")
+	}
+	if _, outcome, _ := s.Search(context.Background(), Query{Kind: Organization, Organization: "quill", State: "WA", City: "port angeles"}); outcome == CacheHit {
+		t.Error("an organization search hit a person's cache entry")
+	}
+	reqs := f.count()
+	now = now.Add(constants.NPICacheTTL - time.Second)
+	if _, outcome, _ := s.Search(context.Background(), Query{Kind: Person, LastName: "quill", State: "WA", City: "Port Angeles"}); outcome != CacheHit {
+		t.Errorf("just before the TTL: %s, want cache_hit", outcome)
+	}
+	now = clock.Add(constants.NPICacheTTL)
+	if _, outcome, _ := s.Search(context.Background(), Query{Kind: Person, LastName: "quill", State: "WA", City: "Port Angeles"}); outcome != OK || f.count() != reqs+1 {
+		t.Errorf("at the TTL: %s after %d requests, want a new request", outcome, f.count())
+	}
+
+	empty := okFake(page(t))
+	s = New(empty, fixedNow)
+	for range 2 {
+		s.Search(context.Background(), waQuery())
+	}
+	if _, outcome, _ := s.Search(context.Background(), waQuery()); outcome != CacheHit || empty.count() != 1 {
+		t.Errorf("an empty answer: %s after %d requests, want it cached", outcome, empty.count())
+	}
+}
+
+func TestSearchErrorsAreNotCached(t *testing.T) {
+	for name, bad := range map[string]*fake{
+		"status 500":  {status: http.StatusInternalServerError},
+		"errors body": okFake(`{"Errors":[{"description":"x","field":"state","number":"07"}]}`),
+	} {
+		var calls int
+		rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			calls++
+			if calls == 1 {
+				return bad.RoundTrip(r)
+			}
+			return okFake(page(t)).RoundTrip(r)
+		})
+		s := New(rt, fixedNow)
+		if _, outcome, err := s.Search(context.Background(), waQuery()); err == nil || outcome != UpstreamError {
+			t.Fatalf("%s: first: %s %v", name, outcome, err)
+		}
+		if _, outcome, err := s.Search(context.Background(), waQuery()); err != nil || outcome != Empty || calls != 2 {
+			t.Errorf("%s: second: %s %v after %d calls, want a fresh empty answer", name, outcome, err, calls)
+		}
+	}
+}
+
+func TestCacheBound(t *testing.T) {
+	f := okFake(page(t))
+	s := New(f, fixedNow)
+	q := func(i int) Query {
+		return Query{Kind: Person, LastName: "quill", State: "WA", PostalCode: strconv.Itoa(10000 + i)}
+	}
+	for i := range constants.NPICacheEntries + 1 {
+		if _, _, err := s.Search(context.Background(), q(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := s.cacheLen(); n != constants.NPICacheEntries {
+		t.Errorf("%d cache entries, want %d", n, constants.NPICacheEntries)
+	}
+	reqs := f.count()
+	if _, outcome, _ := s.Search(context.Background(), q(1)); outcome != CacheHit {
+		t.Errorf("the second query: %s, want still cached", outcome)
+	}
+	if _, outcome, _ := s.Search(context.Background(), q(0)); outcome == CacheHit || f.count() != reqs+1 {
+		t.Errorf("the first query: %s, want evicted", outcome)
+	}
+}
+
+func TestCacheEvictsExpiredFirst(t *testing.T) {
+	now := clock
+	s := New(okFake(page(t)), func() time.Time { return now })
+	q := func(i int) Query {
+		return Query{Kind: Person, LastName: "quill", State: "WA", PostalCode: strconv.Itoa(10000 + i)}
+	}
+	for i := range constants.NPICacheEntries {
+		if i == 2 {
+			now = clock.Add(constants.NPICacheTTL / 2)
+		}
+		s.Search(context.Background(), q(i))
+	}
+	now = clock.Add(constants.NPICacheTTL)
+	s.Search(context.Background(), q(constants.NPICacheEntries))
+	if n := s.cacheLen(); n != constants.NPICacheEntries-1 {
+		t.Errorf("%d entries after a full cache with two expired took one more, want %d", n, constants.NPICacheEntries-1)
+	}
+	if _, outcome, _ := s.Search(context.Background(), q(2)); outcome != CacheHit {
+		t.Errorf("the oldest live entry: %s, want kept", outcome)
+	}
+}
+
+func (s *Searcher) cacheLen() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.cache)
 }

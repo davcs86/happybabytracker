@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -69,11 +71,20 @@ type failure struct{ reason string }
 func (f failure) Error() string        { return ErrUnavailable.Error() + ": " + f.reason }
 func (f failure) Is(target error) bool { return target == ErrUnavailable }
 
-// Searcher calls the registry with at most NPIMaxInFlight calls out at once.
+// Searcher calls the registry with at most NPIMaxInFlight calls out at once, behind a bounded cache.
 type Searcher struct {
 	client *http.Client
 	now    func() time.Time
 	slots  chan struct{}
+
+	mu    sync.Mutex
+	cache map[string]cacheEntry
+	order []string // cache keys, oldest inserted first
+}
+
+type cacheEntry struct {
+	page Page
+	at   time.Time
 }
 
 // New builds a Searcher over rt; nil means a clone of http.DefaultTransport.
@@ -86,11 +97,16 @@ func New(rt http.RoundTripper, now func() time.Time) *Searcher {
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		now:   now,
 		slots: make(chan struct{}, constants.NPIMaxInFlight),
+		cache: map[string]cacheEntry{},
 	}
 }
 
 // Search asks the registry and keeps the records practising where q says; a fifth concurrent call fails at once.
 func (s *Searcher) Search(ctx context.Context, q Query) (Page, Outcome, error) {
+	key := cacheKey(q)
+	if p, ok := s.cached(key); ok {
+		return p, CacheHit, nil
+	}
 	select {
 	case s.slots <- struct{}{}:
 		defer func() { <-s.slots }()
@@ -114,10 +130,63 @@ func (s *Searcher) Search(ctx context.Context, q Query) (Page, Outcome, error) {
 			p.Results = append(p.Results, r)
 		}
 	}
+	s.store(key, p)
 	if len(p.Results) == 0 {
 		return p, Empty, nil
 	}
 	return p, OK, nil
+}
+
+// cacheKey is the kind and the fields in body order, each trimmed, spaces collapsed and lowercased (plan 10 B3).
+func cacheKey(q Query) string {
+	parts := []string{string(q.Kind), q.LastName, q.FirstName, q.Organization, q.State, q.City, q.PostalCode}
+	for i, p := range parts {
+		parts[i] = strings.ToLower(collapse(p))
+	}
+	return strings.Join(parts, "\x1f")
+}
+
+func (s *Searcher) expired(e cacheEntry, now time.Time) bool {
+	return !now.Before(e.at.Add(constants.NPICacheTTL))
+}
+
+func (s *Searcher) cached(key string) (Page, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.cache[key]
+	if !ok || s.expired(e, s.now()) {
+		return Page{}, false
+	}
+	return e.page, true
+}
+
+// store keeps p under key; a full cache drops every expired entry first, then the oldest inserted.
+func (s *Searcher) store(key string, p Page) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	if _, ok := s.cache[key]; ok {
+		s.drop(func(k string) bool { return k == key })
+	}
+	if len(s.cache) >= constants.NPICacheEntries {
+		s.drop(func(k string) bool { return s.expired(s.cache[k], now) })
+	}
+	if len(s.cache) >= constants.NPICacheEntries {
+		oldest := s.order[0]
+		s.drop(func(k string) bool { return k == oldest })
+	}
+	s.cache[key] = cacheEntry{page: p, at: now}
+	s.order = append(s.order, key)
+}
+
+func (s *Searcher) drop(match func(string) bool) {
+	s.order = slices.DeleteFunc(s.order, func(k string) bool {
+		if match(k) {
+			delete(s.cache, k)
+			return true
+		}
+		return false
+	})
 }
 
 func isTimeout(err error) bool {
