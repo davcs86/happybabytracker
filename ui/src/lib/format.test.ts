@@ -3,6 +3,8 @@ import {
 	ageMonths,
 	formatAge,
 	formatAgeDays,
+	formatAgo,
+	formatElapsed,
 	formatDuration,
 	formatInstant,
 	formatMilk,
@@ -201,5 +203,34 @@ describe('formatMilk', () => {
 			'weight gain 0.01 oz, about 0.9 fl oz'
 		);
 		expect(formatMilk(odd, { weight: 'kg', volume: 'ml' })).toBe('weight gain 100 g, about 7 ml');
+	});
+});
+
+describe('formatAgo', () => {
+	const now = new Date('2026-11-25T12:00:00Z');
+	const ago = (minutes: number) => formatAgo(new Date(now.getTime() - minutes * 60_000).toISOString(), now);
+	it('says how long ago an instant was, in the units the Home tiles use', () => {
+		expect(ago(0)).toBe('Just now');
+		expect(ago(0.5)).toBe('Just now');
+		expect(ago(1)).toBe('1 min ago');
+		expect(ago(59)).toBe('59 min ago');
+		expect(ago(60)).toBe('1 h ago');
+		expect(ago(94)).toBe('1 h 34 min ago');
+		expect(ago(24 * 60 - 1)).toBe('23 h 59 min ago');
+		expect(ago(24 * 60)).toBe('1 d ago');
+		expect(ago(3 * 24 * 60 + 600)).toBe('3 d ago');
+	});
+	it('never reads as the future', () => {
+		expect(ago(-5)).toBe('Just now');
+	});
+});
+
+describe('formatElapsed', () => {
+	it('is H:MM:SS, with the hours growing past a day', () => {
+		expect(formatElapsed(0)).toBe('0:00:00');
+		expect(formatElapsed(65)).toBe('0:01:05');
+		expect(formatElapsed(3600 + 34 * 60 + 7)).toBe('1:34:07');
+		expect(formatElapsed(26 * 3600)).toBe('26:00:00');
+		expect(formatElapsed(-3)).toBe('0:00:00');
 	});
 });
