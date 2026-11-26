@@ -47,11 +47,24 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable
+      - id: pnpm
+        run: echo "store=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ${{ steps.pnpm.outputs.store }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('ui/pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm lint
       - run: pnpm test
-      - run: pnpm exec playwright install --with-deps chromium
+      - id: playwright
+        run: echo "version=$(pnpm exec playwright --version)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # Headless tests launch only the headless shell; the OS packages are not cached.
+      - run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm test:e2e --trace off
 
   images:
