@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import { openSession, UI_ORIGIN } from './stub-api.js';
 
 export const SESSION_COOKIE = 'hbt_session';
 
@@ -46,9 +47,28 @@ export const untilHydrated = (input: Locator, attribute: 'value' | 'checked' = '
 
 export const KID_COOKIE = 'hbt_kid';
 
-export async function signIn(page: Page, who: { username: string; password: string }) {
+// Signs in through the form, as a person does: the session carries the label built from the user agent.
+export async function signInWithForm(page: Page, who: { username: string; password: string }) {
 	await page.goto('/login');
 	await login(page, who.username, who.password);
+	await page.waitForURL((u) => u.pathname !== '/login');
+}
+
+// Skips the form (login.spec.ts drives it): the login action's cookie, then /login's landing redirect.
+export async function signIn(page: Page, who: { username: string; password: string }) {
+	const token = await openSession(who.username, who.password);
+	await page.context().addCookies([
+		{
+			name: SESSION_COOKIE,
+			value: token,
+			domain: new URL(UI_ORIGIN).hostname,
+			path: '/',
+			httpOnly: true,
+			secure: true,
+			sameSite: 'Strict'
+		}
+	]);
+	await page.goto('/login');
 	await page.waitForURL((u) => u.pathname !== '/login');
 }
 

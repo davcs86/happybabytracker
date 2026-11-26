@@ -3,7 +3,7 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectLanding,
-	signIn,
+	signInWithForm,
 	untilHydrated
 } from './helpers.js';
 import { ANA, MIA, STUB_TOKEN, STUB_URL, openSession, resetStub } from './stub-api.js';
@@ -12,7 +12,7 @@ const NEW_PASSWORD = 'a brand new password';
 
 test.beforeEach(async ({ page }) => {
 	await resetStub();
-	await signIn(page, ANA);
+	await signInWithForm(page, ANA);
 	await page.goto('/account');
 	await expect(page.getByRole('heading', { name: 'Your profile', level: 1 })).toBeVisible();
 	await untilHydrated(page.getByLabel('Display name'));
