@@ -184,6 +184,28 @@ func TestDeleteKidCascadesOnlyItsGrants(t *testing.T) {
 	}
 }
 
+func TestAccessListMarksADisabledParent(t *testing.T) {
+	s := openMem(t)
+	zed := mustParent(t, s, "zed")
+	mustParent(t, s, "amy")
+	k := mustKid(t, s, zed.ID, "Lía")
+	mustGrant(t, s, k.ID, zed.ID, "amy", model.RoleCaregiver)
+	amy, _, err := s.ParentByUsername(ctx, "amy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetParentDisabled(ctx, amy.ID, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AccessList(ctx, k.ID)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("AccessList = %v, %v", got, err)
+	}
+	if got[0].Username != "zed" || got[0].Disabled || got[1].Username != "amy" || !got[1].Disabled {
+		t.Errorf("grants = %+v", got)
+	}
+}
+
 func TestAccessListOrder(t *testing.T) {
 	s := openMem(t)
 	zed := mustParent(t, s, "zed")

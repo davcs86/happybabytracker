@@ -86,6 +86,7 @@ type KidWithRole struct {
 type Grant struct {
 	ParentID, Username, DisplayName string
 	Role                            Role
+	Disabled                        bool
 }
 
 // PushDevice is a parent's Web Push subscription as the API shows it: never the endpoint or the keys.

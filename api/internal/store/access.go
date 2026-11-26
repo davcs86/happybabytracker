@@ -22,7 +22,7 @@ func (s *Store) RoleFor(ctx context.Context, kidID, parentID string) (model.Role
 // AccessList returns the kid's grants, guardians first, then by username; never nil.
 func (s *Store) AccessList(ctx context.Context, kidID string) ([]model.Grant, error) {
 	rows, err := s.r.QueryContext(ctx,
-		`SELECT p.id, p.username, p.display_name, a.role FROM kid_access a JOIN parents p ON p.id = a.parent_id
+		`SELECT p.id, p.username, p.display_name, a.role, p.disabled FROM kid_access a JOIN parents p ON p.id = a.parent_id
 		 WHERE a.kid_id = ? ORDER BY CASE a.role WHEN ? THEN 0 ELSE 1 END, p.username`, kidID, model.RoleGuardian)
 	if err != nil {
 		return nil, err
@@ -31,7 +31,7 @@ func (s *Store) AccessList(ctx context.Context, kidID string) ([]model.Grant, er
 	out := []model.Grant{}
 	for rows.Next() {
 		var g model.Grant
-		if err := rows.Scan(&g.ParentID, &g.Username, &g.DisplayName, &g.Role); err != nil {
+		if err := rows.Scan(&g.ParentID, &g.Username, &g.DisplayName, &g.Role, &g.Disabled); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
