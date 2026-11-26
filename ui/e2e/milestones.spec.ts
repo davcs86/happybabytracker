@@ -791,3 +791,43 @@ test.describe('without JavaScript', () => {
 		await expect(page).toHaveURL(`/kids/${SAMI.id}/modules`);
 	});
 });
+
+test('Undo takes back a mark and an unmark', async ({ page }) => {
+	const cleo = await stubAs(CLEO);
+	const id = '9m-lc-stub-1';
+	await signIn(page, CLEO);
+	const sheet = await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => item(p, id).getByRole('link', { name: `Choose a date for ${itemText(id)}` }),
+		'Mark as reached'
+	);
+	await untilHydrated(field(page, 'Date reached'));
+	await save(page);
+	await expect(sheet).toBeHidden();
+	await onPage(page, NELL);
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
+
+	const toast = page.locator('[data-sonner-toast]');
+	await toast.filter({ hasText: 'Milestone saved' }).getByRole('button', { name: 'Undo' }).click();
+	await expect(toast.filter({ hasText: 'Milestone removed' })).toBeVisible();
+	await expect(item(page, id)).not.toContainText(reachedLabel(TODAY));
+	expect((await stored(cleo, NELL.id)).reached(id)).toBeNull();
+
+	await item(page, id)
+		.getByRole('link', { name: `Choose a date for ${itemText(id)}` })
+		.click();
+	await untilHydrated(field(page, 'Date reached'));
+	await save(page);
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
+	await editLink(item(page, id), itemText(id)).click();
+	await page.getByText('Undo reached', { exact: true }).click();
+	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
+	await expect(item(page, id)).not.toContainText(reachedLabel(TODAY));
+	await toast
+		.filter({ hasText: 'Milestone removed' })
+		.getByRole('button', { name: 'Undo' })
+		.click();
+	await expect(toast.filter({ hasText: 'Milestone restored' })).toBeVisible();
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
+});

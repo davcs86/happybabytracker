@@ -90,7 +90,17 @@
 			method="POST"
 			action="?/delete"
 			class="flex flex-col gap-3 pb-3.5"
-			use:enhance={savedAs('Milestone removed')}
+			use:enhance={savedAs('Milestone removed', {
+				restore: () => ({
+					action: `/kids/${data.kid.id}/milestones/new?/save`,
+					fields: {
+						...(data.item ? { item: data.item } : { text: data.text }),
+						reached_on: data.values.reached_on ?? '',
+						note: data.values.note ?? ''
+					}
+				}),
+				undone: 'Milestone restored'
+			})}
 		>
 			{#if del?.message}
 				<Alert>{del.message}</Alert>

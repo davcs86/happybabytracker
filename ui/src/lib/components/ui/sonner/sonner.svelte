@@ -15,11 +15,11 @@
 	offset={84}
 	mobileOffset={84}
 	duration={TOAST_MS}
-	class="toaster group"
+	class="toaster group pointer-events-auto!"
 	toastOptions={{
 		classes: {
 			toast:
-				'bg-foreground! text-background! rounded-xl! border-0! shadow-menu! text-[14px]! py-1.5! pr-1.5! pl-4!',
+				'pointer-events-auto! bg-foreground! text-background! rounded-xl! border-0! shadow-menu! text-[14px]! py-1.5! pr-1.5! pl-4!',
 			actionButton: 'bg-transparent! text-toast-link! min-h-11! px-3! font-semibold!'
 		}
 	}}

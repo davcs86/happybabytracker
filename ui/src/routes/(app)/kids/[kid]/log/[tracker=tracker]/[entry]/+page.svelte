@@ -63,7 +63,14 @@
 				method="POST"
 				action="?/delete"
 				class="flex flex-col gap-2.5 pt-2.5 pb-2"
-				use:enhance={savedAs('Entry deleted')}
+				use:enhance={savedAs('Entry deleted', {
+					// The stored values are the form's own fields: posting them to the create action restores the entry.
+					restore: () => ({
+						action: `/kids/${data.kid.id}/log/${data.kind}?/save`,
+						fields: { ...values }
+					}),
+					undone: 'Entry restored'
+				})}
 			>
 				{#if del?.message}
 					<p class={ERROR_CLASS} role="alert">{del.message}</p>

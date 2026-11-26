@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectAccessible, openSheet, signIn } from './helpers.js';
-import { ANA, MIA, resetStub } from './stub-api.js';
+import { ANA, MIA, resetStub, stubAs } from './stub-api.js';
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -87,4 +87,62 @@ test.describe('without JavaScript', () => {
 		await expect(page).toHaveURL(`/kids/${MIA.id}/settings`);
 		await expect(page.getByRole('heading', { name: 'Edit details', level: 1 })).toBeVisible();
 	});
+});
+
+const undo = (page: Page, message: string) =>
+	page
+		.locator('[data-sonner-toast]')
+		.filter({ hasText: message })
+		.getByRole('button', { name: 'Undo' });
+
+test('Undo takes back an added person, a role change and a removal', async ({ page }) => {
+	await signIn(page, ANA);
+	const sheet = await openSheet(page, profile, link('Manage access'), 'Access');
+	const dan = sheet.getByRole('listitem').filter({ hasText: 'Dan' });
+
+	await sheet.getByLabel('Parent’s username').fill('dan');
+	await sheet.getByRole('button', { name: 'Give access', exact: true }).click();
+	await expect(dan).toContainText('Caregiver');
+	await undo(page, 'Access added').click();
+	await expect(dan).toHaveCount(0);
+	await expect(toast(page, 'Access removed')).toBeVisible();
+
+	await sheet.getByLabel('Parent’s username').fill('dan');
+	await sheet.getByRole('button', { name: 'Give access', exact: true }).click();
+	await expect(dan).toContainText('Caregiver');
+	await dan.getByRole('button', { name: 'Make Dan a guardian' }).click();
+	await expect(dan).toContainText('Guardian');
+	await undo(page, 'Role changed').click();
+	await expect(toast(page, 'Role restored')).toBeVisible();
+	await expect(dan).toContainText('Caregiver');
+
+	await dan.getByRole('button', { name: /^Remove Dan/ }).click();
+	await expect(dan).toHaveCount(0);
+	await undo(page, 'Access removed').click();
+	await expect(toast(page, 'Access restored')).toBeVisible();
+	await expect(dan).toContainText('Caregiver');
+});
+
+test('Undo restores a deleted entry', async ({ page }) => {
+	const ana = await stubAs(ANA);
+	const made = await ana('POST', `/kids/${MIA.id}/diapers`.replace('/kids/', '/v1/kids/'), {
+		kind: 'dirty',
+		note: 'blowout'
+	});
+	expect(made.status).toBe(201);
+	await signIn(page, ANA);
+	const timeline = `/kids/${MIA.id}/timeline`;
+	const sheet = await openSheet(
+		page,
+		timeline,
+		(p) => p.getByRole('link', { name: /Diaper dirty/ }),
+		'Edit diaper'
+	);
+	await sheet.getByText('Delete this entry', { exact: true }).click();
+	await sheet.getByRole('button', { name: 'Yes, delete this entry' }).click();
+	await expect(sheet).toBeHidden();
+	await expect(page.getByRole('link', { name: /Diaper dirty/ })).toHaveCount(0);
+	await undo(page, 'Entry deleted').click();
+	await expect(toast(page, 'Entry restored')).toBeVisible();
+	await expect(page.getByRole('link', { name: /Diaper dirty/ })).toHaveCount(1);
 });

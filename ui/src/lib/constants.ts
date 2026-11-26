@@ -37,6 +37,7 @@ export const FIND_CHILD_MIN = 6;
 // Toast display time; a failure that offers Try again stays longer.
 export const TOAST_MS = 6000;
 export const TOAST_FAILURE_MS = 9000;
+export const UNDO_FAILED = 'Could not undo that';
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 256;
 // The API's limits (api/internal/constants), for the forms' hints and attributes.
