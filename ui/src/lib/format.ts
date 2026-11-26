@@ -143,3 +143,15 @@ export function formatAgo(instant: string, now: Date): string {
 	}
 	return `${Math.floor(hours / HOURS_PER_DAY)} d ago`;
 }
+
+const DAYS_PER_MONTH_LABEL = 30;
+
+// "3 days ago": today and yesterday by name, whole days up to a month, then whole months.
+export function formatDaysAgo(instant: string, now: Date): string {
+	const days = Math.floor((now.getTime() - new Date(instant).getTime()) / MS_PER_DAY);
+	if (days < 1) return 'today';
+	if (days === 1) return 'yesterday';
+	if (days < DAYS_PER_MONTH_LABEL) return `${days} days ago`;
+	const months = Math.floor(days / DAYS_PER_MONTH_LABEL);
+	return months === 1 ? '1 month ago' : `${months} months ago`;
+}

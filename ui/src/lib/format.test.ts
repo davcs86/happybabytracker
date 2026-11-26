@@ -4,6 +4,7 @@ import {
 	formatAge,
 	formatAgeDays,
 	formatAgo,
+	formatDaysAgo,
 	formatElapsed,
 	formatDuration,
 	formatInstant,
@@ -233,5 +234,20 @@ describe('formatElapsed', () => {
 		expect(formatElapsed(3600 + 34 * 60 + 7)).toBe('1:34:07');
 		expect(formatElapsed(26 * 3600)).toBe('26:00:00');
 		expect(formatElapsed(-3)).toBe('0:00:00');
+	});
+});
+
+describe('formatDaysAgo', () => {
+	const now = new Date('2026-11-25T12:00:00Z');
+	const ago = (days: number, hours = 0) =>
+		formatDaysAgo(new Date(now.getTime() - (days * 24 + hours) * 3_600_000).toISOString(), now);
+	it('says today, yesterday, then whole days, then whole months', () => {
+		expect(ago(0, 5)).toBe('today');
+		expect(ago(1)).toBe('yesterday');
+		expect(ago(2)).toBe('2 days ago');
+		expect(ago(29)).toBe('29 days ago');
+		expect(ago(30)).toBe('1 month ago');
+		expect(ago(75)).toBe('2 months ago');
+		expect(ago(400)).toBe('13 months ago');
 	});
 });

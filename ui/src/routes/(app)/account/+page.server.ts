@@ -70,6 +70,18 @@ export const actions: Actions = {
 		}
 		return failAction(r, { action: 'password' as const, field: null });
 	},
+	// One call per other session: the list is read once, and a session that is already gone is no failure.
+	signoutOthers: async ({ locals }) => {
+		const list = await locals.api.listSessions();
+		if (!list.ok) return failAction(list, { action: 'signout' as const, field: null });
+		for (const s of list.data.filter((x) => !x.current)) {
+			const r = await locals.api.deleteSession(s.id);
+			if (!r.ok && r.reason !== 'not_found') {
+				return failAction(r, { action: 'signout' as const, field: null });
+			}
+		}
+		return { action: 'signout' as const, done: true };
+	},
 	signout: async ({ request, locals }) => {
 		const id = String((await request.formData()).get('session_id') ?? '');
 		const r = await locals.api.deleteSession(id);
