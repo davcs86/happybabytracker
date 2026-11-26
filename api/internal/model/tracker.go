@@ -340,4 +340,6 @@ type Visit struct {
 	OutcomeNotes       *string
 	CancelledAt        *time.Time
 	Revision           int
+	// ProviderNPI is the registry number picked with Provider's text; it never outlives a change of that text.
+	ProviderNPI *string
 }

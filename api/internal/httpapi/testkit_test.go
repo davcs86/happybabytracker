@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/npi"
 	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -57,6 +59,31 @@ type kit struct {
 	Push     push.Sender
 	Recorder *push.Recorder
 	Resolver push.Resolver
+	// Registry stands in for NPPES behind NPI; no kit reaches the real registry.
+	Registry   *registry
+	NPI        *npi.Searcher
+	NPILimiter *auth.Limiter
+}
+
+// registry answers every NPPES request with status and body, and counts them.
+type registry struct {
+	mu           sync.Mutex
+	status, hits int
+	body         string
+}
+
+func (r *registry) set(status int, body string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.status, r.body = status, body
+}
+
+func (r *registry) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hits++
+	return &http.Response{StatusCode: r.status, Header: http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(r.body)), Request: req}, nil
 }
 
 // testVAPID is one P-256 pair per test binary; the kit runs with Web Push on and the fake sender.
@@ -134,6 +161,8 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 	k.Push = k.Recorder
 	k.Cfg.Ntfy, k.Cfg.NtfyEnabled = ntfy.Config{URL: testNtfyURL, TopicPrefix: "hbt-test"}, true
 	k.Limiter = auth.NewLimiter(constants.LoginAttemptsPerMinute, k.clock)
+	k.Registry = &registry{status: http.StatusOK, body: `{"result_count":0,"results":[]}`}
+	k.NPI, k.NPILimiter = npi.New(k.Registry, k.clock), auth.NewLimiter(constants.NPISearchesPerMinute, k.clock)
 	k.Handler = NewHandler(k.deps())
 	return k
 }
@@ -165,7 +194,7 @@ func (k *kit) deps() Deps {
 	d := Deps{
 		Store: k.Store, Cfg: k.Cfg, Limiter: k.Limiter, Now: k.clock, LastTick: k.clock,
 		Log:  slog.New(slog.NewJSONHandler(k.Log, nil)),
-		Push: k.Push, Resolver: k.Resolver, PushRecorder: k.Recorder,
+		Push: k.Push, Resolver: k.Resolver, PushRecorder: k.Recorder, NPI: k.NPI, NPILimiter: k.NPILimiter,
 	}
 	if k.Cfg.VAPIDKey != nil {
 		d.VAPIDPublicKey = push.PublicKey(k.Cfg.VAPIDKey)
@@ -301,7 +330,8 @@ func sameKeys(t *testing.T, got map[string]any, want ...string) {
 }
 
 var allowedLogFields = []string{"time", "level", "msg", "route", "status", "principal_kind", "request_id", "duration_ms", constants.LogFieldCause, constants.LogFieldSlide,
-	constants.LogFieldOutcomeGrowth, constants.LogFieldOutcomeVaccinations, constants.LogFieldOutcomeMedications}
+	constants.LogFieldOutcomeGrowth, constants.LogFieldOutcomeVaccinations, constants.LogFieldOutcomeMedications,
+	constants.LogFieldNPIOutcome, constants.LogFieldNPIResults}
 
 // logLeaks is testlog.Leaks with this package's allowlist.
 func logLeaks(line string, banned ...string) []string {

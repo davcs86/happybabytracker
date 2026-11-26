@@ -410,3 +410,29 @@ func TestUpdateVisitMergesOnTheRowReadInTheWrite(t *testing.T) {
 		t.Errorf("an edit of the length after notes were saved: %+v, %v", d.Visit, err)
 	}
 }
+
+func TestVisitProviderNPIRoundTrip(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	in := newVisit(t0.Add(48 * time.Hour))
+	in.Provider, in.ProviderNPI = strp("AVERY QUILL, MD"), strp("1234567893")
+	v := mustVisit(t, s, k.ID, ana.ID, in)
+	if v.ProviderNPI == nil || *v.ProviderNPI != "1234567893" {
+		t.Fatalf("created provider_npi %v", v.ProviderNPI)
+	}
+	got, err := s.Visit(ctx, k.ID, v.ID)
+	if err != nil || got.ProviderNPI == nil || *got.ProviderNPI != "1234567893" {
+		t.Fatalf("read back %v, %v", got.ProviderNPI, err)
+	}
+	rows, err := s.ListVisits(ctx, k.ID, ListQuery{From: t0, To: t0.Add(72 * time.Hour), Limit: 10}, true)
+	if err != nil || len(rows) != 1 || rows[0].ProviderNPI == nil || *rows[0].ProviderNPI != "1234567893" {
+		t.Fatalf("listed %+v, %v", rows, err)
+	}
+	edit := got.Visit
+	edit.ProviderNPI = nil
+	updated, err := s.UpdateVisit(ctx, k.ID, ana.ID, v.ID, t0, set(edit))
+	if err != nil || updated.ProviderNPI != nil || updated.Provider == nil {
+		t.Fatalf("updated %v %v, %v", updated.ProviderNPI, updated.Provider, err)
+	}
+}

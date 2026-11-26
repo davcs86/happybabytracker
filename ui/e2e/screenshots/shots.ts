@@ -24,10 +24,14 @@ export const NOW_MS = Date.parse(SHOTS_NOW);
 export const minutesAgo = (m: number) =>
 	new Date(NOW_MS - m * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
+// A page without JavaScript paints no animation frame, so shot() waits for none there.
+const noScript = new WeakSet<Page>();
+
 // Every test starts from a fresh stub with the browser clock frozen at SHOTS_NOW.
 export const test = base.extend<{ frozen: void }>({
 	frozen: [
-		async ({ page }, use) => {
+		async ({ page, javaScriptEnabled }, use) => {
+			if (!javaScriptEnabled) noScript.add(page);
 			await resetStub();
 			await page.clock.setFixedTime(new Date(NOW_MS));
 			await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -54,9 +58,13 @@ export async function shot(page: Page, area: Area, name: string, about: string) 
 	await page.evaluate(() => document.fonts.ready);
 	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
 	// A caret left from typing can still be painted for a frame after the blur.
-	await page.evaluate(
-		() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
-	);
+	const settle = () =>
+		noScript.has(page)
+			? Promise.resolve()
+			: page.evaluate(
+					() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+				);
+	await settle();
 	await page.mouse.move(0, 0);
 	const path = join(SHOTS_DIR, area, `${name}-${project}.png`);
 	mkdirSync(dirname(path), { recursive: true });
@@ -64,10 +72,6 @@ export async function shot(page: Page, area: Area, name: string, about: string) 
 	// Growing the viewport can reflow the page, so repeat until the page fits.
 	const size = page.viewportSize()!;
 	let height = size.height;
-	const settle = () =>
-		page.evaluate(
-			() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
-		);
 	for (let pass = 0; pass < 8; pass++) {
 		await settle();
 		await page.waitForLoadState('networkidle');

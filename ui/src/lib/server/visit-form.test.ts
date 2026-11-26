@@ -46,6 +46,7 @@ const visit: Visit = {
 	cancelledAt: null,
 	provider: 'Dr. Lee',
 	location: null,
+	providerNpi: null,
 	note: '4-month check',
 	outcomeNotes: null,
 	revision: 2
@@ -62,7 +63,9 @@ describe('visitCreateValues', () => {
 			kind: '',
 			provider: '',
 			location: '',
-			note: ''
+			provider_npi: '',
+			note: '',
+			provider_npi_for: ''
 		});
 	});
 });
@@ -96,14 +99,24 @@ describe('readVisitForm: create', () => {
 			kind: 'checkup',
 			provider: 'x'.repeat(VISIT_PROVIDER_MAX_LEN + 1),
 			location: 'x'.repeat(VISIT_LOCATION_MAX_LEN + 1),
+			provider_npi: '90000000',
 			note: 'x'.repeat(NOTE_MAX_LEN + 1)
 		};
-		const order = ['starts_at', 'duration_min', 'kind', 'provider', 'location', 'note'];
+		const order = [
+			'starts_at',
+			'duration_min',
+			'kind',
+			'provider',
+			'location',
+			'provider_npi',
+			'note'
+		];
 		order.forEach((field, i) => {
-			const fields = {
+			const fields: Record<string, string> = {
 				...filled,
 				...Object.fromEntries(order.slice(i).map((f) => [f, bad[f as keyof typeof bad]]))
 			};
+			fields.provider_npi_for = fields.provider;
 			expect(create(fields)).toMatchObject({ input: null, field });
 		});
 	});
@@ -145,6 +158,41 @@ describe('readVisitForm: create', () => {
 		expect(create({ ...filled, note: 'é'.repeat(NOTE_MAX_LEN) }).field).toBeNull();
 	});
 
+	it('sends the picked registry number while the provider text is the one it filled in', () => {
+		const picked = { ...filled, provider: 'AVERY QUILL, MD', provider_npi: '9000000015' };
+		const r = create({ ...picked, provider_npi_for: 'AVERY QUILL, MD' });
+		expect(r.input).toMatchObject({ provider: 'AVERY QUILL, MD', provider_npi: '9000000015' });
+		expect(
+			create({ ...picked, provider: ' AVERY QUILL, MD ', provider_npi_for: 'AVERY QUILL, MD' })
+				.input
+		).toMatchObject({ provider_npi: '9000000015' });
+	});
+
+	it('drops the registry number once the provider text is edited, and keeps the edit', () => {
+		for (const provider of ['AVERY QUILL', 'Avery Quill, MD', '']) {
+			const r = create({
+				...filled,
+				provider,
+				provider_npi: '9000000015',
+				provider_npi_for: 'AVERY QUILL, MD'
+			});
+			expect(r.field).toBeNull();
+			expect(r.input).not.toHaveProperty('provider_npi');
+			expect(r.values).toMatchObject({ provider, provider_npi: '', provider_npi_for: '' });
+		}
+		expect(
+			create({ ...filled, provider: 'Dr. Lee', provider_npi: '9000000015' }).input
+		).not.toHaveProperty('provider_npi');
+	});
+
+	it('refuses a registry number that is not ten digits', () => {
+		for (const provider_npi of ['900000001', '90000000155', '900000001a']) {
+			expect(
+				create({ ...filled, provider: 'Q', provider_npi, provider_npi_for: 'Q' })
+			).toMatchObject({ input: null, field: 'provider_npi' });
+		}
+	});
+
 	it('ignores posted originals', () => {
 		const r = create({ ...filled, kind_original: 'dental' });
 		expect(r.values).not.toHaveProperty('kind_original');
@@ -160,13 +208,29 @@ describe('visitEditValues', () => {
 			kind: 'dental',
 			provider: 'Dr. Lee',
 			location: '',
+			provider_npi: '',
 			note: '4-month check',
+			provider_npi_for: '',
 			starts_at_original: '2026-12-03T10:30',
 			duration_min_original: '45',
 			kind_original: 'dental',
 			provider_original: 'Dr. Lee',
 			location_original: '',
+			provider_npi_original: '',
 			note_original: '4-month check'
+		});
+	});
+
+	it('ties a stored registry number to the stored provider text', () => {
+		const withNpi = visitEditValues(
+			{ ...visit, provider: 'AVERY QUILL, MD', providerNpi: '9000000015' },
+			LA
+		);
+		expect(withNpi).toMatchObject({
+			provider: 'AVERY QUILL, MD',
+			provider_npi: '9000000015',
+			provider_npi_for: 'AVERY QUILL, MD',
+			provider_npi_original: '9000000015'
 		});
 	});
 });
@@ -200,8 +264,41 @@ describe('readVisitForm: edit', () => {
 		expect(edit({ kind: 'x' })).toMatchObject({ field: 'kind' });
 	});
 
+	it('keeps a stored registry number unless the provider text changes, and sends a new pick', () => {
+		const npiVisit = visitEditValues(
+			{ ...visit, provider: 'AVERY QUILL, MD', providerNpi: '9000000015' },
+			LA
+		);
+		expect(edit({ location: 'Clinic' }, npiVisit).input).toEqual({ location: 'Clinic' });
+		expect(edit({ provider: 'Dr. Q' }, npiVisit).input).toEqual({
+			provider: 'Dr. Q',
+			provider_npi: null
+		});
+		expect(
+			edit(
+				{
+					provider: 'QUILLFEATHER PEDIATRICS',
+					provider_npi: '9000000023',
+					provider_npi_for: 'QUILLFEATHER PEDIATRICS'
+				},
+				npiVisit
+			).input
+		).toEqual({ provider: 'QUILLFEATHER PEDIATRICS', provider_npi: '9000000023' });
+		expect(
+			edit({ provider: 'X', provider_npi: '9000000015', provider_npi_for: 'X' }).input
+		).toEqual({ provider: 'X', provider_npi: '9000000015' });
+	});
+
 	it('fails closed on a missing original', () => {
-		for (const f of ['starts_at', 'duration_min', 'kind', 'provider', 'location', 'note']) {
+		for (const f of [
+			'starts_at',
+			'duration_min',
+			'kind',
+			'provider',
+			'location',
+			'provider_npi',
+			'note'
+		]) {
 			const values = Object.fromEntries(
 				Object.entries(stored).filter(([k]) => k !== `${f}_original`)
 			) as Record<string, string>;

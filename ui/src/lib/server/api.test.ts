@@ -1329,6 +1329,7 @@ describe('createApi tracker calls', () => {
 				cancelled_at: T1,
 				provider: null,
 				location: null,
+				provider_npi: null,
 				note: null,
 				outcome_notes: null,
 				revision: 2,
@@ -1351,6 +1352,7 @@ describe('createApi tracker calls', () => {
 								cancelledAt: T1,
 								provider: null,
 								location: null,
+								providerNpi: null,
 								note: null,
 								outcomeNotes: null,
 								revision: 2,
@@ -3459,6 +3461,7 @@ describe('createApi visit calls', () => {
 		cancelled_at: null,
 		provider: 'Dr. Lee',
 		location: '12 Main St',
+		provider_npi: '9000000015',
 		note: '4-month check',
 		outcome_notes: 'Healthy.',
 		revision: 3
@@ -3472,6 +3475,7 @@ describe('createApi visit calls', () => {
 		cancelledAt: null,
 		provider: 'Dr. Lee',
 		location: '12 Main St',
+		providerNpi: '9000000015',
 		note: '4-month check',
 		outcomeNotes: 'Healthy.',
 		revision: 3
@@ -3559,6 +3563,7 @@ describe('createApi visit calls', () => {
 					cancelled_at: status === 'cancelled' ? T1 : null,
 					provider: null,
 					location: null,
+					provider_npi: null,
 					note: null,
 					outcome_notes: null,
 					linked: { growth: [], vaccinations: [], medications: [] }
@@ -3572,6 +3577,7 @@ describe('createApi visit calls', () => {
 						cancelledAt: status === 'cancelled' ? T1 : null,
 						provider: null,
 						location: null,
+						providerNpi: null,
 						note: null,
 						outcomeNotes: null,
 						linked: { growth: [], vaccinations: [], medications: [] }
@@ -3587,6 +3593,8 @@ describe('createApi visit calls', () => {
 		['a fractional revision', { revision: 1.5 }],
 		['a missing duration', { duration_min: undefined }],
 		['a missing outcome note', { outcome_notes: undefined }],
+		['a missing provider NPI', { provider_npi: undefined }],
+		['a numeric provider NPI', { provider_npi: 9000000015 }],
 		['linked counts in place of rows', { linked: { growth: 1, vaccinations: 0, medications: 0 } }],
 		[
 			'a linked course without its dose count',
@@ -3774,5 +3782,139 @@ describe('createApi visit calls', () => {
 				reason: 'unavailable'
 			});
 		});
+	});
+});
+
+describe('createApi provider search calls', () => {
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) => mockFetch(async () => json(body, status));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const RESULT_WIRE = {
+		npi: '9000000015',
+		name: 'AVERY QUILL',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		address: '12 PINE ST, SEATTLE, WA 98101',
+		phone: '206-555-0100'
+	};
+	const RESULT = { ...RESULT_WIRE };
+	const BARE_WIRE = { ...RESULT_WIRE, credential: null, taxonomy: null, phone: null };
+
+	it('reads whether the search is on', async () => {
+		for (const enabled of [true, false]) {
+			const f = respond({ search: { enabled } });
+			expect(await api(f).providers.state()).toEqual({ ok: true, data: { enabled } });
+			expect(sent(f)).toEqual({
+				url: 'http://api:9210/v1/providers',
+				method: 'GET',
+				body: undefined
+			});
+		}
+	});
+
+	it.each([
+		['no search object', {}],
+		['a string flag', { search: { enabled: 'true' } }]
+	])('maps a state with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).providers.state()).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('posts a person search with its terms in the body and reads the page', async () => {
+		const f = respond({ results: [RESULT_WIRE, BARE_WIRE], more: true });
+		const r = await api(f).providers.search({
+			kind: 'person',
+			lastName: 'Quill',
+			firstName: 'Av',
+			state: 'WA',
+			city: 'Seattle',
+			postalCode: '98101'
+		});
+		expect(r).toEqual({
+			ok: true,
+			data: {
+				results: [RESULT, { ...RESULT, credential: null, taxonomy: null, phone: null }],
+				more: true
+			}
+		});
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/providers/search',
+			method: 'POST',
+			body: {
+				kind: 'person',
+				last_name: 'Quill',
+				first_name: 'Av',
+				state: 'WA',
+				city: 'Seattle',
+				postal_code: '98101'
+			}
+		});
+	});
+
+	it('sends only the terms given for a clinic search, and reads an empty page', async () => {
+		const f = respond({ results: [], more: false });
+		expect(
+			await api(f).providers.search({
+				kind: 'organization',
+				organization: 'Quill & Co',
+				state: 'OR'
+			})
+		).toEqual({ ok: true, data: { results: [], more: false } });
+		expect(sent(f).body).toEqual({ kind: 'organization', organization: 'Quill & Co', state: 'OR' });
+	});
+
+	it.each([
+		['no more flag', { results: [] }],
+		[
+			'a result without an address',
+			{ results: [{ ...RESULT_WIRE, address: undefined }], more: false }
+		],
+		['a numeric NPI', { results: [{ ...RESULT_WIRE, npi: 9000000015 }], more: false }],
+		['a missing phone', { results: [{ ...RESULT_WIRE, phone: undefined }], more: false }]
+	])('maps a page with %s to error', async (_name, body) => {
+		expect(
+			await api(respond(body)).providers.search({ kind: 'person', lastName: 'Q', state: 'WA' })
+		).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	it.each([
+		[429, { error: 'rate_limited' }, { reason: 'rate_limited', code: 'rate_limited' }],
+		[503, { error: 'unavailable' }, { reason: 'unavailable', code: 'unavailable' }],
+		[404, { error: 'not_found' }, { reason: 'not_found', code: 'not_found' }],
+		[
+			422,
+			{ error: 'invalid', field: 'postal_code' },
+			{ reason: 'invalid', code: 'invalid', field: 'postal_code' }
+		]
+	])('maps a search answered %i to its reason', async (status, body, failure) => {
+		expect(
+			await api(respond(body, status)).providers.search({
+				kind: 'person',
+				lastName: 'Quill',
+				state: 'WA'
+			})
+		).toEqual({ ok: false, status, ...failure });
+	});
+
+	it('logs a refused search by its endpoint name, never a term', async () => {
+		await api(respond({ error: 'unavailable' }, 503)).providers.search({
+			kind: 'person',
+			lastName: 'Secretname',
+			state: 'WA',
+			city: 'Hiddentown'
+		});
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'provider_search', status: 503 }
+		]);
+		for (const needle of ['Secretname', 'Hiddentown']) expect(logged()).not.toContain(needle);
 	});
 });

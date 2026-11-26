@@ -16,6 +16,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/ics"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/npi"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
@@ -57,6 +58,7 @@ type visitView struct {
 	CancelledAt  *string `json:"cancelled_at"`
 	Provider     *string `json:"provider"`
 	Location     *string `json:"location"`
+	ProviderNPI  *string `json:"provider_npi"`
 	Note         *string `json:"note"`
 	OutcomeNotes *string `json:"outcome_notes"`
 	Revision     int     `json:"revision"`
@@ -78,7 +80,7 @@ func visitStatus(v model.Visit, now time.Time) string {
 func newVisitView(v model.Visit, linked any, now time.Time) visitView {
 	return visitView{ID: v.ID, StartsAt: instantString(v.StartsAt), DurationMin: v.DurationMin, Kind: string(v.Kind),
 		Status: visitStatus(v, now), CancelledAt: optionalInstant(v.CancelledAt), Provider: v.Provider, Location: v.Location,
-		Note: v.Note, OutcomeNotes: v.OutcomeNotes, Revision: v.Revision, Linked: linked}
+		ProviderNPI: v.ProviderNPI, Note: v.Note, OutcomeNotes: v.OutcomeNotes, Revision: v.Revision, Linked: linked}
 }
 
 func newVisitDetailView(d store.VisitDetail, now time.Time) visitView {
@@ -102,6 +104,7 @@ type visitFields struct {
 	Kind        *string        `json:"kind"`
 	Provider    optionalString `json:"provider"`
 	Location    optionalString `json:"location"`
+	ProviderNPI optionalString `json:"provider_npi"`
 	Note        optionalString `json:"note"`
 }
 
@@ -129,7 +132,7 @@ func textOK(s *string, limit int) bool {
 }
 
 // mergeOnto applies in to v and names the first invalid field in the order starts_at, duration_min, kind, provider,
-// location, note, outcome_notes, cancelled; "" when valid. An unchanged stored start stays valid.
+// location, provider_npi, note, outcome_notes, cancelled; "" when valid. An unchanged stored start stays valid.
 func (in visitInput) mergeOnto(v model.Visit, birth, now time.Time) (model.Visit, string) {
 	stored := v.StartsAt
 	if in.StartsAt != nil {
@@ -150,23 +153,17 @@ func (in visitInput) mergeOnto(v model.Visit, birth, now time.Time) (model.Visit
 	if !slices.Contains(model.VisitKinds, v.Kind) {
 		return v, "kind"
 	}
-	for _, f := range []struct {
-		name  string
-		in    optionalString
-		dst   **string
-		limit int
-	}{
-		{"provider", in.Provider, &v.Provider, constants.VisitProviderMaxLen},
-		{"location", in.Location, &v.Location, constants.VisitLocationMaxLen},
-		{"note", in.Note, &v.Note, constants.MaxNoteLen},
-		{"outcome_notes", in.OutcomeNotes, &v.OutcomeNotes, constants.VisitOutcomeNotesMaxLen},
-	} {
-		if f.in.Set {
-			*f.dst = f.in.V
-		}
-		if !textOK(*f.dst, f.limit) {
-			return v, f.name
-		}
+	storedProvider := v.Provider
+	if f := mergeTexts(textField{"provider", in.Provider, &v.Provider, constants.VisitProviderMaxLen},
+		textField{"location", in.Location, &v.Location, constants.VisitLocationMaxLen}); f != "" {
+		return v, f
+	}
+	if f := in.mergeProviderNPI(&v, storedProvider); f != "" {
+		return v, f
+	}
+	if f := mergeTexts(textField{"note", in.Note, &v.Note, constants.MaxNoteLen},
+		textField{"outcome_notes", in.OutcomeNotes, &v.OutcomeNotes, constants.VisitOutcomeNotesMaxLen}); f != "" {
+		return v, f
 	}
 	if in.Cancelled.Set {
 		switch {
@@ -181,6 +178,43 @@ func (in visitInput) mergeOnto(v model.Visit, birth, now time.Time) (model.Visit
 	}
 	return v, ""
 }
+
+type textField struct {
+	name  string
+	in    optionalString
+	dst   **string
+	limit int
+}
+
+// mergeTexts applies each sent text in order and names the first that fails textOK.
+func mergeTexts(fs ...textField) string {
+	for _, f := range fs {
+		if f.in.Set {
+			*f.dst = f.in.V
+		}
+		if !textOK(*f.dst, f.limit) {
+			return f.name
+		}
+	}
+	return ""
+}
+
+// mergeProviderNPI applies provider_npi to v (B7): a changed provider without it clears it, and a set one needs a
+// valid check digit and a provider.
+func (in visitInput) mergeProviderNPI(v *model.Visit, storedProvider *string) string {
+	if in.Provider.Set && !samePtr(in.Provider.V, storedProvider) && !in.ProviderNPI.Set {
+		v.ProviderNPI = nil
+	}
+	if in.ProviderNPI.Set {
+		v.ProviderNPI = in.ProviderNPI.V
+	}
+	if v.ProviderNPI != nil && (!npi.Valid(*v.ProviderNPI) || v.Provider == nil) {
+		return "provider_npi"
+	}
+	return ""
+}
+
+func samePtr(a, b *string) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
 
 // visitOK is entryOK that also answers the visit rules and the per-kid cap.
 func visitOK(w http.ResponseWriter, err error) bool {

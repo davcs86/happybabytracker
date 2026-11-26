@@ -26,8 +26,8 @@ func (k *kit) createVisit(token, kid string, body map[string]any) map[string]any
 	return bodyMap(k.t, rec)
 }
 
-var visitKeys = []string{"id", "starts_at", "duration_min", "kind", "status", "cancelled_at", "provider", "location", "note",
-	"outcome_notes", "revision", "linked"}
+var visitKeys = []string{"id", "starts_at", "duration_min", "kind", "status", "cancelled_at", "provider", "location", "provider_npi",
+	"note", "outcome_notes", "revision", "linked"}
 
 func TestVisitRoutes(t *testing.T) {
 	k := newKit(t)
@@ -94,6 +94,10 @@ func TestVisitValidationOrder(t *testing.T) {
 		{"provider", map[string]any{"provider": " ", "location": ""}},
 		{"provider", map[string]any{"provider": long(constants.VisitProviderMaxLen + 1)}},
 		{"location", map[string]any{"location": long(constants.VisitLocationMaxLen + 1), "note": ""}},
+		{"location", map[string]any{"location": long(constants.VisitLocationMaxLen + 1), "provider_npi": "1234567890"}},
+		{"provider_npi", map[string]any{"provider_npi": "1234567890", "note": ""}},
+		{"provider_npi", map[string]any{"provider_npi": "123456789"}},
+		{"provider_npi", map[string]any{"provider_npi": "1234567893", "provider": nil}},
 		{"note", map[string]any{"note": long(constants.MaxNoteLen + 1)}},
 		{"note", map[string]any{"note": ""}},
 	} {
@@ -364,4 +368,59 @@ func TestVisitCalendar(t *testing.T) {
 	if rec := k.do(http.MethodGet, one+"/calendar", xavi, nil); rec.Code != http.StatusNotFound || !bytes.Equal(rec.Body.Bytes(), unknown.Body.Bytes()) {
 		t.Errorf("no grant: %d %q", rec.Code, rec.Body.String())
 	}
+}
+
+func TestProviderChangeClearsNPI(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	base := "/v1/kids/" + kid + "/visits"
+	const npi = "9123456789"
+	patch := func(one string, body map[string]any) map[string]any {
+		t.Helper()
+		rec := k.do(http.MethodPatch, one, ana, body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch %v: %d %q", body, rec.Code, rec.Body.String())
+		}
+		return bodyMap(t, rec)
+	}
+	m := k.createVisit(ana, kid, visitBody(map[string]any{"provider": "Avery Quill", "provider_npi": npi}))
+	if m["provider_npi"] != npi {
+		t.Fatalf("created provider_npi %v", m["provider_npi"])
+	}
+	one := base + "/" + m["id"].(string)
+	if p := patch(one, map[string]any{"location": "x"}); p["provider_npi"] != npi {
+		t.Errorf("a location edit: provider_npi %v, want kept", p["provider_npi"])
+	}
+	if p := patch(one, map[string]any{"provider": "Avery Quill"}); p["provider_npi"] != npi {
+		t.Errorf("the same provider text: provider_npi %v, want kept", p["provider_npi"])
+	}
+	if p := patch(one, map[string]any{"provider": "Dr Q"}); p["provider_npi"] != nil || p["provider"] != "Dr Q" {
+		t.Errorf("a changed provider: provider_npi %v, provider %v; want null, Dr Q", p["provider_npi"], p["provider"])
+	}
+	if got := bodyMap(t, k.do(http.MethodGet, one, ana, nil)); got["provider_npi"] != nil {
+		t.Errorf("stored provider_npi after the change: %v", got["provider_npi"])
+	}
+
+	m = k.createVisit(ana, kid, visitBody(map[string]any{"provider": "Avery Quill", "provider_npi": npi}))
+	one = base + "/" + m["id"].(string)
+	if p := patch(one, map[string]any{"provider": "Dr Q", "provider_npi": npi}); p["provider_npi"] != npi || p["provider"] != "Dr Q" {
+		t.Errorf("a changed provider sent with its npi: %v %v", p["provider_npi"], p["provider"])
+	}
+	if p := patch(one, map[string]any{"provider": nil}); p["provider_npi"] != nil || p["provider"] != nil {
+		t.Errorf("provider null: provider_npi %v, provider %v; want both null", p["provider_npi"], p["provider"])
+	}
+	wantInvalid(t, k.do(http.MethodPatch, one, ana, map[string]any{"provider_npi": npi}), "provider_npi")
+	if p := patch(one, map[string]any{"provider": "Avery Quill", "provider_npi": npi}); p["provider_npi"] != npi {
+		t.Errorf("provider and npi together: %v", p["provider_npi"])
+	}
+	wantInvalid(t, k.do(http.MethodPatch, one, ana, map[string]any{"provider": nil, "provider_npi": npi}), "provider_npi")
+	if p := patch(one, map[string]any{"provider_npi": nil}); p["provider_npi"] != nil || p["provider"] != "Avery Quill" {
+		t.Errorf("provider_npi null: %v %v", p["provider_npi"], p["provider"])
+	}
+	rec := k.do(http.MethodPatch, one, ana, map[string]any{"provider_npi": "9123456788"})
+	wantInvalid(t, rec, "provider_npi")
+	if strings.ContainsAny(rec.Body.String(), "0123456789") {
+		t.Errorf("the refusal carries digits: %q", rec.Body.String())
+	}
+	wantInvalid(t, k.do(http.MethodPost, base, ana, visitBody(map[string]any{"provider_npi": "9123456788"})), "provider_npi")
 }

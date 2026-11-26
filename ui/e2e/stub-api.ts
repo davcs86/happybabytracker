@@ -56,7 +56,11 @@ export const SCENARIOS = [
 	'ntfy_off',
 	'channels_off',
 	// Every export slot taken: a valid export answers 503 busy.
-	'export_busy'
+	'export_busy',
+	// The provider lookup is off unless one of these is set (NPI_SEARCH, off at the edge by default).
+	'npi_on',
+	'npi_unavailable',
+	'npi_rate_limited'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -716,6 +720,8 @@ type RouteDef = {
 	pattern: RegExp;
 	access: Access;
 	kidParam?: boolean;
+	// A route registered only while this holds; otherwise the path is an unknown route.
+	when?: (state: State) => boolean;
 	run: Handler;
 };
 
@@ -3603,6 +3609,7 @@ type VisitStub = {
 	kind: string;
 	provider: string | null;
 	location: string | null;
+	providerNpi: string | null;
 	note: string | null;
 	outcomeNotes: string | null;
 	cancelledAt: number | null;
@@ -3615,6 +3622,7 @@ const VISIT_FIELDS: Record<string, FieldKind> = {
 	kind: 'string',
 	provider: 'string',
 	location: 'string',
+	provider_npi: 'string',
 	note: 'string'
 };
 const VISIT_PATCH_FIELDS: Record<string, FieldKind> = {
@@ -3666,6 +3674,7 @@ const visitBaseView = (v: VisitStub) => ({
 	cancelled_at: v.cancelledAt === null ? null : iso(v.cancelledAt),
 	provider: v.provider,
 	location: v.location,
+	provider_npi: v.providerNpi,
 	note: v.note,
 	outcome_notes: v.outcomeNotes,
 	revision: v.revision
@@ -3707,10 +3716,11 @@ function visitDetailView(state: State, v: VisitStub) {
 const visitTextOK = (s: string | null, max: number) =>
 	s === null || (s.trim() !== '' && runes(s) <= max);
 
-// visitInput.mergeOnto: starts_at, duration_min, kind, provider, location, note, outcome_notes, cancelled; an
-// unchanged stored start stays valid. null keeps starts_at, duration_min and kind, and clears the texts.
+// visitInput.mergeOnto: starts_at, duration_min, kind, provider, location, provider_npi, note, outcome_notes,
+// cancelled; an unchanged stored start stays valid. null keeps starts_at, duration_min and kind, clears the texts.
 function mergeVisit(v: VisitStub, body: Body, kid: KidRow): string {
 	const stored = v.startsAt;
+	const storedProvider = v.provider;
 	if (typeof body.starts_at === 'string') v.startsAt = unix(body.starts_at);
 	const t = now();
 	if (
@@ -3729,10 +3739,19 @@ function mergeVisit(v: VisitStub, body: Body, kid: KidRow): string {
 	const texts = [
 		['provider', 'provider', VISIT_PROVIDER_MAX_LEN],
 		['location', 'location', VISIT_LOCATION_MAX_LEN],
+		['provider_npi', 'providerNpi', 0],
 		['note', 'note', NOTE_MAX_LEN],
 		['outcome_notes', 'outcomeNotes', VISIT_OUTCOME_NOTES_MAX_LEN]
 	] as const;
 	for (const [key, prop, max] of texts) {
+		if (prop === 'providerNpi') {
+			// mergeProviderNPI (plan 10 B7): a changed provider without provider_npi clears it.
+			if ('provider' in body && v.provider !== storedProvider && !(key in body))
+				v.providerNpi = null;
+			if (key in body) v.providerNpi = body[key] as string | null;
+			if (v.providerNpi !== null && (!npiValid(v.providerNpi) || v.provider === null)) return key;
+			continue;
+		}
 		if (key in body) v[prop] = body[key] as string | null;
 		if (!visitTextOK(v[prop], max)) return key;
 	}
@@ -3907,6 +3926,285 @@ function outcomeBlocksOK(res: ServerResponse, body: Body): boolean {
 	return blocks.every(([block, fields]) => checkFields(res, block, fields) !== null);
 }
 
+// Provider lookup: httpapi/providers.go and the npi package in memory. The fixtures are fictional: their NPIs start
+// with 9, which no issued NPI does, and pass the check digit; CASEY QUILLBY gets mail in WA but practises in OR.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const NPI_SEARCH_LIMIT = 20;
+const NPI_NAME = /^\p{L}[\p{L} .'-]{1,59}$/u;
+const NPI_ORG = /^[\p{L}0-9][\p{L}0-9 &.'-]{1,59}$/u;
+const NPI_POSTAL_CODE = /^[0-9]{5}$/;
+const NPI_STATES = [
+	'AL',
+	'AK',
+	'AZ',
+	'AR',
+	'CA',
+	'CO',
+	'CT',
+	'DE',
+	'FL',
+	'GA',
+	'HI',
+	'ID',
+	'IL',
+	'IN',
+	'IA',
+	'KS',
+	'KY',
+	'LA',
+	'ME',
+	'MD',
+	'MA',
+	'MI',
+	'MN',
+	'MS',
+	'MO',
+	'MT',
+	'NE',
+	'NV',
+	'NH',
+	'NJ',
+	'NM',
+	'NY',
+	'NC',
+	'ND',
+	'OH',
+	'OK',
+	'OR',
+	'PA',
+	'RI',
+	'SC',
+	'SD',
+	'TN',
+	'TX',
+	'UT',
+	'VT',
+	'VA',
+	'WA',
+	'WV',
+	'WI',
+	'WY',
+	'DC',
+	'AS',
+	'GU',
+	'MP',
+	'PR',
+	'VI'
+];
+const PROVIDER_SEARCH_FIELDS: Record<string, FieldKind> = {
+	kind: 'string',
+	last_name: 'string',
+	first_name: 'string',
+	organization: 'string',
+	state: 'string',
+	city: 'string',
+	postal_code: 'string'
+};
+
+// npi.Valid: ten digits, the last the Luhn check digit of 80840 and the first nine.
+function npiValid(s: string): boolean {
+	if (!/^[0-9]{10}$/.test(s)) return false;
+	let sum = 0;
+	[...`80840${s}`].reverse().forEach((c, i) => {
+		const d = Number(c) * (i % 2 === 1 ? 2 : 1);
+		sum += d > 9 ? d - 9 : d;
+	});
+	return sum % 10 === 0;
+}
+const withCheckDigit = (nine: string) =>
+	[...'0123456789'].map((d) => nine + d).find(npiValid) as string;
+
+type RegistryAddress = {
+	address1: string;
+	address2?: string;
+	city: string;
+	state: string;
+	postalCode: string;
+	phone?: string;
+};
+type RegistryRecord = {
+	npi: string;
+	kind: 'person' | 'organization';
+	first?: string;
+	last?: string;
+	organization?: string;
+	credential?: string;
+	taxonomy?: string;
+	location: RegistryAddress;
+	mailing: RegistryAddress;
+};
+
+const at = (city: string, state: string, postalCode: string, address1: string, phone?: string) => ({
+	address1,
+	city,
+	state,
+	postalCode,
+	...(phone ? { phone } : {})
+});
+const REGISTRY: RegistryRecord[] = [
+	{
+		npi: withCheckDigit('900000001'),
+		kind: 'person',
+		first: 'AVERY',
+		last: 'QUILL',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		location: {
+			...at('SEATTLE', 'WA', '981012756', '12 PINE ST', '206-555-0100'),
+			address2: 'SUITE 4'
+		},
+		mailing: at('SEATTLE', 'WA', '98101', 'PO BOX 12')
+	},
+	{
+		npi: withCheckDigit('900000002'),
+		kind: 'person',
+		first: 'BLAIR',
+		last: 'QUILLAN',
+		taxonomy: 'Family Medicine',
+		location: at('TACOMA', 'WA', '98402', '300 CEDAR AVE'),
+		mailing: at('TACOMA', 'WA', '98402', '300 CEDAR AVE')
+	},
+	{
+		npi: withCheckDigit('900000003'),
+		kind: 'person',
+		first: 'CASEY',
+		last: 'QUILLBY',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		location: at('PORTLAND', 'OR', '97201', '77 RIVER RD', '503-555-0177'),
+		mailing: at('SEATTLE', 'WA', '98101', '9 HARBOR WAY')
+	},
+	{
+		npi: withCheckDigit('900000004'),
+		kind: 'organization',
+		organization: 'QUILLFEATHER PEDIATRICS',
+		taxonomy: 'Clinic/Center',
+		location: at('SEATTLE', 'WA', '98101', '40 ELM AVE'),
+		mailing: at('SEATTLE', 'WA', '98101', '40 ELM AVE')
+	},
+	{
+		npi: withCheckDigit('900000005'),
+		kind: 'organization',
+		organization: 'QUILL & SONS CLINIC 2',
+		taxonomy: 'Clinic/Center',
+		location: at('SALEM', 'OR', '97301', '5 OAK ST', '503-555-0105'),
+		mailing: at('SALEM', 'OR', '97301', '5 OAK ST')
+	},
+	// A full registry page, so the search says there may be more.
+	...Array.from({ length: NPI_SEARCH_LIMIT }, (_, i) => ({
+		npi: withCheckDigit(`91000${String(i).padStart(4, '0')}`),
+		kind: 'person' as const,
+		first: `ROBIN${'ABCDEFGHIJKLMNOPQRST'[i]}`,
+		last: 'LARK',
+		taxonomy: 'Pediatrics',
+		location: at('SPOKANE', 'WA', '99201', `${i + 1} BIRD LN`),
+		mailing: at('SPOKANE', 'WA', '99201', `${i + 1} BIRD LN`)
+	}))
+];
+
+type ProviderQueryStub = {
+	kind: string;
+	last: string;
+	first: string;
+	organization: string;
+	state: string;
+	city: string;
+	postal: string;
+};
+
+// providerSearchInput.query (plan 10 B4): the first invalid field in body order, or the query.
+function providerQuery(body: Body): ProviderQueryStub | string {
+	const str = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : undefined);
+	const text = (k: string, allowed: boolean, required: boolean, re: RegExp) => {
+		const v = str(k);
+		if (v === undefined) return required ? null : '';
+		const t = v.trim();
+		return allowed && re.test(t) ? t : null;
+	};
+	const kind = str('kind');
+	if (kind !== 'person' && kind !== 'organization') return 'kind';
+	const person = kind === 'person';
+	const last = text('last_name', person, person, NPI_NAME);
+	if (last === null) return 'last_name';
+	const first = text('first_name', person, false, NPI_NAME);
+	if (first === null) return 'first_name';
+	const organization = text('organization', !person, !person, NPI_ORG);
+	if (organization === null) return 'organization';
+	const state = (str('state') ?? '').trim().toUpperCase();
+	if (!NPI_STATES.includes(state)) return 'state';
+	const city = text('city', true, false, NPI_NAME);
+	if (city === null) return 'city';
+	const postal = str('postal_code') ?? '';
+	if (str('postal_code') !== undefined && !NPI_POSTAL_CODE.test(postal)) return 'postal_code';
+	return { kind, last, first, organization, state, city, postal };
+}
+
+const startsWithCI = (value: string | undefined, term: string) =>
+	(value ?? '').toUpperCase().startsWith(term.toUpperCase());
+
+// The registry's trailing-wildcard match, then the API's own filter on the practice location (ruling 1).
+function searchRegistry(q: ProviderQueryStub) {
+	const upstream = REGISTRY.filter((r) =>
+		r.kind !== q.kind
+			? false
+			: q.kind === 'person'
+				? startsWithCI(r.last, q.last) && startsWithCI(r.first, q.first)
+				: startsWithCI(r.organization, q.organization)
+	).slice(0, NPI_SEARCH_LIMIT);
+	const results = upstream
+		.filter(
+			(r) =>
+				r.location.state === q.state &&
+				(q.city === '' || r.location.city.toUpperCase() === q.city.toUpperCase()) &&
+				(q.postal === '' || r.location.postalCode.slice(0, 5) === q.postal)
+		)
+		.map((r) => ({
+			npi: r.npi,
+			name: r.kind === 'person' ? `${r.first} ${r.last}` : (r.organization as string),
+			credential: r.credential ?? null,
+			taxonomy: r.taxonomy ?? null,
+			address: [r.location.address1, r.location.address2, r.location.city]
+				.filter(Boolean)
+				.join(', ')
+				.concat(`, ${r.location.state} ${r.location.postalCode.slice(0, 5)}`),
+			phone: r.location.phone ?? null
+		}));
+	return { results, more: upstream.length === NPI_SEARCH_LIMIT };
+}
+
+const npiSearchOn = (state: State) =>
+	state.scenario === 'npi_on' ||
+	state.scenario === 'npi_unavailable' ||
+	state.scenario === 'npi_rate_limited';
+
+const providerRoutes: RouteDef[] = [
+	{
+		method: 'GET',
+		pattern: /^\/v1\/providers$/,
+		access: 'parent',
+		run: (state, _req, res) => send(res, 200, { search: { enabled: npiSearchOn(state) } })
+	},
+	// Validation, then the per-parent limit, then the registry (plan 10 B3).
+	{
+		method: 'POST',
+		pattern: /^\/v1\/providers\/search$/,
+		access: 'parent',
+		when: npiSearchOn,
+		run: async (state, req, res) => {
+			const body = await decodeBody(req, res, PROVIDER_SEARCH_FIELDS);
+			if (!body) return;
+			const q = providerQuery(body);
+			if (typeof q === 'string') return error(res, 422, 'invalid', q);
+			if (state.scenario === 'npi_rate_limited') {
+				return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
+			}
+			if (state.scenario === 'npi_unavailable') return error(res, 503, 'unavailable');
+			send(res, 200, searchRegistry(q));
+		}
+	}
+];
+
 const visitRoutes: RouteDef[] = [
 	kidRoute('GET', 'visits', 'caregiver', (state, req, res, kid) => {
 		const url = new URL(req.url ?? '/', STUB_URL);
@@ -3937,6 +4235,7 @@ const visitRoutes: RouteDef[] = [
 			kind: '',
 			provider: null,
 			location: null,
+			providerNpi: null,
 			note: null,
 			outcomeNotes: null,
 			cancelledAt: null,
@@ -4704,6 +5003,7 @@ routes.push(
 	...vaccineRoutes,
 	...medicationRoutes,
 	...visitRoutes,
+	...providerRoutes,
 	...milestoneRoutes,
 	...exportRoutes,
 	...pushRoutes,
@@ -4792,7 +5092,7 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	}
 
 	for (const r of routes) {
-		const m = r.method === method ? r.pattern.exec(path) : null;
+		const m = r.method === method && (!r.when || r.when(state)) ? r.pattern.exec(path) : null;
 		if (!m) continue;
 		const params = m.slice(1).map((s) => decodeURIComponent(s));
 		const p = admit(state, res, sessionToken, r.access, r.kidParam ? params[0] : undefined);

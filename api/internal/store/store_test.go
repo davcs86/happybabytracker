@@ -33,8 +33,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -51,8 +51,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "8" {
-			t.Fatalf("open %d: schema_version = %q, want 8", i, v)
+		if v := version(t, s); v != "9" {
+			t.Fatalf("open %d: schema_version = %q, want 9", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -397,8 +397,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -546,8 +546,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -746,8 +746,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	var contents, sources int
 	var volume int64
@@ -853,8 +853,8 @@ func TestMigration0006KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	counts := map[string]int{"parents": 1, "kids": 1, "kid_access": 1, "kid_modules": 1, "bottle_feeds": 1, "bottle_feed_sources": 1,
 		"nursing_sessions": 1, "pumping_sessions": 1, "pumping_session_sides": 1, "growth_measurements": 1, "vaccine_doses": 1, "vaccine_dismissals": 1}
@@ -972,8 +972,8 @@ func TestMigration0007KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1055,8 +1055,8 @@ func TestMigration0008KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1305,4 +1305,92 @@ func TestCascades(t *testing.T) {
 		expect(t, s, map[string]int{"push_subscriptions": 0, "push_kid_optins": 0, "ntfy_topics": 0, "ntfy_kid_optins": 0,
 			"reminder_deliveries": 0, "reminders": 1, "medications": 1, "kids": 1})
 	})
+}
+
+func TestMigration0009KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:8] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO kids(id, name, birth_date, sex, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'cdc', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO visits(id, kid_id, note, created_by, updated_by, created_at, updated_at, starts_at, duration_min, kind, provider, location, revision)
+			VALUES ('vi1', 'k1', 'Check', 'p1', 'p1', 100, 101, 200, 45, 'sick', 'Dr. Lee', '12 Main St', 3)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("seed %.60s: %v", q, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "9" {
+		t.Fatalf("schema_version = %q, want 9", v)
+	}
+	var (
+		note, provider, location string
+		created, updated, start  int64
+		dur, rev                 int
+		npi                      sql.NullString
+	)
+	if err := s.r.QueryRow(`SELECT note, provider, location, created_at, updated_at, starts_at, duration_min, revision, provider_npi
+		FROM visits WHERE id = 'vi1'`).Scan(&note, &provider, &location, &created, &updated, &start, &dur, &rev, &npi); err != nil {
+		t.Fatal(err)
+	}
+	if note != "Check" || provider != "Dr. Lee" || location != "12 Main St" || created != 100 || updated != 101 || start != 200 ||
+		dur != 45 || rev != 3 || npi.Valid {
+		t.Errorf("visit after 0009: %q %q %q %d %d %d %d %d %v", note, provider, location, created, updated, start, dur, rev, npi)
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check after 0009: %d violations, err %v", bad, err)
+	}
+}
+
+func TestProviderNPICheck(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	insert := func(id string, provider, npi any) error {
+		_, err := s.w.Exec(`INSERT INTO visits(id, kid_id, starts_at, kind, provider, provider_npi, created_by, updated_by, created_at, updated_at)
+			VALUES (?, ?, 100, 'sick', ?, ?, ?, ?, 100, 100)`, id, k.ID, provider, npi, ana.ID, ana.ID)
+		return err
+	}
+	for name, c := range map[string]struct{ provider, npi any }{
+		"nine digits":       {"Dr. Lee", "123456789"},
+		"eleven digits":     {"Dr. Lee", "12345678931"},
+		"a letter":          {"Dr. Lee", "12345678a3"},
+		"without provider":  {nil, "1234567893"},
+		"an empty npi":      {"Dr. Lee", ""},
+		"a space inside it": {"Dr. Lee", "12345 7893"},
+	} {
+		if err := insert("vi-"+strings.ReplaceAll(name, " ", "-"), c.provider, c.npi); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := insert("vi-ok", "Dr. Lee", "1234567893"); err != nil {
+		t.Errorf("ten digits with a provider: %v", err)
+	}
+	if err := insert("vi-none", nil, nil); err != nil {
+		t.Errorf("neither: %v", err)
+	}
 }

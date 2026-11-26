@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import FormCancel from '#lib/components/FormCancel.svelte';
 	import FormFrame from '#lib/components/FormFrame.svelte';
+	import ProviderSearch from '#lib/components/visits/ProviderSearch.svelte';
 	import VisitFields from '#lib/components/visits/VisitFields.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -45,15 +46,26 @@
 			!embed && 'xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6'
 		]}
 		novalidate
-		use:enhance={savedAs('Visit added')}
+		use:enhance={savedAs('Visit added', { inPlace: ['find', 'pick'] })}
 	>
+		{#if data.providerSearch}
+			<!-- The first submit button: Enter in a visit field saves, as without the panel. -->
+			<Button type="submit" formaction="?/save" class="sr-only" tabindex={-1} aria-hidden="true"
+				>Save</Button
+			>
+		{/if}
 		{#if form?.field}
 			<Alert class={embed ? '' : 'xl:col-span-2'}>Check the fields with a message.</Alert>
 		{:else if form?.message}
 			<Alert class="[overflow-wrap:anywhere] {embed ? '' : 'xl:col-span-2'}">{form.message}</Alert>
 		{/if}
-		<VisitFields {values} {error} />
-		<div class="flex gap-2">
+		<VisitFields {values} {error}>
+			{#snippet search()}
+				{#if data.providerSearch}<ProviderSearch panel={form?.providers} />{/if}
+			{/snippet}
+		</VisitFields>
+		<!-- The panel can make the right column the taller one; the buttons keep their height. -->
+		<div class="flex gap-2 xl:self-start">
 			<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
 			<FormCancel href={visits} size="default" class="" />
 		</div>

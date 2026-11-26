@@ -57,6 +57,47 @@ A refused save keeps what you typed, shows "Check the fields with a message." an
 
 A child can have at most 2,000 visits. Past that, Save is refused with "This child has the most visits the app keeps (2,000)."
 
+### How do I find a US provider?
+
+While you add or edit a visit you can look the doctor or clinic up in the US national provider registry (NPPES) instead of typing it. The registry lists only providers in the United States, so this helps only for a US doctor or clinic; anyone else, you type yourself.
+
+The panel appears only while the server's provider search is switched on. When it is off, the Add a visit and Edit visit sheets are exactly as above: no panel and no hint, and you type **Doctor or clinic** and **Place** by hand.
+
+1. In **Add a visit** or **Edit visit**, open **Find a US provider**, right above **Doctor or clinic (optional)**. It reads "Only US doctors and clinics are listed. Your search is sent to the US national provider registry (NPPES)."
+2. Under **Search for** choose **A doctor** (the default) or **A clinic or practice**.
+   - A doctor: **Last name**, and **First name (optional)**.
+   - A clinic or practice: **Clinic or practice name**.
+3. Choose the **State**, and if you like **City (optional)** and **ZIP code (optional)**, then choose **Search**.
+4. Under **Choose a provider** pick one row (the name, then the specialty, the practice address and the phone), and choose **Use this provider**.
+
+| Phone | Desktop |
+|---|---|
+| <img src="../screenshots/visits/19-provider-results-mobile.png" alt="The Add a visit sheet on a phone scrolled to the open Find a US provider panel: State Washington, the Search button, then Choose a provider with AVERY QUILL, MD (Pediatrics · 12 PINE ST, SUITE 4, SEATTLE, WA 98101 · 206-555-0100) and BLAIR QUILLAN (Family Medicine · 300 CEDAR AVE, TACOMA, WA 98402), and Use this provider" width="260"> | <img src="../screenshots/visits/19-provider-results-desktop.png" alt="The same results in the sheet centred over the list on a desktop" width="460"> |
+
+**Doctor or clinic** is filled with the name (with the credential, such as ", MD", when it fits), **Place** with the practice address, and the line "From the US provider registry, NPI ..." shows under the name. The panel closes. Nothing is saved until you choose **Save**, and both fields stay editable: if you change the name, the registry link (the NPI) is dropped when you save. The names and addresses are kept as the registry sends them, in capitals.
+
+| Phone |
+|---|
+| <img src="../screenshots/visits/20-provider-picked-mobile.png" alt="The Add a visit sheet on a phone after a pick: Find a US provider closed, Doctor or clinic (optional) AVERY QUILL, MD with the line From the US provider registry, NPI 9000000015 under it" width="260"> |
+
+What the search shows and refuses:
+
+- Only providers who practise in the state you chose (and the city and ZIP code, when given) are listed, even if the registry has their mail address there. At most 20 are listed in the registry's order; when the registry sent its full 20 you see "There may be more. Add a first name, a city or a ZIP code to narrow the search."
+- No match: "No US providers match. Check the spelling, or type the doctor or clinic yourself."
+- A refused field keeps its message on the field, without the "Check the fields with a message." alert: "Enter a last name of 2 to 60 letters", "Enter a name of 2 to 60 letters", "Choose a state", "Enter a city of 2 to 60 letters", "Enter a 5-digit ZIP code", and "Choose a provider" when you choose **Use this provider** with no row picked. Names and cities are letters, spaces, hyphens, apostrophes and periods; a clinic name may also hold digits and "&". A `*` is refused.
+- If the registry does not answer: "The provider search isn’t available right now. You can type the doctor or clinic yourself." Too many searches in a minute (20): "Too many searches, try again in a minute. You can type the doctor or clinic yourself." In both cases the visit still saves.
+- A saved registry number that is not valid is refused on **Save**, on the **Doctor or clinic** field: "Search for the provider again, or type it yourself."
+
+| Phone | Phone |
+|---|---|
+| <img src="../screenshots/visits/21-provider-refused-mobile.png" alt="The open panel on a phone after Search with no last name: the red message Enter a last name of 2 to 60 letters under Last name, State still Choose a state" width="260"> | <img src="../screenshots/visits/22-provider-unavailable-mobile.png" alt="The open panel on a phone after a search: under the Search button the alert The provider search isn’t available right now. You can type the doctor or clinic yourself." width="260"> |
+
+Without JavaScript, **Search** and **Use this provider** post the whole visit form: the Add a visit (or Edit visit) page comes back with what you typed kept and the results in the open panel. Pressing Enter in a field saves the visit, so press **Search** yourself. With JavaScript, Enter in a panel field searches.
+
+| Phone, without JavaScript |
+|---|
+| <img src="../screenshots/visits/24-provider-no-js-mobile.png" alt="The Add a visit page on a phone without JavaScript after Search: the visit fields, Find a US provider open with Last name Quill and State Washington, the two results and Use this provider, then Doctor or clinic, Place, Reason, Save and Cancel" width="260"> |
+
 ### How do I read a visit?
 
 The visit's page shows the kind as its title with a badge (**Upcoming**, **Past** or **Cancelled**), then:
@@ -160,7 +201,7 @@ Yes. Each sheet is also a page: `/visits/new`, `/visits/[visit]/edit` and `/visi
 |---|---|---|---|
 | Medical visits | `/kids/[kid]/visits` | guardian, caregiver | `01-no-visits`, `02-list`, `16-module-off`, `17-caregiver` |
 | A visit | `/kids/[kid]/visits/[visit]` | guardian, caregiver | `03-visit-upcoming`, `04-visit-past-no-outcome`, `05-visit-past-outcome`, `06-visit-cancelled`, `07-delete-confirm-linked`, `08-delete-confirm-plain` |
-| Add a visit (sheet) | `/kids/[kid]/visits/new` | guardian, caregiver | `09-add-sheet` |
+| Add a visit (sheet) | `/kids/[kid]/visits/new` | guardian, caregiver | `09-add-sheet`; with the provider search on: `18-provider-closed`, `19-provider-results`, `20-provider-picked`, `21-provider-refused`, `22-provider-unavailable`, `23-provider-rate-limited`, `24-provider-no-js` |
 | Edit visit (sheet) | `/kids/[kid]/visits/[visit]/edit` | guardian, caregiver | `10-edit-sheet` |
 | After the visit (sheet) | `/kids/[kid]/visits/[visit]/outcome` | guardian, caregiver | `11-outcome-sheet`, `12-outcome-refused` |
 | Calendar file | `/kids/[kid]/visits/[visit]/calendar` | guardian, caregiver | a download, not captured |
@@ -178,7 +219,6 @@ Nobody else can open these pages: a parent with no grant on the child, an unknow
 - The calendar file is private by default ("Without details").
 - Switching child on a visit page lands on the other child's Home, not on their visits.
 - Every time is on the child's clock ("Times are in Europe/Madrid" for Leo, shot `17-caregiver`).
-
-Not built yet: looking up a doctor in the US provider registry (NPI). See [Not built yet](Not-built-yet.md).
+- Find a US provider is shown only while the server's provider search is on, on Add a visit and Edit visit, not on After the visit. It lists only providers whose practice address is in the searched state (and city and ZIP code), at most 20; a pick stores the registry number (NPI) with the name, and a changed name drops it on save.
 
 Back to the [wiki home](Home.md).

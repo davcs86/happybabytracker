@@ -121,14 +121,19 @@ type Options = {
 	follow?: boolean;
 	// A success result leaves the sheet open, with its data reloaded.
 	stay?: boolean;
+	// These actions' success results are applied as a failure's: no reload, no close, no toast.
+	inPlace?: string[];
 };
 
 // The form's submit handler: in a sheet a saved result closes it, refreshes the page and says so.
 export const savedAs =
-	(message: string, { follow = false, stay = false }: Options = {}): SubmitFunction =>
-	() =>
+	(message: string, { follow = false, stay = false, inPlace = [] }: Options = {}): SubmitFunction =>
+	({ action }) =>
 	async ({ result, update }) => {
 		const open = page.state.drawer;
+		if (result.type === 'success' && inPlace.includes(action.search.replace(/^\?\//, ''))) {
+			return update({ reset: false, invalidateAll: false });
+		}
 		if (!open || (result.type !== 'redirect' && result.type !== 'success')) {
 			return update({ reset: false });
 		}

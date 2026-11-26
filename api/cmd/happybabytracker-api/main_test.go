@@ -537,3 +537,25 @@ func TestStartWithRealPushRegistersADevice(t *testing.T) {
 		t.Fatalf("test route with real push: %d", rec.Code)
 	}
 }
+
+func TestStartWiresProviderSearchOnlyUnderTheFlag(t *testing.T) {
+	for _, flag := range []string{"", "1"} {
+		env := baseEnv(t.TempDir())
+		env["NPI_SEARCH"] = flag
+		a, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session := parentSession(t, a.store)
+		rec := call(t, a, http.MethodGet, "/v1/providers", session, nil)
+		if want := fmt.Sprintf(`{"search":{"enabled":%v}}`, flag == "1"); strings.TrimSpace(rec.Body.String()) != want {
+			t.Errorf("NPI_SEARCH %q: GET /v1/providers %d %s, want %s", flag, rec.Code, rec.Body.String(), want)
+		}
+		// An invalid kind is refused before any registry call, so the test never leaves the process.
+		rec = call(t, a, http.MethodPost, "/v1/providers/search", session, map[string]string{"kind": "x"})
+		if want := map[string]int{"": http.StatusNotFound, "1": http.StatusUnprocessableEntity}[flag]; rec.Code != want {
+			t.Errorf("NPI_SEARCH %q: search %d %s, want %d", flag, rec.Code, rec.Body.String(), want)
+		}
+		a.store.Close()
+	}
+}

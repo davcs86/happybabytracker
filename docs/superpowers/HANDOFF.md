@@ -17,7 +17,8 @@ design and the plan of the next item.
 | Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done, merged to `main` (PR #9) |
 | Plan 6, edge side | `davcs86/homelab-edge`, not written | the VAPID PR, then the ntfy plan; see "What to do next" |
 | Plan 7, milestones and PDF export | `docs/superpowers/plans/2026-11-23-milestones-pdf-export.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #10 to `main`, merged only with the owner's go-ahead); open owner items under "What to do next" |
-| Plan 9, medical visits | `docs/superpowers/plans/2026-11-25-visits.md` (design `docs/superpowers/specs/2026-11-25-medical-visits-design.md`, page spec `docs/plans/ui-redesign/pages/visits.md`) | API merged to `main` (PR #22); UI, screenshots, visual baselines and wiki on branch `ccr-406c8e35-e8hvag` (PR #24 to `main`, merged only with the owner's go-ahead); the provider lookup (NPI, design section 10) is a later plan, not written |
+| Plan 9, medical visits | `docs/superpowers/plans/2026-11-25-visits.md` (design `docs/superpowers/specs/2026-11-25-medical-visits-design.md`, page spec `docs/plans/ui-redesign/pages/visits.md`) | API merged to `main` (PR #22); UI, screenshots, visual baselines and wiki on branch `ccr-406c8e35-e8hvag` (PR #24 to `main`, merged only with the owner's go-ahead); the provider lookup (NPI, design section 10) is plan 10, below |
+| Plan 10, provider lookup (NPI) | `docs/superpowers/plans/2026-11-26-provider-lookup.md` (design: visits spec section 10; page spec `docs/plans/ui-redesign/pages/visits.md`, "Find a US provider (plan 10)", approved 2026-11-26) | built on branch `ccr-406c8e35-e8hvag` (PR #25, merged only with the owner's go-ahead): API (`npi` package, migration 0009 forward-only, `NPI_SEARCH`, two routes), UI panel, smoke 4l/4p, screenshots, baselines and wiki. Ships **off**. Open: the owner's edge change ("What to do next", item 5) |
 
 The design is the source of truth. Markers in it: **(owner)** = decided by the owner, **(call)** = the
 designer's choice the owner has seen and may still correct. This file repeats nothing from it except
@@ -80,6 +81,15 @@ what a new session needs to start correctly.
    The parked minor findings are listed in the PR description; the five of item 29 were fixed since (the
       singular overflow line, curve labels a line apart, a slow download no longer holds the render slot,
       dismissals counted only when made by the end of the as-of day, and four smoke checks).
+
+5. **Edge, provider lookup (plan 10):** once PR #25 is merged and CI has published both images, an edge PR in
+   `davcs86/homelab-edge` (the plan's "Edge change (owner)"): the API's env file gains `NPI_SEARCH=1`, rendered
+   only when an inventory switch is on (default off; any other value stops the API at start); the API container
+   may open outbound HTTPS (TCP 443) to `npiregistry.cms.hhs.gov` and resolve it (the UI needs nothing new); no
+   port, secret, health path, `/data`, uid or read-only root changes; both pins bumped and a deploy. Then one
+   manual check: a person search in one state lists only providers practising there, a repeat is fast (cache),
+   and the API log line shows `npi_outcome` with no term. Until then `GET /v1/providers` says disabled and no
+   sheet shows the panel.
 
 ## Owner decisions in plan 3 (do not reopen)
 
