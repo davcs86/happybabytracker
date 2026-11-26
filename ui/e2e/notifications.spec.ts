@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, expectNotFoundPage, signIn, submit, untilHydrated } from './helpers.js';
 import {
 	ANA,
@@ -122,6 +122,21 @@ const pushWrites = async (from = 0) =>
 async function open(page: Page) {
 	await page.goto(PAGE);
 	await expect(page.getByRole('heading', { name: 'Notifications', level: 1 })).toBeVisible();
+}
+
+// The page's own invalidateAll re-renders its forms from the server: forge a field and submit in one task.
+async function submitForged(field: Locator, value: string) {
+	const page = field.page();
+	const response = page.waitForResponse(
+		(r) => r.request().method() === 'POST' && new URL(r.url()).search.startsWith('?/')
+	);
+	await field.evaluate((el, value) => {
+		const input = el as HTMLInputElement;
+		input.value = value;
+		if (input.type === 'checkbox') input.checked = true;
+		input.form?.requestSubmit();
+	}, value);
+	await (await response).finished();
 }
 
 // The enable button is enabled once the page has hydrated.
@@ -298,13 +313,7 @@ test.describe('Web Push on', () => {
 		await openHydrated(page);
 		await enable(page);
 		const here = region(page, 'This device');
-		await here
-			.locator('input[name="device"]')
-			.first()
-			.evaluate((el, id) => {
-				(el as HTMLInputElement).value = id;
-			}, dans.id);
-		await submit(here.getByRole('button', { name: 'Save' }));
+		await submitForged(here.locator('input[name="device"]').first(), dans.id);
 		await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 		expect(await page.locator('body').innerText()).toBe(unknown);
 
@@ -312,11 +321,7 @@ test.describe('Web Push on', () => {
 		const resent = page.waitForResponse((r) => new URL(r.url()).pathname === SUBSCRIBE);
 		await open(page);
 		await resent;
-		await here.getByLabel(MIA.name).evaluate((el) => {
-			(el as HTMLInputElement).value = 'k-unknown';
-		});
-		await here.getByLabel(MIA.name).check();
-		await submit(here.getByRole('button', { name: 'Save' }));
+		await submitForged(here.getByLabel(MIA.name), 'k-unknown');
 		await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 		expect(await page.locator('body').innerText()).toBe(unknown);
 		expect((await dan('GET', DEVICES)).body.devices).toEqual([dans]);
@@ -325,10 +330,7 @@ test.describe('Web Push on', () => {
 			const resent = page.waitForResponse((r) => new URL(r.url()).pathname === SUBSCRIBE);
 			await open(page);
 			await resent;
-			await here.locator('form[action="?/remove"] input[name="device"]').evaluate((el, id) => {
-				(el as HTMLInputElement).value = id;
-			}, id);
-			await submit(here.getByRole('button', { name: 'Turn off on this device' }));
+			await submitForged(here.locator('form[action="?/remove"] input[name="device"]'), id);
 			await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();
 			expect(await page.locator('body').innerText()).toBe(unknown);
 		}
