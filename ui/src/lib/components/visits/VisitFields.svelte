@@ -5,9 +5,24 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { VISIT_KINDS, VISIT_KIND_LABEL } from '#lib/constants.js';
 	import type { VisitFormValues } from '#lib/server/visit-form.js';
+	import type { Snippet } from 'svelte';
 
-	let { values, error }: { values: VisitFormValues; error: (name: string) => string | null } =
-		$props();
+	let {
+		values,
+		error,
+		search
+	}: {
+		values: VisitFormValues;
+		error: (name: string) => string | null;
+		// The "Find a US provider" panel, right above the provider (plan 10 B9).
+		search?: Snippet;
+	} = $props();
+
+	const npi = $derived(
+		values.provider_npi !== '' && values.provider.trim() === values.provider_npi_for.trim()
+			? values.provider_npi
+			: null
+	);
 </script>
 
 <!-- Two groups for the wide layout: when and what, then who, where and why. -->
@@ -35,7 +50,13 @@
 	/>
 </div>
 <div class="flex flex-col gap-3.5 xl:row-span-2">
-	<Field id="visit-provider" label="Doctor or clinic (optional)" error={error('provider')}>
+	{@render search?.()}
+	<Field
+		id="visit-provider"
+		label="Doctor or clinic (optional)"
+		error={error('provider') ?? error('provider_npi')}
+		hint={npi && `From the US provider registry, NPI ${npi}`}
+	>
 		{#snippet children(control)}
 			<Input {...control} name="provider" autocomplete="off" value={values.provider} />
 		{/snippet}

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { visitsPath } from '#lib/paths.js';
 import { setKidCookie } from '#lib/server/cookie.js';
 import { failPage } from '#lib/server/outcome.js';
+import { findProviders, pickProvider } from '#lib/server/provider-form.js';
 import {
 	readVisitForm,
 	visitApiFailure,
@@ -11,13 +12,40 @@ import {
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies }) => {
-	const kid = await locals.api.getKid(params.kid);
+	const [kid, search] = await Promise.all([
+		locals.api.getKid(params.kid),
+		locals.api.providers.state()
+	]);
 	if (!kid.ok) failPage(kid);
 	setKidCookie(cookies, kid.data.id);
-	return { kid: kid.data, values: visitCreateValues(new Date(), kid.data.timeZone) };
+	return {
+		kid: kid.data,
+		values: visitCreateValues(new Date(), kid.data.timeZone),
+		// Any failure of the state call counts as off (plan 10 B9).
+		providerSearch: search.ok && search.data.enabled
+	};
 };
 
+// The panel's actions keep every typed value and save nothing.
+async function typed(locals: App.Locals, kidId: string) {
+	const kid = await locals.api.getKid(kidId);
+	if (!kid.ok) failPage(kid);
+	return kid.data;
+}
+
 export const actions: Actions = {
+	find: async ({ request, locals, params }) => {
+		const kid = await typed(locals, params.kid);
+		const form = await request.formData();
+		const { values } = readVisitForm(form, { kind: 'create', zone: kid.timeZone });
+		return findProviders(locals.api, form, values);
+	},
+	pick: async ({ request, locals, params }) => {
+		const kid = await typed(locals, params.kid);
+		const form = await request.formData();
+		const { values } = readVisitForm(form, { kind: 'create', zone: kid.timeZone });
+		return pickProvider(form, values);
+	},
 	save: async ({ request, locals, params }) => {
 		const kid = await locals.api.getKid(params.kid);
 		if (!kid.ok) failPage(kid);
