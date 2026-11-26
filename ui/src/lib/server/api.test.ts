@@ -105,7 +105,8 @@ describe('createApi requests and shapes', () => {
 					id: 'p1',
 					username: 'ana',
 					displayName: 'Ana',
-					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' }
+					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' },
+					passwordChangedAt: null
 				}
 			}
 		});
@@ -356,6 +357,99 @@ describe('createApi logging', () => {
 	});
 });
 
+describe('createApi redesign data', () => {
+	const act = (body: unknown) =>
+		createApi(env, asFetch(mockFetch(async () => json(body))), SESSION);
+	const HOME_WITH = (last: unknown) => ({
+		age_months: 8,
+		corrected_birth_date: null,
+		band: '0-11',
+		modules: [{ module: 'bottles', enabled: true, default: true, overridden: false }],
+		running: { sleep: null, nursing: null },
+		today: {
+			date: '2026-11-20',
+			bottles: { count: 0, ml: 0, floz_hundredths: 0 },
+			nursing: { count: 0, seconds: 0 },
+			pumping: { count: 0, ml: 0, floz_hundredths: 0 },
+			diapers: { total: 0, wet: 0, dirty: 0, both: 0, dry: 0 },
+			sleep: { seconds: 0 },
+			meals: { count: 0 }
+		},
+		due: [],
+		...(last === undefined ? {} : { last })
+	});
+
+	it('reads last activity and the unused link of a listed parent, and tolerates their absence', async () => {
+		const base = {
+			id: 'p-1',
+			username: 'eve',
+			display_name: 'Eve',
+			disabled: false,
+			has_password: false,
+			created_at: '2026-11-21T00:00:00Z'
+		};
+		const link = {
+			kind: 'reset',
+			issued_at: '2026-11-25T09:00:00Z',
+			expires_at: '2026-11-25T10:00:00Z'
+		};
+		const r = await act({
+			parents: [
+				{ ...base, last_active_at: '2026-11-25T08:00:00Z', link },
+				{ ...base, id: 'p-2', last_active_at: null, link: null },
+				{ ...base, id: 'p-3' }
+			]
+		}).listParents();
+		expect(r).toMatchObject({
+			ok: true,
+			data: [
+				{
+					lastActiveAt: '2026-11-25T08:00:00Z',
+					link: { kind: 'reset', issuedAt: link.issued_at, expiresAt: link.expires_at }
+				},
+				{ lastActiveAt: null, link: null },
+				{ lastActiveAt: null, link: null }
+			]
+		});
+	});
+
+	it('reads the newest entry of each enabled tracker from home, null when it has none', async () => {
+		const wire = { type: 'diaper', at: '2026-11-25T08:00:00Z', id: 'd-1', kind: 'wet', note: null };
+		const r = await act(HOME_WITH({ diaper: wire, nursing: null })).home('k-1');
+		expect(r).toMatchObject({
+			ok: true,
+			data: { last: { nursing: null, diaper: { kind: 'diapers', entry: { id: 'd-1' } } } }
+		});
+		const old = await act(HOME_WITH(undefined)).home('k-1');
+		expect(old).toMatchObject({ ok: true, data: { last: {} } });
+	});
+
+	it('sends the device label only when there is one', async () => {
+		const f = mockFetch(async () => json({ token: 't', kind: 'parent', expires_at: 'e' }));
+		const api = createApi(env, asFetch(f), undefined, '1.2.3.4');
+		await api.login('ana', 'pw', 'Safari on iPhone');
+		await api.login('ana', 'pw');
+		expect(JSON.parse(String(f.mock.calls[0][1]?.body))).toEqual({
+			username: 'ana',
+			password: 'pw',
+			device_label: 'Safari on iPhone'
+		});
+		expect(JSON.parse(String(f.mock.calls[1][1]?.body))).toEqual({
+			username: 'ana',
+			password: 'pw'
+		});
+	});
+
+	it('reads the entry count of a kid', async () => {
+		const f = mockFetch(async () => json({ entries: 42 }));
+		expect(await createApi(env, asFetch(f), SESSION).kidCounts('k-1')).toEqual({
+			ok: true,
+			data: { entries: 42 }
+		});
+		expect(f.mock.calls[0][0]).toBe('http://api:9210/v1/kids/k-1/counts');
+	});
+});
+
 describe('createApi admin, account, kid and access calls', () => {
 	const KID_WIRE = {
 		id: 'k-1',
@@ -546,7 +640,9 @@ describe('createApi admin, account, kid and access calls', () => {
 		const api = createApi(env, asFetch(f), SESSION);
 		expect(await api.listAccess('k-1')).toEqual({
 			ok: true,
-			data: [{ parentId: 'p-1', username: 'ana', displayName: 'Ana', role: 'guardian' }]
+			data: [
+				{ parentId: 'p-1', username: 'ana', displayName: 'Ana', role: 'guardian', disabled: false }
+			]
 		});
 		await api.setAccess('k-1', '  Dan ', 'caregiver');
 		await api.removeAccess('k-1', 'p-2');
@@ -618,7 +714,9 @@ describe('createApi admin, account, kid and access calls', () => {
 					displayName: 'Eve',
 					disabled: false,
 					hasPassword: false,
-					createdAt: '2026-11-21T00:00:00Z'
+					createdAt: '2026-11-21T00:00:00Z',
+					lastActiveAt: null,
+					link: null
 				},
 				link: { kind: 'invite', url: 'https://x.test/invite/t', expiresAt: '2026-11-24T00:00:00Z' }
 			}
@@ -678,11 +776,21 @@ describe('createApi admin, account, kid and access calls', () => {
 					id: 'p-1',
 					username: 'ana',
 					display_name: 'Ana B',
-					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' }
+					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' },
+					password_changed_at: '2026-11-20T10:00:00Z'
 				});
 			if (u.endsWith('/sessions') && i?.method === 'GET')
 				return json({
-					sessions: [{ id: 's-1', created_at: 'c', last_seen_at: 'l', current: true }]
+					sessions: [
+						{
+							id: 's-1',
+							created_at: 'c',
+							last_seen_at: 'l',
+							current: true,
+							device_label: 'Safari on iPhone'
+						},
+						{ id: 's-2', created_at: 'c', last_seen_at: 'l', current: false, device_label: null }
+					]
 				});
 			return new Response(null, { status: 204 });
 		});
@@ -690,7 +798,13 @@ describe('createApi admin, account, kid and access calls', () => {
 		const units = { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' } as const;
 		expect(await api.updateProfile('Ana B', units)).toEqual({
 			ok: true,
-			data: { id: 'p-1', username: 'ana', displayName: 'Ana B', units }
+			data: {
+				id: 'p-1',
+				username: 'ana',
+				displayName: 'Ana B',
+				units,
+				passwordChangedAt: '2026-11-20T10:00:00Z'
+			}
 		});
 		expect(sent(f, 0)).toEqual({
 			url: 'http://api:9210/v1/me',
@@ -705,7 +819,16 @@ describe('createApi admin, account, kid and access calls', () => {
 		});
 		expect(await api.listSessions()).toEqual({
 			ok: true,
-			data: [{ id: 's-1', createdAt: 'c', lastSeenAt: 'l', current: true }]
+			data: [
+				{
+					id: 's-1',
+					createdAt: 'c',
+					lastSeenAt: 'l',
+					current: true,
+					deviceLabel: 'Safari on iPhone'
+				},
+				{ id: 's-2', createdAt: 'c', lastSeenAt: 'l', current: false, deviceLabel: null }
+			]
 		});
 		await api.deleteSession('s-2');
 		expect(sent(f, 3)).toMatchObject({
@@ -1447,7 +1570,8 @@ describe('createApi tracker calls', () => {
 					modules: [MODULE],
 					running: { sleep: ENTRIES.sleep.entry, nursing: null },
 					today: DAY,
-					due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }]
+					due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }],
+					last: {}
 				}
 			});
 			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/home');

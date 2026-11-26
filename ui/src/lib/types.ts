@@ -7,7 +7,14 @@ export type Units = {
 	temp: 'c' | 'f';
 };
 
-export type Parent = { id: string; username: string; displayName: string; units: Units };
+// passwordChangedAt is null when the date is unknown (an older API, or a password set before it was kept).
+export type Parent = {
+	id: string;
+	username: string;
+	displayName: string;
+	units: Units;
+	passwordChangedAt: string | null;
+};
 
 export type Session = { kind: SessionKind; parent?: Parent };
 
@@ -47,7 +54,13 @@ export type Kid = Omit<
 	role: Role;
 };
 
-export type Grant = { parentId: string; username: string; displayName: string; role: Role };
+export type Grant = {
+	parentId: string;
+	username: string;
+	displayName: string;
+	role: Role;
+	disabled: boolean;
+};
 
 export type AdminParent = {
 	id: string;
@@ -56,11 +69,22 @@ export type AdminParent = {
 	disabled: boolean;
 	hasPassword: boolean;
 	createdAt: string;
+	// Only the list carries these; null when the parent has no session / no unused link.
+	lastActiveAt: string | null;
+	link: AdminLink | null;
 };
+
+export type AdminLink = { kind: 'invite' | 'reset'; issuedAt: string; expiresAt: string };
 
 export type ParentLink = { kind: 'invite' | 'reset'; url: string; expiresAt: string };
 
-export type SessionInfo = { id: string; createdAt: string; lastSeenAt: string; current: boolean };
+export type SessionInfo = {
+	id: string;
+	createdAt: string;
+	lastSeenAt: string;
+	current: boolean;
+	deviceLabel: string | null;
+};
 
 export type TrackerKind =
 	'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals' | 'symptoms';
@@ -305,6 +329,8 @@ export type Home = {
 	running: { sleep: Sleep | null; nursing: Nursing | null };
 	today: DaySummary;
 	due: HomeDue[];
+	// The newest entry of each tracker whose module is on; null when it has none, absent when the module is off.
+	last: Partial<Record<TimelineType, TimelineItem | null>>;
 };
 
 export type Measure = 'weight' | 'length' | 'head' | 'bmi';
