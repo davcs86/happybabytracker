@@ -9,6 +9,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
+	import { deleteConsequences } from '#lib/delete-kid.js';
 	import { savedAs } from '#lib/drawer.js';
 	import type { PageProps } from './$types';
 
@@ -63,11 +64,15 @@
 				access. Nothing is kept.
 			</p>
 			<ul class="list-disc pl-5 text-[13.5px] leading-relaxed">
-				<li>Every logged entry, including entries other people logged</li>
-				<li>Growth measurements and vaccination records</li>
-				<li>Notes, the trackers you chose, and the details on this page</li>
-				<li>Access for everyone who has it</li>
+				{#each deleteConsequences(data.counts) as line (line)}
+					<li>{line}</li>
+				{/each}
 			</ul>
+			<p class="text-[13.5px]">
+				<a href={resolve('/(app)/kids/[kid]/export', { kid: data.kid.id })} class="underline"
+					>Export a PDF first</a
+				>
+			</p>
 			<form
 				method="POST"
 				action="?/delete"

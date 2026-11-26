@@ -14,10 +14,12 @@ import { timeZoneOptions } from '#lib/server/time-zones.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies }) => {
-	const [r, sources, schemas] = await Promise.all([
+	const [r, sources, schemas, counts, access] = await Promise.all([
 		locals.api.getKid(params.kid),
 		locals.api.growthSources(),
-		locals.api.vaccineSchemas()
+		locals.api.vaccineSchemas(),
+		locals.api.kidCounts(params.kid),
+		locals.api.listAccess(params.kid)
 	]);
 	if (!r.ok) failPage(r);
 	if (r.data.role !== 'guardian') failPage({ ok: false, status: 403, reason: 'forbidden' });
@@ -29,7 +31,12 @@ export const load: PageServerLoad = async ({ locals, params, cookies }) => {
 		values: kidValues(r.data),
 		zones: timeZoneOptions(r.data.timeZone),
 		sources: sourceOptions(sources.data),
-		schedules: scheduleOptions(schemas.data)
+		schedules: scheduleOptions(schemas.data),
+		// The delete list's numbers: a failed read leaves that line uncounted.
+		counts: {
+			entries: counts.ok ? counts.data.entries : null,
+			people: access.ok ? access.data.length : null
+		}
 	};
 };
 

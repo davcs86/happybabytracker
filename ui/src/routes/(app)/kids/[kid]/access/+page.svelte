@@ -61,6 +61,10 @@
 							<span class="font-medium [overflow-wrap:anywhere]">{g.displayName}</span>
 							<Badge>{roleLabel(g.role)}</Badge>
 							{#if self}<Badge>You</Badge>{/if}
+							{#if g.disabled}<Badge
+									class="border-[1.5px] border-dashed border-foreground text-foreground"
+									>Account disabled</Badge
+								>{/if}
 						</div>
 						<span class="font-mono text-[12.5px] [overflow-wrap:anywhere] text-muted-foreground"
 							>{g.username}</span

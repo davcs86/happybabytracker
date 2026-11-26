@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { expectAccessible, expectFieldError, signIn } from './helpers.js';
-import { ADMIN, LEO, MIA, UI_ORIGIN, resetStub } from './stub-api.js';
+import { ADMIN, LEO, MIA, UI_ORIGIN, openSession, resetStub } from './stub-api.js';
 
 const INVITE_TEXT = 'Send this link to the parent. It works once and expires in 72 hours';
 const RESET_TEXT = 'Send this link to the parent. It works once and expires in 1 hour';
@@ -148,4 +148,24 @@ test.describe('without JavaScript', () => {
 		await addParent(page, 'ana', 'Ana');
 		await expectFieldError(page.getByLabel('Username'), 'That username is already taken');
 	});
+});
+
+test('each parent says when they were last active and which link is waiting', async ({ page }) => {
+	await openSession('cleo', 'fake-cleo-password-0000');
+	await page.goto('/admin/parents');
+	await expect(row(page, 'cleo')).toContainText(/Last active (Just now|\d+ min ago)/);
+	await expect(row(page, 'ana')).toContainText('No recent sign-in');
+	// The invited parent never signed in, and has an invite link waiting.
+	await expect(row(page, 'bo')).toContainText('Hasn’t signed in yet');
+	await expect(row(page, 'bo')).toContainText(
+		/Invite link issued (Just now|\d+ min ago)\. Valid until \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\./
+	);
+	await expect(row(page, 'ana')).toContainText(/Reset link issued /);
+	await expect(row(page, 'cleo')).not.toContainText('link issued');
+	await expectAccessible(page);
+
+	await row(page, 'cleo')
+		.getByRole('button', { name: /^New reset link/ })
+		.click();
+	await expect(row(page, 'cleo')).toContainText(/Reset link issued (Just now|\d+ min ago)/);
 });
