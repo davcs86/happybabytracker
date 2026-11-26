@@ -116,3 +116,110 @@ and caregiver see the same controls.
 - Every no-JS route above works with JavaScript disabled.
 - Visual baselines are created from the build for: list (default, empty), visit (upcoming, past with outcome,
   cancelled), and the three sheets.
+
+## Find a US provider (plan 10)
+
+Status: **draft for owner approval** (owner ruling 2026-11-26, plan 10 ruling 2). No UI code is written for it until
+the owner approves this section. Items marked **(confirm)** are the author's choices. Behaviour is in the visits
+spec §10 and `docs/superpowers/plans/2026-11-26-provider-lookup.md`. This section decides only look, words and
+the no-JS route. No prototype and no baseline exist. The visual baselines come from the build, against the stub
+(listed as a deviation in the PR).
+
+### Where it is
+
+- Inside the existing "Add a visit" and "Edit visit" sheets (and their pages), right above "Doctor or clinic
+  (optional)". It is not on the "After the visit" sheet.
+- Shown only while the server's lookup is on (`GET /v1/providers`). When it is off, the sheet is exactly what it is
+  today: no panel, no hint.
+- Closed by default. It opens again after a search, so the results are in view, and closes after a pick.
+
+### Parts
+
+Collapsible (`<details>`), Label, Input, RadioGroup, native Select (DESIGN 4.3 control layer), Button (secondary
+for Search, primary stays Save), Alert, Separator. Nothing new; no icon **(confirm: no lucide icon in the summary,
+because the other `<details>` disclosures in the sheets have none)**.
+
+### Layout (390 px; at ≥ 1280 px it sits in the right-hand column of the sheet's page, as the provider field does)
+
+```
+▸ Find a US provider
+  ┌──────────────────────────────────────────────┐
+  │ Only US doctors and clinics are listed. Your │
+  │ search is sent to the US national provider   │
+  │ registry (NPPES).                            │
+  │ Search for  (•) A doctor  ( ) A clinic or practice
+  │ Last name                [            ]      │
+  │ First name (optional)    [            ]      │   ← "A doctor"
+  │ Clinic or practice name  [            ]      │   ← "A clinic or practice"
+  │ State                    [ Choose a state ▾ ]│
+  │ City (optional)          [            ]      │
+  │ ZIP code (optional)      [     ]             │
+  │                          [ Search ]          │
+  │ ─────────────────────────────────────────────│
+  │ Choose a provider                            │
+  │ ( ) Avery Quill, MD                          │
+  │     Pediatrics · 12 Pine St, Seattle, WA 98101 · 206-555-0100
+  │ ( ) Quillfeather Pediatrics                  │
+  │     Clinic/Center · 40 Elm Ave, Seattle, WA 98101
+  │ There may be more. Add a first name, a city  │
+  │ or a ZIP code to narrow the search.          │
+  │                     [ Use this provider ]    │
+  └──────────────────────────────────────────────┘
+Doctor or clinic (optional)  [ Avery Quill, MD   ]
+From the US provider registry, NPI 9…            ← after a pick
+Place (optional)             [ 12 Pine St, …     ]
+```
+
+- The person fields and the clinic field switch with the "Search for" choice through CSS (`:has(:checked)`, as
+  the outcome sheet's sections do), with and without JavaScript **(confirm: same mechanism as the outcome sheet,
+  which the owner is also asked to confirm)**.
+- Result rows are RadioGroup choices: the label is the name (with ", {credential}" when the registry has one), the
+  description is "{specialty} · {address}" plus " · {phone}" when there is one. Rows are in the registry's order.
+- "There may be more…" shows only when the registry sent its full 20.
+
+### Words (fixed; accessible names in quotes)
+
+- Summary: "Find a US provider".
+- Note (always shown at the top of the open panel): "Only US doctors and clinics are listed. Your search is sent to
+  the US national provider registry (NPPES)." **(confirm: the second sentence tells the person a third party sees
+  what they type; the spec does not require it)**
+- Legend "Search for"; options "A doctor" (default) and "A clinic or practice".
+- Fields: "Last name", "First name (optional)", "Clinic or practice name", "State" (first option "Choose a state",
+  then the state names in alphabetical order: the 50 states, "District of Columbia", "American Samoa", "Guam",
+  "Northern Mariana Islands", "Puerto Rico", "U.S. Virgin Islands"), "City (optional)", "ZIP code (optional)".
+- Buttons: "Search" (secondary), "Use this provider" (secondary). Save and Cancel stay as they are.
+- Results legend: "Choose a provider".
+- More: "There may be more. Add a first name, a city or a ZIP code to narrow the search."
+- Empty: "No US providers match. Check the spelling, or type the doctor or clinic yourself."
+- Unavailable (Alert, in the panel): "The provider search isn’t available right now. You can type the doctor or
+  clinic yourself."
+- Rate limited (Alert, in the panel): "Too many searches, try again in a minute. You can type the doctor or clinic
+  yourself." (the sign-in page's "Too many attempts, try again in a minute" pattern)
+- Field messages: "Enter a last name of 2 to 60 letters", "Enter a name of 2 to 60 letters", "Choose a state",
+  "Enter a city of 2 to 60 letters", "Enter a 5-digit ZIP code", "Choose a provider" (Use this provider with no
+  choice). A refused panel field does not raise the form's "Check the fields with a message." alert; its message
+  sits on the field.
+- After a pick, under "Doctor or clinic (optional)": "From the US provider registry, NPI {npi}". Changing the
+  name removes it on save **(confirm: the only place the NPI is shown; the visit page does not show it)**.
+- A refused `provider_npi` on save, on the "Doctor or clinic" field: "Search for the provider again, or type it
+  yourself."
+
+### Behaviour the look depends on
+
+- Search and "Use this provider" submit the visit form to `?/find` and `?/pick`. Everything typed in the visit
+  fields is kept, and nothing is saved until Save. With JavaScript the sheet stays open, with no toast.
+- Enter in a visit field saves, as today. With JavaScript, Enter in a panel field searches **(confirm: without
+  JavaScript, Enter anywhere saves; the person presses Search)**.
+- Picking fills "Doctor or clinic" and "Place". Both stay editable.
+
+### States
+
+Panel closed; open and empty; a refused field; results (with and without "There may be more"); no results;
+unavailable; rate limited; after a pick; the edit sheet of a visit with an NPI; search off (no panel).
+
+### Acceptance
+
+- axe clean per state in light and dark at 390 and 1280 px; targets ≥ 44 px; no horizontal scroll at 390 px and
+  200 % zoom; long names and addresses wrap (`overflow-wrap:anywhere`).
+- Every state above works with JavaScript disabled.
+- Visual baselines created from the build: panel open with results, after a pick, unavailable.
