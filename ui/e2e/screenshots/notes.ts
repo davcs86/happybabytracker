@@ -43,7 +43,7 @@ export const ABOUT_AREAS: Record<Area, string> = {
 	vaccines: 'Vaccine schedules, dismissals and the vaccination sheets.',
 	medication: 'Medication courses, doses and their sheets.',
 	visits:
-		'Medical visits: the list, a visit before and after it happens, cancelled, the delete confirm, its three sheets, and visits on Home, the Timeline and a Growth record.',
+		'Medical visits: the list, a visit before and after it happens, cancelled, the delete confirm, its three sheets, the Find a US provider panel (stub scenarios `npi_on`, `npi_unavailable`, `npi_rate_limited`), and visits on Home, the Timeline and a Growth record.',
 	milestones: 'Milestone checklists by age, and the sheets for marks and custom milestones.',
 	export:
 		'The PDF export page and its refusals. The PDF itself (POST /kids/[kid]/export/pdf) is a download, not a page: nothing is captured for it.',
@@ -66,5 +66,5 @@ export const NOT_CAPTURED: string[] = [
 	'Install / PWA prompts: the app shows no install UI of its own.',
 	'Caps that need hundreds of rows (the 21st medication course, the 501st vaccination): the same field-message pattern as the errors shown.',
 	'Deleting a kid, an entry, a course, a dose or a visit: each lands on a page already shown; the confirm steps are captured.',
-	'JavaScript off and dark mode: out of scope by decision.'
+	'JavaScript off and dark mode: out of scope by decision, except `visits/24-provider-no-js`, the provider search results as a browser without JavaScript gets them.'
 ];

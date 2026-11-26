@@ -4,7 +4,7 @@ Every picture in this wiki is produced by code, not by hand, so it can be regene
 
 ## What is captured
 
-- **247 screens and states**, each at two sizes: **mobile** 390 × 844 and **desktop** 1280 × 800 (494 images). Light theme, JavaScript on, full-page captures.
+- **254 screens and states**, each at two sizes: **mobile** 390 × 844 and **desktop** 1280 × 800 (508 images). Light theme, JavaScript on (except `visits/24-provider-no-js`, captured without it), full-page captures.
 - A form that opens in a sheet is captured as the open sheet over the page it is opened from, as a person with JavaScript sees it. Only a form that no link opens in a sheet (Log sleep) is captured as a page.
 - The real user interface (the SvelteKit app) running against `ui/e2e/stub-api.ts`, a stub of the API that holds fake people, children and entries. No real person or child appears.
 - The images are in `docs/screenshots/<area>/<NN-name>-<mobile|desktop>.png`, and `docs/screenshots/README.md` is the generated catalogue: every shot, its caption, the route it shows, and what is not captured.
@@ -25,7 +25,7 @@ node e2e/screenshots/index.ts --check
 
 The stub, the UI server, the test workers and the browser all read one frozen instant, **2026-11-24T10:30:00Z**, in the UTC time zone. Ages, dates, "today" and every relative time are therefore the same whatever day the flow runs. Animations are off, the text caret is hidden, the pointer is parked and the page waits for the network and the fonts before each capture. A page taller than the screen is captured whole: the capture grows the window until the page fits, so the fixed tab bar sits at the bottom of the picture.
 
-Two consecutive complete runs were compared file by file: all 494 images were byte-identical.
+Two consecutive complete runs were compared file by file: all 508 images were byte-identical.
 
 ## The people and children on the screens
 

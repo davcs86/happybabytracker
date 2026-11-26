@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
-import { openSheet } from '../helpers.js';
+import { openSheet, submit } from '../helpers.js';
 import { VACCINE_LOT_MAX_LEN } from '../../src/lib/constants.js';
-import { ANA, CLEO, LEO, MIA } from '../stub-api.js';
+import { ANA, CLEO, LEO, MIA, setScenario } from '../stub-api.js';
 import { as, at, kidPath, must, seedVisits } from './seed.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
 
@@ -173,4 +173,103 @@ test('visits switched off and caregiver', async ({ page }) => {
 		'17-caregiver',
 		'A caregiver sees the same list and controls (kid zone Europe/Madrid)'
 	);
+});
+
+// The "Find a US provider" panel against the stub's fictional registry (search is off by default, as at the edge).
+const summary = (where: Page | Locator) => where.getByText('Find a US provider', { exact: true });
+const button = (where: Page | Locator, name: string) =>
+	where.getByRole('button', { name, exact: true });
+
+async function findQuill(where: Page | Locator) {
+	await summary(where).click();
+	await field(where, 'Last name').fill('Quill');
+	await field(where, 'State').selectOption('WA');
+	await submit(button(where, 'Search'));
+}
+
+test('find a US provider', async ({ page }) => {
+	await setScenario('npi_on');
+	await signInAs(page, ANA);
+	let sheet = await openSheet(page, list(), link('Add a visit'), 'Add a visit');
+	await summary(sheet).scrollIntoViewIfNeeded();
+	await shot(
+		page,
+		'visits',
+		'18-provider-closed',
+		'Add a visit with the provider search on: Find a US provider, closed, above Doctor or clinic'
+	);
+	await findQuill(sheet);
+	const results = sheet.getByRole('radiogroup', { name: 'Choose a provider' });
+	await expect(results.getByRole('radio')).toHaveCount(2);
+	await results.scrollIntoViewIfNeeded();
+	await shot(
+		page,
+		'visits',
+		'19-provider-results',
+		'A search for Quill in Washington: the two in-state practices, each with its specialty and address'
+	);
+	await sheet.getByRole('radio', { name: 'AVERY QUILL, MD', exact: true }).check();
+	await submit(button(sheet, 'Use this provider'));
+	await expect(field(sheet, 'Last name')).toBeHidden();
+	await field(sheet, 'Place (optional)').scrollIntoViewIfNeeded();
+	await shot(
+		page,
+		'visits',
+		'20-provider-picked',
+		'After Use this provider: Doctor or clinic and Place filled in, with the registry line and its NPI'
+	);
+
+	sheet = await openSheet(page, list(), link('Add a visit'), 'Add a visit');
+	await summary(sheet).click();
+	await submit(button(sheet, 'Search'));
+	await expect(sheet.getByText('Enter a last name of 2 to 60 letters')).toBeVisible();
+	await field(sheet, 'Last name').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+	await shot(
+		page,
+		'visits',
+		'21-provider-refused',
+		'Search with no last name: the message sits on the field, and no alert above the form'
+	);
+});
+
+test('find a US provider when the registry does not answer', async ({ page }) => {
+	await signInAs(page, ANA);
+	for (const [scenario, name, caption] of [
+		[
+			'npi_unavailable',
+			'22-provider-unavailable',
+			'The registry is unavailable: the alert in the panel; the visit can still be typed and saved'
+		],
+		[
+			'npi_rate_limited',
+			'23-provider-rate-limited',
+			'Too many searches in a minute: the alert in the panel'
+		]
+	] as const) {
+		await setScenario(scenario);
+		const sheet = await openSheet(page, list(), link('Add a visit'), 'Add a visit');
+		await findQuill(sheet);
+		const alert = sheet.getByRole('alert');
+		await expect(alert).toBeVisible();
+		await alert.scrollIntoViewIfNeeded();
+		await shot(page, 'visits', name, caption);
+	}
+});
+
+test.describe('find a US provider without JavaScript', () => {
+	test.use({ javaScriptEnabled: false });
+
+	test('results on the page', async ({ page }) => {
+		await setScenario('npi_on');
+		await signInAs(page, ANA);
+		await open(page, `${list()}/new`);
+		await findQuill(page);
+		await expect(page.getByRole('radiogroup', { name: 'Choose a provider' })).toBeVisible();
+		await shot(
+			page,
+			'visits',
+			'24-provider-no-js',
+			'Without JavaScript Search posts the whole form: the Add a visit page again, the results in the open panel'
+		);
+	});
 });
