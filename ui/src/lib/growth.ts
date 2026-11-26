@@ -9,7 +9,18 @@ import {
 	Z_SCORE_DECIMALS
 } from './constants';
 import { formatAge, formatAgeDays } from './format';
-import type { GrowthLength, GrowthSourceInfo, GrowthWeight, LengthUnit, WeightUnit } from './types';
+import { MEASURE_LABEL } from './growth-chart';
+import type {
+	GrowthLength,
+	GrowthRow,
+	GrowthScore,
+	GrowthSourceInfo,
+	GrowthWeight,
+	LengthUnit,
+	Measure,
+	Units,
+	WeightUnit
+} from './types';
 
 // Ounces are shown to one decimal: hundredths per shown tenth.
 const HUNDREDTHS_PER_TENTH = 10;
@@ -81,3 +92,47 @@ export const coverageHint = (coverage: GrowthSourceInfo['coverage']) =>
 	`Months covered: ${coverage
 		.map((c) => `${COVERAGE_LABEL[c.measure]} ${Math.ceil(c.fromMonths)}–${Math.floor(c.toMonths)}`)
 		.join(', ')}`;
+
+const NO_SCORE = {
+	before_term: 'before expected term',
+	not_covered: 'this source has no table for this age'
+} as const;
+
+const scoreText = (s: GrowthScore) =>
+	s.scored ? `z ${formatZ(s.z)}, percentile ${formatPercentile(s.percentile)}` : NO_SCORE[s.reason];
+
+// One line per measure a row has: its value in the parent's units, then its score or why it has none.
+export function rowMeasures(
+	r: GrowthRow,
+	units: Pick<Units, 'weight' | 'length'>
+): { measure: Measure; line: string }[] {
+	const parts: { measure: Measure; value: string; score: GrowthScore | null }[] = [];
+	if (r.weight) {
+		parts.push({
+			measure: 'weight',
+			value: formatWeight(r.weight, units.weight),
+			score: r.scores.weight
+		});
+	}
+	if (r.length) {
+		parts.push({
+			measure: 'length',
+			value: formatLength(r.length, units.length),
+			score: r.scores.length
+		});
+	}
+	if (r.head) {
+		parts.push({
+			measure: 'head',
+			value: formatLength(r.head, units.length),
+			score: r.scores.head
+		});
+	}
+	// BMI has no imperial unit.
+	if (r.scores.bmi)
+		parts.push({ measure: 'bmi', value: String(r.scores.bmi.value), score: r.scores.bmi });
+	return parts.map((m) => ({
+		measure: m.measure,
+		line: `${MEASURE_LABEL[m.measure]} ${m.value}${m.score ? `: ${scoreText(m.score)}` : ''}`
+	}));
+}

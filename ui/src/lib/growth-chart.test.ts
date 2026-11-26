@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	buildChart,
+	CHART,
 	lacksTable,
 	linePath,
 	linearScale,
@@ -407,5 +408,13 @@ describe('buildChart', () => {
 		expect(m.lines.map((l) => l.label)).toEqual(['50th', '97th']);
 		expect(m.table.lines.map((l) => l.label)).toEqual(['50th', '97th']);
 		expect(m.lines[0].dash).toBe('');
+	});
+});
+
+describe('chart size', () => {
+	// A 390 px phone leaves 342 px for the drawing: wider than that and the 12 px labels scale below 12 px.
+	const PHONE_DRAWING_PX = 342;
+	it('is drawn no wider than the phone it is read on, so its labels are not shrunk', () => {
+		expect(CHART.width).toBeLessThanOrEqual(PHONE_DRAWING_PX);
 	});
 });

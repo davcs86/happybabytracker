@@ -2,18 +2,23 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import InfoIcon from '@lucide/svelte/icons/info';
 	import TrendingUpIcon from '@lucide/svelte/icons/trending-up';
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import GrowthChart from '#lib/components/GrowthChart.svelte';
+	import GrowthSelected from '#lib/components/GrowthSelected.svelte';
 	import GrowthTable from '#lib/components/GrowthTable.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Card } from '#lib/components/ui/card/index.js';
 	import { MEASURES } from '#lib/constants.js';
 	import { lacksTable, MEASURE_LABEL } from '#lib/growth-chart.js';
+	import { systemOf } from '#lib/growth-units.js';
 	import { growthMeasurePath, growthNewPath } from '#lib/paths.js';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 
+	const system = $derived(systemOf(data.units));
+	const selectedRow = $derived(data.rows.find((r) => r.id === data.selected) ?? null);
 	const sourceName = $derived(data.source?.name ?? data.curves.source);
 	const corrected = $derived(data.rows.some((r) => r.correctedDays !== null));
 	const heading = 'text-xs font-semibold tracking-[0.06em] text-muted-foreground uppercase';
@@ -58,6 +63,26 @@
 			{/each}
 		</nav>
 
+		<form method="POST" action="?/units" use:enhance class="flex items-center gap-2.5">
+			<span id="units-label" class="text-sm text-muted-foreground">Units</span>
+			<div role="group" aria-labelledby="units-label" class="flex gap-1 rounded-xl bg-muted p-1">
+				{#each [['metric', 'kg · cm'], ['imperial', 'lb · in']] as [value, label] (value)}
+					<button
+						type="submit"
+						name="system"
+						{value}
+						aria-pressed={system === value}
+						class="min-h-11 rounded-[9px] px-3.5 text-sm font-semibold {system === value
+							? 'bg-card text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.15)]'
+							: 'text-muted-foreground'}">{label}</button
+					>
+				{/each}
+			</div>
+		</form>
+		{#if form && 'message' in form && form.message}
+			<p role="alert" class="text-[13.5px] text-destructive">{form.message}</p>
+		{/if}
+
 		{#if data.rows.length === 0}
 			<Card class="items-start gap-2.5 border-dashed px-[22px] py-[22px]">
 				<span class="grid size-11 place-items-center rounded-xl bg-accent text-primary-ink"
@@ -87,6 +112,7 @@
 					units={data.units}
 					{sourceName}
 					kidName={data.kid.name}
+					selected={data.selected}
 				/>
 			</section>
 
@@ -123,6 +149,14 @@
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
 		{#if data.rows.length > 0}
+			{#if selectedRow}
+				<GrowthSelected
+					row={selectedRow}
+					kidId={data.kid.id}
+					units={data.units}
+					measure={data.measure}
+				/>
+			{/if}
 			<section aria-labelledby="list-heading" class="flex flex-col gap-2.5">
 				<h2 id="list-heading" class={heading}>Measurements</h2>
 				<GrowthTable
@@ -130,6 +164,7 @@
 					kidId={data.kid.id}
 					units={data.units}
 					measure={data.measure}
+					selected={data.selected}
 				/>
 			</section>
 		{/if}
