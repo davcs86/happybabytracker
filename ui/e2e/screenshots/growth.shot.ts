@@ -1,5 +1,5 @@
-import type { Page } from '@playwright/test';
-import { submit, untilHydrated } from '../helpers.js';
+import type { Locator, Page } from '@playwright/test';
+import { openSheet, submit } from '../helpers.js';
 import { ANA, IVY, LEO, MIA, REMY, CLEO } from '../stub-api.js';
 import { as, at, kidPath, must, type Api } from './seed.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
@@ -8,8 +8,11 @@ const TODAY = at('00:00').slice(0, 10);
 const daysAgo = (n: number) => at('00:00', n).slice(0, 10);
 const page_ = (kid: string, measure = '') =>
 	`/kids/${kid}/growth${measure ? `?measure=${measure}` : ''}`;
-const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const save = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+const field = (where: Locator, label: string) => where.getByLabel(label, { exact: true });
+const save = (sheet: Locator) => submit(sheet.getByRole('button', { name: 'Save', exact: true }));
+const addLink = (p: Page) => p.getByRole('link', { name: 'Add measurement' });
+const editLink = (kid: string, id: string) => (p: Page) =>
+	p.locator(`a[href="/kids/${kid}/growth/${id}"]:visible`).first();
 const kg = (amount: number) => ({ unit: 'kg', amount });
 const cm = (amount: number) => ({ unit: 'cm', amount });
 
@@ -76,35 +79,69 @@ test('a term kid: measures, sources, units', async ({ page }) => {
 		'07-ivy-imperial',
 		'Pounds and ounces and inches for an imperial parent'
 	);
-	await open(page, `/kids/${IVY.id}/growth/${latest.id}`);
-	await shot(page, 'growth', '08-edit-imperial', 'Edit measurement in pounds, ounces and inches');
+	await openSheet(page, page_(IVY.id), editLink(IVY.id, latest.id), 'Edit measurement');
+	await shot(
+		page,
+		'growth',
+		'08-edit-imperial',
+		'The Edit measurement sheet for an imperial parent: it keeps the unit it was typed in (kg and cm); the empty head box shows inches'
+	);
 	await must(ana, 'PATCH', '/v1/me', { units: { weight: 'kg', length: 'cm' } });
-	await open(page, `/kids/${IVY.id}/growth/${latest.id}`);
-	await shot(page, 'growth', '09-edit', 'Edit measurement: 9.5 kg, 76 cm, a note');
+	await openSheet(page, page_(IVY.id), editLink(IVY.id, latest.id), 'Edit measurement');
+	await shot(
+		page,
+		'growth',
+		'09-edit',
+		'The Edit measurement sheet over the Growth page: 9.5 kg, 76 cm, a note'
+	);
 	await openDetails(page, 'Delete this measurement');
-	await shot(page, 'growth', '10-edit-delete-confirm', 'Delete opened: the confirm step');
+	await shot(
+		page,
+		'growth',
+		'10-edit-delete-confirm',
+		'Delete opened inside the Edit measurement sheet: the confirm step'
+	);
 });
 
 test('empty, new and errors', async ({ page }) => {
 	await signInAs(page, ANA);
 	await open(page, page_(MIA.id));
 	await shot(page, 'growth', '11-empty', 'No measurement yet: the WHO lines alone');
-	await open(page, `/kids/${MIA.id}/growth/new`);
-	await shot(page, 'growth', '12-new-empty', 'Add a measurement: date prefilled to today');
-	await untilHydrated(field(page, 'Date'));
-	await save(page);
-	await expect(page.getByRole('alert').first()).toBeVisible();
-	await shot(page, 'growth', '13-new-nothing-measured', 'Refused: no measurement typed');
-	await field(page, 'Date').fill(daysAgo(-1));
-	await field(page, 'Kilograms').fill('7.1');
-	await field(page, 'Note').fill('Kept after the error');
-	await save(page);
-	await expect(field(page, 'Date')).toHaveAttribute('aria-invalid', 'true');
-	await shot(page, 'growth', '14-new-future-date', 'Refused: a future date, the values kept');
-	await field(page, 'Date').fill(TODAY);
-	await field(page, 'Length or height').fill('64');
-	await field(page, 'Head circumference').fill('41.5');
-	await shot(page, 'growth', '15-new-filled', 'Weight, length and head typed, ready to save');
+	const sheet = await openSheet(page, page_(MIA.id), addLink, 'Add a measurement');
+	await shot(
+		page,
+		'growth',
+		'12-new-empty',
+		'The Add a measurement sheet over the empty Growth page: date prefilled to today'
+	);
+	await save(sheet);
+	await expect(sheet.getByText('Check the fields with a message.')).toBeVisible();
+	await shot(
+		page,
+		'growth',
+		'13-new-nothing-measured',
+		'Refused in the sheet: no measurement typed; the sheet stays open'
+	);
+	await field(sheet, 'Date').fill(daysAgo(-1));
+	await field(sheet, 'Kilograms').fill('7.1');
+	await field(sheet, 'Note').fill('Kept after the error');
+	await save(sheet);
+	await expect(field(sheet, 'Date')).toHaveAttribute('aria-invalid', 'true');
+	await shot(
+		page,
+		'growth',
+		'14-new-future-date',
+		'Refused in the sheet: a future date, the values kept'
+	);
+	await field(sheet, 'Date').fill(TODAY);
+	await field(sheet, 'Length or height').fill('64');
+	await field(sheet, 'Head circumference').fill('41.5');
+	await shot(
+		page,
+		'growth',
+		'15-new-filled',
+		'Weight, length and head typed in the sheet and the date corrected; the earlier refusal stays until the next save'
+	);
 });
 
 test('preterm and unscored', async ({ page }) => {
@@ -149,7 +186,7 @@ test('preterm and unscored', async ({ page }) => {
 		page,
 		'growth',
 		'16-leo-preterm-caregiver',
-		'Born at 35 weeks: both ages, plotted at corrected age; a caregiver gets no settings link'
+		'Born at 35 weeks: both ages, plotted at corrected age, seen by a caregiver'
 	);
 	await open(page, page_(early.id));
 	await shot(

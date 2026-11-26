@@ -63,17 +63,17 @@ type Kid struct {
 
 // Administration is one vaccination visit's dose: one stored row per antigen, sharing ID; Antigens are sorted.
 type Administration struct {
-	ID, KidID, GivenOn   string
-	Antigens             []string
-	Lot, Product, Note   *string
-	CreatedBy, UpdatedBy string
-	CreatedAt, UpdatedAt time.Time
+	ID, KidID, GivenOn          string
+	Antigens                    []string
+	Lot, Product, Note, VisitID *string
+	CreatedBy, UpdatedBy        string
+	CreatedAt, UpdatedAt        time.Time
 }
 
 // VaccineDose is one stored row: one antigen of the administration it belongs to.
 type VaccineDose struct {
 	ID, KidID, Administration, Antigen, GivenOn string
-	Lot, Product, Note                          *string
+	Lot, Product, Note, VisitID                 *string
 	CreatedBy, UpdatedBy                        string
 	CreatedAt, UpdatedAt                        time.Time
 }

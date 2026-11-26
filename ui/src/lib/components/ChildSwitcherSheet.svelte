@@ -56,8 +56,10 @@
 			{/each}
 		</ul>
 		{#if guardian}
-			<a href="/kids/new" class="flex min-h-12 items-center font-semibold text-primary"
-				>Add a child</a
+			<a
+				href="/kids/new"
+				data-drawer="Add a child"
+				class="flex min-h-12 items-center font-semibold text-primary">Add a child</a
 			>
 		{:else}
 			<p class="text-[13.5px] text-muted-foreground">Ask a guardian to add a child.</p>

@@ -1,5 +1,5 @@
-import type { Page } from '@playwright/test';
-import { submit, untilHydrated } from '../helpers.js';
+import type { Locator, Page } from '@playwright/test';
+import { openSheet, submit } from '../helpers.js';
 import { ANA, CLEO, NELL, OTTO, PIA, REMY, SAMI } from '../stub-api.js';
 import { as, at, kidPath, must } from './seed.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
@@ -7,8 +7,9 @@ import { expect, openDetails, shot, signInAs, test } from './shots.js';
 const TODAY = at('00:00').slice(0, 10);
 const url = (kid: string, rest = '') => `/kids/${kid}/milestones${rest}`;
 const itemText = (id: string) => `Stub item ${id.split('-').slice(0, 2).join('-')}-1`;
-const field = (page: Page, label: string) => page.getByLabel(label, { exact: true });
-const save = (page: Page) => submit(page.getByRole('button', { name: 'Save', exact: true }));
+const field = (where: Locator, label: string) => where.getByLabel(label, { exact: true });
+const save = (sheet: Locator) => submit(sheet.getByRole('button', { name: 'Save', exact: true }));
+const link = (name: string) => (p: Page) => p.getByRole('link', { name, exact: true });
 
 async function open(page: Page, path: string) {
 	await page.goto(path);
@@ -116,12 +117,12 @@ test('lists by age', async ({ page }) => {
 test('forms', async ({ page }) => {
 	const cleo = await as(CLEO);
 	const yesterday = at('00:00', 1).slice(0, 10);
-	const mark = await must(cleo, 'POST', kidPath(NELL.id, 'milestones'), {
+	await must(cleo, 'POST', kidPath(NELL.id, 'milestones'), {
 		item: '9m-cg-stub-1',
 		reached_on: yesterday,
 		note: 'At the park'
 	});
-	const custom = await must(cleo, 'POST', kidPath(NELL.id, 'milestones'), {
+	await must(cleo, 'POST', kidPath(NELL.id, 'milestones'), {
 		text: 'Waves bye-bye',
 		reached_on: yesterday
 	});
@@ -137,40 +138,48 @@ test('forms', async ({ page }) => {
 		'10-reached-and-custom',
 		'Items reached with a date, Your milestones with a 200-character unbroken text'
 	);
-	await open(page, url(NELL.id, '/new?item=9m-lc-stub-1'));
-	await shot(page, 'milestones', '11-mark-with-date', 'Mark as reached: choose a date and a note');
-	await untilHydrated(field(page, 'Date reached'));
-	await field(page, 'Date reached').fill(at('00:00', -1).slice(0, 10));
-	await save(page);
-	await expect(field(page, 'Date reached')).toHaveAttribute('aria-invalid', 'true');
-	await shot(page, 'milestones', '12-mark-future-date', 'Refused: a future date');
-	await open(page, url(NELL.id, '/new'));
-	await shot(page, 'milestones', '13-new-custom', 'Add a milestone: text, date, note');
-	await untilHydrated(field(page, 'Date reached'));
-	await field(page, 'Milestone').fill('a'.repeat(201));
-	await save(page);
-	await expect(field(page, 'Milestone')).toHaveAttribute('aria-invalid', 'true');
-	await shot(page, 'milestones', '14-new-custom-201-chars', 'Refused: 201 characters');
-	await open(page, url(NELL.id, `/${mark.id}`));
+	const mark = await openSheet(
+		page,
+		url(NELL.id),
+		link(`Choose a date for ${itemText('9m-lc-stub-1')}`),
+		'Mark as reached'
+	);
+	await shot(
+		page,
+		'milestones',
+		'11-mark-with-date',
+		'The Mark as reached sheet over the list: choose a date and a note'
+	);
+	await field(mark, 'Date reached').fill(at('00:00', -1).slice(0, 10));
+	await save(mark);
+	await expect(field(mark, 'Date reached')).toHaveAttribute('aria-invalid', 'true');
+	await shot(page, 'milestones', '12-mark-future-date', 'Refused in the sheet: a future date');
+	const add = await openSheet(page, url(NELL.id), link('Add a milestone'), 'Add a milestone');
+	await shot(page, 'milestones', '13-new-custom', 'The Add a milestone sheet: text, date, note');
+	await field(add, 'Milestone').fill('a'.repeat(201));
+	await save(add);
+	await expect(field(add, 'Milestone')).toHaveAttribute('aria-invalid', 'true');
+	await shot(page, 'milestones', '14-new-custom-201-chars', 'Refused in the sheet: 201 characters');
+	await openSheet(page, url(NELL.id), link(`Edit ${itemText('9m-cg-stub-1')}`), 'Edit milestone');
 	await shot(
 		page,
 		'milestones',
 		'15-edit-item-mark',
-		'Edit milestone: a catalogue item’s date and note'
+		'The Edit milestone sheet: a catalogue item’s date and note'
 	);
 	await openDetails(page, /undo|Undo/);
 	await shot(
 		page,
 		'milestones',
 		'16-undo-reached-confirm',
-		'Undo reached opened: the confirm step'
+		'Undo reached opened inside the sheet: the confirm step'
 	);
-	await open(page, url(NELL.id, `/${custom.id}`));
+	await openSheet(page, url(NELL.id), link('Edit Waves bye-bye'), 'Edit milestone');
 	await openDetails(page, /Delete/);
 	await shot(
 		page,
 		'milestones',
 		'17-edit-custom-delete-confirm',
-		'Edit a custom milestone, delete opened'
+		'The Edit milestone sheet for a custom milestone, delete opened'
 	);
 });

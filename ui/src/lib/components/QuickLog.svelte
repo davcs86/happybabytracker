@@ -8,11 +8,13 @@
 	import MilkIcon from '@lucide/svelte/icons/milk';
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
+	import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
 	import SyringeIcon from '@lucide/svelte/icons/syringe';
 	import UtensilsIcon from '@lucide/svelte/icons/utensils';
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { SECTION_HEADING } from '#lib/components/home.js';
+	import { TRACKER_TITLE } from '#lib/constants.js';
 	import { logPath } from '#lib/paths.js';
 	import { PAGE_ROUTE, type QuickLogEntry } from '#lib/quick-log.js';
 	import type { ModuleId } from '#lib/types.js';
@@ -23,6 +25,13 @@
 		message = null
 	}: { entries: QuickLogEntry[]; kidId: string; message?: string | null } = $props();
 
+	// Only the tiles that open a form open a sheet; the others open a list page.
+	const drawerTitle = (entry: QuickLogEntry) =>
+		entry.kind
+			? TRACKER_TITLE[entry.kind].log
+			: entry.module === 'growth'
+				? 'Add a measurement'
+				: undefined;
 	const href = (entry: QuickLogEntry) =>
 		entry.kind ? logPath(kidId, entry.kind) : PAGE_ROUTE[entry.module]?.(kidId);
 
@@ -38,7 +47,8 @@
 		medication: { icon: NotebookPenIcon, hue: 'tracker-symptom' },
 		milestones: { icon: FlagIcon, hue: '[--h:170]' },
 		growth: { icon: ChartLineIcon, hue: '[--h:200]' },
-		vaccination: { icon: SyringeIcon, hue: '[--h:235]' }
+		vaccination: { icon: SyringeIcon, hue: '[--h:235]' },
+		visits: { icon: StethoscopeIcon, hue: '[--h:235]' }
 	};
 	const HINT: Partial<Record<ModuleId, string>> = {
 		milestones: 'Open Milestones',
@@ -80,7 +90,7 @@
 								<button type="submit" class={LABEL}>{entry.label}</button>
 							</form>
 						{:else}
-							<a href={href(entry)} class={LABEL}>{entry.label}</a>
+							<a href={href(entry)} data-drawer={drawerTitle(entry)} class={LABEL}>{entry.label}</a>
 						{/if}
 						{@render hint(entry)}
 					</span>

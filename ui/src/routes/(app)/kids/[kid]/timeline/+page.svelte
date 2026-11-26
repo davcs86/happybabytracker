@@ -2,12 +2,12 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
-	import TimelineRow, { TRACKER_VISUAL } from '#lib/components/TimelineRow.svelte';
+	import TimelineRow, { TIMELINE_VISUAL } from '#lib/components/TimelineRow.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Card } from '#lib/components/ui/card/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { TIMELINE_TYPE, TRACKER_KINDS, TRACKER_LABEL } from '#lib/constants.js';
+	import { TIMELINE_KINDS, TIMELINE_LABEL, TIMELINE_TYPE } from '#lib/constants.js';
 	import { formatDayHeading } from '#lib/timeline.js';
 	import type { PageProps } from './$types';
 
@@ -50,8 +50,8 @@
 					>Show</legend
 				>
 				<div class="flex flex-wrap gap-2">
-					{#each TRACKER_KINDS as kind (kind)}
-						{@const Icon = TRACKER_VISUAL[kind].icon}
+					{#each TIMELINE_KINDS as kind (kind)}
+						{@const Icon = TIMELINE_VISUAL[kind].icon}
 						<label
 							class="relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-sm border bg-card px-3.5 text-sm font-medium has-checked:border-primary has-checked:bg-accent has-checked:font-semibold has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary"
 						>
@@ -67,7 +67,7 @@
 								class="hidden size-3.5 text-primary peer-checked:block"
 							/>
 							<Icon aria-hidden="true" class="size-4" />
-							{TRACKER_LABEL[kind]}
+							{TIMELINE_LABEL[kind]}
 						</label>
 					{/each}
 				</div>

@@ -83,7 +83,7 @@ func TestDefaultsFollowTheTable(t *testing.T) {
 		"bottles": {true, true, false}, "nursing": {true, true, false}, "pumping": {true, true, false},
 		"diapers": {true, true, false}, "sleep": {true, true, false}, "feeding": {true, true, false},
 		"milestones": {true, true, false}, "growth": {true, true, true}, "vaccination": {true, true, true},
-		"sickness": {true, true, true}, "medication": {true, true, true},
+		"sickness": {true, true, true}, "medication": {true, true, true}, "visits": {true, true, true},
 	}
 	if len(table) != len(model.Modules) {
 		t.Fatalf("table covers %d modules, want %d", len(table), len(model.Modules))

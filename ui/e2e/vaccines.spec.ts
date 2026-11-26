@@ -7,7 +7,8 @@ import {
 	navLink,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -146,9 +147,13 @@ test('a Record link opens the form with its visit’s outstanding antigens ticke
 	await page.goto(pageUrl(IVY.id));
 	const record = group(page, '12-month vaccines').getByRole('link', { name: /^Record/ });
 	expect(await href(record)).toBe(`${UI_ORIGIN}${newUrl(IVY.id)}?antigens=hib,measles`);
-	await record.click();
-	await page.waitForURL((u) => u.pathname === newUrl(IVY.id));
-	await expect(page.getByRole('heading', { name: 'Record a vaccination', level: 1 })).toBeVisible();
+	await openSheet(
+		page,
+		pageUrl(IVY.id),
+		(p) => group(p, '12-month vaccines').getByRole('link', { name: /^Record/ }),
+		'Record a vaccination'
+	);
+	await expect(page).toHaveURL(`${newUrl(IVY.id)}?antigens=hib,measles`);
 	await expect(field(page, 'Measles')).toBeChecked();
 	await expect(field(page, HIB)).toBeChecked();
 	await expect(field(page, 'Diphtheria')).not.toBeChecked();

@@ -270,10 +270,10 @@ modules_on() { # body-name -> the module fields of every ticked box on the modul
 
 count() { { grep -oF -- "$2" "$WORK/$1.body" || true; } | wc -l | tr -d ' '; }
 
-# A figure may sit beside digits only in timestamps, durations, statuses and ids, so those go first.
+# A figure may sit beside digits only in timestamps, durations, statuses, outcome counts and ids, so those go first.
 logged_value() { # log-file -> succeeds when a remembered volume or growth figure is in it
   local v plain="$1.plain"
-  sed -E 's/"(time|request_id)":"[^"]*"//g; s/"(status|duration_ms|timeout_ms)":[0-9]+//g
+  sed -E 's/"(time|request_id)":"[^"]*"//g; s/"(status|duration_ms|timeout_ms|outcome_growth|outcome_vaccinations|outcome_medications)":[0-9]+//g
     s/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}//g' "$1" >"$plain"
   while IFS= read -r v; do
     if grep -qE "(^|[^0-9.])${v//./\\.}([^0-9]|$)" "$plain"; then return 0; fi
@@ -1070,6 +1070,7 @@ refused VAPID_PRIVATE_KEY "$ORIGIN" VAPID_SUBJECT="$ORIGIN"
 refused VAPID_PRIVATE_KEY "${VAPID_KEY:0:42}" VAPID_PRIVATE_KEY="${VAPID_KEY:0:42}" VAPID_SUBJECT="$ORIGIN"
 refused VAPID_SUBJECT "http://localhost:${UI_PORT}" VAPID_PRIVATE_KEY="$VAPID_KEY" VAPID_SUBJECT="http://localhost:${UI_PORT}"
 refused HBT_ALLOW_FAKE_PUSH - HBT_ALLOW_FAKE_PUSH=1
+refused NPI_SEARCH - NPI_SEARCH=2
 refused NTFY_TOKEN "$NTFY_SECRET" NTFY_TOKEN="$NTFY_SECRET"
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD" fake-push
@@ -1147,7 +1148,7 @@ docker logs "$API" >"$WORK/api-push.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
-pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID, NTFY_TOKEN without NTFY_URL and NPI_SEARCH=2, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
 
 # 4m. Milestones through the real catalog: every list, the current one marked, marks by tap, by date and by the caregiver.
 MILESTONES="$KID_PATH/milestones"
@@ -1266,7 +1267,7 @@ done
 pass "4m the Milestones page shows CDC's attribution and sentence, no judgement word, $MS_LISTS $USER_A adds two custom milestones, edits one's date and deletes the other; $USER_C gets 404 and the admin a 303 on the milestone pages"
 
 # 4n. The PDF export without JavaScript: every module, the module filter, a switched-off module, refusals, access.
-ALL_MODULES=(bottles nursing pumping diapers sleep feeding milestones growth vaccination sickness medication)
+ALL_MODULES=(bottles nursing pumping diapers sleep feeding milestones growth vaccination sickness medication visits)
 EXPORT_FROM="$(ago 240 | cut -c1-10)"
 EXPORT_TO="$(today)"
 PAST_FROM=2026-02-03
@@ -1368,6 +1369,200 @@ code="$(export_pdf admin-export "$ADDR_ADMIN" "$ADMIN_SESSION" "$EXPORT_FROM" "$
 [ "$code $(location admin-export)" = '303 /admin/parents' ] ||
   fail "4n admin export" "status $code, Location $(location admin-export)"
 pass "4n $USER_B exports every module ($EXPORT_FROM to $EXPORT_TO) as a whole PDF download (no-store, no name in the file name, the embedded font, no core font) with the kid, a bottle, pumping, the diaper note, the WHO attribution, the UK schedule, the milestones, the fever and the course; four sections carry no judgement or reminder word; bottles and growth leave out the schedule, the milestones and the diaper; switched-off pumping is exported when ticked; no module and an unknown module are 303 error=modules; concurrent exports answer$outcomes; a past range exports; $USER_C gets the 404 page and the admin a 303"
+
+# 4o. Medical visits without JavaScript: Due, the calendar file, an outcome's linked rows and their delete, access.
+VISITS="$KID_PATH/visits"
+VISIT_PAST_DAY=2026-04-20
+remember "$VISIT_PAST_DAY"
+V_PROVIDER="$(note "next-provider-${SUFFIX}")"
+V_LOCATION="$(note "location-${SUFFIX}")"
+V_REASON="$(note "reason-${SUFFIX}")"
+V_PAST_PROVIDER="$(note "past-provider-${SUFFIX}")"
+V_PAST_LOCATION="$(note "past-location-${SUFFIX}")"
+V_PAST_REASON="$(note "past-reason-${SUFFIX}")"
+V_OUTCOME="$(note "guardian-outcome-notes-${SUFFIX}")"
+V_VISIT_LOT="$(note "visit-lot-${SUFFIX}")"
+V_MED="$(note "visit-med-${SUFFIX}")"
+V_MED_DOSE="$(note "visit-dose-${SUFFIX}")"
+V_B_PROVIDER="$(note "caregiver-provider-${SUFFIX}")"
+V_B_LOCATION="$(note "caregiver-location-${SUFFIX}")"
+V_B_REASON="$(note "caregiver-reason-${SUFFIX}")"
+V_B_OUTCOME="$(note "caregiver-outcome-notes-${SUFFIX}")"
+V_C_TEXT="$(note "nogrant-visit-text-${SUFFIX}")"
+# 5.37 kg = 5370 g = 18942 hundredths of an ounce.
+for v in 5.37 5370 18942; do remember_value "$v"; done
+visit_path() { # body-name text -> the visit page path of the Visits list row that shows text
+  pieces "$1" '<li' | grep -F -- "$2" | grep -oE "$VISITS/[0-9a-f-]{36}\"" | head -n 1 | tr -d '"' || true
+}
+due_section() { # body-name -> the home's Due section on one line ('' when none)
+  tr -d '\n' <"$WORK/$1.body" | sed -n 's|.*id="due-heading"||p' | sed 's|</section>.*||' || true
+}
+revision() { # body-name -> the revision the outcome form posts
+  { grep -oE 'name="revision" value="[0-9]+"' "$WORK/$1.body" || true; } | head -n 1 | sed -E 's/.*value="([0-9]+)"/\1/'
+}
+linked_id() { # body-name module -> the id of the record the visit page links in that module's pages
+  { grep -oE "$KID_PATH/$2/[0-9a-f-]{36}\"" "$WORK/$1.body" || true; } | head -n 1 | tr -d '"' | sed 's|.*/||'
+}
+new_visit() { # name addr cookie starts-at kind provider location reason -> expects the 303 to the Visits page
+  local code
+  code="$(form "$1" "$2" "$3" "$VISITS/new?/save" "starts_at=$4" duration_min=30 "kind=$5" "provider=$6" \
+    "location=$7" "note=$8")"
+  [ "$code $(location "$1")" = "303 $VISITS" ] || fail "4o add a visit $1" "status $code, Location $(location "$1")"
+}
+code="$(req home-o0 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+{ [ "$code" = 200 ] && [[ "$(due_section home-o0)" != *"$VISITS"* ]]; } ||
+  fail "4o Due before a visit" "status $code, a visit line already"
+# Tomorrow 10:00 on the kid's clock: upcoming, inside Home's window of today and the next 7 days.
+new_visit visit-new-a "$ADDR_A" "$SESSION_A" "$(TZ="$KID_ZONE" date -d "@$((NOW + 86400))" '+%Y-%m-%d')T10:00" \
+  well_child "$V_PROVIDER" "$V_LOCATION" "$V_REASON"
+code="$(req visits-a "$ADDR_A" "$SESSION_A" "$UI_URL$VISITS")"
+VISIT_NEXT="$(visit_path visits-a "$V_PROVIDER")"
+{ [ "$code" = 200 ] && [ -n "$VISIT_NEXT" ] &&
+  pieces visits-a '<section' | grep -F 'id="upcoming-heading"' | grep -F -- "$V_PROVIDER" >/dev/null; } ||
+  fail "4o upcoming visit listed" "status $code"
+# Home lists at most HOME_DUE_MAX entries, visits last: the visit's own line or the "N more on the Visits page" line.
+code="$(req home-o1 "$ADDR_A" "$SESSION_A" "$UI_URL$KID_PATH")"
+due="$(due_section home-o1)"
+{ [ "$code" = 200 ] && { [[ "$due" == *"href=\"$VISIT_NEXT\""* ]] ||
+  [[ "$due" == *"href=\"$VISITS\""*" more on the Visits page</a>"* ]]; }; } || fail "4o home Due" "status $code"
+code="$(req visit-ics "$ADDR_A" "$SESSION_A" "$UI_URL$VISIT_NEXT/calendar?detail=generic")"
+{ [ "$code" = 200 ] && header_is visit-ics 'content-type: text/calendar; charset=utf-8' &&
+  header_is visit-ics 'cache-control: no-store' && body_has visit-ics "UID:visit-${VISIT_NEXT##*/}@" &&
+  ! body_has visit-ics "$KID_NAME" && ! grep -qF -f "$NOTES_FILE" "$WORK/visit-ics.body" &&
+  ! { grep -i '^content-disposition:' "$WORK/visit-ics.headers" | grep -F -- "$KID_NAME" >/dev/null; }; } ||
+  fail "4o calendar download" "status $code"
+# A past visit's outcome writes a measurement, a vaccination and a course linked to it.
+new_visit visit-past-a "$ADDR_A" "$SESSION_A" "${VISIT_PAST_DAY}T10:00" sick "$V_PAST_PROVIDER" "$V_PAST_LOCATION" \
+  "$V_PAST_REASON"
+code="$(req visits-a2 "$ADDR_A" "$SESSION_A" "$UI_URL$VISITS")"
+VISIT_PAST="$(visit_path visits-a2 "$V_PAST_PROVIDER")"
+code_o="$(req outcome-page-a "$ADDR_A" "$SESSION_A" "$UI_URL$VISIT_PAST/outcome")"
+rev="$(revision outcome-page-a)"
+{ [ "$code $code_o" = '200 200' ] && [ -n "$VISIT_PAST" ] && [ -n "$rev" ] && body_has outcome-page-a 'name="add_growth"' &&
+  body_has outcome-page-a 'name="add_vaccinations"' && body_has outcome-page-a 'name="add_medications"'; } ||
+  fail "4o outcome page" "list $code, page $code_o, revision '$rev'"
+code="$(form outcome-a "$ADDR_A" "$SESSION_A" "$VISIT_PAST/outcome?/save" "revision=$rev" outcome_notes_original= \
+  "outcome_notes=$V_OUTCOME" add_growth=on "growth.measured_on=$VISIT_PAST_DAY" growth.weight_unit=kg \
+  growth.weight_kg=5.37 growth.weight_lb= growth.weight_oz= growth.length_unit=cm growth.length= growth.head_unit=cm \
+  growth.head= growth.note= add_vaccinations=on "vaccinations.0.given_on=$VISIT_PAST_DAY" \
+  vaccinations.0.antigens=hepatitis_b "vaccinations.0.lot=$V_VISIT_LOT" vaccinations.0.product= vaccinations.0.note= \
+  add_medications=on "medications.0.name=$V_MED" "medications.0.dose=$V_MED_DOSE" medications.0.kind=none \
+  medications.0.hours= medications.0.start_at= medications.0.end_on= medications.0.active=on medications.0.note=)"
+[ "$code $(location outcome-a)" = "303 $VISIT_PAST" ] || fail "4o record the outcome" "status $code, Location $(location outcome-a)"
+code="$(req visit-page-a "$ADDR_A" "$SESSION_A" "$UI_URL$VISIT_PAST")"
+V_GROWTH_ID="$(linked_id visit-page-a growth)"
+V_DOSE_ID="$(linked_id visit-page-a vaccines)"
+V_COURSE_ID="$(linked_id visit-page-a medication)"
+{ [ "$code" = 200 ] && [ -n "$V_GROWTH_ID" ] && [ -n "$V_DOSE_ID" ] && [ -n "$V_COURSE_ID" ] &&
+  body_has visit-page-a "$V_OUTCOME" && body_has visit-page-a "$V_PAST_REASON" &&
+  body_has visit-page-a 'Also delete these records'; } ||
+  fail "4o visit page after the outcome" "status $code, linked '$V_GROWTH_ID' '$V_DOSE_ID' '$V_COURSE_ID'"
+linked_shown() { # suffix -> SHOWN: how many of the outcome's growth, vaccines and medication rows their pages show
+  local code code_v code_m
+  SHOWN=0
+  code="$(req "visit-growth-$1" "$ADDR_A" "$SESSION_A" "$UI_URL$GROWTH")"
+  code_v="$(req "visit-vaccines-$1" "$ADDR_A" "$SESSION_A" "$UI_URL$VACCINES")"
+  code_m="$(req "visit-medication-$1" "$ADDR_A" "$SESSION_A" "$UI_URL$MEDICATION")"
+  [ "$code $code_v $code_m" = '200 200 200' ] || fail "4o module pages $1" "growth $code, vaccines $code_v, medication $code_m"
+  if body_has "visit-growth-$1" "/growth/$V_GROWTH_ID\"" && body_has "visit-growth-$1" 'Weight 5.37 kg'; then
+    SHOWN=$((SHOWN + 1))
+  fi
+  if body_has "visit-vaccines-$1" "/vaccines/$V_DOSE_ID\"" &&
+    [ "$(given_lines "visit-vaccines-$1" "$VISIT_PAST_DAY")" = 1 ]; then SHOWN=$((SHOWN + 1)); fi
+  if body_has "visit-medication-$1" "/medication/$V_COURSE_ID\"" && body_has "visit-medication-$1" ">$V_MED</h3>"; then
+    SHOWN=$((SHOWN + 1))
+  fi
+}
+linked_shown kept
+[ "$SHOWN" = 3 ] || fail "4o linked rows on their pages" "$SHOWN of 3 shown"
+code="$(form visit-delete-a "$ADDR_A" "$SESSION_A" "$VISIT_PAST?/delete" linked=delete)"
+code_p="$(req visit-deleted "$ADDR_A" "$SESSION_A" "$UI_URL$VISIT_PAST")"
+linked_shown deleted
+{ [ "$code $(location visit-delete-a) $code_p $SHOWN" = "303 $VISITS 404 0" ] &&
+  ! body_has visit-growth-deleted 'Weight 5.37 kg' && [ "$(given_lines visit-vaccines-deleted "$VISIT_PAST_DAY")" = 0 ] &&
+  ! body_has visit-medication-deleted "$V_MED"; } ||
+  fail "4o delete with linked" "status $code, Location $(location visit-delete-a), visit page $code_p, $SHOWN rows left"
+# The caregiver adds a past visit and records notes from it.
+new_visit visit-new-b "$ADDR_B" "$SESSION_B" "${VISIT_PAST_DAY}T15:00" specialist "$V_B_PROVIDER" "$V_B_LOCATION" \
+  "$V_B_REASON"
+code="$(req visits-b "$ADDR_B" "$SESSION_B" "$UI_URL$VISITS")"
+VISIT_B="$(visit_path visits-b "$V_B_PROVIDER")"
+code_o="$(req outcome-page-b "$ADDR_B" "$SESSION_B" "$UI_URL$VISIT_B/outcome")"
+rev="$(revision outcome-page-b)"
+{ [ "$code $code_o" = '200 200' ] && [ -n "$VISIT_B" ] && [ -n "$rev" ]; } ||
+  fail "4o caregiver outcome page" "list $code, page $code_o, revision '$rev'"
+code="$(form outcome-b "$ADDR_B" "$SESSION_B" "$VISIT_B/outcome?/save" "revision=$rev" outcome_notes_original= \
+  "outcome_notes=$V_B_OUTCOME")"
+code_p="$(req visit-page-b "$ADDR_B" "$SESSION_B" "$UI_URL$VISIT_B")"
+{ [ "$code $(location outcome-b) $code_p" = "303 $VISIT_B 200" ] && body_has visit-page-b "$V_B_OUTCOME"; } ||
+  fail "4o caregiver outcome" "status $code, Location $(location outcome-b), page $code_p"
+# No grant: the 404 page on every visit page (the calendar sends it there), and the unknown kid's 404 from the API.
+for p in visits:"$VISITS" visits-new:"$VISITS/new" visit:"$VISIT_B" visit-edit:"$VISIT_B/edit" \
+  visit-outcome:"$VISIT_B/outcome"; do
+  code="$(req "nogrant-${p%%:*}" "$ADDR_C" "$SESSION_C" "$UI_URL${p#*:}")"
+  { [ "$code" = 404 ] && body_has "nogrant-${p%%:*}" 'Not found' &&
+    ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-${p%%:*}.body" &&
+    ! body_has "nogrant-${p%%:*}" "$KID_NAME"; } || fail "4o no grant ${p%%:*}" "status $code"
+done
+code="$(req nogrant-visit-ics "$ADDR_C" "$SESSION_C" "$UI_URL$VISIT_B/calendar?detail=full")"
+code_p="$(req nogrant-visit-ics-page "$ADDR_C" "$SESSION_C" "$UI_URL$(location nogrant-visit-ics)")"
+{ [ "$code $(location nogrant-visit-ics) $code_p" = "303 $VISIT_B 404" ] && body_has nogrant-visit-ics-page 'Not found' &&
+  ! body_has nogrant-visit-ics-page "$KID_NAME" && ! grep -qF -f "$NOTES_FILE" "$WORK/nogrant-visit-ics.body"; } ||
+  fail "4o no grant calendar" "status $code, Location $(location nogrant-visit-ics), page $code_p"
+UNKNOWN_KID="$(cat /proc/sys/kernel/random/uuid)"
+code="$(api_call nogrant-api-unknown "$SESSION_C" GET "/v1/kids/$UNKNOWN_KID/visits")"
+[ "$code" = 404 ] || fail "4o unknown kid" "status $code"
+V_API="/v1/kids/$KID_ID/visits"
+VB_API="$V_API/${VISIT_B##*/}"
+API_ROUTES=("GET $V_API" "POST $V_API" "GET $VB_API" "PATCH $VB_API" "DELETE $VB_API?linked=keep" "POST $VB_API/outcome" \
+  "GET $VB_API/calendar?detail=generic")
+API_BODIES=('' "{\"starts_at\":\"${VISIT_PAST_DAY}T08:00:00Z\",\"duration_min\":30,\"kind\":\"other\",\"provider\":\"$V_C_TEXT\"}"
+  '' '{"cancelled":true}' '' "{\"revision\":0,\"outcome_notes\":\"$V_C_TEXT\"}" '')
+for i in "${!API_ROUTES[@]}"; do
+  code="$(api_call "nogrant-api-$i" "$SESSION_C" "${API_ROUTES[$i]%% *}" "${API_ROUTES[$i]#* }" "${API_BODIES[$i]}")"
+  { [ "$code" = 404 ] && cmp -s "$WORK/nogrant-api-$i.body" "$WORK/nogrant-api-unknown.body"; } ||
+    fail "4o no grant API ${API_ROUTES[$i]}" "status $code"
+done
+code="$(req visit-page-b2 "$ADDR_B" "$SESSION_B" "$UI_URL$VISIT_B")"
+{ [ "$code" = 200 ] && body_has visit-page-b2 "$V_B_OUTCOME" && ! body_has visit-page-b2 "$V_C_TEXT" &&
+  ! body_has visit-page-b2 'Restore visit'; } || fail "4o no grant wrote nothing" "status $code"
+pass "4o $USER_A adds a visit for tomorrow through the form; Home's Due lists it; its generic .ics is text/calendar, no-store, UID:visit-<id>@, with no kid name or visit text; a past visit's outcome (notes, a 5.37 kg measurement, a hepatitis B dose and a course) shows on the visit page and on the growth, vaccines and medication pages; deleting the visit with its records removes all three; $USER_B adds a visit and records its notes; $USER_C gets the 404 page on the visit pages and the calendar, and the unknown kid's 404 on all ${#API_ROUTES[@]} visit API routes, writing nothing"
+# 4p. The provider lookup is off without NPI_SEARCH (what the edge runs); provider_npi still round-trips. No registry call.
+code="$(api_call providers-off "$SESSION_A" GET /v1/providers)"
+{ [ "$code" = 200 ] && [ "$(tr -d '\n' <"$WORK/providers-off.body")" = '{"search":{"enabled":false}}' ]; } ||
+  fail "4p GET /v1/providers" "status $code"
+# Search terms are letters only (B4), so the run suffix is spelled in letters.
+P_LAST="$(note "Quill$(tr 0-9 g-p <<<"$SUFFIX")")"
+P_CITY="$(note "Town$(tr 0-9 g-p <<<"$SUFFIX")")"
+code="$(api_call providers-search-off "$SESSION_A" POST /v1/providers/search \
+  "{\"kind\":\"person\",\"last_name\":\"$P_LAST\",\"state\":\"WA\",\"city\":\"$P_CITY\"}")"
+code_u="$(api_call providers-unknown "$SESSION_A" POST /v1/no-such-route "{\"kind\":\"person\"}")"
+{ [ "$code $code_u" = '404 404' ] && cmp -s "$WORK/providers-search-off.body" "$WORK/providers-unknown.body"; } ||
+  fail "4p POST /v1/providers/search off" "status $code, unknown route $code_u"
+for p in new:"$VISITS/new" edit:"$VISIT_NEXT/edit"; do
+  code="$(req "visit-${p%%:*}-npi-off" "$ADDR_A" "$SESSION_A" "$UI_URL${p#*:}")"
+  { [ "$code" = 200 ] && body_has "visit-${p%%:*}-npi-off" 'name="provider"' &&
+    ! body_has "visit-${p%%:*}-npi-off" 'Find a US provider' && ! body_has "visit-${p%%:*}-npi-off" '?/find'; } ||
+    fail "4p no provider panel on the ${p%%:*} visit sheet" "status $code"
+done
+# Fictional: issued NPIs start with 1 or 2; this one passes the check digit.
+V_NPI=9876543213
+remember "$V_NPI"
+V_NPI_PROVIDER="$(note "registry-provider-${SUFFIX}")"
+V_NPI_PROVIDER_2="$(note "typed-provider-${SUFFIX}")"
+code="$(api_call visit-npi "$SESSION_A" POST "/v1/kids/$KID_ID/visits" \
+  "{\"starts_at\":\"${VISIT_PAST_DAY}T09:00:00Z\",\"duration_min\":30,\"kind\":\"other\",\"provider\":\"$V_NPI_PROVIDER\",\"provider_npi\":\"$V_NPI\"}")"
+V_NPI_ID="$({ grep -oE '"id":"[0-9a-f-]{36}"' "$WORK/visit-npi.body" || true; } | head -n 1 | cut -d'"' -f4)"
+code_g="$(api_call visit-npi-get "$SESSION_A" GET "/v1/kids/$KID_ID/visits/$V_NPI_ID")"
+{ [ "$code $code_g" = '201 200' ] && [ -n "$V_NPI_ID" ] && body_has visit-npi-get "\"provider_npi\":\"$V_NPI\"" &&
+  body_has visit-npi-get "\"provider\":\"$V_NPI_PROVIDER\""; } || fail "4p a visit keeps provider_npi" "status $code, GET $code_g"
+code="$(api_call visit-npi-patch "$SESSION_A" PATCH "/v1/kids/$KID_ID/visits/$V_NPI_ID" \
+  "{\"provider\":\"$V_NPI_PROVIDER_2\"}")"
+code_g="$(api_call visit-npi-get-2 "$SESSION_A" GET "/v1/kids/$KID_ID/visits/$V_NPI_ID")"
+{ [ "$code $code_g" = '200 200' ] && body_has visit-npi-get-2 '"provider_npi":null' &&
+  body_has visit-npi-get-2 "\"provider\":\"$V_NPI_PROVIDER_2\""; } ||
+  fail "4p a new provider text clears provider_npi" "status $code, GET $code_g"
+pass "4p provider lookup is off without NPI_SEARCH: GET /v1/providers says disabled, the search route is the unknown-route 404 (byte-equal body), and neither visit sheet offers the panel; a visit posted with a provider and an NPI returns it, and a PATCH of the provider text alone clears it"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
@@ -1479,7 +1674,7 @@ done
 
 # 9. No identifier, password or token in either container's logs.
 printf '%s\n' '{"x":126}' >"$WORK/control-hit.log"
-printf '%s\n' '{"duration_ms":126,"status":200}' >"$WORK/control-miss.log"
+printf '%s\n' '{"duration_ms":126,"status":200,"outcome_growth":126}' >"$WORK/control-miss.log"
 { logged_value "$WORK/control-hit.log" && ! logged_value "$WORK/control-miss.log"; } ||
   fail "9 control" "logged_value misses a figure or matches a measured one"
 docker logs "$API" >"$WORK/api-2.log" 2>&1
@@ -1509,7 +1704,7 @@ for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log ui
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, milestone text, export module list or range, volume, measurement or temperature"
+pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, milestone text, export module list or range, visit text or date, provider search term or NPI, volume, measurement or temperature"
 
 # 10. Memory of each API process and of the UI: the login burst in the fourth API process, the export in the fifth.
 fail_if_oom "10 memory"

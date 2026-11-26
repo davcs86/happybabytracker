@@ -22,11 +22,11 @@ describe('navModel', () => {
 		expect(ids({})).toEqual([
 			'vaccines',
 			'medication',
+			'visits',
 			'milestones',
 			'export',
 			'modules',
 			'profile',
-			'settings',
 			'account',
 			'theme',
 			'logout'
@@ -37,6 +37,7 @@ describe('navModel', () => {
 		expect(ids({ role: 'caregiver' })).toEqual([
 			'vaccines',
 			'medication',
+			'visits',
 			'milestones',
 			'export',
 			'account',
@@ -52,6 +53,7 @@ describe('navModel', () => {
 	it('hides the entries of a module that is switched off, and nothing when unknown', () => {
 		expect(ids({ modules: [off('medication'), off('vaccination')] })).not.toContain('medication');
 		expect(ids({ modules: [off('vaccination')] })).not.toContain('vaccines');
+		expect(ids({ modules: [off('visits')] })).not.toContain('visits');
 		expect(ids({ modules: [off('sleep')] })).toEqual(ids({}));
 		expect(ids({ modules: null })).toContain('medication');
 	});
@@ -61,11 +63,11 @@ describe('navModel', () => {
 		expect(hrefs).toEqual([
 			'/kids/k1/vaccines',
 			'/kids/k1/medication',
+			'/kids/k1/visits',
 			'/kids/k1/milestones',
 			'/kids/k1/export',
 			'/kids/k1/modules',
 			'/kids/k1/profile',
-			'/kids/k1/settings',
 			'/account'
 		]);
 	});
@@ -93,10 +95,11 @@ describe('current page', () => {
 		['/kids/k1/growth/new', ['growth']],
 		['/kids/k1/vaccines/a1', ['vaccines']],
 		['/kids/k1/medication/doses/d1', ['medication']],
+		['/kids/k1/visits/v1/edit', ['visits']],
 		['/kids/k1/milestones/new', ['milestones']],
 		['/kids/k1/export/pdf', ['export']],
 		['/kids/k1/access', ['profile']],
-		['/kids/k1/settings', ['settings']],
+		['/kids/k1/settings', ['profile']],
 		['/account', ['account']],
 		['/account/notifications', []],
 		['/kids/new', []]

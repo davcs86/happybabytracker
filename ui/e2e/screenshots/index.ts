@@ -12,6 +12,7 @@ type Entry = { area: string; name: string; about: string; project: string; path:
 const ROOT = resolve(import.meta.dirname, '../../..');
 const DIR = join(ROOT, 'docs/screenshots');
 const README = join(DIR, 'README.md');
+const WIKI = join(ROOT, 'docs/wiki');
 const MANIFEST = join(ROOT, 'ui/test-results/screenshots-manifest.jsonl');
 const ROUTES = join(ROOT, 'ui/src/routes');
 
@@ -43,10 +44,29 @@ function compare(listed: string[], label: string) {
 	console.log(`${label}: ${want.size} files, matching docs/screenshots exactly`);
 }
 
+// Every link and image of a wiki page must name a file that exists.
+function wikiProblems(): string[] {
+	if (!existsSync(WIKI)) return [];
+	return readdirSync(WIKI)
+		.filter((f) => f.endsWith('.md'))
+		.flatMap((f) => {
+			const text = readFileSync(join(WIKI, f), 'utf8');
+			const refs = [...text.matchAll(/\]\(([^)\s]+)\)/g), ...text.matchAll(/src="([^"]+)"/g)];
+			return refs
+				.map((m) => m[1])
+				.filter((ref) => !/^(https?:|mailto:|#)/.test(ref))
+				.filter((ref) => !existsSync(join(WIKI, ref.split('#')[0])))
+				.map((ref) => `docs/wiki/${f} refers to a missing file: ${ref}`);
+		});
+}
+
 if (process.argv.includes('--check')) {
 	const text = readFileSync(README, 'utf8');
 	const links = [...text.matchAll(/\]\(([a-z-]+\/[a-z0-9-]+\.png)\)/g)].map((m) => m[1]);
 	compare(links, 'README.md');
+	const broken = wikiProblems();
+	if (broken.length > 0) fail(broken);
+	console.log('docs/wiki: every link and image resolves');
 	process.exit(0);
 }
 
@@ -136,7 +156,7 @@ const out: string[] = [
 	'',
 	`${sorted.length} screens and states, each at two viewports: **mobile** 390×844 and **desktop** 1280×800,`,
 	'light colour scheme, JavaScript on, device scale factor 1, full-page captures.',
-	'**Initial design:** these screens show the current first-pass design, captured as a baseline for review and later redesign; they are not a final design.',
+	'**Redesign:** these screens show the app after the redesign (`docs/plans/ui-redesign`). The first-pass design they replace is kept, unchanged, in `docs/screenshots-legacy` for a before and after. The wiki in `docs/wiki` explains each screen.',
 	'Every value shown is fake stub data from `ui/e2e/stub-api.ts`; no real person or child appears.',
 	'',
 	'## Regenerate',
@@ -155,10 +175,10 @@ const out: string[] = [
 	'',
 	'## Determinism',
 	'',
-	`The stub API and the UI server run with \`ui/e2e/screenshots/freeze-clock.ts\` preloaded, and the`,
-	`browser uses Playwright's \`page.clock.setFixedTime\`: all three read **${SHOTS_NOW}**`,
+	`The stub API, the UI server and the test workers run with \`ui/e2e/screenshots/freeze-clock.ts\``,
+	`preloaded, and the browser uses Playwright's \`page.clock.setFixedTime\`: all four read **${SHOTS_NOW}**`,
 	'(browser time zone UTC, locale en-US). Ages, dates, "today" and every relative time are therefore',
-	'the same on every run. Animations are disabled, reduced motion is emulated, the caret is hidden,',
+	'the same on every run, whatever day it is run. Animations are disabled, reduced motion is emulated, the caret is hidden,',
 	'focus is cleared and the pointer is parked before each capture, after the network is idle and the',
 	'fonts are loaded. Two consecutive runs produce byte-identical PNGs.',
 	'',

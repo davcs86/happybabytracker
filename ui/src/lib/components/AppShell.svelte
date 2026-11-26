@@ -6,6 +6,7 @@
 	import { applyTheme, isTheme, THEME_STORAGE_KEY } from '#lib/theme-client.js';
 	import type { Kid, ModuleState } from '#lib/types.js';
 	import ChildSwitcherSheet from './ChildSwitcherSheet.svelte';
+	import DrawerHost from './DrawerHost.svelte';
 	import MoreSheet from './MoreSheet.svelte';
 	import PageHeader from './PageHeader.svelte';
 	import ThemeSheet from './ThemeSheet.svelte';
@@ -171,4 +172,5 @@
 <MoreSheet bind:open={moreOpen} entries={nav.more} ontheme={openTheme} />
 <ChildSwitcherSheet bind:open={switchOpen} {kids} {ages} currentId={kid?.id ?? null} />
 <ThemeSheet bind:open={themeOpen} {theme} onchoose={(t) => (chosen = t)} />
+<DrawerHost />
 <Toaster />

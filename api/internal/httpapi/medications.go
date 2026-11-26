@@ -43,11 +43,12 @@ type medicationView struct {
 	LastDose  *lastDoseView `json:"last_dose"`
 	NextDue   *nextDueView  `json:"next_due"`
 	DoseCount int           `json:"dose_count"`
+	VisitID   *string       `json:"visit_id"`
 }
 
 func newMedicationView(v model.Medication) medicationView {
 	out := medicationView{ID: v.ID, Name: v.Name, Dose: v.Dose, StartAt: instantString(v.StartAt), EndOn: v.EndOn, Active: v.Active,
-		Note: v.Note, DoseCount: v.DoseCount, Schedule: scheduleView{Kind: v.Kind, Times: v.Times, Hours: v.EveryHours}}
+		Note: v.Note, DoseCount: v.DoseCount, VisitID: v.VisitID, Schedule: scheduleView{Kind: v.Kind, Times: v.Times, Hours: v.EveryHours}}
 	if d := v.LastDose; d != nil {
 		out.LastDose = &lastDoseView{ID: d.ID, GivenAt: instantString(d.GivenAt), Amount: d.Amount}
 	}

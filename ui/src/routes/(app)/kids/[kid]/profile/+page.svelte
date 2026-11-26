@@ -36,21 +36,25 @@
 	const settings = $derived([
 		{
 			title: 'Trackers',
+			drawer: `Modules for ${kid.name}`,
 			note: 'Choose which trackers show on Home',
 			href: resolve('/(app)/kids/[kid]/modules', { kid: kid.id })
 		},
 		{
 			title: 'Growth chart source',
+			drawer: 'Edit details',
 			note: 'On the Growth page',
 			href: `${settingsHref}#kid-growth_source`
 		},
 		{
 			title: 'Vaccination schedule',
+			drawer: 'Edit details',
 			note: 'On the Vaccines page',
 			href: `${settingsHref}#kid-vaccine_schema`
 		},
 		{
 			title: 'Show a missed dose as overdue for (minutes)',
+			drawer: 'Edit details',
 			note: unit(kid.reminderOverdueMinutes, 'minute'),
 			href: `${settingsHref}#kid-reminder_overdue_minutes`
 		}
@@ -73,7 +77,9 @@
 		<section aria-labelledby="details-heading" class={CARD}>
 			<div class="flex items-center justify-between gap-3">
 				<h2 id="details-heading" class="text-base font-semibold">Details</h2>
-				<Button href={settingsHref} variant="outline">Edit details</Button>
+				<Button href={settingsHref} data-drawer="Edit details" variant="outline"
+					>Edit details</Button
+				>
 			</div>
 			<dl class="flex flex-col gap-3">
 				{#each rows as [label, value] (label)}
@@ -96,14 +102,19 @@
 			<ul>
 				{#each settings as s (s.title)}
 					<li class="border-t">
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() plus a field anchor -->
-						<a href={s.href} class="flex min-h-[52px] items-center gap-2 py-1.5">
+						<!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() plus a field anchor -->
+						<a
+							href={s.href}
+							data-drawer={s.drawer}
+							class="flex min-h-[52px] items-center gap-2 py-1.5"
+						>
 							<span class="flex min-w-0 flex-1 flex-col">
 								<span class="text-[14.5px] font-medium [overflow-wrap:anywhere]">{s.title}</span>
 								<span class="text-[12.5px] text-muted-foreground">{s.note}</span>
 							</span>
 							<ChevronRightIcon aria-hidden="true" class="size-4 shrink-0 text-muted-foreground" />
 						</a>
+						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					</li>
 				{/each}
 			</ul>
@@ -131,7 +142,7 @@
 					</li>
 				{/each}
 			</ul>
-			<Button href={accessHref} variant="outline">Manage access</Button>
+			<Button href={accessHref} data-drawer="Access" variant="outline">Manage access</Button>
 		</section>
 
 		<section aria-labelledby="delete-heading" class="{CARD} border-[1.5px] border-destructive">

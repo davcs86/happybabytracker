@@ -9,7 +9,7 @@ Audience: the engineer (or agent) implementing the new design in `davcs86/happyb
 |---|---|---|---|
 | A1 | Server code (API client, form actions, load functions, `lib/*.ts` domain logic and their unit tests) is **not** changed; only `.svelte`, CSS, `app.html`, theme plumbing and e2e selectors | the request was to update the *design* | list the server change per page in the PR |
 | A2 | Theme preference is stored in a cookie `hbt_theme` (`light`/`dark`/`auto`), server-read in `hooks.server.ts` | only the cookie works before first paint with no JS | pick another store, keep `data-theme`/`data-resolved` |
-| A3 | Drawer-first forms use SvelteKit shallow routing over the existing `new` / `[entry]` routes | no new routes needed; the full pages stay as the no-JS fallback | add `@modal`-style routes (React/Next only) |
+| A3 | Drawer-first forms use SvelteKit shallow routing over the existing `new` / `[entry]` routes | no new routes needed; the full pages stay as the no-JS fallback; built, see section 5 | add `@modal`-style routes (React/Next only) |
 | A4 | Accessible names change on purpose in a few places (listed in section 6); e2e selectors are updated in the same PR | the prototype renames the nav landmark and moves Sign out | keep legacy names and drop the rename |
 | A5 | The legacy shadcn style `nova` defaults (32 px buttons, `rounded-lg`, `ring-3`) are replaced, not wrapped | targets must be 44-56 px | n/a |
 | A6 | The prototype's "More" sheet and desktop inline entries replace the legacy header "Sign out" button; Sign out stays a `POST /logout` | owner decision in the prototype | restore the header button |
@@ -63,25 +63,14 @@ New app-level components (put in `src/lib/components/`): `PageHeader.svelte` (ch
 - Animations/transitions: off in tests (`animations: 'disabled'`); in product only the sheet open/close and the chevron turn, both gated by `prefers-reduced-motion`.
 - Do not copy anything listed under "Prototype-only" (DESIGN.md section 13): the simulation panel, the iframe drawer, sample data, the 34 px segments.
 
-## 5. Drawer-first forms (SvelteKit shallow routing)
-Pattern, per list page:
-```svelte
-<script lang="ts">
-  import { goto, preloadData, pushState } from '$app/navigation';
-  import { page } from '$app/state';
-  import NewPage from './new/+page.svelte';
-  async function open(e: MouseEvent, href: string) {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;       // modified click: let the browser open the page
-    e.preventDefault();
-    const r = await preloadData(href);
-    if (r.type === 'loaded' && r.status === 200) pushState(href, { selected: r.data });
-    else goto(href);                                                          // fallback: full page
-  }
-</script>
-<a href="/kids/{kid}/growth/new" data-drawer="Add measurement" onclick={(e) => open(e, `/kids/${kid}/growth/new`)}>Add measurement</a>
-{#if page.state.selected}<FormSheet title="Add measurement" onclose={() => history.back()}><NewPage data={page.state.selected} form={page.form} embed /></FormSheet>{/if}
-```
-`embed` hides the header, tabs, back link, title and age line. The form keeps `method="POST"` and `use:enhance`; on success `await invalidateAll(); history.back();` then show the toast. Add `PageState { selected?: Record<string, unknown> }` to `src/app.d.ts`. Validation refusals and server failures render inside the sheet (design: `PATTERNS.md` P1).
+## 5. Drawer-first forms (SvelteKit shallow routing), as built
+One mechanism serves every form page; a page never wires its own click handler.
+- **Trigger.** A link with a real `href` and `data-drawer="Title"` (the title equals the target page's h1). `DrawerHost` (mounted once in `AppShell`) listens for clicks in the capture phase, so it runs before SvelteKit's router. A plain left click on a link whose path is in the `ROUTES` table of `src/lib/drawer.ts` calls `preloadData(href)` and `pushState(href, { drawer: { href, title, data } })`. A modified click, a new tab, no JavaScript, a path that is not in `ROUTES`, or a load that is not a 200 navigates to the page.
+- **Render.** `DrawerHost` shows `FormSheet` while `page.state.drawer` is set and mounts the target `+page.svelte` inside it with `data` from the state and `form={page.form}`. `FormSheet` provides the embed context. The URL is the form page's URL, so a relative `action="?/save"` posts to it. Reload or Back leaves the sheet; a reload shows the page.
+- **Embed.** A form page wraps its content in `FormFrame`, which renders the page's own chrome snippet (back link, h1, age) only outside a sheet. The form's wide-grid classes apply only when not embedded (`isEmbed()`), the Cancel is `FormCancel` (a button that closes the sheet, a link on the page), and Save is `size="lg"` in a sheet.
+- **Submit.** `use:enhance={savedAs('Measurement added')}`: in a sheet a redirect result closes the sheet (`history.back()`), shows the toast and `invalidateAll()`s; a failure re-renders the form in the sheet with its values and alerts. Outside a sheet it behaves as `keepValues`. The delete form uses `savedAs('… deleted')` too.
+- **Link inside a sheet** (for example the advanced/simple toggle) replaces the sheet's state, so one Back still closes it.
+- **Adding a form page.** (1) the page uses `FormFrame`, `FormCancel`, `savedAs` and `isEmbed()`; (2) its path pattern and a lazy import go in `ROUTES`; (3) every link to it carries `data-drawer`; (4) a spec opens it through the link and asserts the sheet, the save toast and the refreshed list, and another opens the URL directly and asserts the page. `e2e/drawer.spec.ts` is the model.
 
 ## 6. Accessible names changed on purpose (update e2e in the same PR)
 | Legacy | New | Why |

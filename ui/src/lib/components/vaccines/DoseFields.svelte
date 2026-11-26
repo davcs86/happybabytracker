@@ -9,17 +9,20 @@
 		error,
 		catalogue,
 		birthDate,
-		today
+		today,
+		prefix = ''
 	}: {
 		values: { antigens: string[] } & Record<string, string | string[] | undefined>;
 		error: (name: string) => string | null;
 		catalogue: VaccineCatalogue;
 		birthDate: string;
 		today: string;
+		// Prepended to every name and id, so several blocks share one form; values and error stay unprefixed.
+		prefix?: string;
 	} = $props();
 
 	const ORIGINALS = ['given_on', 'antigens', 'lot', 'product', 'note'] as const;
-	const ANTIGENS_ERROR = 'vaccine-antigens-error';
+	const ANTIGENS_ERROR = $derived(`${prefix}vaccine-antigens-error`);
 	const text = (name: string) => {
 		const v = values[name];
 		return typeof v === 'string' ? v : '';
@@ -28,18 +31,19 @@
 	// Progressive: without JavaScript the shortcut does nothing and the antigens are ticked by hand.
 	function tick(e: Event & { currentTarget: HTMLSelectElement }) {
 		const ids = (e.currentTarget.selectedOptions[0]?.dataset.antigens ?? '').split(',');
-		const boxes =
-			e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="antigens"]');
+		const boxes = e.currentTarget.form?.querySelectorAll<HTMLInputElement>(
+			`input[name="${prefix}antigens"]`
+		);
 		for (const box of boxes ?? []) if (ids.includes(box.value)) box.checked = true;
 	}
 </script>
 
 <div class="flex flex-col gap-3.5">
-	<Field id="vaccine-given_on" label="Date given" error={error('given_on')}>
+	<Field id="{prefix}vaccine-given_on" label="Date given" error={error('given_on')}>
 		{#snippet children(control)}
 			<Input
 				{...control}
-				name="given_on"
+				name="{prefix}given_on"
 				type="date"
 				value={text('given_on')}
 				min={birthDate}
@@ -50,12 +54,12 @@
 	</Field>
 
 	<Field
-		id="vaccine-product_shortcut"
+		id="{prefix}vaccine-product_shortcut"
 		label="Product shortcut"
 		hint="With JavaScript on, choosing a product ticks the vaccines it covers; you can always tick them yourself."
 	>
 		{#snippet children(control)}
-			<select {...control} name="product_shortcut" class={SELECT_CLASS} onchange={tick}>
+			<select {...control} name="{prefix}product_shortcut" class={SELECT_CLASS} onchange={tick}>
 				<option value="">Choose a product</option>
 				{#each catalogue.products as p (p.id)}
 					<option value={p.id} data-antigens={p.antigens.join(',')}>{p.name}</option>
@@ -78,7 +82,7 @@
 			>
 				<input
 					type="checkbox"
-					name="antigens"
+					name="{prefix}antigens"
 					value={a.id}
 					checked={values.antigens.includes(a.id)}
 					aria-invalid={error('antigens') ? 'true' : undefined}
@@ -92,27 +96,27 @@
 </div>
 
 <div class="flex flex-col gap-3.5 xl:row-span-2">
-	<Field id="vaccine-lot" label="Lot number" error={error('lot')}>
+	<Field id="{prefix}vaccine-lot" label="Lot number" error={error('lot')}>
 		{#snippet children(control)}
-			<Input {...control} name="lot" autocomplete="off" value={text('lot')} />
+			<Input {...control} name="{prefix}lot" autocomplete="off" value={text('lot')} />
 		{/snippet}
 	</Field>
 
-	<Field id="vaccine-product" label="Product name" error={error('product')}>
+	<Field id="{prefix}vaccine-product" label="Product name" error={error('product')}>
 		{#snippet children(control)}
-			<Input {...control} name="product" autocomplete="off" value={text('product')} />
+			<Input {...control} name="{prefix}product" autocomplete="off" value={text('product')} />
 		{/snippet}
 	</Field>
 
-	<Field id="vaccine-note" label="Note" error={error('note')}>
+	<Field id="{prefix}vaccine-note" label="Note" error={error('note')}>
 		{#snippet children(control)}
-			<Input {...control} name="note" autocomplete="off" value={text('note')} />
+			<Input {...control} name="{prefix}note" autocomplete="off" value={text('note')} />
 		{/snippet}
 	</Field>
 </div>
 
 {#if values.given_on_original !== undefined}
 	{#each ORIGINALS as name (name)}
-		<input type="hidden" name="{name}_original" value={text(`${name}_original`)} />
+		<input type="hidden" name="{prefix}{name}_original" value={text(`${name}_original`)} />
 	{/each}
 {/if}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
 	"github.com/davcs86/happybabytracker/api/internal/config"
+	"github.com/davcs86/happybabytracker/api/internal/npi"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
@@ -41,6 +42,8 @@ type Deps struct {
 	Resolver       push.Resolver  // registration's DNS check; unused under HBT_ALLOW_FAKE_PUSH
 	VAPIDPublicKey string         // empty when Web Push is off
 	PushRecorder   *push.Recorder // nil unless HBT_ALLOW_FAKE_PUSH=1
+	NPI            *npi.Searcher  // nil unless NPI_SEARCH=1
+	NPILimiter     *auth.Limiter  // the per-parent search limit; set with NPI
 }
 
 // Routes is the only place routes are declared.
@@ -82,6 +85,7 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/growth-sources", Parent, d.growthSources},
 		{http.MethodGet, "/v1/vaccine-schemas", Parent, d.vaccineSchemas},
 		{http.MethodGet, "/v1/vaccine-catalogue", Parent, d.vaccineCatalogue},
+		{http.MethodGet, "/v1/providers", Parent, d.providerState},
 
 		{http.MethodGet, "/v1/kids", Parent, d.listKids},
 		{http.MethodPost, "/v1/kids", Parent, d.createKid},
@@ -137,6 +141,13 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.getGrowth},
 		{http.MethodPatch, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.updateGrowth},
 		{http.MethodDelete, "/v1/kids/{kid}/growth/{entry}", Caregiver, d.deleteGrowth},
+		{http.MethodGet, "/v1/kids/{kid}/visits", Caregiver, d.listVisits},
+		{http.MethodPost, "/v1/kids/{kid}/visits", Caregiver, d.createVisit},
+		{http.MethodGet, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.getVisit},
+		{http.MethodPatch, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.updateVisit},
+		{http.MethodDelete, "/v1/kids/{kid}/visits/{entry}", Caregiver, d.deleteVisit},
+		{http.MethodPost, "/v1/kids/{kid}/visits/{entry}/outcome", Caregiver, d.recordOutcome},
+		{http.MethodGet, "/v1/kids/{kid}/visits/{entry}/calendar", Caregiver, d.visitCalendar},
 
 		{http.MethodGet, "/v1/kids/{kid}/symptoms", Caregiver, d.listSymptoms},
 		{http.MethodPost, "/v1/kids/{kid}/symptoms", Caregiver, d.createSymptom},
@@ -185,6 +196,9 @@ func Routes(d Deps) []Route {
 	}
 	if d.PushRecorder != nil {
 		routes = append(routes, Route{http.MethodGet, "/v1/_test/pushes", Internal, d.testPushes})
+	}
+	if d.NPI != nil {
+		routes = append(routes, Route{http.MethodPost, "/v1/providers/search", Parent, d.searchProviders})
 	}
 	return routes
 }

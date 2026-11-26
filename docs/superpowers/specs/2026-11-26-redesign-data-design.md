@@ -47,7 +47,7 @@ Every change is additive. No existing field changes meaning, and no route is rem
 
 ### 3.2 Password change date
 
-- Migration `0008`: `ALTER TABLE identities ADD COLUMN secret_changed_at INTEGER` (nullable, unix seconds UTC).
+- Migration `0010`: `ALTER TABLE identities ADD COLUMN secret_changed_at INTEGER` (nullable, unix seconds UTC).
   Existing rows stay NULL: their change date is unknown.
 - `setPassword` writes `now` with the hash (invite and reset redemption and `POST /v1/me/password` all go through it).
   The store method takes `now time.Time` like its siblings.
@@ -56,9 +56,9 @@ Every change is additive. No existing field changes meaning, and no route is rem
 
 ### 3.3 Session device label
 
-- Migration `0008` (same file): `ALTER TABLE sessions ADD COLUMN device_label TEXT` (nullable).
+- Migration `0010` (same file): `ALTER TABLE sessions ADD COLUMN device_label TEXT` (nullable).
 - `POST /v1/session` (Internal) accepts an optional `device_label`. Rule: `^[A-Za-z0-9 ]{1,48}$` (constant
-  `DeviceLabelPattern` in `constants.go`); a value that fails it is `400 invalid` on field `device_label`. Absent is
+  `DeviceLabelPattern` in `constants.go`); a value that fails it is `422 invalid` on field `device_label`. Absent is
   stored as NULL. Admin sessions ignore it.
 - The UI builds the label from a **closed set** (browser name + operating system name, for example "Safari on
   iPhone"; anything unrecognised is "Browser"), never from the raw user agent, so a valid request never fails the rule.
@@ -140,11 +140,11 @@ route changes class. `matrix_test.go` must pass unchanged otherwise.
 
 ## 6. Migration, rollback and the edge contract
 
-- One migration, `0008_redesign_data.sql`, two `ALTER TABLE … ADD COLUMN` (nullable). Forward-only like the rest.
+- One migration, `0010_redesign_data.sql`, two `ALTER TABLE … ADD COLUMN` (nullable). Forward-only like the rest.
 - **Rollback is not free.** The binary refuses a database whose schema is newer than itself
-  (`database schema version N is newer than this binary`). Redeploying the previous API digest after `0008` has
+  (`database schema version N is newer than this binary`). Redeploying the previous API digest after `0010` has
   run fails to start. Rolling back needs the `/data` volume restored from before the bump, or a hotfix image that
-  carries `0008`. The release note must say so, and the edge's bump should be preceded by a copy of `/data`.
+  carries `0010`. The release note must say so, and the edge's bump should be preceded by a copy of `/data`.
 - No change to the contract with `davcs86/homelab-edge`: API port 9210 (never published), UI port 9212, env var names,
   health paths, `/data`, image names, uid 10001, read-only root. The migration writes only under `/data`.
 - The UI image is rolled out together with the API: a new UI against an old API sees missing optional fields and must
@@ -161,6 +161,6 @@ route changes class. `matrix_test.go` must pass unchanged otherwise.
 
 ## 8. Decisions on the open questions (owner, 2026-11-26)
 
-1. **Rollback (6):** a `/data` copy before the bump is acceptable; `0008` stays.
+1. **Rollback (6):** a `/data` copy before the bump is acceptable; `0010` stays.
 2. **Counts (3.5):** the seven daily trackers only.
 3. **`issued_at` (3.6):** derived from `expires_at`, no `created_at` column.

@@ -5,21 +5,22 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
-// timelineModules maps each TimelineTypes name to the module that switches it.
+// timelineModules maps each TimelineFeedTypes name to the module that switches it.
 var timelineModules = map[string]model.Module{
 	"bottle": "bottles", "nursing": "nursing", "pumping": "pumping", "sleep": "sleep", "diaper": "diapers", "meal": "feeding",
-	"symptom": "sickness",
+	"symptom": "sickness", "visit": "visits",
 }
 
 // defaultTimelineTypes is the trackers an absent types parameter selects: those whose module is enabled.
 func defaultTimelineTypes(states []store.ModuleState) []string {
 	out := []string{}
-	for _, typ := range store.TimelineTypes {
+	for _, typ := range store.TimelineFeedTypes {
 		if slices.ContainsFunc(states, func(st store.ModuleState) bool { return st.Module == timelineModules[typ] && st.Enabled }) {
 			out = append(out, typ)
 		}
@@ -27,7 +28,7 @@ func defaultTimelineTypes(states []store.ModuleState) []string {
 	return out
 }
 
-// timelineTypes reads types, one comma list of distinct TimelineTypes names; nil when absent, false when invalid.
+// timelineTypes reads types, one comma list of distinct TimelineFeedTypes names; nil when absent, false when invalid.
 func timelineTypes(v url.Values) ([]string, bool) {
 	given, ok := v["types"]
 	if !ok {
@@ -38,7 +39,7 @@ func timelineTypes(v url.Values) ([]string, bool) {
 	}
 	names := strings.Split(given[0], ",")
 	for i, name := range names {
-		if !slices.Contains(store.TimelineTypes, name) || slices.Contains(names[:i], name) {
+		if !slices.Contains(store.TimelineFeedTypes, name) || slices.Contains(names[:i], name) {
 			return nil, false
 		}
 	}
@@ -46,7 +47,7 @@ func timelineTypes(v url.Values) ([]string, bool) {
 }
 
 // newTimelineView is the tracker's own view with type and at (the row's time column) added.
-func newTimelineView(it store.TimelineItem) any {
+func newTimelineView(it store.TimelineItem, now time.Time) any {
 	at := instantString(it.At)
 	switch e := it.Entry.(type) {
 	case model.BottleFeed:
@@ -91,6 +92,12 @@ func newTimelineView(it store.TimelineItem) any {
 			At   string `json:"at"`
 			symptomView
 		}{it.Type, at, newSymptomView(e)}
+	case store.VisitRow:
+		return struct {
+			Type string `json:"type"`
+			At   string `json:"at"`
+			visitView
+		}{it.Type, at, newVisitView(e.Visit, visitCountsView(e.Linked), now)}
 	}
 	return struct {
 		Type string `json:"type"`
@@ -121,5 +128,7 @@ func (d Deps) timeline(w http.ResponseWriter, r *http.Request) {
 	if !entryOK(w, err) {
 		return
 	}
-	respondPage(w, "items", items, q.Limit, newTimelineView, func(it store.TimelineItem) cursor { return entryCursor(it.At, it.ID) })
+	now := d.Now()
+	respondPage(w, "items", items, q.Limit, func(it store.TimelineItem) any { return newTimelineView(it, now) },
+		func(it store.TimelineItem) cursor { return entryCursor(it.At, it.ID) })
 }

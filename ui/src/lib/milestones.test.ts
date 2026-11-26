@@ -125,7 +125,9 @@ describe('wording', () => {
 				.replace(/<script[\s\S]*?<\/script>/g, '')
 				.replace(/<!--[\s\S]*?-->/g, '')
 		);
-		expect(markup.filter((m) => m.includes('<title'))).toHaveLength(4);
+		expect(markup.filter((m) => m.includes('<title') || m.includes('documentTitle='))).toHaveLength(
+			4
+		);
 		const all = [
 			...Object.values(MILESTONE_FIELD_MESSAGES),
 			MILESTONE_REACHED_MESSAGE,

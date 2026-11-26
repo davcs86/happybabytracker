@@ -115,7 +115,9 @@
 
 	<div class={COLUMN}>
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the link keeps an absolute path -->
-		<Button href={vaccineNewPath(data.kid.id)}>Record a vaccination</Button>
+		<Button href={vaccineNewPath(data.kid.id)} data-drawer="Record a vaccination"
+			>Record a vaccination</Button
+		>
 
 		{#if schema}
 			{#if dueGroups.length > 0}
@@ -205,6 +207,7 @@
 									{#if line.status === 'given' && line.givenOn && line.administration}
 										<a
 											href={edit(line.administration)}
+											data-drawer="Edit vaccination"
 											class="inline-flex min-h-11 items-center underline">Given {line.givenOn}</a
 										>
 									{:else if line.status === 'given' && line.givenOn}
@@ -234,6 +237,7 @@
 											<li>
 												<a
 													href={edit(dose.administration)}
+													data-drawer="Edit vaccination"
 													class="inline-flex min-h-11 items-center underline"
 													>Given {dose.givenOn}</a
 												>
@@ -258,6 +262,7 @@
 						<li class="border-t p-3 text-sm [overflow-wrap:anywhere] first:border-t-0">
 							<a
 								href={edit(dose.administration)}
+								data-drawer="Edit vaccination"
 								class="inline-flex min-h-11 items-center font-medium underline"
 								>{name(dose.antigen)}, given {dose.givenOn}</a
 							>

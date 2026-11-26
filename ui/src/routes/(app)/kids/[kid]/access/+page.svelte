@@ -6,6 +6,8 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
+	import { savedAs } from '#lib/drawer.js';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import type { Role } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
@@ -25,19 +27,18 @@
 	const CARD = 'flex flex-col gap-3 rounded-2xl border bg-card p-4';
 </script>
 
-<svelte:head>
-	<title>Access · happybabytracker</title>
-</svelte:head>
-
-<div
-	class="mt-5 flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+<FormFrame
+	class="mt-5 flex flex-col gap-[18px] xl:grid xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+	documentTitle="Access · happybabytracker"
 >
-	<div class="flex flex-col gap-1.5 xl:col-span-2">
-		<h1>Access</h1>
-		<p class="text-sm leading-snug [overflow-wrap:anywhere] text-muted-foreground">
-			Who can see {data.kid.name}
-		</p>
-	</div>
+	{#snippet chrome()}
+		<div class="flex flex-col gap-1.5 xl:col-span-2">
+			<h1>Access</h1>
+			<p class="text-sm leading-snug [overflow-wrap:anywhere] text-muted-foreground">
+				Who can see {data.kid.name}
+			</p>
+		</div>
+	{/snippet}
 	{#if pageError}
 		<Alert.Root class="xl:col-span-2">{pageError}</Alert.Root>
 	{/if}
@@ -69,13 +70,21 @@
 									access before you leave or change your role.
 								</p>
 							{/if}
-							<form method="POST" action="?/remove" use:enhance>
+							<form
+								method="POST"
+								action="?/remove"
+								use:enhance={savedAs('You left', { follow: true, stay: true })}
+							>
 								<input type="hidden" name="parent_id" value={g.parentId} />
 								<Button type="submit" variant="outline">Leave</Button>
 							</form>
 						{:else}
 							<div class="flex flex-wrap gap-2">
-								<form method="POST" action="?/role" use:enhance>
+								<form
+									method="POST"
+									action="?/role"
+									use:enhance={savedAs('Role changed', { stay: true })}
+								>
 									<input type="hidden" name="username" value={g.username} />
 									<input type="hidden" name="role" value={target} />
 									<Button type="submit" variant="outline">
@@ -83,7 +92,11 @@
 										<span class="sr-only">Make {g.displayName} a {target}</span>
 									</Button>
 								</form>
-								<form method="POST" action="?/remove" use:enhance>
+								<form
+									method="POST"
+									action="?/remove"
+									use:enhance={savedAs('Access removed', { stay: true })}
+								>
 									<input type="hidden" name="parent_id" value={g.parentId} />
 									<Button type="submit" variant="outline">
 										<span aria-hidden="true">Remove access</span>
@@ -105,7 +118,13 @@
 				Give an existing parent access to {data.kid.name}. Parent accounts are created by the admin.
 				A guardian can change the role later.
 			</p>
-			<form method="POST" action="?/add" class="flex flex-col gap-4" novalidate use:enhance>
+			<form
+				method="POST"
+				action="?/add"
+				class="flex flex-col gap-4"
+				novalidate
+				use:enhance={savedAs('Access added', { stay: true })}
+			>
 				<div class="grid gap-1.5">
 					<Label for="add-username">Parent’s username</Label>
 					<Input
@@ -152,4 +171,4 @@
 			</form>
 		</section>
 	</div>
-</div>
+</FormFrame>

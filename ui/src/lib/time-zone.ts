@@ -61,7 +61,7 @@ function offsetAt(ms: number, zone: string): number {
 	return wall - Math.floor(ms / 1000) * 1000;
 }
 
-const rfc3339 = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+export const rfc3339 = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
 // A time in a repeated hour is the earlier instant; one inside a skipped hour moves forward by the gap.
 export function zonedLocalToInstant(local: string, zone: string): string | null {

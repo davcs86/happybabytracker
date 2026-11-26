@@ -78,7 +78,7 @@ Known imbalances (accepted, not bugs): Vaccines, Admin and Choose child have a m
 ### 3.1 Primary
 - **Phone:** bottom tab bar, four items: Home, Timeline, Growth, More. 22 px icons, 12 px labels (floor). Current item: `aria-current="page"`, primary colour.
 - **Side nav (≥ 768, including wide):** Home, Timeline, Growth, a hairline, then every More entry inline, so each is one click. "More" does not exist at ≥ 768. *(owner decision: two fewer clicks.)*
-- **One source of both lists.** A single function returns `{ more[], side[] }` from one entry table, so the phone sheet and the side nav cannot drift. Entries, in order: Vaccines, Medication, Milestones, Export PDF, Modules*, Child profile*, Settings*, My profile, Change theme, **Sign out** (last). *Guardian only.
+- **One source of both lists.** A single function returns `{ more[], side[] }` from one entry table, so the phone sheet and the side nav cannot drift. Entries, in order: Vaccines, Medication, Milestones, Export PDF, Modules*, Child profile*, My profile, Change theme, **Sign out** (last). *Guardian only.
 - **Module on/off.** An entry for a module that is switched off for the child is hidden only where the owner decided so (open question for Medication in this product; see the preset notes). A page reached directly for a switched-off module MUST show its off state (section 8.5), never an empty list.
 - **Current page.** Child routes of a section count as the section (a Course/Dose form highlights Medication; the Milestone form highlights Milestones).
 - **Sign out.** Last entry in More and in the side nav, note "This device". Production: a form POST to the sign-out route that clears the local session even if the API cannot be reached.

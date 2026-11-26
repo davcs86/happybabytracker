@@ -28,6 +28,7 @@ type Config struct {
 	// Ntfy is the zero value when ntfy is off.
 	Ntfy        ntfy.Config
 	NtfyEnabled bool
+	NPISearch   bool
 }
 
 var usernameRE = regexp.MustCompile(constants.UsernamePattern)
@@ -64,7 +65,21 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.Ntfy, cfg.NtfyEnabled, err = ntfy.LoadConfig(getenv); err != nil {
 		return Config{}, err
 	}
+	if cfg.NPISearch, err = loadNPI(getenv); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// loadNPI is the provider lookup flag (visits spec 10): 1 or unset; the error never echoes the value.
+func loadNPI(getenv func(string) string) (bool, error) {
+	switch getenv("NPI_SEARCH") {
+	case "":
+		return false, nil
+	case "1":
+		return true, nil
+	}
+	return false, errors.New("NPI_SEARCH must be 1 or unset")
 }
 
 // loadPush: both VAPID variables or neither (Web Push off); errors never echo a value.

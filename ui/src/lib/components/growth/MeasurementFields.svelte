@@ -10,13 +10,16 @@
 		error,
 		birthDate,
 		today,
-		edit = false
+		edit = false,
+		prefix = ''
 	}: {
 		values: Record<string, string>;
 		error: (name: string) => string | null;
 		birthDate: string;
 		today: string;
 		edit?: boolean;
+		// Prepended to every name and id, so several blocks share one form; values and error stay unprefixed.
+		prefix?: string;
 	} = $props();
 
 	const ORIGINALS = [
@@ -33,22 +36,22 @@
 	const FLIP_HINT = 'Changing the unit reads the number in the new unit';
 
 	// "Enter at least one" marks every measure's texts, as no single one is wrong.
-	const MEASUREMENTS_ERROR = 'growth-measurements-error';
+	const MEASUREMENTS_ERROR = $derived(`${prefix}growth-measurements-error`);
 	const invalid = (name: string) =>
 		error(name) || error('measurements') ? ('true' as const) : undefined;
 	const describedBy = (own: string | undefined) =>
 		[own, error('measurements') ? MEASUREMENTS_ERROR : null].filter(Boolean).join(' ') || undefined;
 	const weightDescribedBy = $derived(
-		describedBy(error('weight') ? 'growth-weight-error' : undefined)
+		describedBy(error('weight') ? `${prefix}growth-weight-error` : undefined)
 	);
 </script>
 
 <div class="flex flex-col gap-[18px]">
-	<Field id="growth-measured_on" label="Date" error={error('measured_on')}>
+	<Field id="{prefix}growth-measured_on" label="Date" error={error('measured_on')}>
 		{#snippet children(control)}
 			<Input
 				{...control}
-				name="measured_on"
+				name="{prefix}measured_on"
 				type="date"
 				value={values.measured_on}
 				min={birthDate}
@@ -67,16 +70,16 @@
 		{/if}
 
 		<!-- CSS shows the texts the chosen unit uses, so this works without JavaScript. -->
-		<fieldset class="group m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+		<fieldset class="group/weight m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
 			<legend class="mb-2 p-0 text-[13px]">Weight</legend>
 			<div class="flex items-end gap-2">
 				<div
-					class="hidden min-w-0 flex-1 flex-col gap-1 group-has-[#growth-weight-unit-kg:checked]:flex"
+					class="hidden min-w-0 flex-1 flex-col gap-1 group-has-[option[value=kg]:checked]/weight:flex"
 				>
-					<Label for="growth-weight_kg" class="text-muted-foreground">Kilograms</Label>
+					<Label for="{prefix}growth-weight_kg" class="text-muted-foreground">Kilograms</Label>
 					<Input
-						id="growth-weight_kg"
-						name="weight_kg"
+						id="{prefix}growth-weight_kg"
+						name="{prefix}weight_kg"
 						inputmode="decimal"
 						autocomplete="off"
 						value={values.weight_kg}
@@ -84,12 +87,12 @@
 						aria-describedby={weightDescribedBy}
 					/>
 				</div>
-				<div class="hidden min-w-0 flex-1 gap-2 group-has-[#growth-weight-unit-lb:checked]:flex">
+				<div class="hidden min-w-0 flex-1 gap-2 group-has-[option[value=lb]:checked]/weight:flex">
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
-						<Label for="growth-weight_lb" class="text-muted-foreground">Pounds</Label>
+						<Label for="{prefix}growth-weight_lb" class="text-muted-foreground">Pounds</Label>
 						<Input
-							id="growth-weight_lb"
-							name="weight_lb"
+							id="{prefix}growth-weight_lb"
+							name="{prefix}weight_lb"
 							inputmode="numeric"
 							autocomplete="off"
 							value={values.weight_lb}
@@ -98,10 +101,10 @@
 						/>
 					</div>
 					<div class="flex min-w-0 flex-1 flex-col gap-1">
-						<Label for="growth-weight_oz" class="text-muted-foreground">Ounces</Label>
+						<Label for="{prefix}growth-weight_oz" class="text-muted-foreground">Ounces</Label>
 						<Input
-							id="growth-weight_oz"
-							name="weight_oz"
+							id="{prefix}growth-weight_oz"
+							name="{prefix}weight_oz"
 							inputmode="decimal"
 							autocomplete="off"
 							value={values.weight_oz}
@@ -111,33 +114,33 @@
 					</div>
 				</div>
 				<div class="w-24 shrink-0">
-					<label for="growth-weight_unit" class="sr-only">Weight unit</label>
+					<label for="{prefix}growth-weight_unit" class="sr-only">Weight unit</label>
 					<select
-						id="growth-weight_unit"
-						name="weight_unit"
+						id="{prefix}growth-weight_unit"
+						name="{prefix}weight_unit"
 						class={SELECT_CLASS}
 						value={values.weight_unit}
 						aria-invalid={invalid('weight')}
 					>
 						{#each WEIGHT_UNITS as unit (unit)}
-							<option id="growth-weight-unit-{unit}" value={unit}>{unit}</option>
+							<option value={unit}>{unit}</option>
 						{/each}
 					</select>
 				</div>
 			</div>
 			{#if error('weight')}
-				<p id="growth-weight-error" class={ERROR_CLASS} role="alert">{error('weight')}</p>
+				<p id="{prefix}growth-weight-error" class={ERROR_CLASS} role="alert">{error('weight')}</p>
 			{/if}
 		</fieldset>
 
 		{#each [['length', 'Length or height', 'Length unit'], ['head', 'Head circumference', 'Head circumference unit']] as [name, label, unitLabel] (name)}
-			<Field id="growth-{name}" {label} error={error(name)} hint={edit ? FLIP_HINT : null}>
+			<Field id="{prefix}growth-{name}" {label} error={error(name)} hint={edit ? FLIP_HINT : null}>
 				{#snippet children(control)}
 					<div class="flex gap-2">
 						<div class="min-w-0 flex-1">
 							<Input
 								{...control}
-								{name}
+								name="{prefix}{name}"
 								inputmode="decimal"
 								autocomplete="off"
 								value={values[name]}
@@ -146,10 +149,10 @@
 							/>
 						</div>
 						<div class="w-24 shrink-0">
-							<label for="growth-{name}_unit" class="sr-only">{unitLabel}</label>
+							<label for="{prefix}growth-{name}_unit" class="sr-only">{unitLabel}</label>
 							<select
-								id="growth-{name}_unit"
-								name="{name}_unit"
+								id="{prefix}growth-{name}_unit"
+								name="{prefix}{name}_unit"
 								class={SELECT_CLASS}
 								value={values[`${name}_unit`]}
 								aria-invalid={invalid(name)}
@@ -167,14 +170,14 @@
 </div>
 
 <div class="xl:row-span-2">
-	<Field id="growth-note" label="Note" error={error('note')}>
+	<Field id="{prefix}growth-note" label="Note" error={error('note')}>
 		{#snippet children(control)}
-			<Input {...control} name="note" autocomplete="off" value={values.note} />
+			<Input {...control} name="{prefix}note" autocomplete="off" value={values.note} />
 		{/snippet}
 	</Field>
 	{#if values.measured_on_original !== undefined}
 		{#each ORIGINALS as name (name)}
-			<input type="hidden" name="{name}_original" value={values[`${name}_original`]} />
+			<input type="hidden" name="{prefix}{name}_original" value={values[`${name}_original`]} />
 		{/each}
 	{/if}
 </div>

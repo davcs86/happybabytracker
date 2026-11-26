@@ -706,7 +706,7 @@ test('summary counts one kid-local day at a time and refuses a bad range', async
 test('modules follow the age band; only a guardian switches one; a recent entry re-enables once', async () => {
 	const ana = await as(ANA);
 	const ivy = (await ana('GET', `/v1/kids/${IVY.id}/modules`)).body.modules;
-	expect(ivy).toHaveLength(11);
+	expect(ivy).toHaveLength(12);
 	expect(ivy.every((m: { enabled: boolean; default: boolean }) => m.enabled && m.default)).toBe(
 		true
 	);
@@ -716,7 +716,7 @@ test('modules follow the age band; only a guardian switches one; a recent entry 
 	const on = states
 		.filter((m: { enabled: boolean }) => m.enabled)
 		.map((m: { module: string }) => m.module);
-	expect(on).toEqual(['growth', 'vaccination', 'sickness', 'medication']);
+	expect(on).toEqual(['growth', 'vaccination', 'sickness', 'medication', 'visits']);
 	// Ana is only Leo's caregiver.
 	expect(await ana('PUT', `${leo}/modules/diapers`, { enabled: true })).toEqual({
 		status: 403,
@@ -762,7 +762,7 @@ test('home reads the age, the modules, the running timers and today', async () =
 		running: { sleep: null, nursing: null },
 		today: { date: todayIn(MIA.timeZone), bottles: { count: 0 } }
 	});
-	expect(idle.modules).toHaveLength(11);
+	expect(idle.modules).toHaveLength(12);
 	const nursing = await ana('POST', `${base}/nursing`, { side: 'right' });
 	expect((await ana('GET', `${base}/home`)).body.running.nursing).toEqual(nursing.body);
 });

@@ -46,7 +46,7 @@ func TestMedicationRoutes(t *testing.T) {
 			t.Fatalf("%s create: %d %q", name, rec.Code, rec.Body.String())
 		}
 		m := bodyMap(t, rec)
-		sameKeys(t, m, "id", "name", "dose", "schedule", "start_at", "end_on", "active", "note", "last_dose", "next_due", "dose_count")
+		sameKeys(t, m, "id", "name", "dose", "schedule", "start_at", "end_on", "active", "note", "last_dose", "next_due", "dose_count", "visit_id")
 		if m["name"] != "Amoxicillin" || m["dose"] != "2.5 ml" || m["start_at"] != ts(t0.Add(-time.Hour)) || m["end_on"] != nil ||
 			m["active"] != true || m["note"] != "with food" || m["last_dose"] != nil || m["dose_count"] != float64(0) ||
 			!equalJSON(m["schedule"], timesSchedule("08:00", "20:00")) || !equalJSON(m["next_due"], map[string]any{"due_at": madridEvening}) {

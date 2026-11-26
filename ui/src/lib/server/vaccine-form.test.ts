@@ -31,6 +31,7 @@ const create = (fields: Fields) => readVaccineForm(form({ ...base, ...fields }),
 
 const STORED: Administration = {
 	id: 'a1',
+	visitId: null,
 	givenOn: '2026-11-01',
 	antigens: ['diphtheria', 'pertussis', 'tetanus'],
 	lot: 'LOT-7',
@@ -280,5 +281,22 @@ describe('prefillAntigens', () => {
 		expect(prefillAntigens('hib,measles,hib', catalogue)).toEqual(['hib', 'measles']);
 		expect(prefillAntigens('measles,BAD,nope,../x,', catalogue)).toEqual(['measles']);
 		expect(prefillAntigens(null, catalogue)).toEqual([]);
+	});
+});
+
+describe('readVaccineForm with a prefix', () => {
+	const behind = (fields: Fields) =>
+		Object.fromEntries(Object.entries(fields).map(([k, v]) => [`v1.${k}`, v]));
+
+	it('reads the names behind the prefix, the antigens and originals included, and ignores the others', () => {
+		const block = { ...loaded(), lot: 'LOT-8', antigens: ['hib'] };
+		const r = readVaccineForm(form({ ...base, lot: 'other', ...behind(block) }), EDIT, {
+			prefix: 'v1.'
+		});
+		expect(r).toEqual(readVaccineForm(form(block), EDIT));
+		expect(r.input).toEqual({ antigens: ['hib'], lot: 'LOT-8' });
+		expect(readVaccineForm(form(behind(base)), CREATE, { prefix: 'v1.' }).input).toEqual(
+			readVaccineForm(form(base), CREATE).input
+		);
 	});
 });

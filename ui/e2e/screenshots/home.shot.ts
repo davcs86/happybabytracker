@@ -43,22 +43,99 @@ export async function seedDueMedication(api: Api, kid: string) {
 	await moveStubClock(0);
 }
 
-test('shell: no kids and many kids', async ({ page }) => {
+const isPhone = (page: Page) => page.viewportSize()!.width < 768;
+
+// A click before hydration is a navigation or nothing, so it retries until the sheet is there.
+async function openSheet(page: Page, click: () => Promise<void>, name: string) {
+	const sheet = page.getByRole('dialog', { name });
+	await expect(async () => {
+		await click();
+		await expect(sheet).toBeVisible({ timeout: 1000 });
+	}).toPass({ timeout: 10_000 });
+	return sheet;
+}
+
+// The More sheet on a phone; from 768 px its entries sit inline in the side navigation.
+const openMore = (page: Page) =>
+	openSheet(page, () => page.getByRole('button', { name: 'More', exact: true }).click(), 'More');
+
+test('shell: no kids, the sheets and choosing a child', async ({ page }) => {
 	await signInAs(page, DAN);
 	await expect(page.getByRole('heading', { name: 'Welcome, Dan' })).toBeVisible();
 	await shot(
 		page,
 		'shell',
 		'01-no-kids-welcome',
-		'A parent with no child yet: the welcome and the main navigation'
+		'A parent with no child yet: the welcome and the primary navigation'
 	);
 	await signInAs(page, CLEO);
 	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
+	await openSheet(
+		page,
+		() => page.getByRole('link', { name: `Child: ${LEO.name}. Switch child` }).click(),
+		'Switch child'
+	);
 	await shot(
 		page,
 		'shell',
 		'02-six-kids-switcher',
-		'A guardian of six children: the kid switcher wraps (24+ band kid home)'
+		'A guardian of six children: the Switch child sheet lists each child with its age; the current one is checked'
+	);
+	await page.keyboard.press('Escape');
+	if (isPhone(page)) await openMore(page);
+	await shot(
+		page,
+		'shell',
+		'03-more-sheet',
+		'More: the pages and settings behind the tab bar, Sign out last. From 768 px the same entries are inline in the side navigation (no More)'
+	);
+	if (isPhone(page)) {
+		await page.getByRole('button', { name: /^Change theme/ }).click();
+	} else {
+		await openSheet(
+			page,
+			() => page.getByRole('button', { name: 'Change theme' }).click(),
+			'Change theme'
+		);
+	}
+	await expect(page.getByRole('dialog', { name: 'Change theme' })).toBeVisible();
+	await shot(
+		page,
+		'shell',
+		'04-theme-sheet',
+		'Change theme: Light, Dark or Auto; a choice applies at once'
+	);
+	await page.keyboard.press('Escape');
+	await page.goto('/kids');
+	await expect(page.getByRole('heading', { name: 'Choose a child', level: 1 })).toBeVisible();
+	await shot(
+		page,
+		'shell',
+		'05-choose-a-child',
+		'Choose a child: the page the header switcher opens without JavaScript'
+	);
+	const ana = await as(ANA);
+	for (const name of [
+		'Maximiliano Alejandro',
+		'Wilhelmina Charlotte',
+		'Bartholomew',
+		'Anastasia Valentina'
+	]) {
+		await must(ana, 'POST', '/v1/kids', {
+			name,
+			birth_date: '2026-01-10',
+			sex: 'female',
+			time_zone: 'UTC'
+		});
+	}
+	await signInAs(page, ANA);
+	await page.goto('/kids');
+	await expect(page.getByLabel('Find a child')).toBeVisible();
+	await shot(
+		page,
+		'shell',
+		'06-choose-a-child-many',
+		'More than six children: a Find a child field above the list'
 	);
 });
 
@@ -150,7 +227,7 @@ test('caregiver home and leaving', async ({ page }) => {
 		page,
 		'home',
 		'08-leo-caregiver',
-		'A caregiver on a 2-year-old: no settings, access or modules links; Leave'
+		'A caregiver on a 2-year-old: the Leave this child card; no Modules or Child profile entries'
 	);
 	await openDetails(page, 'Leave this child');
 	await shot(
@@ -176,7 +253,7 @@ test('milestone-age kids', async ({ page }) => {
 		[
 			LEO,
 			'11-leo-guardian-24-plus',
-			'A guardian on a 2-year-old born at 35 weeks: older-band tiles, every kid link'
+			'A guardian on a 2-year-old born at 35 weeks: older-band tiles; past the second birthday only the age shows, with no corrected age'
 		],
 		[NELL, '12-nell-9-months', 'A 9-month-old'],
 		[

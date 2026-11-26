@@ -50,7 +50,7 @@ test('web push and ntfy', async ({ page }) => {
 		page,
 		'notifications',
 		'03-ntfy-on',
-		'ntfy on: the server, the topic (frozen), the kids to remind about'
+		'ntfy on: the server, the topic (frozen), the kids to remind about; the blocked-notifications message from the previous shot is still shown'
 	);
 	await openDetails(page, 'New topic');
 	await freezeTopic(page);
@@ -58,7 +58,7 @@ test('web push and ntfy', async ({ page }) => {
 		page,
 		'notifications',
 		'04-ntfy-new-topic-confirm',
-		'New topic opened: the confirm step'
+		'New topic opened: the confirm step; the blocked-notifications message from the previous shot is still shown'
 	);
 
 	const phone = (await must(ana, 'PUT', '/v1/me/push-devices', device('phone', 'Ana’s phone')))
@@ -72,7 +72,7 @@ test('web push and ntfy', async ({ page }) => {
 		page,
 		'notifications',
 		'05-other-devices',
-		'Two devices registered elsewhere, with their kids'
+		'Two devices registered elsewhere, with their names and when they were added'
 	);
 	await page.context().addCookies([
 		{

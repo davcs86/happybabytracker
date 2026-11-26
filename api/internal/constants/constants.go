@@ -175,11 +175,15 @@ const (
 	WriteTimeout      = 30 * time.Second
 	ShutdownTimeout   = 10 * time.Second
 
-	LogFieldCause    = "cause"
-	LogFieldSlide    = "slide"
-	SlideFailed      = "failed"
-	CauseSQLite      = "sqlite"
-	CauseOtherPrefix = "other:"
+	LogFieldCause = "cause"
+	LogFieldSlide = "slide"
+
+	LogFieldOutcomeGrowth       = "outcome_growth"
+	LogFieldOutcomeVaccinations = "outcome_vaccinations"
+	LogFieldOutcomeMedications  = "outcome_medications"
+	SlideFailed                 = "failed"
+	CauseSQLite                 = "sqlite"
+	CauseOtherPrefix            = "other:"
 )
 
 // VaccineSchedules lists the schedule ids the API may ship, in display order.
@@ -187,7 +191,7 @@ var VaccineSchedules = []string{"us", "uk", "mx"}
 
 // ExportModules lists the module ids an export accepts, in model.Modules order.
 var ExportModules = []string{"bottles", "nursing", "pumping", "diapers", "sleep", "feeding", "milestones", "growth", "vaccination",
-	"sickness", "medication"}
+	"sickness", "medication", "visits"}
 
 // MilestoneCatalogTextMaxLen caps one catalog item's text, in characters.
 const MilestoneCatalogTextMaxLen = 200
@@ -206,6 +210,50 @@ const MilestoneTextMaxLen = 200
 
 // MaxMilestonesPerKid caps a kid's reached milestones, catalog and custom together.
 const MaxMilestonesPerKid = 1000
+
+// Medical visits (visits spec 5.1, 8, 9): lengths in minutes, text in characters, the Home look-ahead in kid-local
+// days, the rows one outcome may add.
+const (
+	DefaultVisitDurationMin = 30
+	MinVisitDurationMin     = 5
+	MaxVisitDurationMin     = 720
+	VisitProviderMaxLen     = 120
+	VisitLocationMaxLen     = 200
+	VisitOutcomeNotesMaxLen = 4000
+	MaxVisitsPerKid         = 2000
+	VisitHorizon            = 731 * 24 * time.Hour
+	VisitDueLookAheadDays   = 7
+	MaxOutcomeVaccinations  = 10
+	MaxOutcomeMedications   = 5
+	VisitAlarmBefore        = 24 * time.Hour
+)
+
+// Provider lookup (visits spec 10, plan 10): the registry call's bounds, the per-parent rate, the cache, the search
+// fields' rules and the request log's fields.
+const (
+	NPISearchLimit       = 20
+	NPITimeout           = 4 * time.Second
+	NPIMaxResponseBytes  = 1 << 20
+	NPIMaxInFlight       = 4
+	NPISearchesPerMinute = 20
+	NPICacheEntries      = 256
+	NPICacheTTL          = 10 * time.Minute
+	NPINameMinLen        = 2
+	NPINameMaxLen        = 60
+	// NPINamePattern and NPIOrgPattern spell NPINameMinLen and NPINameMaxLen; they apply after trimming.
+	NPINamePattern   = `^\p{L}[\p{L} .'-]{1,59}$`
+	NPIOrgPattern    = `^[\p{L}0-9][\p{L}0-9 &.'-]{1,59}$`
+	NPIPostalCodeLen = 5
+	ProviderNPILen   = 10
+
+	LogFieldNPIOutcome = "npi_outcome"
+	LogFieldNPIResults = "npi_results"
+)
+
+// NPIStates lists the state codes a provider search takes: the 50 states, DC, AS, GU, MP, PR and VI.
+var NPIStates = []string{"AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY",
+	"LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR",
+	"PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC", "AS", "GU", "MP", "PR", "VI"}
 
 // ReminderRetryDelays lists the wait after each failed send attempt, in order.
 var ReminderRetryDelays = []time.Duration{30 * time.Second, 2 * time.Minute, 10 * time.Minute}

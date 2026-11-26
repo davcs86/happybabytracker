@@ -103,6 +103,9 @@ func TestLoadRefuses(t *testing.T) {
 		{"origin trailing slash", "PUBLIC_ORIGIN", "https://hbt.example.org/"},
 		{"origin with query", "PUBLIC_ORIGIN", "https://hbt.example.org?zq=1"},
 		{"origin with userinfo", "PUBLIC_ORIGIN", "https://zquser:zqpass@hbt.example.org"},
+		{"npi search 2", "NPI_SEARCH", "2"},
+		{"npi search true", "NPI_SEARCH", "true"},
+		{"npi search 0", "NPI_SEARCH", "0"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -117,6 +120,15 @@ func TestLoadRefuses(t *testing.T) {
 				t.Errorf("error %q contains the value", err)
 			}
 		})
+	}
+}
+
+func TestLoadNPISearch(t *testing.T) {
+	for val, want := range map[string]bool{"\x00unset": false, "": false, "1": true} {
+		cfg, err := Load(env(map[string]string{"NPI_SEARCH": val}))
+		if err != nil || cfg.NPISearch != want {
+			t.Errorf("NPI_SEARCH %q: %v %v, want %v", val, cfg.NPISearch, err, want)
+		}
 	}
 }
 

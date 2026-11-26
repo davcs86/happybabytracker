@@ -16,7 +16,7 @@ var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time
 	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
 	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides",
 	"symptoms", "medications", "medication_doses", "reminders", "reminder_deliveries", "push_subscriptions", "push_kid_optins",
-	"ntfy_topics", "ntfy_kid_optins", "milestones_reached"}
+	"ntfy_topics", "ntfy_kid_optins", "milestones_reached", "visits"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -33,8 +33,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -51,8 +51,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "8" {
-			t.Fatalf("open %d: schema_version = %q, want 8", i, v)
+		if v := version(t, s); v != "10" {
+			t.Fatalf("open %d: schema_version = %q, want 10", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -275,8 +275,8 @@ func TestEveryModelModuleIsAcceptedByKidModules(t *testing.T) {
 			t.Errorf("module %s refused: %v", m, err)
 		}
 	}
-	if len(model.Modules) != 11 {
-		t.Errorf("%d modules, want 11", len(model.Modules))
+	if len(model.Modules) != 12 {
+		t.Errorf("%d modules, want 12", len(model.Modules))
 	}
 }
 
@@ -397,8 +397,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -546,8 +546,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -746,8 +746,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	var contents, sources int
 	var volume int64
@@ -853,8 +853,8 @@ func TestMigration0006KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	counts := map[string]int{"parents": 1, "kids": 1, "kid_access": 1, "kid_modules": 1, "bottle_feeds": 1, "bottle_feed_sources": 1,
 		"nursing_sessions": 1, "pumping_sessions": 1, "pumping_session_sides": 1, "growth_measurements": 1, "vaccine_doses": 1, "vaccine_dismissals": 1}
@@ -954,7 +954,7 @@ func TestMigration0007KeepsRows(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, table := range wantTables {
-		if table == "meta" || table == "milestones_reached" {
+		if table == "meta" || table == "milestones_reached" || table == "visits" {
 			continue
 		}
 		var n int
@@ -972,8 +972,8 @@ func TestMigration0007KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -993,6 +993,122 @@ func TestMigration0007KeepsRows(t *testing.T) {
 	var bad int
 	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
 		t.Errorf("foreign_key_check after 0007: %d violations, err %v", bad, err)
+	}
+}
+
+func TestMigration0008KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:7] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := any(nil)
+	for _, e := range []struct {
+		q    string
+		args []any
+	}{
+		{`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`, nil},
+		{`INSERT INTO kids(id, name, birth_date, sex, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'cdc', 'p1', 'p1', 100, 100)`, nil},
+		{`INSERT INTO kid_access(kid_id, parent_id, role, created_at) VALUES ('k1', 'p1', 'guardian', 100)`, nil},
+		{`INSERT INTO kid_modules(kid_id, module, enabled, updated_at) VALUES ('k1', 'milestones', 0, 100)`, nil},
+		{`INSERT INTO kid_modules(kid_id, module, enabled, updated_at) VALUES ('k1', 'growth', 1, 101)`, nil},
+		{`INSERT INTO growth_measurements(id, kid_id, measured_on, weight_g, weight_oz_h, weight_typed, created_by, updated_by, created_at, updated_at)
+			VALUES ('g1', 'k1', '2026-03-01', 3400, 11993, 'kg', 'p1', 'p1', 100, 100)`, nil},
+		{`INSERT INTO vaccine_doses(id, kid_id, administration, given_on, antigen, created_by, updated_by, created_at, updated_at)
+			VALUES ('v1', 'k1', 'a1', '2026-03-01', 'dtap', 'p1', 'p1', 100, 100)`, nil},
+		{insertMedication, []any{"m1", "k1", "every", n, 8, "p1", "p1"}},
+		{insertMedDose, []any{"d1", "k1", "m1", "p1", "p1"}},
+		{insertReminder, []any{"r1", "k1", "m1", 1000, "pending"}},
+	} {
+		if _, err := old.Exec(e.q, e.args...); err != nil {
+			t.Fatalf("seed %.60s: %v", e.q, err)
+		}
+	}
+	counts := map[string]int{}
+	for _, table := range wantTables {
+		if table == "meta" || table == "visits" {
+			continue
+		}
+		var n int
+		if err := old.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil {
+			t.Fatalf("%s before 0008: %v", table, err)
+		}
+		counts[table] = n
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
+	}
+	for table, want := range counts {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
+			t.Errorf("%s: %d rows after 0008 (err %v), want %d", table, n, err, want)
+		}
+	}
+	var enabled, updated int
+	if err := s.r.QueryRow(`SELECT enabled, updated_at FROM kid_modules WHERE kid_id = 'k1' AND module = 'milestones'`).Scan(&enabled, &updated); err != nil || enabled != 0 || updated != 100 {
+		t.Errorf("kid_modules milestones after 0008: enabled %d, updated %d, err %v", enabled, updated, err)
+	}
+	for _, table := range []string{"growth_measurements", "vaccine_doses", "medications"} {
+		var linked int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE visit_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
+			t.Errorf("%s: %d linked rows after 0008, err %v", table, linked, err)
+		}
+	}
+	for idx, tbl := range map[string]string{"visits_kid_starts": "visits", "growth_measurements_visit": "growth_measurements",
+		"vaccine_doses_visit": "vaccine_doses", "medications_visit": "medications"} {
+		var got string
+		if err := s.r.QueryRow(`SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = ?`, idx).Scan(&got); err != nil || got != tbl {
+			t.Errorf("index %s after 0008: table %q, err %v", idx, got, err)
+		}
+	}
+	if _, err := s.w.Exec(`INSERT INTO kid_modules(kid_id, module, enabled, updated_at) VALUES ('k1', 'visits', 1, 100)`); err != nil {
+		t.Errorf("visits module after 0008: %v", err)
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check after 0008: %d violations, err %v", bad, err)
+	}
+}
+
+func TestVisitLinkIsSetNullOnDelete(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	for _, q := range []string{
+		`INSERT INTO visits(id, kid_id, starts_at, kind, created_by, updated_by, created_at, updated_at) VALUES ('vi1', ?, 100, 'sick', ?, ?, 100, 100)`,
+		`INSERT INTO growth_measurements(id, kid_id, measured_on, weight_g, weight_oz_h, weight_typed, created_by, updated_by, created_at, updated_at, visit_id)
+			VALUES ('g1', ?, '2026-03-01', 3400, 11993, 'kg', ?, ?, 100, 100, 'vi1')`,
+	} {
+		if _, err := s.w.Exec(q, k.ID, ana.ID, ana.ID); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	if _, err := s.w.Exec(`DELETE FROM visits WHERE id = 'vi1'`); err != nil {
+		t.Fatal(err)
+	}
+	var visit sql.NullString
+	if err := s.r.QueryRow(`SELECT visit_id FROM growth_measurements WHERE id = 'g1'`).Scan(&visit); err != nil || visit.Valid {
+		t.Errorf("growth row after its visit's delete: visit_id %v, err %v; want the row with NULL", visit, err)
 	}
 }
 
@@ -1191,7 +1307,7 @@ func TestCascades(t *testing.T) {
 	})
 }
 
-func TestMigration0008KeepsRows(t *testing.T) {
+func TestMigration0009KeepsRows(t *testing.T) {
 	dir := t.TempDir()
 	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
 	if err != nil {
@@ -1202,7 +1318,95 @@ func TestMigration0008KeepsRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, m := range ms[:7] {
+	for _, m := range ms[:8] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO kids(id, name, birth_date, sex, time_zone, growth_source, created_by, updated_by, created_at, updated_at)
+			VALUES ('k1', 'Lía', '2026-01-02', 'female', 'Europe/Madrid', 'cdc', 'p1', 'p1', 100, 100)`,
+		`INSERT INTO visits(id, kid_id, note, created_by, updated_by, created_at, updated_at, starts_at, duration_min, kind, provider, location, revision)
+			VALUES ('vi1', 'k1', 'Check', 'p1', 'p1', 100, 101, 200, 45, 'sick', 'Dr. Lee', '12 Main St', 3)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("seed %.60s: %v", q, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
+	}
+	var (
+		note, provider, location string
+		created, updated, start  int64
+		dur, rev                 int
+		npi                      sql.NullString
+	)
+	if err := s.r.QueryRow(`SELECT note, provider, location, created_at, updated_at, starts_at, duration_min, revision, provider_npi
+		FROM visits WHERE id = 'vi1'`).Scan(&note, &provider, &location, &created, &updated, &start, &dur, &rev, &npi); err != nil {
+		t.Fatal(err)
+	}
+	if note != "Check" || provider != "Dr. Lee" || location != "12 Main St" || created != 100 || updated != 101 || start != 200 ||
+		dur != 45 || rev != 3 || npi.Valid {
+		t.Errorf("visit after 0009: %q %q %q %d %d %d %d %d %v", note, provider, location, created, updated, start, dur, rev, npi)
+	}
+	var bad int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&bad); err != nil || bad != 0 {
+		t.Errorf("foreign_key_check after 0009: %d violations, err %v", bad, err)
+	}
+}
+
+func TestProviderNPICheck(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	insert := func(id string, provider, npi any) error {
+		_, err := s.w.Exec(`INSERT INTO visits(id, kid_id, starts_at, kind, provider, provider_npi, created_by, updated_by, created_at, updated_at)
+			VALUES (?, ?, 100, 'sick', ?, ?, ?, ?, 100, 100)`, id, k.ID, provider, npi, ana.ID, ana.ID)
+		return err
+	}
+	for name, c := range map[string]struct{ provider, npi any }{
+		"nine digits":       {"Dr. Lee", "123456789"},
+		"eleven digits":     {"Dr. Lee", "12345678931"},
+		"a letter":          {"Dr. Lee", "12345678a3"},
+		"without provider":  {nil, "1234567893"},
+		"an empty npi":      {"Dr. Lee", ""},
+		"a space inside it": {"Dr. Lee", "12345 7893"},
+	} {
+		if err := insert("vi-"+strings.ReplaceAll(name, " ", "-"), c.provider, c.npi); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := insert("vi-ok", "Dr. Lee", "1234567893"); err != nil {
+		t.Errorf("ten digits with a provider: %v", err)
+	}
+	if err := insert("vi-none", nil, nil); err != nil {
+		t.Errorf("neither: %v", err)
+	}
+}
+
+func TestMigration0010KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:9] {
 		if err := apply(ctx, old, m); err != nil {
 			t.Fatal(err)
 		}
@@ -1224,8 +1428,8 @@ func TestMigration0008KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "8" {
-		t.Fatalf("schema_version = %q, want 8", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	var changed, label sql.NullString
 	if err := s.r.QueryRow(`SELECT secret_changed_at FROM identities WHERE parent_id = 'p1'`).Scan(&changed); err != nil || changed.Valid {

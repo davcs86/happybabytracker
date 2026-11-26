@@ -282,3 +282,25 @@ func TestTimelineDefaultTypesFollowTheSicknessModule(t *testing.T) {
 		t.Errorf("sickness on: default types = %v, want both", rows)
 	}
 }
+
+func TestTimelineListsVisits(t *testing.T) {
+	k := newKit(t)
+	kid, ana, _ := k.trackerKid()
+	v := k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(-time.Hour))}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(time.Hour))}))
+	items := bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/timeline?types=visit", ana, nil))["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("visit items: %v, want only the past one", items)
+	}
+	it := items[0].(map[string]any)
+	sameKeys(t, it, append([]string{"type", "at"}, visitKeys...)...)
+	if it["type"] != "visit" || it["id"] != v["id"] || it["at"] != ts(t0.Add(-time.Hour)) || it["status"] != "past" {
+		t.Errorf("visit item %v", it)
+	}
+	k.setModule(ana, kid, "visits", false)
+	for _, it := range bodyMap(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/timeline", ana, nil))["items"].([]any) {
+		if it.(map[string]any)["type"] == "visit" {
+			t.Errorf("a visit in the default timeline with the module off")
+		}
+	}
+}

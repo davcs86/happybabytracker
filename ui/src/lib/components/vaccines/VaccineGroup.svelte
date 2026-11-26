@@ -113,6 +113,7 @@
 													kid: kidId,
 													administration: line.administration
 												})}
+												data-drawer="Edit vaccination"
 												class="inline-flex min-h-11 items-center underline">Given {line.givenOn}</a
 											>
 										{:else}
@@ -174,8 +175,11 @@
 			{/each}
 			{#if openAntigens.length > 0}
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the query has no resolve() form, and the link keeps an absolute path -->
-				<Button href={vaccineNewPath(kidId, openAntigens)} variant="outline" class="w-full"
-					>Record {title}</Button
+				<Button
+					href={vaccineNewPath(kidId, openAntigens)}
+					data-drawer="Record a vaccination"
+					variant="outline"
+					class="w-full">Record {title}</Button
 				>
 			{/if}
 		</div>

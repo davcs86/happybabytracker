@@ -35,11 +35,11 @@ test('the More sheet lists the other pages, Sign out last', async ({ page }) => 
 	await expect(sheet.getByRole('link')).toHaveText([
 		/^\s*Vaccines/,
 		/^\s*Medication/,
+		/^\s*Visits/,
 		/^\s*Milestones/,
 		/^\s*Export PDF/,
 		/^\s*Modules/,
 		/^\s*Child profile/,
-		/^\s*Settings/,
 		/^\s*My profile/
 	]);
 	await expect(sheet.getByRole('button')).toHaveText([
@@ -67,11 +67,11 @@ test('a side navigation from 768 px carries the same entries inline and no More'
 		'Growth',
 		'Vaccines',
 		'Medication',
+		'Visits',
 		'Milestones',
 		'Export PDF',
 		'Modules',
 		'Child profile',
-		'Settings',
 		'My profile'
 	]);
 	await expect(nav.getByRole('button')).toHaveText(['Change theme', 'Sign out']);

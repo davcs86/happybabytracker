@@ -39,6 +39,7 @@ const curves = (over: Partial<Curves> = {}): Curves => ({
 
 const row = (over: Partial<GrowthRow> = {}): GrowthRow => ({
 	id: 'g1',
+	visitId: null,
 	measuredOn: '2026-03-29',
 	weight: { grams: 7000, ozHundredths: 24692, typedUnit: 'kg' },
 	length: { mm: 650, inHundredths: 2559, typedUnit: 'cm' },

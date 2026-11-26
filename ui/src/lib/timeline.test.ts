@@ -7,9 +7,18 @@ import {
 	readFilter,
 	shownModules,
 	timelineLine,
-	timelineSearch
+	timelineSearch,
+	visitTimelineLine
 } from './timeline';
-import type { ModuleId, ModuleState, TimelineItem, TrackerKind } from './types';
+import type {
+	ModuleId,
+	ModuleState,
+	TimelineItem,
+	TimelineKind,
+	TrackerTimelineItem,
+	TrackerKind,
+	VisitRow
+} from './types';
 
 const METRIC = { weight: 'kg', volume: 'ml', temp: 'c' } as const;
 const IMPERIAL = { weight: 'lb', volume: 'floz', temp: 'f' } as const;
@@ -18,7 +27,7 @@ const vol = (ml: number, hundredths: number) => ({
 	floz_hundredths: hundredths,
 	typed_unit: 'ml' as const
 });
-const bottle = (at: string, contents: string[], ml = 120): TimelineItem =>
+const bottle = (at: string, contents: string[], ml = 120): TrackerTimelineItem =>
 	({
 		kind: 'bottles',
 		at,
@@ -30,14 +39,14 @@ const bottle = (at: string, contents: string[], ml = 120): TimelineItem =>
 			sources: [],
 			note: null
 		}
-	}) as TimelineItem;
-const sleep = (startedAt: string, endedAt: string | null): TimelineItem =>
+	}) as TrackerTimelineItem;
+const sleep = (startedAt: string, endedAt: string | null): TrackerTimelineItem =>
 	({
 		kind: 'sleep',
 		at: startedAt,
 		entry: { id: 's1', startedAt, endedAt, note: null }
-	}) as TimelineItem;
-const nursing = (over: Record<string, unknown>): TimelineItem =>
+	}) as TrackerTimelineItem;
+const nursing = (over: Record<string, unknown>): TrackerTimelineItem =>
 	({
 		kind: 'nursing',
 		at: '2026-10-14T13:05:00Z',
@@ -55,9 +64,9 @@ const nursing = (over: Record<string, unknown>): TimelineItem =>
 			milk: null,
 			...over
 		}
-	}) as TimelineItem;
-const diaper = (at: string, kind = 'wet'): TimelineItem =>
-	({ kind: 'diapers', at, entry: { id: `d-${at}`, at, kind, note: null } }) as TimelineItem;
+	}) as TrackerTimelineItem;
+const diaper = (at: string, kind = 'wet'): TrackerTimelineItem =>
+	({ kind: 'diapers', at, entry: { id: `d-${at}`, at, kind, note: null } }) as TrackerTimelineItem;
 
 describe('timelineLine', () => {
 	it('appends the milk estimate to a weighed nursing session, in the parent units', () => {
@@ -168,7 +177,7 @@ describe('timelineLine', () => {
 				sides: [],
 				note: null
 			}
-		} as TimelineItem;
+		} as TrackerTimelineItem;
 		expect(timelineLine(pumping, 'UTC', METRIC)).toBe('09:00 Pumping 20 min, 90 ml (both)');
 		expect(timelineLine(diaper('2026-10-14T07:30:00Z'), 'UTC', METRIC)).toBe('07:30 Diaper wet');
 		const meal = (reaction: string | null) =>
@@ -176,14 +185,14 @@ describe('timelineLine', () => {
 				kind: 'meals',
 				at: '2026-10-14T12:15:00Z',
 				entry: { id: 'm1', at: '2026-10-14T12:15:00Z', what: 'pear', reaction, note: null }
-			}) as TimelineItem;
+			}) as TrackerTimelineItem;
 		expect(timelineLine(meal(null), 'UTC', METRIC)).toBe('12:15 Solids: pear');
 		expect(timelineLine(meal('liked it'), 'UTC', METRIC)).toBe('12:15 Solids: pear · liked it');
 	});
 });
 
 describe('timelineLine symptoms', () => {
-	const symptom = (over: Record<string, unknown>): TimelineItem =>
+	const symptom = (over: Record<string, unknown>): TrackerTimelineItem =>
 		({
 			kind: 'symptoms',
 			at: '2026-10-14T09:12:00Z',
@@ -198,7 +207,7 @@ describe('timelineLine symptoms', () => {
 				note: null,
 				...over
 			}
-		}) as TimelineItem;
+		}) as TrackerTimelineItem;
 	const fever = (over: Record<string, unknown> = {}) =>
 		symptom({
 			symptom: 'fever',
@@ -266,7 +275,7 @@ describe('timelineLine pumping with sides', () => {
 				sides: sides.map(([s, ml, floz]) => ({ side: s, volume: vol(ml, floz) })),
 				note: null
 			}
-		}) as TimelineItem;
+		}) as TrackerTimelineItem;
 
 	it('gives each side its own volume in the parent unit instead of the side name', () => {
 		const both = sided('both', [
@@ -291,6 +300,43 @@ describe('timelineLine pumping with sides', () => {
 	});
 });
 
+const visitItem = (startsAt: string, over: Partial<VisitRow> = {}): TimelineItem => ({
+	kind: 'visit',
+	at: startsAt,
+	entry: {
+		id: `v-${startsAt}`,
+		note: null,
+		startsAt,
+		durationMin: 30,
+		kind: 'sick',
+		status: 'past',
+		cancelledAt: null,
+		provider: null,
+		location: null,
+		outcomeNotes: null,
+		revision: 0,
+		linked: { growth: 0, vaccinations: 0, medications: 0 },
+		...over
+	} as VisitRow
+});
+
+describe('visitTimelineLine', () => {
+	it('names a visit by its kind, with Cancelled as its detail only when it is cancelled', () => {
+		expect(visitTimelineLine({ kind: 'sick', status: 'past' })).toEqual({
+			title: 'Sick visit',
+			detail: null
+		});
+		expect(visitTimelineLine({ kind: 'well_child', status: 'upcoming' })).toEqual({
+			title: 'Well-child visit',
+			detail: null
+		});
+		expect(visitTimelineLine({ kind: 'dental', status: 'cancelled' })).toEqual({
+			title: 'Dental visit',
+			detail: 'Cancelled'
+		});
+	});
+});
+
 describe('groupByDay', () => {
 	it('groups consecutive entries by the kid-local date and keeps the order', () => {
 		const items = [
@@ -308,6 +354,20 @@ describe('groupByDay', () => {
 			['2026-03-28', 2]
 		]);
 		expect(groupByDay([], 'UTC')).toEqual([]);
+	});
+
+	it('puts a visit under the kid-local day it starts on, among the tracker entries', () => {
+		const items = [
+			diaper('2026-03-29T21:30:00Z'),
+			visitItem('2026-03-28T23:30:00Z'),
+			diaper('2026-03-28T21:00:00Z')
+		];
+		expect(
+			groupByDay(items, 'Europe/Madrid').map((g) => [g.date, g.items.map((i) => i.kind)])
+		).toEqual([
+			['2026-03-29', ['diapers', 'visit']],
+			['2026-03-28', ['diapers']]
+		]);
 	});
 });
 
@@ -426,6 +486,19 @@ describe('readFilter', () => {
 		expect(none.query?.types).toBeUndefined();
 	});
 
+	it('reads the visit type like a tracker, after the trackers', () => {
+		const withVisits = { ...ctx, defaults: [...ALL, 'visit'] as TimelineKind[] };
+		expect(readFilter(params(''), withVisits).filter).toMatchObject({
+			kinds: [...ALL, 'visit'],
+			narrowed: false
+		});
+		const only = readFilter(params('types=visit'), withVisits);
+		expect(only.filter).toMatchObject({ kinds: ['visit'], narrowed: true });
+		expect(only.query?.types).toEqual(['visit']);
+		expect(readFilter(params('types=visit,bottle'), ctx).query?.types).toEqual(['bottle', 'visit']);
+		expect(readFilter(params('types=visits'), ctx).filter.kinds).toEqual(ALL);
+	});
+
 	it('passes the cursor on untouched', () => {
 		const r = readFilter(params('cursor=MTIzOmFiYw'), ctx);
 		expect(r.filter.cursor).toBe('MTIzOmFiYw');
@@ -449,6 +522,9 @@ describe('timelineSearch', () => {
 		).toBe('from=2026-10-14&to=2026-10-15&types=bottle&types=meal&cursor=a+b');
 		expect(timelineSearch(base, 'next')).toBe('from=2026-10-14&to=2026-10-15&cursor=next');
 		expect(timelineSearch({ ...base, cursor: 'old' }, null)).toBe('from=2026-10-14&to=2026-10-15');
+		expect(timelineSearch({ ...base, kinds: ['sleep', 'visit'], narrowed: true })).toBe(
+			'from=2026-10-14&to=2026-10-15&types=sleep&types=visit'
+		);
 	});
 });
 
@@ -472,7 +548,13 @@ describe('defaultKinds and shownModules', () => {
 		expect(defaultKinds([])).toEqual([]);
 	});
 
+	it('adds visits, last, while the Medical visits module is on', () => {
+		expect(defaultKinds([state('visits', true), state('sleep', true)])).toEqual(['sleep', 'visit']);
+		expect(defaultKinds([state('visits', false), state('sleep', true)])).toEqual(['sleep']);
+	});
+
 	it('maps shown trackers back to their modules', () => {
 		expect([...shownModules(['meals', 'sleep'])].sort()).toEqual(['feeding', 'sleep']);
+		expect([...shownModules(['visit', 'diapers'])].sort()).toEqual(['diapers', 'visits']);
 	});
 });

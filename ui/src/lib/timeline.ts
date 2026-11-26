@@ -1,14 +1,17 @@
 import { localDate, temperatureText } from './entry-edit';
 import {
 	BOTTLE_CONTENT_LABEL,
+	MODULES,
 	SUMMARY_MAX_DAYS,
 	SYMPTOM_LABEL,
 	TEMP_METHOD_LABEL,
 	TEMP_UNIT_LABEL,
+	TIMELINE_KINDS,
 	TIMELINE_TYPE,
-	TRACKER_KINDS,
 	TRACKER_LABEL,
-	TRACKER_ROUTE
+	TRACKER_ROUTE,
+	VISIT_KIND_LABEL,
+	VISIT_STATUS_LABEL
 } from './constants';
 import { formatDuration, formatMilk, formatVolume } from './format';
 import { formatClock, zonedLocalToInstant } from './time-zone';
@@ -17,9 +20,11 @@ import type {
 	ModuleState,
 	NursingSide,
 	TimelineItem,
+	TimelineKind,
 	TimelineQuery,
-	TrackerKind,
-	Units
+	TrackerTimelineItem,
+	Units,
+	VisitRow
 } from './types';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -33,7 +38,7 @@ const LONG_RANGE = `Pick at most ${SUMMARY_MAX_DAYS} days`;
 
 // One line per entry. A point entry leads with its clock; a sleep carries its own range.
 export function timelineLine(
-	item: TimelineItem,
+	item: TrackerTimelineItem,
 	zone: string,
 	units: Pick<Units, 'weight' | 'volume' | 'temp'>
 ): string {
@@ -98,6 +103,17 @@ export function timelineLine(
 	}
 }
 
+// A visit row: its kind, and "Cancelled" when it is.
+export function visitTimelineLine(v: Pick<VisitRow, 'kind' | 'status'>): {
+	title: string;
+	detail: string | null;
+} {
+	return {
+		title: VISIT_KIND_LABEL[v.kind],
+		detail: v.status === 'cancelled' ? VISIT_STATUS_LABEL.cancelled : null
+	};
+}
+
 export type DayGroup = { date: string; items: TimelineItem[] };
 
 // The page is already newest first, so the days of one page are consecutive runs.
@@ -125,27 +141,29 @@ export function formatDayHeading(date: string): string {
 	return `${part('weekday')} ${part('day')} ${part('month')} ${part('year')}`;
 }
 
-// The trackers a kid's enabled modules switch on, in tracker order.
-export function defaultKinds(modules: readonly ModuleState[]): TrackerKind[] {
-	return TRACKER_KINDS.filter((k) =>
-		modules.some((m) => m.enabled && TRACKER_ROUTE[m.module] === k)
-	);
+const moduleKind = (module: ModuleId): TimelineKind | undefined =>
+	module === 'visits' ? 'visit' : TRACKER_ROUTE[module];
+
+// The kinds a kid's enabled modules switch on, in filter order.
+export function defaultKinds(modules: readonly ModuleState[]): TimelineKind[] {
+	return TIMELINE_KINDS.filter((k) => modules.some((m) => m.enabled && moduleKind(m.module) === k));
 }
 
-export function shownModules(kinds: readonly TrackerKind[]): Set<ModuleId> {
+export function shownModules(kinds: readonly TimelineKind[]): Set<ModuleId> {
 	return new Set(
-		(Object.entries(TRACKER_ROUTE) as [ModuleId, TrackerKind][])
-			.filter(([, kind]) => kinds.includes(kind))
-			.map(([module]) => module)
+		MODULES.filter((m) => {
+			const kind = moduleKind(m);
+			return kind !== undefined && kinds.includes(kind);
+		})
 	);
 }
 
 export type TimelineFilter = {
 	from: string;
 	to: string;
-	// What the boxes show: the typed selection, else the enabled trackers.
-	kinds: TrackerKind[];
-	// True when the selection differs from the enabled trackers, so the API is told.
+	// What the boxes show: the typed selection, else the enabled kinds.
+	kinds: TimelineKind[];
+	// True when the selection differs from the enabled kinds, so the API is told.
 	narrowed: boolean;
 	cursor: string | null;
 };
@@ -159,18 +177,18 @@ export type FilterRead = {
 const dayAfter = (date: string) =>
 	new Date(Date.parse(`${date}T00:00:00Z`) + MS_PER_DAY).toISOString().slice(0, 10);
 const startOf = (date: string, zone: string) => zonedLocalToInstant(`${date}T00:00`, zone);
-const sameKinds = (a: readonly TrackerKind[], b: readonly TrackerKind[]) =>
+const sameKinds = (a: readonly TimelineKind[], b: readonly TimelineKind[]) =>
 	a.length === b.length && a.every((k) => b.includes(k));
 
 // from and to are the kid's calendar dates; the API gets [start of from, start of the day after to).
 export function readFilter(
 	params: URLSearchParams,
-	ctx: { zone: string; today: string; defaults: readonly TrackerKind[] }
+	ctx: { zone: string; today: string; defaults: readonly TimelineKind[] }
 ): FilterRead {
 	const from = params.get('from') || ctx.today;
 	const to = params.get('to') || ctx.today;
 	const names = params.getAll('types').flatMap((v) => v.split(','));
-	const typed = TRACKER_KINDS.filter((k) => names.includes(TIMELINE_TYPE[k]));
+	const typed = TIMELINE_KINDS.filter((k) => names.includes(TIMELINE_TYPE[k]));
 	const kinds = typed.length > 0 ? typed : [...ctx.defaults];
 	const narrowed = typed.length > 0 && !sameKinds(typed, ctx.defaults);
 	const filter: TimelineFilter = {

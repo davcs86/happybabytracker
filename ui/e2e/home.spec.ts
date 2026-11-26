@@ -380,6 +380,81 @@ test('Due shows three entries and one more line for each hidden kind, linked to 
 	await expectAccessible(page);
 });
 
+const DAY_MIN = 24 * 60;
+// "Thu 3 Dec, 10:30" in a zone, computed here so the page's own helper is not what proves it.
+const visitDay = (iso: string, timeZone: string) => {
+	const parts = new Intl.DateTimeFormat('en-US', {
+		timeZone,
+		weekday: 'short',
+		day: 'numeric',
+		month: 'short'
+	}).formatToParts(new Date(iso));
+	const part = (type: string) => parts.find((p) => p.type === type)?.value;
+	return `${part('weekday')} ${part('day')} ${part('month')}, ${clock(iso, timeZone)}`;
+};
+const seedVisit = async (api: Awaited<ReturnType<typeof stubAs>>, kid: string, body: object) => {
+	const r = await api('POST', `/v1/kids/${kid}/visits`, body);
+	expect(r.status).toBe(201);
+	return r.body as { id: string };
+};
+
+test('Due lists an upcoming visit at the kid’s clock, linked to its page, until the module is off', async ({
+	page
+}) => {
+	const cleo = await stubAs(CLEO);
+	const at = instant(inMinutes(2 * DAY_MIN));
+	const v = await seedVisit(cleo, LEO.id, { kind: 'dental', starts_at: at });
+	await seedVisit(cleo, LEO.id, { kind: 'sick', starts_at: instant(inMinutes(9 * DAY_MIN)) });
+	await signIn(page, ANA);
+	await page.goto(`/kids/${LEO.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		`Dental visit, ${visitDay(at, LEO.timeZone)}`
+	]);
+	const link = due(page).getByRole('link');
+	await expect(link).toHaveAccessibleName(`Dental visit, ${visitDay(at, LEO.timeZone)}`);
+	expect(await link.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${LEO.id}/visits/${v.id}`
+	);
+	await expectAccessible(page);
+
+	await link.click();
+	await expect(page).toHaveURL(`/kids/${LEO.id}/visits/${v.id}`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Dental visit' })).toBeVisible();
+
+	expect(
+		(await cleo('PUT', `/v1/kids/${LEO.id}/modules/visits`, { enabled: false })).status
+	).toBeLessThan(300);
+	await page.goto(`/kids/${LEO.id}`);
+	await expect(page.getByRole('heading', { name: LEO.name, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Due' })).toHaveCount(0);
+});
+
+test('visits follow medication in Due, and the hidden ones are counted on the Visits page', async ({
+	page
+}) => {
+	skipNearDayEnd();
+	const ana = await stubAs(ANA);
+	const med = inMinutes(10);
+	expect(
+		(await ana('POST', `/v1/kids/${IVY.id}/medications`, dailyCourse('Vitamin D', med))).status
+	).toBe(201);
+	const starts = [1, 2, 3, 4].map((d) => instant(inMinutes(d * DAY_MIN)));
+	for (const starts_at of starts) await seedVisit(ana, IVY.id, { kind: 'well_child', starts_at });
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(due(page).getByRole('listitem')).toHaveText([
+		`Vitamin D · ${hhmm(med)}`,
+		`Well-child visit, ${visitDay(starts[0], IVY.timeZone)}`,
+		`Well-child visit, ${visitDay(starts[1], IVY.timeZone)}`,
+		'2 more on the Visits page'
+	]);
+	const more = due(page).getByRole('link', { name: '2 more on the Visits page' });
+	expect(await more.evaluate((a) => (a as HTMLAnchorElement).href)).toBe(
+		`${UI_ORIGIN}/kids/${IVY.id}/visits`
+	);
+	await expectAccessible(page);
+});
+
 test('a long unbroken medication name does not overflow the page at phone width', async ({
 	page
 }, testInfo) => {
@@ -624,7 +699,7 @@ test('a guardian turns a module off and on; the data stays', async ({ page }) =>
 		page.getByRole('heading', { name: `Modules for ${MIA.name}`, level: 1 })
 	).toBeVisible();
 	const box = (name: string) => page.getByRole('checkbox', { name, exact: true });
-	await expect(page.getByRole('checkbox')).toHaveCount(11);
+	await expect(page.getByRole('checkbox')).toHaveCount(12);
 	await expect(box('Diaper')).toBeChecked();
 	await expect(box('Diaper')).toHaveAccessibleDescription('On by default for this age');
 	await expectAccessible(page);
