@@ -46,6 +46,12 @@ type Parent struct {
 	PasswordChangedAt         *time.Time // nil when the local password predates the column or is unset
 }
 
+// PendingLink is a parent's unused one-time token; an expired one is still pending.
+type PendingLink struct {
+	Kind      string
+	ExpiresAt time.Time
+}
+
 type SessionInfo struct {
 	ID                    string
 	DeviceLabel           string // empty when the sign-in sent none

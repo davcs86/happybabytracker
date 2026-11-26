@@ -419,3 +419,32 @@ func TestDeleteParentSession(t *testing.T) {
 		t.Errorf("deleted session still resolves: %v", err)
 	}
 }
+
+func TestParentActivity(t *testing.T) {
+	s := openMem(t)
+	ana, bob := mustParent(t, s, "ana"), mustParent(t, s, "bob")
+	mustParent(t, s, "cy")
+	exp := t0.Add(time.Hour)
+	mustSession(t, s, "parent", ana.ID, []byte("a1"), exp)
+	second := mustSession(t, s, "parent", ana.ID, []byte("a2"), exp)
+	mustSession(t, s, "parent", bob.ID, []byte("b1"), exp)
+	if _, err := s.w.Exec(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`, t0.Add(30*time.Minute).Unix(), second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSession(ctx, "admin", "", []byte("adm"), t0.Add(time.Hour), exp.Add(time.Hour), ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ParentActivity(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || !got[ana.ID].Equal(t0.Add(30*time.Minute)) || !got[bob.ID].Equal(t0) {
+		t.Errorf("activity = %v; want ana at +30m, bob at t0, none for cy and none for the admin", got)
+	}
+	if err := s.SetParentDisabled(ctx, ana.ID, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.ParentActivity(ctx); len(got) != 1 {
+		t.Errorf("after disabling ana: %v", got)
+	}
+}

@@ -94,18 +94,57 @@ func (d Deps) createParent(w http.ResponseWriter, r *http.Request) {
 	}{newAdminParentView(parent), link, formatTime(expires)})
 }
 
+// adminListedParent adds what only the list shows: activity and the unused link, facts about the parent and never a kid.
+type adminListedParent struct {
+	adminParentView
+	LastActiveAt *string    `json:"last_active_at"`
+	Link         *adminLink `json:"link"`
+}
+
+type adminLink struct {
+	Kind      string `json:"kind"`
+	IssuedAt  string `json:"issued_at"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// linkTTL is the lifetime a link of that kind was issued with; the token table keeps only the expiry.
+func linkTTL(kind string) time.Duration {
+	if kind == model.TokenReset {
+		return constants.ResetTTL
+	}
+	return constants.InviteTTL
+}
+
 func (d Deps) listParents(w http.ResponseWriter, r *http.Request) {
-	parents, err := d.Store.ListParents(r.Context())
+	ctx := r.Context()
+	parents, err := d.Store.ListParents(ctx)
 	if err != nil {
 		respondInternal(w, err)
 		return
 	}
-	rows := make([]adminParentView, len(parents))
+	active, err := d.Store.ParentActivity(ctx)
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	links, err := d.Store.PendingLinks(ctx)
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	rows := make([]adminListedParent, len(parents))
 	for i, p := range parents {
-		rows[i] = newAdminParentView(p)
+		rows[i].adminParentView = newAdminParentView(p)
+		if at, ok := active[p.ID]; ok {
+			s := formatTime(at)
+			rows[i].LastActiveAt = &s
+		}
+		if l, ok := links[p.ID]; ok {
+			rows[i].Link = &adminLink{Kind: l.Kind, IssuedAt: formatTime(l.ExpiresAt.Add(-linkTTL(l.Kind))), ExpiresAt: formatTime(l.ExpiresAt)}
+		}
 	}
 	respondJSON(w, http.StatusOK, struct {
-		Parents []adminParentView `json:"parents"`
+		Parents []adminListedParent `json:"parents"`
 	}{rows})
 }
 

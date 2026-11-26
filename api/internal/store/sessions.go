@@ -69,6 +69,27 @@ func (s *Store) DeleteAdminSessions(ctx context.Context) error {
 	return err
 }
 
+// ParentActivity maps each parent that has a session to the newest last_seen_at among them.
+func (s *Store) ParentActivity(ctx context.Context) (map[string]time.Time, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT parent_id, MAX(last_seen_at) FROM sessions WHERE parent_id IS NOT NULL GROUP BY parent_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]time.Time{}
+	for rows.Next() {
+		var (
+			id   string
+			seen int64
+		)
+		if err := rows.Scan(&id, &seen); err != nil {
+			return nil, err
+		}
+		out[id] = time.Unix(seen, 0).UTC()
+	}
+	return out, rows.Err()
+}
+
 // ListSessions returns the parent's unexpired sessions, newest first; never nil.
 func (s *Store) ListSessions(ctx context.Context, parentID string, now time.Time) ([]model.SessionInfo, error) {
 	rows, err := s.r.QueryContext(ctx,
