@@ -12,6 +12,7 @@
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { MAX_SESSION_HOURS, TRACKER_TITLE } from '#lib/constants.js';
+	import { formatElapsed } from '#lib/format.js';
 	import { entryPath } from '#lib/paths.js';
 	import { formatClock } from '#lib/time-zone.js';
 
@@ -19,17 +20,37 @@
 		timer,
 		zone,
 		kidId,
+		now,
 		message = null,
 		overrun = false
 	}: {
 		timer: Timer;
 		zone: string;
 		kidId: string;
+		now: Date;
 		message?: string | null;
 		overrun?: boolean;
 	} = $props();
 
 	const other = (side: 'left' | 'right') => (side === 'left' ? 'right' : 'left');
+
+	// The stored seconds exclude the side being fed now: that one runs from sideSince.
+	const sides = $derived.by(() => {
+		if (timer.kind !== 'nursing') return null;
+		const e = timer.entry;
+		const running = e.side
+			? Math.max(0, Math.floor((now.getTime() - Date.parse(e.sideSince ?? e.startedAt)) / 1000))
+			: 0;
+		return {
+			left: e.leftSeconds + (e.side === 'left' ? running : 0),
+			right: e.rightSeconds + (e.side === 'right' ? running : 0)
+		};
+	});
+	const elapsed = $derived(
+		sides
+			? sides.left + sides.right
+			: Math.floor((now.getTime() - Date.parse(timer.entry.startedAt)) / 1000)
+	);
 </script>
 
 <li class="flex flex-col gap-3 rounded-2xl border-[1.5px] border-primary bg-card p-3.5">
@@ -43,19 +64,39 @@
 				<HeartIcon aria-hidden="true" class="size-5" />
 			{/if}
 		</span>
-		{#if timer.kind === 'sleep'}
-			<p class="min-w-0 flex-1 text-[15px] font-semibold">
-				Asleep since {formatClock(timer.entry.startedAt, zone)}
-			</p>
-		{:else}
-			<p class="min-w-0 flex-1 text-[15px] font-semibold">
-				Nursing, {timer.entry.side} since {formatClock(
-					timer.entry.sideSince ?? timer.entry.startedAt,
-					zone
-				)}
-			</p>
-		{/if}
+		<div class="min-w-0 flex-1">
+			{#if timer.kind === 'sleep'}
+				<p class="text-[15px] font-semibold">
+					Asleep since {formatClock(timer.entry.startedAt, zone)}
+				</p>
+			{:else}
+				<p class="text-[15px] font-semibold">
+					Nursing, {timer.entry.side} since {formatClock(
+						timer.entry.sideSince ?? timer.entry.startedAt,
+						zone
+					)}
+				</p>
+				<p class="text-[12.5px] text-muted-foreground">
+					Started {formatClock(timer.entry.startedAt, zone)}
+				</p>
+			{/if}
+		</div>
+		<p class="font-mono text-2xl font-medium tracking-tight">{formatElapsed(elapsed)}</p>
 	</div>
+	{#if sides && timer.kind === 'nursing'}
+		<div class="grid grid-cols-2 gap-2">
+			{#each [{ label: 'Left', side: 'left', seconds: sides.left }, { label: 'Right', side: 'right', seconds: sides.right }] as tile (tile.side)}
+				{@const active = timer.entry.side === tile.side}
+				<div class="rounded-xl border bg-background px-2.5 py-2 {active ? 'border-primary' : ''}">
+					<p class="text-xs text-muted-foreground">{tile.label}</p>
+					<p class="font-mono text-[17px] font-medium">{formatElapsed(tile.seconds)}</p>
+					<p class="min-h-3.5 text-xs font-semibold text-muted-foreground">
+						{active ? 'Feeding now' : tile.seconds > 0 ? 'Last side' : ''}
+					</p>
+				</div>
+			{/each}
+		</div>
+	{/if}
 	{#if overrun}
 		<Alert>
 			<p>

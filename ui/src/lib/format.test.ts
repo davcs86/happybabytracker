@@ -208,7 +208,8 @@ describe('formatMilk', () => {
 
 describe('formatAgo', () => {
 	const now = new Date('2026-11-25T12:00:00Z');
-	const ago = (minutes: number) => formatAgo(new Date(now.getTime() - minutes * 60_000).toISOString(), now);
+	const ago = (minutes: number) =>
+		formatAgo(new Date(now.getTime() - minutes * 60_000).toISOString(), now);
 	it('says how long ago an instant was, in the units the Home tiles use', () => {
 		expect(ago(0)).toBe('Just now');
 		expect(ago(0.5)).toBe('Just now');

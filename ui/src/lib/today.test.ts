@@ -58,6 +58,39 @@ describe('todayRows', () => {
 	});
 });
 
+describe('todayRows last entries', () => {
+	const item = (kind: 'bottles' | 'nursing' | 'diapers' | 'sleep', at: string) =>
+		({ kind, at, entry: { id: 'x' } }) as never;
+	it('carries when the newest bottle, nursing, diaper and sleep happened, and nothing for a tracker with none', () => {
+		const last = {
+			bottle: item('bottles', '2026-11-22T10:00:00Z'),
+			nursing: null,
+			diaper: item('diapers', '2026-11-22T11:00:00Z'),
+			sleep: item('sleep', '2026-11-22T09:00:00Z')
+		};
+		const rows = todayRows(day, all, 'ml', last);
+		expect(rows.map((r) => r.lastAt)).toEqual([
+			'2026-11-22T10:00:00Z',
+			undefined,
+			'2026-11-22T11:00:00Z',
+			'2026-11-22T09:00:00Z'
+		]);
+	});
+	it('counts a finished sleep or nursing session from when it ended, a running one from its start', () => {
+		const finished = (kind: 'sleep' | 'nursing', at: string, endedAt: string | null) =>
+			({ kind, at, entry: { id: 'x', endedAt } }) as never;
+		const rows = todayRows(day, all, 'ml', {
+			nursing: finished('nursing', '2026-11-22T08:00:00Z', '2026-11-22T08:20:00Z'),
+			sleep: finished('sleep', '2026-11-22T09:00:00Z', null)
+		});
+		expect(rows.find((r) => r.label === 'Nursing')?.lastAt).toBe('2026-11-22T08:20:00Z');
+		expect(rows.find((r) => r.label === 'Sleep')?.lastAt).toBe('2026-11-22T09:00:00Z');
+	});
+	it('carries nothing when the API sent no last', () => {
+		expect(todayRows(day, all, 'ml').every((r) => r.lastAt === undefined)).toBe(true);
+	});
+});
+
 describe('dayRows', () => {
 	it('shows only the shown trackers that have something on the day', () => {
 		const empty = { ...day, bottles: { count: 0, ml: 0, floz_hundredths: 0 } };

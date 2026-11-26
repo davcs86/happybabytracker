@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { NURSING_SIDES } from '#lib/constants.js';
+import { HOME_LATEST_MAX, NURSING_SIDES } from '#lib/constants.js';
 import { formatAge } from '#lib/format.js';
 import { ageHeader } from '#lib/growth.js';
 import { quickLog } from '#lib/quick-log.js';
@@ -12,9 +12,10 @@ import type { TimerKind } from '#lib/types.js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, cookies, parent }) => {
-	const [kid, home, { session }] = await Promise.all([
+	const [kid, home, latest, { session }] = await Promise.all([
 		locals.api.getKid(params.kid),
 		locals.api.home(params.kid),
+		locals.api.timeline(params.kid, { limit: HOME_LATEST_MAX }),
 		parent()
 	]);
 	if (!kid.ok) failPage(kid);
@@ -26,10 +27,22 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 		kid: kid.data,
 		age: ageHeader(formatAge(kid.data.birthDate, today), home.data.correctedBirthDate, today),
 		running: home.data.running,
-		quickLog: quickLog(home.data.band, home.data.modules, home.data.running),
+		quickLog: quickLog(home.data.band, home.data.modules, home.data.running, home.data.last),
 		due: home.data.due,
 		todayDate: today,
-		today: todayRows(home.data.today, enabled, session?.parent?.units.volume ?? 'ml')
+		today: todayRows(
+			home.data.today,
+			enabled,
+			session?.parent?.units.volume ?? 'ml',
+			home.data.last
+		),
+		// A failed Latest call leaves the list empty rather than failing the page.
+		latest: latest.ok ? latest.data.items : [],
+		units: {
+			weight: session?.parent?.units.weight ?? 'kg',
+			volume: session?.parent?.units.volume ?? 'ml',
+			temp: session?.parent?.units.temp ?? 'c'
+		}
 	};
 };
 

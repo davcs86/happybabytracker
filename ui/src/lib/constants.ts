@@ -442,6 +442,8 @@ export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {
 	'24+': ['sickness', 'medication', 'growth', 'vaccination']
 };
 export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly AgeBand[];
+// The Home page's Latest list.
+export const HOME_LATEST_MAX = 3;
 export const SECONDS_PER_MINUTE = 60;
 export const SECONDS_PER_HOUR = 3600;
 export const HUNDREDTHS_PER_FLOZ = 100;

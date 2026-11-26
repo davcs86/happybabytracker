@@ -15,6 +15,7 @@
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { SECTION_HEADING } from '#lib/components/home.js';
 	import { TRACKER_TITLE } from '#lib/constants.js';
+	import { formatAgo } from '#lib/format.js';
 	import { logPath } from '#lib/paths.js';
 	import { PAGE_ROUTE, type QuickLogEntry } from '#lib/quick-log.js';
 	import type { ModuleId } from '#lib/types.js';
@@ -22,8 +23,9 @@
 	let {
 		entries,
 		kidId,
+		now,
 		message = null
-	}: { entries: QuickLogEntry[]; kidId: string; message?: string | null } = $props();
+	}: { entries: QuickLogEntry[]; kidId: string; now: Date; message?: string | null } = $props();
 
 	// Only the tiles that open a form open a sheet; the others open a list page.
 	const drawerTitle = (entry: QuickLogEntry) =>
@@ -67,7 +69,9 @@
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve() renders a relative href without JavaScript, and the tile keeps an absolute path -->
 {#snippet hint(entry: QuickLogEntry)}
-	{#if HINT[entry.module]}
+	{#if entry.lastAt}
+		<span class="mt-px block text-xs text-muted-foreground">{formatAgo(entry.lastAt, now)}</span>
+	{:else if HINT[entry.module]}
 		<span class="mt-px block text-xs text-muted-foreground">{HINT[entry.module]}</span>
 	{/if}
 {/snippet}
