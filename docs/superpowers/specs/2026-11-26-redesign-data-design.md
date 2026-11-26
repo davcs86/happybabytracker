@@ -1,6 +1,6 @@
 # happybabytracker — data the redesigned UI still needs: design
 
-Status: **draft for owner review** (2026-11-26). Amends `2026-11-20-happybabytracker-design.md` (5.3, 7.3, 10.1).
+Status: **approved by the owner** (2026-11-26; open questions answered in 8). Amends `2026-11-20-happybabytracker-design.md` (5.3, 7.3, 10.1).
 Plans: written only after this spec is approved (`docs/superpowers/plans/`).
 
 Items marked **(owner)** were decided by the owner in the design conversation of 2026-11-25/26.
@@ -159,9 +159,8 @@ route changes class. `matrix_test.go` must pass unchanged otherwise.
   field above, and `scripts/smoke.sh` is extended for the `last`, `counts` and `device_label` paths.
 - Commands as in CLAUDE.md. `scripts/smoke.sh` needs Docker; where the container has none, it is reported as not run.
 
-## 8. Open questions for the owner
+## 8. Decisions on the open questions (owner, 2026-11-26)
 
-1. **Rollback (6):** is a `/data` copy before the bump acceptable, or should `0008` be avoided by dropping 3.2 and 3.3
-   (the only two schema changes)? Without them there is no migration and rollback stays free.
-2. **Counts (3.5):** the seven daily trackers only, or also growth, doses, vaccinations and milestones?
-3. **`issued_at` (3.6):** derive it (recommended) or add a `created_at` column?
+1. **Rollback (6):** a `/data` copy before the bump is acceptable; `0008` stays.
+2. **Counts (3.5):** the seven daily trackers only.
+3. **`issued_at` (3.6):** derived from `expires_at`, no `created_at` column.
