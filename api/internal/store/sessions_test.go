@@ -37,7 +37,7 @@ func mustParent(t *testing.T, s *Store, username string) model.Parent {
 
 func mustSession(t *testing.T, s *Store, kind, parentID string, hash []byte, expires time.Time) string {
 	t.Helper()
-	id, err := s.CreateSession(ctx, kind, parentID, hash, t0, expires)
+	id, err := s.CreateSession(ctx, kind, parentID, hash, t0, expires, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,17 +92,17 @@ func TestSessionByTokenRefusals(t *testing.T) {
 func TestCreateSessionRefusesInconsistentKind(t *testing.T) {
 	s := openMem(t)
 	p := mustParent(t, s, "ana")
-	if _, err := s.CreateSession(ctx, "admin", p.ID, []byte("a"), t0, t0.Add(time.Hour)); err == nil {
+	if _, err := s.CreateSession(ctx, "admin", p.ID, []byte("a"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("admin session with a parent id was accepted")
 	}
-	if _, err := s.CreateSession(ctx, "parent", "", []byte("b"), t0, t0.Add(time.Hour)); err == nil {
+	if _, err := s.CreateSession(ctx, "parent", "", []byte("b"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("parent session without a parent id was accepted")
 	}
-	if _, err := s.CreateSession(ctx, "other", "", []byte("c"), t0, t0.Add(time.Hour)); err == nil {
+	if _, err := s.CreateSession(ctx, "other", "", []byte("c"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("unknown session kind was accepted")
 	}
 	mustSession(t, s, "admin", "", []byte("d"), t0.Add(time.Hour))
-	if _, err := s.CreateSession(ctx, "admin", "", []byte("d"), t0, t0.Add(time.Hour)); err == nil {
+	if _, err := s.CreateSession(ctx, "admin", "", []byte("d"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("duplicate token hash was accepted")
 	}
 }
@@ -205,6 +205,29 @@ func TestParentLookups(t *testing.T) {
 	byID, err := s.ParentByID(ctx, p.ID)
 	if err != nil || !reflect.DeepEqual(byID, got) {
 		t.Fatalf("ParentByID = %+v, %v; want %+v", byID, err, got)
+	}
+}
+
+func TestSessionDeviceLabel(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	exp := t0.Add(time.Hour)
+	if _, err := s.CreateSession(ctx, "parent", p.ID, []byte("a"), t0, exp, "Safari on iPhone"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSession(ctx, "parent", p.ID, []byte("b"), t0.Add(time.Minute), exp, ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ListSessions(ctx, p.ID, t0)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ListSessions = %v, %v", got, err)
+	}
+	if got[0].DeviceLabel != "" || got[1].DeviceLabel != "Safari on iPhone" {
+		t.Errorf("labels = %q, %q; want empty then Safari on iPhone", got[0].DeviceLabel, got[1].DeviceLabel)
+	}
+	var n int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM sessions WHERE device_label = ''`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("empty label stored as empty string (%d rows), want NULL; %v", n, err)
 	}
 }
 
@@ -349,7 +372,7 @@ func TestListSessions(t *testing.T) {
 	if err := s.TouchSession(ctx, old, t0.Add(30*time.Minute), t0.Add(2*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateSession(ctx, "parent", ana.ID, []byte("new"), t0.Add(time.Hour), t0.Add(3*time.Hour)); err != nil {
+	if _, err := s.CreateSession(ctx, "parent", ana.ID, []byte("new"), t0.Add(time.Hour), t0.Add(3*time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	mustSession(t, s, "parent", ana.ID, []byte("gone"), t0.Add(time.Minute))

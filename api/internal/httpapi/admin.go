@@ -223,7 +223,7 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	expires := now.Add(constants.ParentSessionTTL)
-	if _, err := d.Store.CreateSession(ctx, kindParent, parentID, sessionHash, now, expires); err != nil {
+	if _, err := d.Store.CreateSession(ctx, kindParent, parentID, sessionHash, now, expires, ""); err != nil {
 		respondInternal(w, err)
 		return
 	}

@@ -210,7 +210,7 @@ func TestListOwnSessions(t *testing.T) {
 		t.Fatalf("%d sessions, want ana's two", len(rows))
 	}
 	for _, row := range rows {
-		sameKeys(t, row.(map[string]any), "id", "created_at", "last_seen_at", "current")
+		sameKeys(t, row.(map[string]any), "id", "created_at", "last_seen_at", "current", "device_label")
 	}
 	newest, oldest := rows[0].(map[string]any), rows[1].(map[string]any)
 	if newest["current"] != true || oldest["current"] != false ||

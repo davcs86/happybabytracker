@@ -413,3 +413,49 @@ func TestLogHasNoIdentifyingText(t *testing.T) {
 		}
 	}
 }
+
+func (k *kit) loginLabelled(username, label string) *httptest.ResponseRecorder {
+	k.t.Helper()
+	return k.serve(k.newReq(http.MethodPost, "/v1/session", map[string]string{"username": username, "password": testParentPass, "device_label": label}))
+}
+
+func TestLoginStoresTheDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	k.addParent("ana")
+	rec := k.loginLabelled("ana", "Safari on iPhone")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %q", rec.Code, rec.Body.String())
+	}
+	token := bodyMap(t, rec)["token"].(string)
+	rows := bodyMap(t, k.do(http.MethodGet, "/v1/me/sessions", token, nil))["sessions"].([]any)
+	if got := rows[0].(map[string]any)["device_label"]; got != "Safari on iPhone" {
+		t.Errorf("device_label = %v", got)
+	}
+	plain := bodyMap(t, k.login("", "ana", testParentPass))["token"].(string)
+	for _, row := range bodyMap(t, k.do(http.MethodGet, "/v1/me/sessions", plain, nil))["sessions"].([]any) {
+		m := row.(map[string]any)
+		if m["current"] == true && m["device_label"] != nil {
+			t.Errorf("a login without a label lists %v, want null", m["device_label"])
+		}
+	}
+}
+
+func TestLoginRefusesABadDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	k.addParent("ana")
+	for _, label := range []string{strings.Repeat("a", 49), "Safari/iPhone", "<b>", "Safari\non iPhone"} {
+		rec := k.loginLabelled("ana", label)
+		m := bodyMap(t, rec)
+		if rec.Code != http.StatusUnprocessableEntity || m["error"] != "invalid" || m["field"] != "device_label" {
+			t.Errorf("label %q: %d %q, want 422 invalid device_label", label, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminLoginIgnoresTheDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	rec := k.serve(k.newReq(http.MethodPost, "/v1/session", map[string]string{"username": testAdminUser, "password": testAdminPass, "device_label": "Safari on iPhone"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin login: %d %q", rec.Code, rec.Body.String())
+	}
+}

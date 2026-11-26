@@ -169,7 +169,7 @@ func (k *kit) seedSession(kind, parentID string, ttl time.Duration) string {
 	if err != nil {
 		k.t.Fatal(err)
 	}
-	if _, err := k.Store.CreateSession(context.Background(), kind, parentID, hash, k.now, k.now.Add(ttl)); err != nil {
+	if _, err := k.Store.CreateSession(context.Background(), kind, parentID, hash, k.now, k.now.Add(ttl), ""); err != nil {
 		k.t.Fatal(err)
 	}
 	return plain

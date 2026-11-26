@@ -34,6 +34,8 @@ const (
 
 	UsernamePattern = `^[a-z0-9._-]{3,32}$`
 
+	DeviceLabelPattern = `^[A-Za-z0-9 ]{1,48}$`
+
 	DisplayNameMinLen = 1
 	DisplayNameMaxLen = 64
 

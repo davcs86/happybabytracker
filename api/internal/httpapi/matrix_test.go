@@ -422,7 +422,7 @@ func (f *fixture) seed(kind, parentID string, ttl time.Duration) (token, id stri
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
-	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl))
+	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl), "")
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}

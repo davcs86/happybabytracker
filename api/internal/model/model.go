@@ -48,6 +48,7 @@ type Parent struct {
 
 type SessionInfo struct {
 	ID                    string
+	DeviceLabel           string // empty when the sign-in sent none
 	CreatedAt, LastSeenAt time.Time
 	Current               bool
 }
