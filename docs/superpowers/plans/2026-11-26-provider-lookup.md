@@ -41,6 +41,13 @@ govern the contract, the logs and the limits.
    `npiregistry.cms.hhs.gov`) is the owner's, in `davcs86/homelab-edge`. This plan says exactly what the edge needs.
    The feature stays off (flag unset) until then.
 
+4. **Registry text as sent** (2026-11-26). A picked result's name and address are stored and shown exactly as NPPES
+   sends them (capitals); no title-casing, which would mangle Mc/Mac/O', suffixes and acronyms. Replaces B6's casing.
+5. **Clinic names may hold digits and `&`** (2026-11-26). Organization search names accept letters, digits, spaces,
+   `&`, hyphens, apostrophes and periods, 2–60 characters, no `*`; person names keep the spec's rule. Amends visits
+   spec §10.
+6. **The panel's page spec is approved** (2026-11-26) with its five (confirm) items as written.
+
 ## Builder rulings (this plan; open to owner correction)
 
 - **B1. Result count.** The response is `{ "results": [...], "more": bool }`. `results` is what survives the
@@ -63,8 +70,8 @@ govern the contract, the logs and the limits.
   must not send either name. Names and city match `constants.NPINamePattern` (a letter, then 1–59 more letters,
   spaces, hyphens, apostrophes or periods, after trimming). A `*` is refused, because the client adds the wildcard.
   `state` is one of `constants.NPIStates` (the 50 states, DC, AS, GU, MP, PR, VI), case-insensitive.
-  `postal_code` is exactly 5 digits. The organization rule is the spec's ("2 to 60 letters…"): a name with digits
-  or `&` cannot be searched. The person types the part before it.
+  `postal_code` is exactly 5 digits. `organization` matches `constants.NPIOrgPattern` (owner ruling 5): a letter
+  or digit, then 1–59 more letters, digits, spaces, `&`, hyphens, apostrophes or periods; still no `*`.
 - **B5. Upstream query.** `version=2.1`, `enumeration_type` `NPI-1` (person) or `NPI-2` (organization),
   `last_name=<v>*` and `first_name=<v>*`, or `organization_name=<v>*`, `state`, `city` as given, `postal_code` as
   given (5 digits also match a 9-digit ZIP, as probed), `limit=20`. Terms go in the query string of the API's own
@@ -73,8 +80,8 @@ govern the contract, the logs and the limits.
   `name` is `first_name last_name` for NPI-1 and `organization_name` for NPI-2. `credential` is `basic.credential`
   (NPI-1 only, else null). `taxonomy` is the `desc` of the taxonomy with `primary: true`, else null. `address` is
   the LOCATION address as `address_1[, address_2], City, ST 12345`. `phone` is that address's `telephone_number`,
-  else null. NPPES sends names and addresses in capitals, so the API title-cases every word of the name and the
-  address, splitting after a space, hyphen, apostrophe or period. State codes stay upper case. Records with
+  else null. Names and addresses are kept exactly as NPPES sends them, in capitals (owner ruling 4); the person can
+  edit the text after picking. Records with
   `basic.status` other than `A` are dropped, and so are records whose `name` would exceed `VisitProviderMaxLen` or
   whose `address` would exceed `VisitLocationMaxLen` (with `address_2` removed first). The decoder's structs have no
   `authorized_official_*` fields, so those names cannot reach a result.

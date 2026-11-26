@@ -119,8 +119,8 @@ and caregiver see the same controls.
 
 ## Find a US provider (plan 10)
 
-Status: **draft for owner approval** (owner ruling 2026-11-26, plan 10 ruling 2). No UI code is written for it until
-the owner approves this section. Items marked **(confirm)** are the author's choices. Behaviour is in the visits
+Status: **approved by the owner on 2026-11-26**, including its five items marked **(confirm)** (plan 10 rulings 2
+and 6). Behaviour is in the visits
 spec §10 and `docs/superpowers/plans/2026-11-26-provider-lookup.md`. This section decides only look, words and
 the no-JS route. No prototype and no baseline exist. The visual baselines come from the build, against the stub
 (listed as a deviation in the PR).

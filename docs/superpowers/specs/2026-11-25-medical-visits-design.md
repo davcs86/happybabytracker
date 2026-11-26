@@ -363,7 +363,8 @@ providers only. It was queried from the build environment on 2026-11-25 and answ
   - `POST /v1/providers/search`. The terms travel in the JSON body, never in a URL, so no access log
     on any hop can hold them. Body: `kind` (`person` or `organization`), `last_name` and optional
     `first_name` (person) or `organization`, `state` (required, two letters), optional `city` and
-    `postal_code`. Names are 2 to 60 letters, spaces, hyphens, apostrophes and periods. While the
+    `postal_code`. Names are 2 to 60 letters, spaces, hyphens, apostrophes and periods; an organization name may also hold digits
+    and `&` (owner, 2026-11-26). While the
     flag is off the route is not registered, as `/v1/_test/pushes` is not without its flag, so it
     answers what an unknown route answers.
 - **Upstream call.** Package `api/internal/npi`. The host is a code constant, not configuration, so
