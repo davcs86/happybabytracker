@@ -56,10 +56,11 @@
 		{#if row.note}
 			<p class="text-[12.5px] [overflow-wrap:anywhere] text-muted-foreground">{row.note}</p>
 		{/if}
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the path is built by growthMeasurePath -->
+		<!-- eslint-disable svelte/no-navigation-without-resolve -- the path is built by growthMeasurePath -->
 		<a
 			href={growthMeasurePath(kidId, measure)}
 			class="inline-flex min-h-11 items-center text-sm underline">Clear selection</a
 		>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</Card>
 </section>

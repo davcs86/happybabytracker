@@ -35,7 +35,7 @@
 				: ''}"
 		>
 			<div class="flex items-center gap-2">
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- the path is built by growthMeasurePath -->
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- the path is built by growthMeasurePath -->
 				<a
 					href="{growthMeasurePath(kidId, current)}&sel={row.id}"
 					aria-current={row.id === selected ? 'true' : undefined}
@@ -46,6 +46,7 @@
 						{correctedAgeLabel(row.ageDays, row.correctedDays)}
 					</span>
 				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				<Button
 					href={growthEntryPath(kidId, row.id)}
 					data-drawer="Edit measurement"
