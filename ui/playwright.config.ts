@@ -6,6 +6,8 @@ const stubSpecs = /stub-[^/]*\.spec\.ts$/;
 
 export default defineConfig({
 	testDir: 'e2e',
+	// Every test starts from its own reset stub state, so any worker may run it.
+	fullyParallel: true,
 	retries: 0,
 	// Starts one stub API and one UI per worker; E2E_SKIP_BUILD=1 reuses ./build, stale or not.
 	globalSetup: './e2e/stacks.ts',
