@@ -1070,6 +1070,7 @@ refused VAPID_PRIVATE_KEY "$ORIGIN" VAPID_SUBJECT="$ORIGIN"
 refused VAPID_PRIVATE_KEY "${VAPID_KEY:0:42}" VAPID_PRIVATE_KEY="${VAPID_KEY:0:42}" VAPID_SUBJECT="$ORIGIN"
 refused VAPID_SUBJECT "http://localhost:${UI_PORT}" VAPID_PRIVATE_KEY="$VAPID_KEY" VAPID_SUBJECT="http://localhost:${UI_PORT}"
 refused HBT_ALLOW_FAKE_PUSH - HBT_ALLOW_FAKE_PUSH=1
+refused NPI_SEARCH - NPI_SEARCH=2
 refused NTFY_TOKEN "$NTFY_SECRET" NTFY_TOKEN="$NTFY_SECRET"
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD" fake-push
@@ -1147,7 +1148,7 @@ docker logs "$API" >"$WORK/api-push.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
-pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID and NTFY_TOKEN without NTFY_URL, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID, NTFY_TOKEN without NTFY_URL and NPI_SEARCH=2, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
 
 # 4m. Milestones through the real catalog: every list, the current one marked, marks by tap, by date and by the caregiver.
 MILESTONES="$KID_PATH/milestones"
@@ -1526,6 +1527,42 @@ code="$(req visit-page-b2 "$ADDR_B" "$SESSION_B" "$UI_URL$VISIT_B")"
 { [ "$code" = 200 ] && body_has visit-page-b2 "$V_B_OUTCOME" && ! body_has visit-page-b2 "$V_C_TEXT" &&
   ! body_has visit-page-b2 'Restore visit'; } || fail "4o no grant wrote nothing" "status $code"
 pass "4o $USER_A adds a visit for tomorrow through the form; Home's Due lists it; its generic .ics is text/calendar, no-store, UID:visit-<id>@, with no kid name or visit text; a past visit's outcome (notes, a 5.37 kg measurement, a hepatitis B dose and a course) shows on the visit page and on the growth, vaccines and medication pages; deleting the visit with its records removes all three; $USER_B adds a visit and records its notes; $USER_C gets the 404 page on the visit pages and the calendar, and the unknown kid's 404 on all ${#API_ROUTES[@]} visit API routes, writing nothing"
+# 4p. The provider lookup is off without NPI_SEARCH (what the edge runs); provider_npi still round-trips. No registry call.
+code="$(api_call providers-off "$SESSION_A" GET /v1/providers)"
+{ [ "$code" = 200 ] && [ "$(tr -d '\n' <"$WORK/providers-off.body")" = '{"search":{"enabled":false}}' ]; } ||
+  fail "4p GET /v1/providers" "status $code"
+# Search terms are letters only (B4), so the run suffix is spelled in letters.
+P_LAST="$(note "Quill$(tr 0-9 g-p <<<"$SUFFIX")")"
+P_CITY="$(note "Town$(tr 0-9 g-p <<<"$SUFFIX")")"
+code="$(api_call providers-search-off "$SESSION_A" POST /v1/providers/search \
+  "{\"kind\":\"person\",\"last_name\":\"$P_LAST\",\"state\":\"WA\",\"city\":\"$P_CITY\"}")"
+code_u="$(api_call providers-unknown "$SESSION_A" POST /v1/no-such-route "{\"kind\":\"person\"}")"
+{ [ "$code $code_u" = '404 404' ] && cmp -s "$WORK/providers-search-off.body" "$WORK/providers-unknown.body"; } ||
+  fail "4p POST /v1/providers/search off" "status $code, unknown route $code_u"
+for p in new:"$VISITS/new" edit:"$VISIT_NEXT/edit"; do
+  code="$(req "visit-${p%%:*}-npi-off" "$ADDR_A" "$SESSION_A" "$UI_URL${p#*:}")"
+  { [ "$code" = 200 ] && body_has "visit-${p%%:*}-npi-off" 'name="provider"' &&
+    ! body_has "visit-${p%%:*}-npi-off" 'Find a US provider' && ! body_has "visit-${p%%:*}-npi-off" '?/find'; } ||
+    fail "4p no provider panel on the ${p%%:*} visit sheet" "status $code"
+done
+# Fictional: issued NPIs start with 1 or 2; this one passes the check digit.
+V_NPI=9876543213
+remember "$V_NPI"
+V_NPI_PROVIDER="$(note "registry-provider-${SUFFIX}")"
+V_NPI_PROVIDER_2="$(note "typed-provider-${SUFFIX}")"
+code="$(api_call visit-npi "$SESSION_A" POST "/v1/kids/$KID_ID/visits" \
+  "{\"starts_at\":\"${VISIT_PAST_DAY}T09:00:00Z\",\"duration_min\":30,\"kind\":\"other\",\"provider\":\"$V_NPI_PROVIDER\",\"provider_npi\":\"$V_NPI\"}")"
+V_NPI_ID="$({ grep -oE '"id":"[0-9a-f-]{36}"' "$WORK/visit-npi.body" || true; } | head -n 1 | cut -d'"' -f4)"
+code_g="$(api_call visit-npi-get "$SESSION_A" GET "/v1/kids/$KID_ID/visits/$V_NPI_ID")"
+{ [ "$code $code_g" = '201 200' ] && [ -n "$V_NPI_ID" ] && body_has visit-npi-get "\"provider_npi\":\"$V_NPI\"" &&
+  body_has visit-npi-get "\"provider\":\"$V_NPI_PROVIDER\""; } || fail "4p a visit keeps provider_npi" "status $code, GET $code_g"
+code="$(api_call visit-npi-patch "$SESSION_A" PATCH "/v1/kids/$KID_ID/visits/$V_NPI_ID" \
+  "{\"provider\":\"$V_NPI_PROVIDER_2\"}")"
+code_g="$(api_call visit-npi-get-2 "$SESSION_A" GET "/v1/kids/$KID_ID/visits/$V_NPI_ID")"
+{ [ "$code $code_g" = '200 200' ] && body_has visit-npi-get-2 '"provider_npi":null' &&
+  body_has visit-npi-get-2 "\"provider\":\"$V_NPI_PROVIDER_2\""; } ||
+  fail "4p a new provider text clears provider_npi" "status $code, GET $code_g"
+pass "4p provider lookup is off without NPI_SEARCH: GET /v1/providers says disabled, the search route is the unknown-route 404 (byte-equal body), and neither visit sheet offers the panel; a visit posted with a provider and an NPI returns it, and a PATCH of the provider text alone clears it"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'
@@ -1667,7 +1704,7 @@ for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log ui
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi
 done
-pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, milestone text, export module list or range, visit text or date, volume, measurement or temperature"
+pass "9 the logs of both containers (every API process and the refused starts) carry no username, kid name, password, token, note, meal text, vaccine lot, product or dose date, medication name or dose, push endpoint or key, milestone text, export module list or range, visit text or date, provider search term or NPI, volume, measurement or temperature"
 
 # 10. Memory of each API process and of the UI: the login burst in the fourth API process, the export in the fifth.
 fail_if_oom "10 memory"
