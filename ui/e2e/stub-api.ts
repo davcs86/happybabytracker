@@ -4,9 +4,12 @@ import { resolve } from 'node:path';
 
 // A stub keeps UI tests green on a broken contract: scripts/smoke.sh (real API + real UI) is the final check.
 
-export const STUB_PORT = 4181;
+// Each Playwright worker has its own stub and UI, at its TEST_PARALLEL_INDEX slot; slot 0 when unset.
+export const slotPorts = (slot: number) => ({ stub: 4181 + 100 * slot, ui: 4173 + 100 * slot });
+const SLOT = slotPorts(Number(process.env.TEST_PARALLEL_INDEX ?? 0));
+export const STUB_PORT = SLOT.stub;
 export const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
-export const UI_PORT = 4173;
+export const UI_PORT = SLOT.ui;
 export const UI_ORIGIN = `http://127.0.0.1:${UI_PORT}`;
 export const STUB_TOKEN = 'fake-internal-api-token-000000000000';
 export const ADMIN = { username: 'admin', password: 'fake-admin-password-0000' };
