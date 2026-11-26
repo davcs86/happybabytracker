@@ -47,6 +47,13 @@ export const untilHydrated = (input: Locator, attribute: 'value' | 'checked' = '
 
 export const KID_COOKIE = 'hbt_kid';
 
+// Signs in through the form, as a person does: the session carries the label built from the user agent.
+export async function signInWithForm(page: Page, who: { username: string; password: string }) {
+	await page.goto('/login');
+	await login(page, who.username, who.password);
+	await page.waitForURL((u) => u.pathname !== '/login');
+}
+
 // Skips the form (login.spec.ts drives it): the login action's cookie, then /login's landing redirect.
 export async function signIn(page: Page, who: { username: string; password: string }) {
 	const token = await openSession(who.username, who.password);
