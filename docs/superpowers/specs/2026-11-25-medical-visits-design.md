@@ -352,6 +352,21 @@ losing what was typed.
 
 ## 10. Provider lookup (NPI), a separate plan
 
+**Status: built in plan 10** (`docs/superpowers/plans/2026-11-26-provider-lookup.md`, branch `ccr-406c8e35-e8hvag`,
+PR #25); off until the owner's edge change sets `NPI_SEARCH=1`. Where the plan settles a point below:
+
+- **Filter (owner ruling 1).** NPPES's `state` and `city` match any address of a record, so the API keeps only
+  records whose practice-location (`LOCATION`) address matches the state, and the city and the first 5 digits of
+  the postal code when given. It still asks for 20, so fewer may show.
+- **`more` (B1).** The response is `{ "results": [...], "more": bool }`; `more` is true when NPPES sent its full
+  20. NPPES's `result_count` is never shown.
+- **Outcomes (B2, B8).** A `{"Errors":[…]}` body (even at HTTP 200), a 3xx, an oversized or unparseable body and
+  the in-flight cap (which never waits) all answer 503 `unavailable` and log `upstream_error`; a timeout logs
+  `timeout`. The request's one log line carries `npi_outcome` and `npi_results`.
+- **`provider_npi` (B7).** The API enforces it: a POST or PATCH that changes `provider` without sending
+  `provider_npi` clears it, and a merged result with `provider_npi` but no `provider` is 422 `provider_npi`.
+- **Registry text (owner ruling 4).** A picked name and address are kept as NPPES sends them, in capitals.
+
 NPPES (`https://npiregistry.cms.hhs.gov/api/?version=2.1`) is public, needs no key, and covers US
 providers only. It was queried from the build environment on 2026-11-25 and answered. It has no SLA.
 

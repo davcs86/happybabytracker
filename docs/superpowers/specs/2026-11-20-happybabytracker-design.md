@@ -744,13 +744,15 @@ shared `INTERNAL_API_TOKEN`; requests acting for a person also carry that person
 | `NTFY_TOKEN` | optional ntfy access token (secret) |
 | `NTFY_TOPIC_PREFIX` | required with `NTFY_URL`; 1–32 of `a-z0-9-` |
 | `NTFY_PUBLIC_URL` | optional; the server address shown to parents when it differs from `NTFY_URL` |
+| `NPI_SEARCH` | amended 2026-11-26 (plan 10): optional; `1` turns on the US provider lookup, and the API then opens outbound HTTPS to `npiregistry.cms.hhs.gov` (the only outbound host it adds; the UI container needs none). Unset leaves it off |
 
 The process refuses to start on a missing or too-short secret, an invalid VAPID key or an invalid
 origin. The VAPID variables are optional, both or neither (neither turns Web Push off) **(owner,
 2026-11-23, superseding "the VAPID variables are always required")**; one of them without the other,
 an `HBT_ALLOW_FAKE_PUSH` other than `1`, or `HBT_ALLOW_FAKE_PUSH=1` without them, is refused. It also refuses `NTFY_URL` without a
 prefix, a prefix outside 1–32 of `a-z0-9-`, a malformed `NTFY_URL` or `NTFY_PUBLIC_URL`, an `NTFY_TOKEN`
-with a space, control or non-ASCII character, and any other `NTFY_*` variable set while `NTFY_URL` is not.
+with a space, control or non-ASCII character, any other `NTFY_*` variable set while `NTFY_URL` is not, and
+(amended 2026-11-26, plan 10) an `NPI_SEARCH` other than `1`.
 Amended 2026-11-24 (5.5): it also refuses an `AUTH_MODE` other than `local`, `oidc` or `both`, and, while `admins` is
 empty, a missing or invalid `ADMIN_USERNAME` or `ADMIN_PASSWORD`, checked after migrations rather than with the other
 variables.
