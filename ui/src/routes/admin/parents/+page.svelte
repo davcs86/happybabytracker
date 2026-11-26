@@ -18,6 +18,7 @@
 		USERNAME_MAX_LEN,
 		USERNAME_MIN_LEN
 	} from '#lib/constants.js';
+	import { lastActiveLine, linkLine } from '#lib/admin-lines.js';
 	import type { AdminParent } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
@@ -47,6 +48,8 @@
 		['invited', 'Invited'],
 		['disabled', 'Disabled']
 	];
+	// The activity and link lines are read against this clock.
+	const now = new Date();
 	const status = (p: AdminParent): Status =>
 		p.disabled ? 'disabled' : p.hasPassword ? 'active' : 'invited';
 	const count = (s: Status) => data.parents.filter((p) => status(p) === s).length;
@@ -229,6 +232,12 @@
 					<p class="font-mono text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
 						{p.username}
 					</p>
+					<p class="text-[13px] text-muted-foreground">{lastActiveLine(p, now)}</p>
+					{#if p.link}
+						<p class="text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
+							{linkLine(p.link, now)}
+						</p>
+					{/if}
 					<div class="flex flex-wrap items-start gap-2">
 						{#if s !== 'disabled'}
 							<form method="POST" action="?/link" use:enhance>

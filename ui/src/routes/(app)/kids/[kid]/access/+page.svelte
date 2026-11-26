@@ -24,6 +24,8 @@
 		form && 'message' in form && (form.action !== 'add' || !form.field) ? form.message : null
 	);
 	const onlyGuardian = $derived(data.grants.filter((g) => g.role === 'guardian').length === 1);
+	// An undo posts to this page's own actions, whichever page the sheet opened over.
+	const action = (name: string) => `/kids/${data.kid.id}/access?/${name}`;
 	const CARD = 'flex flex-col gap-3 rounded-2xl border bg-card p-4';
 </script>
 
@@ -59,6 +61,10 @@
 							<span class="font-medium [overflow-wrap:anywhere]">{g.displayName}</span>
 							<Badge>{roleLabel(g.role)}</Badge>
 							{#if self}<Badge>You</Badge>{/if}
+							{#if g.disabled}<Badge
+									class="border-[1.5px] border-dashed border-foreground text-foreground"
+									>Account disabled</Badge
+								>{/if}
 						</div>
 						<span class="font-mono text-[12.5px] [overflow-wrap:anywhere] text-muted-foreground"
 							>{g.username}</span
@@ -83,7 +89,14 @@
 								<form
 									method="POST"
 									action="?/role"
-									use:enhance={savedAs('Role changed', { stay: true })}
+									use:enhance={savedAs('Role changed', {
+										stay: true,
+										restore: () => ({
+											action: action('role'),
+											fields: { username: g.username, role: g.role }
+										}),
+										undone: 'Role restored'
+									})}
 								>
 									<input type="hidden" name="username" value={g.username} />
 									<input type="hidden" name="role" value={target} />
@@ -95,7 +108,14 @@
 								<form
 									method="POST"
 									action="?/remove"
-									use:enhance={savedAs('Access removed', { stay: true })}
+									use:enhance={savedAs('Access removed', {
+										stay: true,
+										restore: () => ({
+											action: action('role'),
+											fields: { username: g.username, role: g.role }
+										}),
+										undone: 'Access restored'
+									})}
 								>
 									<input type="hidden" name="parent_id" value={g.parentId} />
 									<Button type="submit" variant="outline">
@@ -123,7 +143,19 @@
 				action="?/add"
 				class="flex flex-col gap-4"
 				novalidate
-				use:enhance={savedAs('Access added', { stay: true })}
+				use:enhance={savedAs('Access added', {
+					stay: true,
+					undo: (fd) => {
+						const username = String(fd.get('username') ?? '')
+							.trim()
+							.toLowerCase();
+						const added = data.grants.find((g) => g.username === username);
+						return added
+							? { action: action('remove'), fields: { parent_id: added.parentId } }
+							: null;
+					},
+					undone: 'Access removed'
+				})}
 			>
 				<div class="grid gap-1.5">
 					<Label for="add-username">Parent’s username</Label>

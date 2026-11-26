@@ -690,3 +690,25 @@ test.describe('without JavaScript', () => {
 		await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Zoe');
 	});
 });
+
+test('the delete list counts the entries and the people, and offers the PDF first', async ({
+	page
+}) => {
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'wet' });
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'dirty' });
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/settings`);
+	await openDelete(page, MIA.name);
+	await expect(
+		page.getByText(
+			'2 logged entries: feeds, sleep, diapers, solids and pumping, including entries other people logged'
+		)
+	).toBeVisible();
+	await expect(page.getByText('Access for 1 person', { exact: true })).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Export a PDF first' })).toHaveAttribute(
+		'href',
+		`/kids/${MIA.id}/export`
+	);
+	await expectAccessible(page);
+});

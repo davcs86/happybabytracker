@@ -8,7 +8,7 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { DISPLAY_NAME_MAX_LEN, MIN_PASSWORD_LEN } from '#lib/constants.js';
-	import { formatInstant } from '#lib/format.js';
+	import { formatAgo, formatDaysAgo } from '#lib/format.js';
 	import { passwordProblem } from '#lib/password.js';
 	import type { Units } from '#lib/types.js';
 	import type { PageProps } from './$types';
@@ -56,7 +56,10 @@
 		['confirm', 'Confirm new password', 'new-password']
 	];
 
+	// "Last changed" and "Last active" are read against this clock.
+	const now = new Date();
 	const parent = $derived(data.session?.parent);
+	const others = $derived(data.sessions.filter((s) => !s.current).length);
 	const roleCount = (role: string) => data.kids.filter((k) => k.role === role).length;
 	const roleLine = (role: string, label: string) => {
 		const n = roleCount(role);
@@ -195,6 +198,11 @@
 
 		<Card role="region" aria-labelledby="password-heading" class="gap-3 p-4">
 			<h2 id="password-heading" class="text-base font-semibold">Password</h2>
+			{#if parent?.passwordChangedAt}
+				<p class="text-[13.5px] text-muted-foreground">
+					Last changed {formatDaysAgo(parent.passwordChangedAt, now)}.
+				</p>
+			{/if}
 			{#if form?.action === 'password' && 'changed' in form}
 				<Alert role="status">Password changed. Your other sessions were signed out.</Alert>
 			{/if}
@@ -233,6 +241,9 @@
 						{#if error}<p id="pw-{name}-error" class={ERROR_CLASS}>{error}</p>{/if}
 					</div>
 				{/each}
+				<p class="text-[13px] leading-normal text-muted-foreground">
+					Changing your password signs you out of every other device.
+				</p>
 				<Button type="submit" variant="outline" class="self-start">Change password</Button>
 			</form>
 		</Card>
@@ -250,11 +261,12 @@
 				{#each data.sessions as s (s.id)}
 					<li class="flex min-h-[52px] items-center gap-2.5 border-t py-1.5">
 						<div class="min-w-0 flex-1">
-							<p class="text-[14.5px] font-medium">
-								{s.current ? 'This device' : 'Another device'}
+							<p class="flex flex-wrap items-center gap-2 text-[14.5px] font-medium">
+								{s.deviceLabel ?? (s.current ? 'This device' : 'Another device')}
+								{#if s.current}<Badge>This device</Badge>{/if}
 							</p>
 							<p class="text-[12.5px] text-muted-foreground">
-								Signed in {formatInstant(s.createdAt)} · last seen {formatInstant(s.lastSeenAt)}
+								{s.current ? 'Active now' : `Last active ${formatAgo(s.lastSeenAt, now)}`}
 							</p>
 						</div>
 						{#if !s.current}
@@ -262,7 +274,10 @@
 								<input type="hidden" name="session_id" value={s.id} />
 								<Button type="submit" variant="outline"
 									>Sign out<span class="sr-only">
-										the session started {formatInstant(s.createdAt)}</span
+										{s.deviceLabel ?? 'the other device'}, last active {formatAgo(
+											s.lastSeenAt,
+											now
+										)}</span
 									></Button
 								>
 							</form>
@@ -270,8 +285,33 @@
 					</li>
 				{/each}
 			</ul>
-			{#if data.sessions.every((s) => s.current)}
+			{#if others === 0}
 				<p class="text-[13.5px] text-muted-foreground">No other devices are signed in.</p>
+			{:else}
+				<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
+				<details
+					class="group rounded-xl border px-3.5"
+					open={form?.action === 'signout' && 'message' in form && !!form.message}
+				>
+					<summary
+						class="flex min-h-12 cursor-pointer list-none items-center text-[15px] font-semibold [&::-webkit-details-marker]:hidden"
+						>Sign out all other devices</summary
+					>
+					<form
+						method="POST"
+						action="?/signoutOthers"
+						class="flex flex-col gap-3 pb-3.5"
+						use:enhance
+					>
+						<p class="text-[13.5px] leading-normal text-muted-foreground">
+							This signs out {others === 1 ? 'the other device' : `${others} other devices`}. This
+							device stays signed in.
+						</p>
+						<Button type="submit" variant="destructive" class="self-start"
+							>Yes, sign out all other devices</Button
+						>
+					</form>
+				</details>
 			{/if}
 		</Card>
 

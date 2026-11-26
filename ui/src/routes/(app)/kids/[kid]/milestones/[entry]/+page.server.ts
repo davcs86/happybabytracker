@@ -28,6 +28,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies }) => {
 	return {
 		kid,
 		today: todayInOrUtc(kid.timeZone),
+		item: entry.item,
 		custom: entry.item === null,
 		text: entry.text,
 		values: milestoneEditValues(entry)

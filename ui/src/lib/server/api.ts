@@ -41,6 +41,7 @@ import {
 import type {
 	Administration,
 	AdministrationInput,
+	AdminLink,
 	AdminParent,
 	Bottle,
 	BottleSource,
@@ -97,6 +98,7 @@ import type {
 	Symptom,
 	Temperature,
 	TimelineItem,
+	TimelineType,
 	TimelineQuery,
 	TimerKind,
 	TokenInfo,
@@ -190,6 +192,7 @@ type Endpoint =
 	| 'list_modules'
 	| 'set_module'
 	| 'home'
+	| 'kid_counts'
 	| 'vaccines'
 	| 'vaccine_schemas'
 	| 'vaccine_catalogue'
@@ -301,7 +304,8 @@ function toParent(v: unknown): Parent {
 		id: string(p.id),
 		username: string(p.username),
 		displayName: string(p.display_name),
-		units: toUnits(p.units)
+		units: toUnits(p.units),
+		passwordChangedAt: stringOrNull(p.password_changed_at ?? null)
 	};
 }
 
@@ -346,7 +350,17 @@ function toGrant(v: unknown): Grant {
 		parentId: string(g.parent_id),
 		username: string(g.username),
 		displayName: string(g.display_name),
-		role: oneOf(g.role, ROLES)
+		role: oneOf(g.role, ROLES),
+		disabled: g.disabled === true
+	};
+}
+
+function toAdminLink(v: unknown): AdminLink {
+	const l = object(v);
+	return {
+		kind: oneOf(l.kind, ['invite', 'reset'] as const),
+		issuedAt: string(l.issued_at),
+		expiresAt: string(l.expires_at)
 	};
 }
 
@@ -358,7 +372,9 @@ function toAdminParent(v: unknown): AdminParent {
 		displayName: string(p.display_name),
 		disabled: boolean(p.disabled),
 		hasPassword: boolean(p.has_password),
-		createdAt: string(p.created_at)
+		createdAt: string(p.created_at),
+		lastActiveAt: stringOrNull(p.last_active_at ?? null),
+		link: p.link == null ? null : toAdminLink(p.link)
 	};
 }
 
@@ -376,7 +392,8 @@ function toSessionInfo(v: unknown): SessionInfo {
 		id: string(s.id),
 		createdAt: string(s.created_at),
 		lastSeenAt: string(s.last_seen_at),
-		current: boolean(s.current)
+		current: boolean(s.current),
+		deviceLabel: stringOrNull(s.device_label ?? null)
 	};
 }
 
@@ -566,6 +583,18 @@ function toModuleState(v: unknown): ModuleState {
 	};
 }
 
+// A missing last is an older API: every tracker then reads as unknown, not as empty.
+function toLast(v: unknown): Home['last'] {
+	if (v === undefined) return {};
+	const out: Home['last'] = {};
+	for (const [type, row] of Object.entries(object(v))) {
+		if (TRACKER_KINDS.some((k) => TIMELINE_TYPE[k] === type)) {
+			out[type as TimelineType] = row === null ? null : toTimelineItem(row);
+		}
+	}
+	return out;
+}
+
 function toHome(v: unknown): Home {
 	const o = object(v);
 	const running = object(o.running);
@@ -579,7 +608,8 @@ function toHome(v: unknown): Home {
 			nursing: running.nursing === null ? null : toNursing(running.nursing)
 		},
 		today: toDaySummary(o.today),
-		due: list(o, 'due', toHomeDue)
+		due: list(o, 'due', toHomeDue),
+		last: toLast(o.last)
 	};
 }
 
@@ -1283,8 +1313,12 @@ export function createApi(
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
 		remindersHealth: () => call<null>('reminders_health', 'GET', '/healthz/reminders', null),
-		login: (username: string, password: string) =>
-			call('login', 'POST', '/v1/session', toNewSession, { username, password }),
+		login: (username: string, password: string, deviceLabel?: string) =>
+			call('login', 'POST', '/v1/session', toNewSession, {
+				username,
+				password,
+				...(deviceLabel ? { device_label: deviceLabel } : {})
+			}),
 		session: () => call('session', 'GET', '/v1/session', toSession),
 		logout: () => call<null>('logout', 'DELETE', '/v1/session', null),
 		peekToken(token: string): Promise<ApiResult<TokenInfo>> {
@@ -1337,6 +1371,12 @@ export function createApi(
 		deleteKid: (id: string, confirmName: string) =>
 			withId(id, (i) =>
 				call<null>('delete_kid', 'DELETE', `/v1/kids/${i}`, null, { confirm_name: confirmName })
+			),
+		kidCounts: (kidId: string) =>
+			withId(kidId, (i) =>
+				call('kid_counts', 'GET', `/v1/kids/${i}/counts`, (b) => ({
+					entries: int(object(b).entries)
+				}))
 			),
 		listAccess: (kidId: string) =>
 			withId(kidId, (i) =>

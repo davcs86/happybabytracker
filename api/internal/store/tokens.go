@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+
+	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
 // IssueToken stores the hash of a one-time token, replacing the parent's unused tokens of that kind.
@@ -19,6 +21,29 @@ func (s *Store) IssueToken(ctx context.Context, kind, parentID string, hash []by
 			hash, kind, parentID, expires.Unix())
 		return err
 	})
+}
+
+// PendingLinks maps each parent to the unused token that expires last.
+func (s *Store) PendingLinks(ctx context.Context) (map[string]model.PendingLink, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT parent_id, kind, expires_at FROM one_time_tokens WHERE used_at IS NULL ORDER BY expires_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]model.PendingLink{}
+	for rows.Next() {
+		var (
+			id      string
+			link    model.PendingLink
+			expires int64
+		)
+		if err := rows.Scan(&id, &link.Kind, &expires); err != nil {
+			return nil, err
+		}
+		link.ExpiresAt = time.Unix(expires, 0).UTC()
+		out[id] = link
+	}
+	return out, rows.Err()
 }
 
 // PeekToken returns ErrNotFound for an unknown, used or expired token and for a disabled parent.
@@ -53,7 +78,7 @@ func (s *Store) RedeemToken(ctx context.Context, hash []byte, secretHash string,
 		if err := tx.QueryRowContext(ctx, `SELECT parent_id FROM one_time_tokens WHERE token_hash = ?`, hash).Scan(&parentID); err != nil {
 			return err
 		}
-		return setPassword(ctx, tx, parentID, secretHash, "")
+		return setPassword(ctx, tx, parentID, secretHash, "", now)
 	})
 	if err != nil {
 		return "", err

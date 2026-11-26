@@ -5,6 +5,7 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import DueList from '#lib/components/DueList.svelte';
+	import LatestList from '#lib/components/LatestList.svelte';
 	import { SECTION_HEADING } from '#lib/components/home.js';
 	import QuickLog from '#lib/components/QuickLog.svelte';
 	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
@@ -14,6 +15,13 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	// One clock for every "x ago" and running timer on the page.
+	let now = $state(new Date());
+	$effect(() => {
+		const id = setInterval(() => (now = new Date()), 1000);
+		return () => clearInterval(id);
+	});
 
 	const timers = $derived<Timer[]>([
 		...(data.running.sleep ? [{ kind: 'sleep' as const, entry: data.running.sleep }] : []),
@@ -65,6 +73,7 @@
 							{timer}
 							zone={data.kid.timeZone}
 							kidId={data.kid.id}
+							{now}
 							message={messageFor(timer.kind)}
 							overrun={overrunFor(timer.kind)}
 						/>
@@ -75,12 +84,19 @@
 		<QuickLog
 			entries={data.quickLog}
 			kidId={data.kid.id}
+			{now}
 			message={failed('startSleep')?.message ?? null}
+		/>
+		<LatestList
+			items={data.latest}
+			kidId={data.kid.id}
+			zone={data.kid.timeZone}
+			units={data.units}
 		/>
 	</div>
 	<div class="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-[22px]">
 		<DueList lines={dueList} />
-		<TodaySummary rows={data.today} />
+		<TodaySummary rows={data.today} {now} />
 		{#if data.kid.role === 'guardian'}
 			<p>
 				<a

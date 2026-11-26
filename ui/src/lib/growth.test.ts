@@ -6,8 +6,10 @@ import {
 	formatLength,
 	formatPercentile,
 	formatWeight,
-	formatZ
+	formatZ,
+	rowMeasures
 } from './growth';
+import type { GrowthRow } from './types';
 
 describe('formatWeight', () => {
 	it.each([
@@ -124,5 +126,25 @@ describe('ageHeader', () => {
 		expect(ageHeader('4 months', '2026-10-01', '2026-11-22')).toBe(
 			'4 months (corrected 1 month 21 days)'
 		);
+	});
+});
+
+describe('rowMeasures', () => {
+	const row = {
+		weight: { grams: 9500, ozHundredths: 33510 },
+		length: { mm: 760, inHundredths: 2992 },
+		head: null,
+		scores: {
+			weight: { scored: true, z: 0.5, percentile: 69 },
+			length: { scored: false, reason: 'not_covered' },
+			head: null,
+			bmi: null
+		}
+	} as unknown as GrowthRow;
+	it('is one line per measure the row has, with its score or the reason it has none', () => {
+		expect(rowMeasures(row, { weight: 'kg', length: 'cm' })).toEqual([
+			{ measure: 'weight', line: 'Weight 9.5 kg: z 0.50, percentile 69.0' },
+			{ measure: 'length', line: 'Length 76 cm: this source has no table for this age' }
+		]);
 	});
 });

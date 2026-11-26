@@ -97,6 +97,7 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}":                                  Caregiver,
 	"PATCH /v1/kids/{kid}":                                Guardian,
 	"DELETE /v1/kids/{kid}":                               Guardian,
+	"GET /v1/kids/{kid}/counts":                           Guardian,
 	"GET /v1/kids/{kid}/access":                           Guardian,
 	"PUT /v1/kids/{kid}/access/{username}":                Guardian,
 	"DELETE /v1/kids/{kid}/access/{parent}":               Caregiver,
@@ -438,7 +439,7 @@ func (f *fixture) seed(kind, parentID string, ttl time.Duration) (token, id stri
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
-	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl))
+	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl), "")
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import MilestoneFields from '#lib/components/milestones/MilestoneFields.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
@@ -8,9 +9,16 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import { formatAge } from '#lib/format.js';
+	import { reachedId } from '#lib/milestones.js';
+	import { milestonesPath } from '#lib/paths.js';
+	import type { Milestones } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	// The undo runs after this sheet has closed, so it keeps the kid rather than reading the page.
+	// svelte-ignore state_referenced_locally
+	const kidId = data.kid.id;
 
 	const values = $derived(form?.values ?? data.values);
 	const error = (name: string) => (form?.field === name ? form.message : null);
@@ -46,7 +54,18 @@
 				'mt-[18px] xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6 xl:gap-y-[18px]'
 		]}
 		novalidate
-		use:enhance={savedAs('Milestone saved')}
+		use:enhance={savedAs('Milestone saved', {
+			// The new row's id is only known once the list has reloaded.
+			undo: async (fd) => {
+				const item = String(fd.get('item') ?? '');
+				const text = String(fd.get('text') ?? '').trim();
+				const loaded = await preloadData(milestonesPath(kidId));
+				if (loaded.type !== 'loaded') return null;
+				const id = reachedId(loaded.data.milestones as Milestones, item ? { item } : { text });
+				return id ? { action: `/kids/${kidId}/milestones/${id}?/delete`, fields: {} } : null;
+			},
+			undone: 'Milestone removed'
+		})}
 	>
 		{#if top}
 			<Alert class="xl:col-span-2">{top}</Alert>

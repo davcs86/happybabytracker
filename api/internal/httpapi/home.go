@@ -68,6 +68,7 @@ type homeView struct {
 	Running            runningView    `json:"running"`
 	Today              daySummaryView `json:"today"`
 	Due                []any          `json:"due"`
+	Last               map[string]any `json:"last"`
 }
 
 // vaccineDue lists the vaccine visits that are due or overdue on today; empty when the module is off, no schedule
@@ -137,6 +138,26 @@ func (d Deps) visitDue(w http.ResponseWriter, r *http.Request, kid model.Kid, st
 	return out, true
 }
 
+// lastEntries holds, for each tracker whose module is on, its newest entry as a timeline row, or nil when it has none.
+func (d Deps) lastEntries(w http.ResponseWriter, r *http.Request, kidID string, states []store.ModuleState, now time.Time) (map[string]any, bool) {
+	out := map[string]any{}
+	q := store.ListQuery{From: time.Unix(0, 0).UTC(), To: now.Add(constants.MaxFutureSkew), Limit: 1}
+	for _, typ := range store.TimelineTypes {
+		if !slices.ContainsFunc(states, func(s store.ModuleState) bool { return s.Module == timelineModules[typ] && s.Enabled }) {
+			continue
+		}
+		items, err := d.Store.Timeline(r.Context(), kidID, []string{typ}, q)
+		if !entryOK(w, err) {
+			return nil, false
+		}
+		out[typ] = nil
+		if len(items) > 0 {
+			out[typ] = newTimelineView(items[0], now)
+		}
+	}
+	return out, true
+}
+
 func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	now := d.Now()
 	kid, loc, km, ok := d.kidModules(w, r, now)
@@ -190,6 +211,9 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range visits {
 		v.Due = append(v.Due, e)
+	}
+	if v.Last, ok = d.lastEntries(w, r, kid.ID, km.States, now); !ok {
+		return
 	}
 	respondJSON(w, http.StatusOK, v)
 }

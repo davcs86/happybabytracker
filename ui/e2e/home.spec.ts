@@ -497,7 +497,7 @@ test('one tap on Sleep starts a timer; End returns to the normal buttons', async
 	await signIn(page, ANA);
 	await quickLog(page).getByRole('button', { name: 'Sleep' }).click();
 	await expect(running(page).getByRole('listitem')).toHaveText([
-		/^\s*Asleep since \d{2}:\d{2}\s+End sleep\s*$/
+		/^\s*Asleep since \d{2}:\d{2}\s+\d+:\d{2}:\d{2}\s+End sleep\s*$/
 	]);
 	await expect(quickLog(page).getByRole('listitem')).toHaveText(
 		tiles([
@@ -609,8 +609,66 @@ test('a nursing timer: side and start, switch side, end', async ({ page }) => {
 	await timer.getByRole('button', { name: 'End nursing' }).click();
 	await expect(running(page)).toHaveCount(0);
 	await expect(quickLog(page).getByRole('link', { name: 'Nursing' })).toBeVisible();
-	await expect(today(page).getByRole('definition').nth(1)).toContainText(/^1 · \d+ min$/);
+	await expect(today(page).getByRole('definition').nth(1)).toContainText(/^1 · \d+ min Last: /);
 	await expectAccessible(page);
+});
+
+test('a running nursing timer shows its clock and the side tiles', async ({ page }) => {
+	skipNearMidnight(15);
+	const ana = await stubAs(ANA);
+	const made = await ana('POST', `/v1/kids/${MIA.id}/nursing`, {
+		started_at: minutesAgo(10),
+		side: 'left'
+	});
+	expect(made.status).toBe(201);
+	await signIn(page, ANA);
+	const timer = running(page).getByRole('listitem');
+	await expect(timer).toContainText(`Started ${clock(minutesAgo(10), MIA.timeZone)}`);
+	// The side being fed runs from its start: about ten minutes, so the clock reads 0:09 to 0:11 minutes.
+	await expect(timer.getByText(/^0:(09|10|11):\d{2}$/)).toHaveCount(2);
+	await expect(timer.getByText('Feeding now')).toHaveCount(1);
+	await timer.getByRole('button', { name: 'Switch side' }).click();
+	await expect(timer.getByText('Feeding now')).toHaveCount(1);
+	await expect(timer.getByText('Last side')).toHaveCount(1);
+	await expectAccessible(page);
+});
+
+test('Latest lists the newest entries and the tiles say how long ago the last one was', async ({
+	page
+}) => {
+	skipNearMidnight(100);
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'wet', at: minutesAgo(94) });
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'dirty', at: minutesAgo(40) });
+	await ana('POST', `/v1/kids/${MIA.id}/bottles`, {
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 120 },
+		at: minutesAgo(20)
+	});
+	await ana('POST', `/v1/kids/${MIA.id}/meals`, { what: 'Banana', at: minutesAgo(10) });
+	await signIn(page, ANA);
+
+	const latest = page.getByRole('region', { name: 'Latest' });
+	await expect(latest.getByRole('listitem')).toHaveCount(3);
+	await expect(latest.getByRole('link', { name: 'See the Timeline' })).toHaveAttribute(
+		'href',
+		`/kids/${MIA.id}/timeline`
+	);
+	await expect(quickLog(page).getByRole('listitem').filter({ hasText: 'Diaper' })).toContainText(
+		/\d+ min ago/
+	);
+	await expect(
+		quickLog(page).getByRole('listitem').filter({ hasText: 'Nursing' })
+	).not.toContainText('ago');
+	await expectAccessible(page);
+});
+
+test('Latest says so when nothing is logged yet', async ({ page }) => {
+	await signIn(page, ANA);
+	await page.goto(`/kids/${IVY.id}`);
+	await expect(page.getByRole('region', { name: 'Latest' })).toContainText(
+		'Nothing logged yet. Tap a tile above to add the first entry.'
+	);
 });
 
 test('a timer that ran over 24 hours asks for an end time', async ({ page }) => {
@@ -654,10 +712,10 @@ test('Today shows the day in the parent’s units', async ({ page }) => {
 		'Sleep'
 	]);
 	await expect(today(page).getByRole('definition')).toHaveText([
-		'1 · 120 ml',
-		'1 · 20 min',
-		'3 (2 wet, 1 dirty)',
-		'20 min'
+		/^1 · 120 ml Last: (Just now|\d+ min ago)$/,
+		/^1 · 20 min Last: (Just now|\d+ min ago)$/,
+		/^3 \(2 wet, 1 dirty\) Last: (Just now|\d+ min ago)$/,
+		/^20 min Last: (Just now|\d+ min ago)$/
 	]);
 	await expectAccessible(page);
 
@@ -667,7 +725,7 @@ test('Today shows the day in the parent’s units', async ({ page }) => {
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expect(page.getByRole('status')).toHaveText('Saved');
 	await page.goto(`/kids/${MIA.id}`);
-	await expect(today(page).getByRole('definition').first()).toHaveText('1 · 4.06 fl oz');
+	await expect(today(page).getByRole('definition').first()).toHaveText(/^1 · 4.06 fl oz Last: /);
 });
 
 // Modules sits in the More sheet on a phone and in the side navigation from 768 px.
@@ -807,7 +865,10 @@ test('/timeline is a 303 to the current kid’s timeline, or home without kids',
 	context
 }) => {
 	await signIn(page, ANA);
-	await expect(page.getByRole('link', { name: 'Timeline' })).toHaveAttribute('href', '/timeline');
+	await expect(page.getByRole('link', { name: 'Timeline', exact: true })).toHaveAttribute(
+		'href',
+		'/timeline'
+	);
 	const first = await page.request.get('/timeline', { maxRedirects: 0 });
 	expect(first.status()).toBe(303);
 	expect(first.headers()['location']).toBe(`/kids/${MIA.id}/timeline`);
@@ -815,7 +876,7 @@ test('/timeline is a 303 to the current kid’s timeline, or home without kids',
 	await page.goto(`/kids/${LEO.id}`);
 	const second = await page.request.get('/timeline', { maxRedirects: 0 });
 	expect(second.headers()['location']).toBe(`/kids/${LEO.id}/timeline`);
-	await page.getByRole('link', { name: 'Timeline' }).click();
+	await page.getByRole('link', { name: 'Timeline', exact: true }).click();
 	await expect(page).toHaveURL(`/kids/${LEO.id}/timeline`);
 	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 

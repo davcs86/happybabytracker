@@ -10,8 +10,9 @@
 		measure,
 		units,
 		sourceName,
-		kidName
-	}: ChartInput & { sourceName: string; kidName: string } = $props();
+		kidName,
+		selected = null
+	}: ChartInput & { sourceName: string; kidName: string; selected?: string | null } = $props();
 
 	const chart = $derived(buildChart({ curves, rows, measure, units }));
 	const title = $derived(`${MEASURE_LABEL[measure]} for age, ${sourceName}`);
@@ -32,7 +33,7 @@
 		aria-labelledby="growth-chart-title"
 		aria-describedby="growth-chart-desc"
 		viewBox="0 0 {chart.width} {chart.height}"
-		class="block h-auto w-full text-[11px]"
+		class="block h-auto w-full text-xs"
 	>
 		<title id="growth-chart-title">{title}</title>
 		<desc id="growth-chart-desc">{desc}</desc>
@@ -93,7 +94,17 @@
 			<path d={chart.path} fill="none" class="stroke-primary" stroke-width="2" />
 		{/if}
 		{#each chart.points as p (p.id)}
-			<circle data-point cx={p.cx} cy={p.cy} r="4" class="fill-primary stroke-background" />
+			{#if p.id === selected}
+				<circle cx={p.cx} cy={p.cy} r="8" fill="none" class="stroke-primary" stroke-width="2" />
+			{/if}
+			<circle
+				data-point
+				data-selected={p.id === selected ? '' : undefined}
+				cx={p.cx}
+				cy={p.cy}
+				r="4"
+				class="fill-primary stroke-background"
+			/>
 		{/each}
 	</svg>
 	<p class="flex flex-wrap gap-x-3.5 gap-y-1.5 px-2 pb-1 text-xs text-muted-foreground">

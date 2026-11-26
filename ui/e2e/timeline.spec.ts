@@ -11,6 +11,10 @@ import {
 } from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
 
+// The day headings only: the strip and the running cards have their own level-2 headings.
+const dayHeadings = (page: Page) =>
+	page.getByRole('heading', { level: 2, name: /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{4}$/ });
+
 test.beforeEach(async () => {
 	await resetStub();
 });
@@ -19,6 +23,8 @@ type Api = Awaited<ReturnType<typeof stubAs>>;
 type Row = Record<string, unknown>;
 
 const MS_PER_MINUTE = 60_000;
+const minutesAgo = (m: number) =>
+	new Date(Date.now() - m * MS_PER_MINUTE).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const DAY1 = '2026-10-14';
 const DAY2 = '2026-10-15';
 const RANGE = `from=${DAY1}&to=${DAY2}`;
@@ -85,7 +91,7 @@ test('six entries on two days sit under two headings, newest first, with their d
 	expect(response?.headers()['cache-control']).toBe('no-store');
 	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 
-	const headings = page.getByRole('heading', { level: 2 });
+	const headings = dayHeadings(page);
 	await expect(headings).toHaveText([formatDayHeading(DAY2), formatDayHeading(DAY1)]);
 	await expect
 		.poll(() => entryNames(page, DAY2))
@@ -423,16 +429,14 @@ test('a Madrid day of 23 hours holds an entry at 00:30 and one at 23:30 under on
 	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
 
 	await page.goto(timelineUrl('from=2026-03-29&to=2026-03-29&types=diaper', LEO.id));
-	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
-		formatDayHeading('2026-03-29')
-	]);
+	await expect(dayHeadings(page)).toHaveText([formatDayHeading('2026-03-29')]);
 	await expect
 		.poll(() => entryNames(page, '2026-03-29'))
 		.toEqual(['23:30 Diaper dirty', '00:30 Diaper wet']);
 	await expect(totals(page, '2026-03-29')).toHaveText(['Diapers 2 (1 wet, 1 dirty)']);
 
 	await page.goto(timelineUrl('from=2026-03-28&to=2026-03-30&types=diaper', LEO.id));
-	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
+	await expect(dayHeadings(page)).toHaveText([
 		formatDayHeading('2026-03-30'),
 		formatDayHeading('2026-03-29'),
 		formatDayHeading('2026-03-28')
@@ -571,4 +575,52 @@ test('a long unbroken meal and note wrap on a phone', async ({ page }, testInfo)
 	await page.goto(timelineUrl(RANGE));
 	await expect(entries(page, DAY1)).toHaveCount(1);
 	expect(await overflows(page)).toBe(false);
+});
+
+test('Since last, the week strip, the age line and the day filter', async ({ page }) => {
+	test.skip(new Date().getUTCHours() < 2, 'entries would fall on yesterday');
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'wet', at: minutesAgo(90) });
+	await ana('POST', `/v1/kids/${MIA.id}/bottles`, {
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 120 },
+		at: minutesAgo(30)
+	});
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/timeline`);
+
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
+	await expect(page.getByText(/^\d+ (month|week|day|year)s?\b/).first()).toBeVisible();
+
+	const since = page.getByRole('region', { name: 'Since last' });
+	await expect(since).toContainText('Last feed');
+	await expect(since).toContainText(/30 min ago/);
+	await expect(since).toContainText(/1 h 30 min ago/);
+
+	const strip = page.getByRole('region', { name: 'Last 7 days' });
+	await expect(strip.getByRole('list').getByRole('link')).toHaveCount(7);
+	const todayCell = strip.getByRole('link', { name: /^Today: 1 bottle \(120 ml\) · 1 diaper/ });
+	await expect(todayCell).toHaveAttribute('aria-current', 'date');
+	await expectAccessible(page);
+
+	await strip.getByRole('link', { name: /^Yesterday: nothing logged/ }).click();
+	await expect(page).toHaveURL(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/);
+	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
+
+	await strip.getByRole('link', { name: 'Show all days' }).click();
+	await expect(todayCell).not.toHaveAttribute('aria-current', 'date');
+	await expect(page.getByRole('link', { name: 'Show all days' })).toHaveCount(1);
+});
+
+test('a running sleep is a card on the timeline, and End closes it', async ({ page }) => {
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/sleep`, { started_at: minutesAgo(25) });
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/timeline`);
+	const card = page.getByRole('region', { name: 'Running now' });
+	await expect(card).toContainText(/Asleep since \d{2}:\d{2}/);
+	await expect(page.getByRole('region', { name: 'Since last' })).toContainText('Asleep for');
+	await card.getByRole('button', { name: 'End sleep' }).click();
+	await expect(card).toHaveCount(0);
+	await expect(page).toHaveURL(new RegExp(`/kids/${MIA.id}/timeline`));
 });

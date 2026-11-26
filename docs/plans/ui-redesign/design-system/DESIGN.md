@@ -125,7 +125,7 @@ Bottom sheet, max width 480 px, radius `20 20 0 0`, handle 36 × 4 px (radius 2)
 - **Native elements under the styling layer.** The control layer styles native `input/select/textarea`, so the no-JS pages look identical and no markup depends on JS.
 
 ### 4.5 Destructive actions
-Destructive and irreversible actions keep a **text label** ("Remove", "Remove access", "Delete this dose") and reveal a confirm: card fill, 1.5 px destructive border and text, consequence sentence first ("Entries stay and keep their name."). Deleting a child is two steps (consequence list, then type the name + tick). Undo (toast action) is offered for reversible edits (role change, remove, add, mark/unmark), not for permanent deletion.
+Destructive and irreversible actions keep a **text label** ("Remove", "Remove access", "Delete this dose") and reveal a confirm: card fill, 1.5 px destructive border and text, consequence sentence first ("Entries stay and keep their name."). Deleting a child is two steps (consequence list, then type the name + tick). Undo (toast action) is offered for reversible edits (role change, remove, add, mark/unmark) and, by owner decision of 2026-11-26, for deleting an entry of the seven daily trackers (a client-held re-POST); not for any other permanent deletion.
 
 ## 5. Components and sizes (summary; the contract is `components/COMPONENTS.md`)
 

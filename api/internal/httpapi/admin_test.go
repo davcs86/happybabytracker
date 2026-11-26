@@ -312,7 +312,7 @@ func TestAdminListShowsNoKidData(t *testing.T) {
 		t.Fatalf("%d rows, want 2", len(rows))
 	}
 	for _, row := range rows {
-		sameKeys(t, row.(map[string]any), "id", "username", "display_name", "disabled", "has_password", "created_at")
+		sameKeys(t, row.(map[string]any), "id", "username", "display_name", "disabled", "has_password", "created_at", "last_active_at", "link")
 	}
 	first, second := rows[0].(map[string]any), rows[1].(map[string]any)
 	if first["username"] != "ana" || first["has_password"] != false || second["username"] != "bob" || second["has_password"] != true {
@@ -442,5 +442,49 @@ func TestTokenAndPasswordNeverReachTheLog(t *testing.T) {
 	k.redeem(token, "a secret password")
 	if log := k.Log.String(); strings.Contains(log, token) || strings.Contains(log, "a secret password") || !strings.Contains(log, "/v1/tokens/{token}/redeem") {
 		t.Errorf("log leaks or lost the route pattern:\n%s", log)
+	}
+}
+
+func TestAdminListLastActiveAndLink(t *testing.T) {
+	k := newKit(t)
+	admin := k.asAdmin()
+	k.addParent("bob") // signs in below
+	k.createParent(admin, "ana")
+	k.asParent("bob")
+	k.now = t0.Add(2 * time.Hour)
+	k.asParent("bob")
+
+	rows := bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", admin, nil))["parents"].([]any)
+	ana, bob := rows[0].(map[string]any), rows[1].(map[string]any)
+	if ana["last_active_at"] != nil || bob["last_active_at"] != stamp(t0.Add(2*time.Hour)) {
+		t.Errorf("last_active_at: ana %v, bob %v; want null and the newest sign-in", ana["last_active_at"], bob["last_active_at"])
+	}
+	link := ana["link"].(map[string]any)
+	sameKeys(t, link, "kind", "issued_at", "expires_at")
+	if link["kind"] != "invite" || link["issued_at"] != stamp(t0) || link["expires_at"] != stamp(t0.Add(constants.InviteTTL)) {
+		t.Errorf("ana link = %v", link)
+	}
+	if bob["link"] != nil {
+		t.Errorf("bob link = %v, want null", bob["link"])
+	}
+
+	k.now = t0.Add(constants.InviteTTL + time.Hour) // an expired link is still listed, so the line can say so
+	rows = bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", k.asAdmin(), nil))["parents"].([]any)
+	if rows[0].(map[string]any)["link"] == nil {
+		t.Error("an expired unused link was dropped")
+	}
+}
+
+func TestAdminListLastActiveNullAfterDisable(t *testing.T) {
+	k := newKit(t)
+	admin := k.asAdmin()
+	p := k.addParent("bob")
+	k.asParent("bob")
+	if rec := k.do(http.MethodPost, "/v1/admin/parents/"+p.ID+"/disable", admin, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("disable: %d %q", rec.Code, rec.Body.String())
+	}
+	rows := bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", admin, nil))["parents"].([]any)
+	if rows[0].(map[string]any)["last_active_at"] != nil {
+		t.Errorf("a disabled parent has no sessions, got %v", rows[0])
 	}
 }

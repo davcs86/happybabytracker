@@ -32,7 +32,7 @@ func TestAccessListShape(t *testing.T) {
 	var order []string
 	for _, r := range rows {
 		row := r.(map[string]any)
-		sameKeys(t, row, "parent_id", "username", "display_name", "role")
+		sameKeys(t, row, "parent_id", "username", "display_name", "role", "disabled")
 		if row["parent_id"] != k.parentID(row["username"].(string)) || row["display_name"] != "Name of "+row["username"].(string) {
 			t.Errorf("row = %v", row)
 		}

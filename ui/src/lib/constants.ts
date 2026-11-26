@@ -37,6 +37,7 @@ export const FIND_CHILD_MIN = 6;
 // Toast display time; a failure that offers Try again stays longer.
 export const TOAST_MS = 6000;
 export const TOAST_FAILURE_MS = 9000;
+export const UNDO_FAILED = 'Could not undo that';
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 256;
 // The API's limits (api/internal/constants), for the forms' hints and attributes.
@@ -442,6 +443,8 @@ export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {
 	'24+': ['sickness', 'medication', 'growth', 'vaccination']
 };
 export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly AgeBand[];
+// The Home page's Latest list.
+export const HOME_LATEST_MAX = 3;
 export const SECONDS_PER_MINUTE = 60;
 export const SECONDS_PER_HOUR = 3600;
 export const HUNDREDTHS_PER_FLOZ = 100;

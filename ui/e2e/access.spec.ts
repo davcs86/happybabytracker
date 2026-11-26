@@ -22,7 +22,8 @@ import {
 	openSession,
 	receivedRequests,
 	resetStub,
-	setScenario
+	setScenario,
+	stubAs
 } from './stub-api.js';
 
 const PARENT_NOT_FOUND = 'No active account has that username.';
@@ -359,4 +360,18 @@ test.describe('a caregiver leaves a kid', () => {
 			expect(await deletes()).toMatchObject([{ path: `/v1/kids/${LEO.id}/access/p-ana` }]);
 		});
 	});
+});
+
+test('a person whose account is disabled is marked so', async ({ page }) => {
+	await signIn(page, CLEO);
+	await page.goto(`/kids/${LEO.id}/access`);
+	await add(page, 'dan', 'Caregiver');
+	await expect(grant(page, 'Dan')).toContainText('Caregiver');
+	await expect(page.getByText('Account disabled')).toHaveCount(0);
+	const admin = await stubAs(ADMIN);
+	expect((await admin('POST', '/v1/admin/parents/p-dan/disable')).status).toBe(204);
+	await page.reload();
+	await expect(grant(page, 'Dan')).toContainText('Account disabled');
+	await expect(grant(page, 'Cleo')).not.toContainText('Account disabled');
+	await expectAccessible(page);
 });

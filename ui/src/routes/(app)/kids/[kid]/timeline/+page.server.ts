@@ -8,6 +8,8 @@ import {
 	readFilter,
 	shownModules,
 	timelineSearch,
+	weekCells,
+	weekDates,
 	type FilterError
 } from '#lib/timeline.js';
 import { setKidCookie } from '#lib/server/cookie.js';
@@ -18,9 +20,10 @@ import type { PageServerLoad } from './$types';
 type Day = { date: string; items: TimelineItem[]; totals: TodayRow[] };
 
 export const load: PageServerLoad = async ({ locals, params, url, cookies, parent }) => {
-	const [kid, modules, { session }] = await Promise.all([
+	const [kid, modules, home, { session }] = await Promise.all([
 		locals.api.getKid(params.kid),
 		locals.api.modules(params.kid),
+		locals.api.home(params.kid),
 		parent()
 	]);
 	if (!kid.ok) failPage(kid);
@@ -28,12 +31,32 @@ export const load: PageServerLoad = async ({ locals, params, url, cookies, paren
 	setKidCookie(cookies, kid.data.id);
 	const zone = kid.data.timeZone;
 	const unit = session?.parent?.units.volume ?? 'ml';
+	const today = todayInOrUtc(zone);
 	const { filter, query, error } = readFilter(url.searchParams, {
 		zone,
-		today: todayInOrUtc(zone),
+		today,
 		defaults: defaultKinds(modules.data)
 	});
+	// The strip, Since last and the running cards are extras: a failed call leaves them out.
+	const days7 = weekDates(today);
+	const weekR = await locals.api.summary(params.kid, days7[0], days7[6]);
+	const day = (date: string) =>
+		timelineSearch({ ...filter, from: date, to: date, cursor: null }, null);
 	const view = {
+		week: weekR.ok
+			? weekCells(weekR.data, today, unit).map((c) => ({
+					...c,
+					query: day(c.date),
+					current: filter.from === c.date && filter.to === c.date
+				}))
+			: null,
+		// Showing every day of the strip is the link back from a single day.
+		allDays:
+			filter.from === filter.to
+				? timelineSearch({ ...filter, from: days7[0], to: today, cursor: null }, null)
+				: null,
+		last: home.ok ? home.data.last : null,
+		running: home.ok ? home.data.running : null,
 		kid: kid.data,
 		units: {
 			weight: session?.parent?.units.weight ?? 'kg',

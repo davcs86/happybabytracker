@@ -221,3 +221,23 @@ func localHash(t *testing.T, s *Store, parentID string) string {
 	}
 	return hash
 }
+
+func TestPendingLinks(t *testing.T) {
+	s := openMem(t)
+	ana, bob := mustParent(t, s, "ana"), mustParent(t, s, "bob")
+	mustParent(t, s, "cy")
+	exp := t0.Add(time.Hour)
+	mustIssue(t, s, model.TokenInvite, ana.ID, "a-invite", t0.Add(72*time.Hour))
+	mustIssue(t, s, model.TokenReset, ana.ID, "a-reset", exp)
+	mustIssue(t, s, model.TokenReset, bob.ID, "b-reset", exp)
+	if _, err := s.RedeemToken(ctx, []byte("b-reset"), "$h", t0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.PendingLinks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[ana.ID].Kind != model.TokenInvite || !got[ana.ID].ExpiresAt.Equal(t0.Add(72*time.Hour)) {
+		t.Errorf("links = %v; want only ana's newest unused token (bob's was used, cy has none)", got)
+	}
+}

@@ -8,10 +8,35 @@
 	import { Card } from '#lib/components/ui/card/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { TIMELINE_KINDS, TIMELINE_LABEL, TIMELINE_TYPE } from '#lib/constants.js';
-	import { formatDayHeading } from '#lib/timeline.js';
+	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
+	import { SECTION_HEADING } from '#lib/components/home.js';
+	import { formatDayHeading, sinceLast } from '#lib/timeline.js';
+	import type { TimelineType } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+
+	let now = $state(new Date());
+	$effect(() => {
+		const id = setInterval(() => (now = new Date()), 1000);
+		return () => clearInterval(id);
+	});
+	const since = $derived(data.last && data.running ? sinceLast(data.last, data.running, now) : []);
+	const timers = $derived<Timer[]>([
+		...(data.running?.sleep ? [{ kind: 'sleep' as const, entry: data.running.sleep }] : []),
+		...(data.running?.nursing ? [{ kind: 'nursing' as const, entry: data.running.nursing }] : [])
+	]);
+	const SEGMENT: Partial<Record<TimelineType, string>> = {
+		bottle: 'tracker-bottle',
+		nursing: 'tracker-nursing',
+		pumping: 'tracker-pumping',
+		sleep: 'tracker-sleep',
+		diaper: 'tracker-diaper',
+		meal: 'tracker-solids',
+		symptom: 'tracker-symptom'
+	};
+	const SEGMENT_PX = 5;
+	const SEGMENT_MAX_PX = 26;
 
 	const path = $derived(resolve('/(app)/kids/[kid]/timeline', { kid: data.kid.id }));
 	const home = $derived(resolve('/(app)/kids/[kid]', { kid: data.kid.id }));
@@ -26,11 +51,66 @@
 	class="flex flex-col gap-[18px] md:max-w-[720px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
 >
 	<div class="mt-3.5 flex items-center gap-2.5 xl:col-span-2">
-		<h1 class="min-w-0 flex-1">Timeline</h1>
+		<div class="min-w-0 flex-1">
+			<h1>Timeline</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{data.ages[data.kid.id]}</p>
+		</div>
 		<Button href={home} class="flex-none">Log something</Button>
 	</div>
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if since.length > 0}
+			<section
+				aria-label="Since last"
+				class="grid grid-cols-3 overflow-hidden rounded-2xl border bg-card"
+			>
+				{#each since as cell (cell.label)}
+					<div class="-mr-px border-r px-3 py-2.5">
+						<p class="text-xs text-muted-foreground">{cell.label}</p>
+						<p class="mt-0.5 text-base font-semibold">{cell.value}</p>
+					</div>
+				{/each}
+			</section>
+		{/if}
+		{#if data.week}
+			<section aria-labelledby="week-heading" class="flex flex-col gap-2">
+				<div class="flex items-center">
+					<h2 id="week-heading" class="{SECTION_HEADING} flex-1">Last 7 days</h2>
+					{#if data.allDays}
+						<a
+							href="{path}?{data.allDays}"
+							class="inline-flex min-h-11 items-center px-1.5 text-[13px] underline"
+							>Show all days</a
+						>
+					{/if}
+				</div>
+				<ul class="grid grid-cols-7 gap-0.5 rounded-2xl border bg-card p-1.5">
+					{#each data.week as cell (cell.date)}
+						<li class="flex">
+							<a
+								href="{path}?{cell.query}"
+								aria-current={cell.current ? 'date' : undefined}
+								class="flex min-h-24 w-full flex-col items-center justify-between gap-1 rounded-[10px] border border-transparent px-0.5 py-1.5 aria-[current=date]:border-[1.5px] aria-[current=date]:border-primary aria-[current=date]:bg-accent"
+							>
+								<span aria-hidden="true" class="text-xs font-semibold text-muted-foreground"
+									>{cell.dow}</span
+								>
+								<span class="sr-only">{cell.label}</span>
+								<span class="flex h-[54px] w-full flex-col-reverse items-center gap-px">
+									{#each cell.segs as seg (seg.type)}
+										<span
+											aria-hidden="true"
+											class="tracker-bar block w-[70%] rounded-[3px] {SEGMENT[seg.type]}"
+											style:height="{Math.min(seg.count * SEGMENT_PX, SEGMENT_MAX_PX)}px"
+										></span>
+									{/each}
+								</span>
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 		<form method="GET" action={path} class="flex flex-col gap-[18px]">
 			<div class="grid grid-cols-2 gap-3">
 				<Field id="timeline-from" label="From" error={error('from')}>
@@ -77,6 +157,22 @@
 	</div>
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if timers.length > 0}
+			<section aria-labelledby="running-heading" class="flex flex-col gap-2.5">
+				<h2 id="running-heading" class={SECTION_HEADING}>Running now</h2>
+				<ul class="flex flex-col gap-2.5">
+					{#each timers as timer (timer.kind)}
+						<RunningTimer
+							{timer}
+							zone={data.kid.timeZone}
+							kidId={data.kid.id}
+							{now}
+							actions={home}
+						/>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 		{#if data.error?.field === 'cursor'}
 			<Alert>{data.error.message}</Alert>
 			<a href="{path}?{data.newest}" class="inline-flex min-h-12 items-center self-start underline"

@@ -244,7 +244,7 @@ bottles_on() { # kid-local date -> what that day's Bottles row shows for them
 }
 
 today_value() { # body-name label -> the value the home's Today card shows beside label
-  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<[^>]*>| |g' |
+  pieces "$1" '<dt' | grep -F ">$2</dt>" | head -n 1 | sed -E 's|</dd>.*||; s|<span[^>]*>Last:.*</span>||; s|<[^>]*>| |g' |
     sed -E "s|^[[:space:]]*$2[[:space:]]*||; s|[[:space:]]+\$||" || true
 }
 
@@ -1563,6 +1563,27 @@ code_g="$(api_call visit-npi-get-2 "$SESSION_A" GET "/v1/kids/$KID_ID/visits/$V_
   body_has visit-npi-get-2 "\"provider\":\"$V_NPI_PROVIDER_2\""; } ||
   fail "4p a new provider text clears provider_npi" "status $code, GET $code_g"
 pass "4p provider lookup is off without NPI_SEARCH: GET /v1/providers says disabled, the search route is the unknown-route 404 (byte-equal body), and neither visit sheet offers the panel; a visit posted with a provider and an NPI returns it, and a PATCH of the provider text alone clears it"
+
+# 4q. The data the redesigned pages read: home.last, the guardian-only counts, the session's device label and password date.
+code="$(api_call redesign-home "$SESSION_A" GET "/v1/kids/$KID_ID/home")"
+{ [ "$code" = 200 ] && body_has redesign-home '"last":{' && body_has redesign-home '"bottle":{"type":"bottle"'; } ||
+  fail "4q home.last" "status $code"
+code="$(api_call redesign-counts-a "$SESSION_A" GET "/v1/kids/$KID_ID/counts")"
+{ [ "$code" = 200 ] && grep -qE '"entries":[1-9][0-9]*' "$WORK/redesign-counts-a.body"; } ||
+  fail "4q counts for the guardian" "status $code, $(cat "$WORK/redesign-counts-a.body")"
+code_b="$(api_call redesign-counts-b "$SESSION_B" GET "/v1/kids/$KID_ID/counts")"
+code_c="$(api_call redesign-counts-c "$SESSION_C" GET "/v1/kids/$KID_ID/counts")"
+code_u="$(api_call redesign-counts-u "$SESSION_C" GET "/v1/kids/no-such-kid/counts")"
+{ [ "$code_b $code_c $code_u" = '403 404 404' ] && cmp -s "$WORK/redesign-counts-c.body" "$WORK/redesign-counts-u.body"; } ||
+  fail "4q counts refusals" "caregiver $code_b, no grant $code_c, unknown kid $code_u"
+SESSION_A2="$(login relogin-a "$ADDR_A" "$USER_A" "$PASSWORD_A")"
+code="$(api_call redesign-sessions "$SESSION_A2" GET /v1/me/sessions)"
+{ [ "$code" = 200 ] && body_has redesign-sessions '"device_label":"Browser"' && body_has redesign-sessions '"device_label":null'; } ||
+  fail "4q device labels" "status $code: the sign-in through the UI carries a label, the invite redemption none"
+code="$(api_call redesign-session "$SESSION_A2" GET /v1/session)"
+{ [ "$code" = 200 ] && grep -qE '"password_changed_at":"20[0-9-]+T' "$WORK/redesign-session.body"; } ||
+  fail "4q password_changed_at" "status $code"
+pass "4q home carries the newest bottle, counts is 200 for the guardian and 403/404/404 for the caregiver, a parent with no grant and an unknown kid (the last two byte-equal), a sign-in through the UI is listed as 'Browser' and an invite redemption has no label, and the session names when the password was set"
 
 # 5. The last active guardian cannot be disabled until another guardian exists.
 SOLE_GUARDIAN='This parent is the only guardian of at least one child. Another guardian must be added first.'

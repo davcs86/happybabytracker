@@ -1,4 +1,4 @@
-import type { MilestoneDomain } from './types';
+import type { MilestoneDomain, Milestones } from './types';
 
 // CDC's own age labels for its checklists, keyed by MILESTONE_AGES.
 const CHECKLIST_TITLE: Record<number, string> = {
@@ -47,4 +47,19 @@ export const domainLabel = (domain: MilestoneDomain): string => DOMAIN_LABEL[dom
 export function reachedLabel(date: string): string {
 	const [y, m, d] = date.split('-').map(Number);
 	return `Reached on ${d} ${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+// The id of the row a just-marked milestone became; a custom one is the newest with that text.
+export function reachedId(m: Milestones, by: { item: string } | { text: string }): string | null {
+	if ('item' in by) {
+		const listed = m.checklists.flatMap((c) => c.items).find((i) => i.id === by.item)?.reached;
+		return listed?.id ?? m.reached.find((r) => r.item === by.item)?.id ?? null;
+	}
+	const matches = m.custom.filter((c) => c.text === by.text);
+	return (
+		matches.reduce<(typeof matches)[number] | null>(
+			(newest, c) => (newest === null || c.reachedOn >= newest.reachedOn ? c : newest),
+			null
+		)?.id ?? null
+	);
 }

@@ -14,6 +14,7 @@ type grantView struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Role        string `json:"role"`
+	Disabled    bool   `json:"disabled"`
 }
 
 func (d Deps) listAccess(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +25,7 @@ func (d Deps) listAccess(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]grantView, len(grants))
 	for i, g := range grants {
-		rows[i] = grantView{ParentID: g.ParentID, Username: g.Username, DisplayName: g.DisplayName, Role: string(g.Role)}
+		rows[i] = grantView{ParentID: g.ParentID, Username: g.Username, DisplayName: g.DisplayName, Role: string(g.Role), Disabled: g.Disabled}
 	}
 	respondJSON(w, http.StatusOK, struct {
 		Grants []grantView `json:"grants"`

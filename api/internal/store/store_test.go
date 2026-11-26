@@ -33,8 +33,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -51,8 +51,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "9" {
-			t.Fatalf("open %d: schema_version = %q, want 9", i, v)
+		if v := version(t, s); v != "10" {
+			t.Fatalf("open %d: schema_version = %q, want 10", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -397,8 +397,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -546,8 +546,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -746,8 +746,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	var contents, sources int
 	var volume int64
@@ -853,8 +853,8 @@ func TestMigration0006KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	counts := map[string]int{"parents": 1, "kids": 1, "kid_access": 1, "kid_modules": 1, "bottle_feeds": 1, "bottle_feed_sources": 1,
 		"nursing_sessions": 1, "pumping_sessions": 1, "pumping_session_sides": 1, "growth_measurements": 1, "vaccine_doses": 1, "vaccine_dismissals": 1}
@@ -972,8 +972,8 @@ func TestMigration0007KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1055,8 +1055,8 @@ func TestMigration0008KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1343,8 +1343,8 @@ func TestMigration0009KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "9" {
-		t.Fatalf("schema_version = %q, want 9", v)
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
 	}
 	var (
 		note, provider, location string
@@ -1392,5 +1392,50 @@ func TestProviderNPICheck(t *testing.T) {
 	}
 	if err := insert("vi-none", nil, nil); err != nil {
 		t.Errorf("neither: %v", err)
+	}
+}
+
+func TestMigration0010KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:9] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO identities(parent_id, provider, subject, secret_hash) VALUES ('p1', 'password', 'ana', 'h')`,
+		`INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at) VALUES ('s1', x'01', 'parent', 'p1', 100, 100, 200)`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "10" {
+		t.Fatalf("schema_version = %q, want 10", v)
+	}
+	var changed, label sql.NullString
+	if err := s.r.QueryRow(`SELECT secret_changed_at FROM identities WHERE parent_id = 'p1'`).Scan(&changed); err != nil || changed.Valid {
+		t.Errorf("secret_changed_at = %v, err %v; want NULL", changed, err)
+	}
+	if err := s.r.QueryRow(`SELECT device_label FROM sessions WHERE id = 's1'`).Scan(&label); err != nil || label.Valid {
+		t.Errorf("device_label = %v, err %v; want NULL", label, err)
 	}
 }

@@ -14,7 +14,7 @@ import (
 
 const providerLocal = "local"
 
-const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash
+const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash, i.secret_changed_at
 	FROM parents p LEFT JOIN identities i ON i.parent_id = p.id AND i.provider = '` + providerLocal + `' `
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -24,9 +24,10 @@ func scanParent(row rowScanner) (model.Parent, string, error) {
 		p       model.Parent
 		hash    sql.NullString
 		created int64
+		changed sql.NullInt64
 	)
 	err := row.Scan(&p.ID, &p.Username, &p.DisplayName, &p.Disabled,
-		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash)
+		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash, &changed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Parent{}, "", ErrNotFound
 	}
@@ -35,6 +36,10 @@ func scanParent(row rowScanner) (model.Parent, string, error) {
 	}
 	p.CreatedAt = time.Unix(created, 0).UTC()
 	p.HasPassword = hash.String != ""
+	if changed.Valid {
+		at := time.Unix(changed.Int64, 0).UTC()
+		p.PasswordChangedAt = &at
+	}
 	return p, hash.String, nil
 }
 
@@ -109,13 +114,13 @@ func (s *Store) UpdateParentProfile(ctx context.Context, id, displayName string,
 }
 
 // SetPassword upserts the parent's local identity and deletes their sessions except keepSessionID ("" keeps none).
-func (s *Store) SetPassword(ctx context.Context, parentID, secretHash, keepSessionID string) error {
+func (s *Store) SetPassword(ctx context.Context, parentID, secretHash, keepSessionID string, now time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
-		return setPassword(ctx, tx, parentID, secretHash, keepSessionID)
+		return setPassword(ctx, tx, parentID, secretHash, keepSessionID, now)
 	})
 }
 
-func setPassword(ctx context.Context, tx *sql.Tx, parentID, secretHash, keepSessionID string) error {
+func setPassword(ctx context.Context, tx *sql.Tx, parentID, secretHash, keepSessionID string, now time.Time) error {
 	var username string
 	err := tx.QueryRowContext(ctx, `SELECT username FROM parents WHERE id = ?`, parentID).Scan(&username)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -125,9 +130,9 @@ func setPassword(ctx context.Context, tx *sql.Tx, parentID, secretHash, keepSess
 		return err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO identities(parent_id, provider, subject, secret_hash) VALUES (?, ?, ?, ?)
-		 ON CONFLICT(provider, subject) DO UPDATE SET secret_hash = excluded.secret_hash`,
-		parentID, providerLocal, username, secretHash); err != nil {
+		`INSERT INTO identities(parent_id, provider, subject, secret_hash, secret_changed_at) VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(provider, subject) DO UPDATE SET secret_hash = excluded.secret_hash, secret_changed_at = excluded.secret_changed_at`,
+		parentID, providerLocal, username, secretHash, now.Unix()); err != nil {
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE parent_id = ? AND id <> ?`, parentID, keepSessionID)

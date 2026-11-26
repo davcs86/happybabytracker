@@ -209,7 +209,7 @@ func (k *kit) addParent(username string) model.Parent {
 	if err != nil {
 		k.t.Fatal(err)
 	}
-	if err := k.Store.SetPassword(context.Background(), p.ID, testHash(), ""); err != nil {
+	if err := k.Store.SetPassword(context.Background(), p.ID, testHash(), "", k.now); err != nil {
 		k.t.Fatal(err)
 	}
 	return p
@@ -239,7 +239,7 @@ func (k *kit) seedSession(kind, parentID string, ttl time.Duration) string {
 	if err != nil {
 		k.t.Fatal(err)
 	}
-	if _, err := k.Store.CreateSession(context.Background(), kind, parentID, hash, k.now, k.now.Add(ttl)); err != nil {
+	if _, err := k.Store.CreateSession(context.Background(), kind, parentID, hash, k.now, k.now.Add(ttl), ""); err != nil {
 		k.t.Fatal(err)
 	}
 	return plain

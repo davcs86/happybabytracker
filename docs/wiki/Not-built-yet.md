@@ -1,38 +1,18 @@
 # Not built yet
 
-The redesign ([design export](../plans/ui-redesign/README.md)) shows a few things the app cannot do yet, because the data or the route they need does not exist. The screens in this wiki do not show them. This is the list, as it stood when the redesign was merged (pull request #16).
+The redesign ([design export](../plans/ui-redesign/README.md)) shows a few things the app does not do. The screens in this wiki do not show them. Most of what pull request #16 left out was built afterwards (pull request #26): the Home Latest list, "x ago" and "Last:" lines, the running clock and side tiles; the Timeline strip, Since last, running cards, day filter and age line; Undo toasts; the Account password date, device names and "Sign out all other devices"; the Access "Account disabled" badge, the delete counts and "Export a PDF first"; Admin last-active and link lines; and the Growth units switch, selected row and readable chart labels. What is still absent is listed here, with the reason.
 
-A separate piece of work is deciding, for each item, whether it needs a new API endpoint, can be built from data the app already loads, or should be dropped. Until that is decided, treat every item below as absent.
+## Left out on purpose
 
-## Home
-
-- The **Latest** list (the three newest entries) and its "See the Timeline" link.
-- "**1 h 34 min ago**" subtitles on the tracker tiles, and the "Last: ..." lines in the Today cards.
-- The running timer's elapsed clock and the "Started on another phone" line.
-- The Left and Right side tiles for nursing.
-
-## Timeline
-
-- The "Last 7 days" week strip, "Since last", running-timer cards, the day filter ("Show all days") and the age line under the title.
-
-## Growth
-
-- The segmented units control. Units are chosen with plain selects, as before.
-- Selecting a point on the chart to highlight its row.
-- The chart's tick labels are 11 units in a fixed drawing, so they read at about 9 px on a phone.
-
-## Access and children
-
-- Undo toasts after a role change, removing access, adding a person or marking a milestone.
-- The remove-access confirmation sheet, an "Account disabled" badge, the counts in the delete-a-child list and "Export a PDF first".
-
-## My profile
-
-- The edit-name and change-password sheets (the forms are on the page), "last changed N days ago", device names and places, "sign out all other devices".
-
-## Admin
-
-- "Last active" and the link-issued line. The admin has no notification bell, because an admin session cannot open any other page.
+- **Places on signed-in devices** (for example "Lisbon"). The app stores no IP address, and looking a place up would send one to another service.
+- **"Started on Cleo's phone"** on a running timer. The API does not say who started an entry or on which device.
+- **A notification bell for the admin.** An admin session cannot open any other page, and notifications belong to a parent.
+- **A "Sign out my other devices" tick box** on the password form. Changing the password always signs the other devices out, and the form says so.
+- **The remove-access confirmation sheet.** The design system says reversible changes use Undo, not a confirm (DESIGN 4.5, PATTERNS P2), and the Child profile page spec draws a confirm. Removing access has the Undo. The owner decides which one stands.
+- **The edit-name and change-password sheets.** My profile stays a page (AGENTS.md rule 1), so both forms are on the page.
+- **Tapping a point on the Growth chart.** The chart marks the selected measurement; choosing one is done from its row, because a link inside the chart image cannot be reached by keyboard or screen reader.
+- **Undo for deleting a growth measurement, a dose, a vaccination or a medical visit.** Undo covers the seven daily trackers and milestones only.
+- **A tick-by-tick count of sleeps** in the Timeline's week strip. The daily summary has the minutes slept, not the number of sleeps, so a day with sleep shows one sleep bar.
 
 ## Other gaps the screenshots show
 

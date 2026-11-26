@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { createApi } from '#lib/server/api.js';
+import { deviceLabel } from '#lib/server/device-label.js';
 import { setSessionCookie } from '#lib/server/cookie.js';
 import { getEnv } from '#lib/server/env.js';
 import { landing } from '#lib/server/landing.js';
@@ -19,7 +20,11 @@ export const actions: Actions = {
 		if (usernameError || passwordError)
 			return fail(400, { username, usernameError, passwordError });
 		const api = createApi(getEnv(), fetch, undefined, getClientAddress());
-		const r = await api.login(username, password);
+		const r = await api.login(
+			username,
+			password,
+			deviceLabel(request.headers.get('user-agent') ?? '')
+		);
 		if (!r.ok) {
 			if (r.reason === 'rate_limited') {
 				return fail(429, { username, message: 'Too many attempts, try again in a minute' });

@@ -108,10 +108,47 @@ test('sign out another session', async ({ page }) => {
 
 	await sessions(page)
 		.filter({ hasText: 'Another device' })
-		.getByRole('button', { name: /^Sign out the session started/ })
+		.getByRole('button', { name: /^Sign out/ })
 		.click();
 	await expect(sessions(page)).toHaveCount(1);
 	await expect(sessions(page)).toContainText('This device');
 	expect(await stubSessionStatus(other)).toBe(401);
+	await expectAccessible(page);
+});
+
+test('the password card says when it changed and what changing it does', async ({ page }) => {
+	const card = page.getByRole('region', { name: 'Password' });
+	await expect(card.getByText('Last changed today.')).toBeVisible();
+	await expect(
+		card.getByText('Changing your password signs you out of every other device.')
+	).toBeVisible();
+	await expectAccessible(page);
+});
+
+test('a device shows the name it signed in with and when it was last active', async ({ page }) => {
+	await openSession(ANA.username, ANA.password);
+	await page.reload();
+	const current = sessions(page).filter({ hasText: 'Active now' });
+	await expect(current).toHaveCount(1);
+	// The test browser signed in through the form, so it carries a label built from its user agent.
+	await expect(current).toContainText(/^(Chrome|Safari|Firefox|Edge|Browser)\b.*This device/);
+	const other = sessions(page).filter({ hasText: 'Last active' });
+	await expect(other).toHaveCount(1);
+	await expect(other).toContainText('Another device');
+	await expect(other).toContainText(/Last active (Just now|\d+ min ago)/);
+});
+
+test('Sign out all other devices asks first, then ends every other session', async ({ page }) => {
+	const one = await openSession(ANA.username, ANA.password);
+	const two = await openSession(ANA.username, ANA.password);
+	await page.reload();
+	await expect(sessions(page)).toHaveCount(3);
+	await page.getByText('Sign out all other devices', { exact: true }).click();
+	await expect(page.getByText('This signs out 2 other devices.')).toBeVisible();
+	await page.getByRole('button', { name: 'Yes, sign out all other devices' }).click();
+	await expect(sessions(page)).toHaveCount(1);
+	await expect(page.getByText('No other devices are signed in.')).toBeVisible();
+	expect(await stubSessionStatus(one)).toBe(401);
+	expect(await stubSessionStatus(two)).toBe(401);
 	await expectAccessible(page);
 });

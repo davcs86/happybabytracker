@@ -79,7 +79,7 @@ func TestAdminFingerprintRotation(t *testing.T) {
 	}
 	mustSession := func(kind, parentID, hash string) {
 		t.Helper()
-		if _, err := s.CreateSession(ctx, kind, parentID, []byte(hash), now, exp); err != nil {
+		if _, err := s.CreateSession(ctx, kind, parentID, []byte(hash), now, exp, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -141,7 +141,7 @@ func TestFirstStartRecordsTheFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := s.CreateSession(ctx, "admin", "", []byte("early"), now, now.Add(time.Hour)); err != nil {
+	if _, err := s.CreateSession(ctx, "admin", "", []byte("early"), now, now.Add(time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	cfg := cfgWith("root-admin", "admin-password-AAAAAAAA")
@@ -409,7 +409,7 @@ func parentSession(t *testing.T, s *store.Store) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateSession(context.Background(), "parent", p.ID, hash, time.Now(), time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.CreateSession(context.Background(), "parent", p.ID, hash, time.Now(), time.Now().Add(time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	return plain

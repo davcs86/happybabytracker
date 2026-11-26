@@ -111,6 +111,7 @@ type Account = {
 	disabled: boolean;
 	units: Units;
 	createdAt: number;
+	passwordChangedAt: number | null;
 };
 type SessionRow = {
 	id: string;
@@ -119,8 +120,14 @@ type SessionRow = {
 	expiresAt: number;
 	createdAt: number;
 	lastSeenAt: number;
+	deviceLabel: string | null;
 };
-type TokenRow = { kind: 'invite' | 'reset'; parentId: string; usable: boolean };
+type TokenRow = {
+	kind: 'invite' | 'reset';
+	parentId: string;
+	usable: boolean;
+	issuedAt: number;
+};
 type KidRow = {
 	id: string;
 	name: string;
@@ -207,7 +214,8 @@ function account(id: string, username: string, displayName: string, password: st
 		password,
 		disabled: false,
 		units: { ...DEFAULT_UNITS },
-		createdAt: now()
+		createdAt: now(),
+		passwordChangedAt: password === null ? null : now()
 	};
 }
 
@@ -277,11 +285,11 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		sessions: new Map(),
 		// Used, expired and disabled-parent links all answer 404, as the API does.
 		tokens: new Map<string, TokenRow>([
-			[TOKENS.invite, { kind: 'invite', parentId: bo.id, usable: true }],
-			[TOKENS.reset, { kind: 'reset', parentId: ana.id, usable: true }],
-			[TOKENS.used, { kind: 'invite', parentId: bo.id, usable: false }],
-			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false }],
-			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false }]
+			[TOKENS.invite, { kind: 'invite', parentId: bo.id, usable: true, issuedAt: now() }],
+			[TOKENS.reset, { kind: 'reset', parentId: ana.id, usable: true, issuedAt: now() }],
+			[TOKENS.used, { kind: 'invite', parentId: bo.id, usable: false, issuedAt: now() }],
+			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false, issuedAt: now() }],
+			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false, issuedAt: now() }]
 		]),
 		kids: new Map([mia, leo, ivy, ...milestoneKids].map((k) => [k.id, k])),
 		grants: [
@@ -505,17 +513,36 @@ const header = (req: IncomingMessage, name: string) => {
 };
 const codePoints = (s: string) => [...s].length;
 
-function newSession(state: State, kind: 'admin' | 'parent', parentId: string | null) {
+function newSession(
+	state: State,
+	kind: 'admin' | 'parent',
+	parentId: string | null,
+	deviceLabel: string | null = null
+) {
 	const token = `stub-session-${String(state.nextId++).padStart(30, '0')}`;
 	const t = now();
 	const expiresAt = t + (kind === 'admin' ? ADMIN_TTL_S : PARENT_TTL_S);
 	const id = nextId(state, 's');
-	state.sessions.set(token, { id, kind, parentId, expiresAt, createdAt: t, lastSeenAt: t });
+	state.sessions.set(token, {
+		id,
+		kind,
+		parentId,
+		expiresAt,
+		createdAt: t,
+		lastSeenAt: t,
+		deviceLabel
+	});
 	return { token, kind, expires_at: iso(expiresAt) };
 }
 
 function parentView(p: Account) {
-	return { id: p.id, username: p.username, display_name: p.displayName, units: p.units };
+	return {
+		id: p.id,
+		username: p.username,
+		display_name: p.displayName,
+		units: p.units,
+		password_changed_at: p.passwordChangedAt === null ? null : iso(p.passwordChangedAt)
+	};
 }
 
 function adminParentView(p: Account) {
@@ -526,6 +553,24 @@ function adminParentView(p: Account) {
 		disabled: p.disabled,
 		has_password: p.password !== null,
 		created_at: iso(p.createdAt)
+	};
+}
+
+// What only the list shows: the newest session activity and the parent's unused link (a disabled parent has no sessions).
+function adminListExtras(state: State, p: Account) {
+	const seen = [...state.sessions.values()]
+		.filter((s) => s.parentId === p.id)
+		.map((s) => s.lastSeenAt);
+	const token = [...state.tokens.values()].find((t) => t.parentId === p.id && t.usable);
+	return {
+		last_active_at: seen.length === 0 ? null : iso(Math.max(...seen)),
+		link: token
+			? {
+					kind: token.kind,
+					issued_at: iso(token.issuedAt),
+					expires_at: iso(token.issuedAt + (token.kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S))
+				}
+			: null
 	};
 }
 
@@ -665,7 +710,7 @@ const activeGuardians = (state: State, kidId: string) =>
 
 function issueLink(state: State, kind: TokenRow['kind'], parentId: string) {
 	const token = randomBytes(32).toString('base64url');
-	state.tokens.set(token, { kind, parentId, usable: true });
+	state.tokens.set(token, { kind, parentId, usable: true, issuedAt: now() });
 	const ttl = kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S;
 	return { url: `${UI_ORIGIN}/${kind}/${token}`, expiresAt: iso(now() + ttl) };
 }
@@ -735,7 +780,9 @@ const routes: RouteDef[] = [
 		access: 'admin',
 		run: (state, _req, res) => {
 			const rows = [...state.parents.values()].sort((a, b) => a.username.localeCompare(b.username));
-			send(res, 200, { parents: rows.map(adminParentView) });
+			send(res, 200, {
+				parents: rows.map((p) => ({ ...adminParentView(p), ...adminListExtras(state, p) }))
+			});
 		}
 	},
 	{
@@ -842,6 +889,7 @@ const routes: RouteDef[] = [
 			const n = codePoints(body.new ?? '');
 			if (n < MIN_PASSWORD || n > MAX_PASSWORD) return error(res, 422, 'invalid', 'new');
 			parent.password = body.new;
+			parent.passwordChangedAt = now();
 			for (const [t, s] of state.sessions) {
 				if (s.parentId === parent.id && t !== p.token) state.sessions.delete(t);
 			}
@@ -861,7 +909,8 @@ const routes: RouteDef[] = [
 					id: s.id,
 					created_at: iso(s.createdAt),
 					last_seen_at: iso(s.lastSeenAt),
-					current: s.id === p.session.id
+					current: s.id === p.session.id,
+					device_label: s.deviceLabel
 				}))
 			});
 		}
@@ -997,7 +1046,8 @@ const routes: RouteDef[] = [
 					parent_id: parent.id,
 					username: parent.username,
 					display_name: parent.displayName,
-					role: g.role
+					role: g.role,
+					disabled: parent.disabled
 				}))
 			});
 		}
@@ -2016,6 +2066,27 @@ const kidRoute = (
 	run: (state, req, res, _p, [kidId]) => run(state, req, res, state.kids.get(kidId) as KidRow)
 });
 
+// lastEntries in home.go: the newest entry of each tracker whose module is on, null when it has none.
+function lastEntries(state: State, kid: KidRow) {
+	const on = moduleStates(state, kid)
+		.filter((m) => m.enabled)
+		.map((m) => m.module as string);
+	const out: Record<string, unknown> = {};
+	for (const key of TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]))) {
+		const newest = itemsOf(state, key, kid.id).reduce<Item | null>(
+			(best, i) =>
+				best === null || i.at > best.at || (i.at === best.at && i.id > best.id) ? i : best,
+			null
+		);
+		out[TIMELINE_TYPES[key]] = newest && {
+			type: TIMELINE_TYPES[key],
+			at: iso(newest.at),
+			...newest.out
+		};
+	}
+	return out;
+}
+
 const overviewRoutes: RouteDef[] = [
 	kidRoute('GET', 'timeline', 'caregiver', (state, req, res, kid) => {
 		const url = new URL(req.url ?? '/', STUB_URL);
@@ -2088,6 +2159,11 @@ const overviewRoutes: RouteDef[] = [
 			send(res, 204);
 		}
 	},
+	kidRoute('GET', 'counts', 'guardian', (state, _req, res, kid) => {
+		send(res, 200, {
+			entries: TRACKER_KEYS.reduce((n, key) => n + itemsOf(state, key, kid.id).length, 0)
+		});
+	}),
 	kidRoute('GET', 'home', 'caregiver', (state, _req, res, kid) => {
 		const today = todayIn(kid.timeZone);
 		const months = ageMonths(kid.birthDate, today);
@@ -2105,7 +2181,8 @@ const overviewRoutes: RouteDef[] = [
 			due:
 				state.scenario === 'home_due_many'
 					? MANY_DUE
-					: [...medicationDue(state, kid), ...vaccineDue(state, kid), ...visitDue(state, kid)]
+					: [...medicationDue(state, kid), ...vaccineDue(state, kid), ...visitDue(state, kid)],
+			last: lastEntries(state, kid)
 		});
 	})
 ];
@@ -5027,8 +5104,12 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	const live = session && session.expiresAt > now() ? session : undefined;
 
 	if (path === '/v1/session' && method === 'POST') {
-		const body = await decode(req, res, ['username', 'password']);
+		const body = await decode(req, res, ['username', 'password', 'device_label']);
 		if (!body) return;
+		const label = body.device_label ?? '';
+		if (label !== '' && !/^[A-Za-z0-9 ]{1,48}$/.test(label)) {
+			return error(res, 422, 'invalid', 'device_label');
+		}
 		if (state.scenario === 'rate_limited') {
 			return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
 		}
@@ -5045,7 +5126,7 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 		) {
 			return error(res, 401, 'invalid_credentials');
 		}
-		return send(res, 200, newSession(state, 'parent', parent.id));
+		return send(res, 200, newSession(state, 'parent', parent.id, label === '' ? null : label));
 	}
 
 	if (path === '/v1/session' && (method === 'GET' || method === 'DELETE')) {
@@ -5087,7 +5168,10 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 				return error(res, 422, 'invalid', 'password');
 			usable.usable = false;
 			const parent = state.parents.get(usable.parentId);
-			if (parent) parent.password = body.password;
+			if (parent) {
+				parent.password = body.password;
+				parent.passwordChangedAt = now();
+			}
 			for (const [t, s] of state.sessions)
 				if (s.parentId === usable.parentId) state.sessions.delete(t);
 			return send(res, 200, newSession(state, 'parent', usable.parentId));

@@ -15,7 +15,7 @@ func TestListParents(t *testing.T) {
 	}
 	bob := mustParent(t, s, "bob")
 	ana := mustParent(t, s, "ana")
-	if err := s.SetPassword(ctx, ana.ID, "$hash", ""); err != nil {
+	if err := s.SetPassword(ctx, ana.ID, "$hash", "", t0); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetParentDisabled(ctx, bob.ID, true, t0); err != nil {
@@ -69,7 +69,7 @@ func TestLocalSecret(t *testing.T) {
 	if _, err := s.LocalSecret(ctx, p.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("no password yet: %v, want ErrNotFound", err)
 	}
-	if err := s.SetPassword(ctx, p.ID, "$hash$one", ""); err != nil {
+	if err := s.SetPassword(ctx, p.ID, "$hash$one", "", t0); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := s.LocalSecret(ctx, p.ID); err != nil || got != "$hash$one" {
