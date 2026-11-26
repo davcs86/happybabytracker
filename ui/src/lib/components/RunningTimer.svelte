@@ -8,6 +8,7 @@
 	import HeartIcon from '@lucide/svelte/icons/heart';
 	import MoonIcon from '@lucide/svelte/icons/moon';
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { ERROR_CLASS } from '#lib/components/field.js';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -21,6 +22,7 @@
 		zone,
 		kidId,
 		now,
+		actions = '',
 		message = null,
 		overrun = false
 	}: {
@@ -28,9 +30,35 @@
 		zone: string;
 		kidId: string;
 		now: Date;
+		// The path the End and Switch side forms post to: this page by default, else the kid's home.
+		actions?: string;
 		message?: string | null;
 		overrun?: boolean;
 	} = $props();
+
+	// A form that posts to another page's action stays on this page: the result is read here, not followed.
+	let failure = $state<{ message: string | null; overrun: boolean } | null>(null);
+	const submit = () =>
+		actions === ''
+			? undefined
+			: async ({
+					result,
+					update
+				}: {
+					result: { type: string; data?: Record<string, unknown> };
+					update: () => Promise<void>;
+				}) => {
+					failure = null;
+					if (result.type === 'success') await invalidateAll();
+					else if (result.type === 'failure') {
+						failure = {
+							message: typeof result.data?.message === 'string' ? result.data.message : null,
+							overrun: result.data?.overrun === true
+						};
+					} else await update();
+				};
+	const shownOverrun = $derived(overrun || !!failure?.overrun);
+	const shownMessage = $derived(message ?? failure?.message ?? null);
 
 	const other = (side: 'left' | 'right') => (side === 'left' ? 'right' : 'left');
 
@@ -97,7 +125,7 @@
 			{/each}
 		</div>
 	{/if}
-	{#if overrun}
+	{#if shownOverrun}
 		<Alert>
 			<p>
 				This timer ran over {MAX_SESSION_HOURS} hours:
@@ -110,12 +138,12 @@
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</p>
 		</Alert>
-	{:else if message}
-		<p class={ERROR_CLASS} role="alert">{message}</p>
+	{:else if shownMessage}
+		<p class={ERROR_CLASS} role="alert">{shownMessage}</p>
 	{/if}
 	<div class="flex gap-2">
 		{#if timer.kind === 'nursing' && timer.entry.side}
-			<form method="POST" action="?/switchSide" class="flex flex-1" use:enhance>
+			<form method="POST" action="{actions}?/switchSide" class="flex flex-1" use:enhance={submit}>
 				<input type="hidden" name="id" value={timer.entry.id} />
 				<input type="hidden" name="side" value={other(timer.entry.side)} />
 				<Button type="submit" variant="outline" class="w-full">Switch side</Button>
@@ -123,9 +151,9 @@
 		{/if}
 		<form
 			method="POST"
-			action={timer.kind === 'sleep' ? '?/endSleep' : '?/endNursing'}
+			action="{actions}{timer.kind === 'sleep' ? '?/endSleep' : '?/endNursing'}"
 			class="flex flex-1"
-			use:enhance
+			use:enhance={submit}
 		>
 			<input type="hidden" name="id" value={timer.entry.id} />
 			<Button type="submit" class="w-full"

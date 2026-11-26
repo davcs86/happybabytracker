@@ -4,6 +4,9 @@ import {
 	defaultKinds,
 	formatDayHeading,
 	groupByDay,
+	sinceLast,
+	weekCells,
+	weekDates,
 	readFilter,
 	shownModules,
 	timelineLine,
@@ -11,6 +14,7 @@ import {
 	visitTimelineLine
 } from './timeline';
 import type {
+	DaySummary,
 	ModuleId,
 	ModuleState,
 	TimelineItem,
@@ -556,5 +560,104 @@ describe('defaultKinds and shownModules', () => {
 	it('maps shown trackers back to their modules', () => {
 		expect([...shownModules(['meals', 'sleep'])].sort()).toEqual(['feeding', 'sleep']);
 		expect([...shownModules(['visit', 'diapers'])].sort()).toEqual(['diapers', 'visits']);
+	});
+});
+
+describe('weekDates', () => {
+	it('is the seven days ending today, oldest first, across a month end', () => {
+		expect(weekDates('2026-12-02')).toEqual([
+			'2026-11-26',
+			'2026-11-27',
+			'2026-11-28',
+			'2026-11-29',
+			'2026-11-30',
+			'2026-12-01',
+			'2026-12-02'
+		]);
+	});
+});
+
+describe('weekCells', () => {
+	const day = (date: string, over: Partial<DaySummary> = {}): DaySummary => ({
+		date,
+		bottles: { count: 0, ml: 0, floz_hundredths: 0 },
+		nursing: { count: 0, seconds: 0 },
+		pumping: { count: 0, ml: 0, floz_hundredths: 0 },
+		diapers: { total: 0, wet: 0, dirty: 0, both: 0, dry: 0 },
+		sleep: { seconds: 0 },
+		meals: { count: 0 },
+		...over
+	});
+	const days = [
+		day('2026-11-23'),
+		day('2026-11-24', {
+			bottles: { count: 2, ml: 250, floz_hundredths: 845 },
+			nursing: { count: 1, seconds: 26 * 60 },
+			diapers: { total: 3, wet: 2, dirty: 1, both: 0, dry: 0 },
+			sleep: { seconds: 5400 }
+		}),
+		day('2026-11-25', { meals: { count: 1 } })
+	];
+	it('names Today and Yesterday, counts every tracker and says what happened in the label', () => {
+		const cells = weekCells(days, '2026-11-25', 'ml');
+		expect(cells.map((c) => c.dow)).toEqual(['Mon', 'Yest.', 'Today']);
+		expect(cells[1].label).toBe(
+			'Yesterday: 2 bottles (250 ml) · 1 nursing (26 min) · 3 diapers · sleep 1 h 30 min'
+		);
+		expect(cells[0].label).toBe('Mon 23 Nov 2026: nothing logged');
+		expect(cells[2].label).toBe('Today: 1 meal');
+		// The summary has no session count, so a day with any sleep shows one sleep segment.
+		expect(cells[1].segs).toEqual([
+			{ type: 'bottle', count: 2 },
+			{ type: 'nursing', count: 1 },
+			{ type: 'sleep', count: 1 },
+			{ type: 'diaper', count: 3 }
+		]);
+	});
+	it('reads volumes in the parent unit', () => {
+		expect(weekCells(days, '2026-11-25', 'floz')[1].label).toContain('2 bottles (8.45 fl oz)');
+	});
+});
+
+describe('sinceLast', () => {
+	const now = new Date('2026-11-25T12:00:00Z');
+	const at = (minutes: number) => new Date(now.getTime() - minutes * 60_000).toISOString();
+	const item = (kind: string, minutes: number, endedAt: number | null = null) =>
+		({
+			kind,
+			at: at(minutes),
+			entry: { id: kind, endedAt: endedAt === null ? null : at(endedAt) }
+		}) as never;
+	const none = { sleep: null, nursing: null };
+	it('says when the last feed, diaper and sleep were; a feed is the newer of bottle and nursing', () => {
+		const cells = sinceLast(
+			{
+				bottle: item('bottles', 94),
+				nursing: item('nursing', 200, 40),
+				diaper: item('diapers', 10),
+				sleep: item('sleep', 300, 120)
+			},
+			none,
+			now
+		);
+		expect(cells).toEqual([
+			{ label: 'Last feed', value: '40 min ago' },
+			{ label: 'Last diaper', value: '10 min ago' },
+			{ label: 'Last sleep', value: '2 h ago' }
+		]);
+	});
+	it('says Asleep for while a sleep runs, and None yet for a tracker with no entry', () => {
+		const sleeping = { sleep: { startedAt: at(95) } as never, nursing: null };
+		expect(sinceLast({ bottle: null, diaper: null, sleep: null }, sleeping, now)).toEqual([
+			{ label: 'Last feed', value: 'None yet' },
+			{ label: 'Last diaper', value: 'None yet' },
+			{ label: 'Asleep for', value: '1 h 35 min' }
+		]);
+	});
+	it('leaves out a cell whose trackers are off', () => {
+		expect(sinceLast({ diaper: item('diapers', 10) }, none, now)).toEqual([
+			{ label: 'Last diaper', value: '10 min ago' }
+		]);
+		expect(sinceLast({}, none, now)).toEqual([]);
 	});
 });
