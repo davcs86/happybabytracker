@@ -84,6 +84,9 @@ import type {
 	PumpingSideVolume,
 	PushDevice,
 	PushState,
+	ProviderPage,
+	ProviderQuery,
+	ProviderResult,
 	PushSubscriptionInput,
 	Role,
 	Schedule,
@@ -163,6 +166,8 @@ type Endpoint =
 	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose' | 'milestone' | 'visit'}`
 	| 'visit_outcome'
 	| 'visit_calendar'
+	| 'provider_state'
+	| 'provider_search'
 	| 'push_state'
 	| 'list_push_devices'
 	| 'upsert_push_device'
@@ -776,6 +781,7 @@ function toVisit(o: Wire): Visit {
 		cancelledAt: stringOrNull(o.cancelled_at),
 		provider: stringOrNull(o.provider),
 		location: stringOrNull(o.location),
+		providerNpi: stringOrNull(o.provider_npi),
 		note: stringOrNull(o.note),
 		outcomeNotes: stringOrNull(o.outcome_notes),
 		revision: int(o.revision)
@@ -820,6 +826,38 @@ function toVisitRow(v: unknown): VisitRow {
 			medications: int(linked.medications)
 		}
 	};
+}
+
+function toProviderResult(v: unknown): ProviderResult {
+	const o = object(v);
+	return {
+		npi: string(o.npi),
+		name: string(o.name),
+		credential: stringOrNull(o.credential),
+		taxonomy: stringOrNull(o.taxonomy),
+		address: string(o.address),
+		phone: stringOrNull(o.phone)
+	};
+}
+
+function toProviderPage(v: unknown): ProviderPage {
+	const o = object(v);
+	return { results: list(o, 'results', toProviderResult), more: boolean(o.more) };
+}
+
+// The API's body keys; a term left out is not sent.
+function providerBody(q: ProviderQuery): Wire {
+	const body: Wire = { kind: q.kind };
+	const keys = [
+		['last_name', q.lastName],
+		['first_name', q.firstName],
+		['organization', q.organization],
+		['state', q.state],
+		['city', q.city],
+		['postal_code', q.postalCode]
+	] as const;
+	for (const [k, v] of keys) if (v !== undefined) body[k] = v;
+	return body;
 }
 
 function toMilestoneReached(v: unknown): MilestoneReached {
@@ -1415,6 +1453,15 @@ export function createApi(
 				ID_PATTERN.test(kidId) && ID_PATTERN.test(id) && (detail === 'generic' || detail === 'full')
 					? visitCalendar(kidId, id, detail)
 					: Promise.resolve(NOT_FOUND)
+		},
+		// Search answers 404 while the server's lookup is off; the terms never reach a log.
+		providers: {
+			state: () =>
+				call('provider_state', 'GET', '/v1/providers', (b) => ({
+					enabled: boolean(object(object(b).search).enabled)
+				})),
+			search: (q: ProviderQuery) =>
+				call('provider_search', 'POST', '/v1/providers/search', toProviderPage, providerBody(q))
 		},
 		// input is the API's own JSON body; query.medication filters to one course.
 		doses: {

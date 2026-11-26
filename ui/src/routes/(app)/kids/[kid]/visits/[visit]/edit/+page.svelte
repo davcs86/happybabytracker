@@ -62,7 +62,7 @@
 		{/if}
 		<VisitFields {values} {error} />
 		<!-- The time field carries its own original. -->
-		{#each ['duration_min', 'kind', 'provider', 'location', 'note'] as const as k (k)}
+		{#each ['duration_min', 'kind', 'provider', 'location', 'provider_npi', 'note'] as const as k (k)}
 			<input type="hidden" name="{k}_original" value={data.values[`${k}_original`]} />
 		{/each}
 		<div class="flex gap-2">

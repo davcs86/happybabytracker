@@ -40,6 +40,8 @@
 			<Input {...control} name="provider" autocomplete="off" value={values.provider} />
 		{/snippet}
 	</Field>
+	<input type="hidden" name="provider_npi" value={values.provider_npi} />
+	<input type="hidden" name="provider_npi_for" value={values.provider_npi_for} />
 	<Field id="visit-location" label="Place (optional)" error={error('location')}>
 		{#snippet children(control)}
 			<Input {...control} name="location" autocomplete="off" value={values.location} />

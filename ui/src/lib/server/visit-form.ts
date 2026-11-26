@@ -3,6 +3,7 @@ import {
 	DEFAULT_VISIT_DURATION_MIN,
 	MAX_VISITS_PER_KID,
 	NOTE_MAX_LEN,
+	PROVIDER_NPI_LEN,
 	VISIT_DURATION_MIN,
 	VISIT_HORIZON_DAYS,
 	VISIT_KINDS,
@@ -14,11 +15,21 @@ import type { EntryBody, Visit } from '../types';
 import { failAction, type ApiFailure } from './outcome';
 
 // The form's names are the API's keys, in the API's order of checks.
-const FIELDS = ['starts_at', 'duration_min', 'kind', 'provider', 'location', 'note'] as const;
+const FIELDS = [
+	'starts_at',
+	'duration_min',
+	'kind',
+	'provider',
+	'location',
+	'provider_npi',
+	'note'
+] as const;
 type Name = (typeof FIELDS)[number];
 type Original = `${Name}_original`;
 
-export type VisitFormValues = Record<Name, string> & Partial<Record<Original, string>>;
+// provider_npi_for is the provider text a registry pick filled in (plan 10 B7).
+export type VisitFormValues = Record<Name | 'provider_npi_for', string> &
+	Partial<Record<Original, string>>;
 export type VisitMode = { kind: 'create' | 'edit'; zone: string };
 
 // Keyed by the API's field names; never a typed value in a message.
@@ -28,6 +39,7 @@ export const VISIT_FIELD_MESSAGES: Record<string, string> = {
 	kind: 'Choose a kind',
 	provider: `Enter a doctor or clinic of up to ${VISIT_PROVIDER_MAX_LEN} characters`,
 	location: `Enter a place of up to ${VISIT_LOCATION_MAX_LEN} characters`,
+	provider_npi: 'Search for the provider again, or type it yourself.',
 	note: `Enter a reason of up to ${NOTE_MAX_LEN} characters`
 };
 
@@ -46,7 +58,9 @@ export const visitCreateValues = (now: Date, zone: string): VisitFormValues => (
 	kind: '',
 	provider: '',
 	location: '',
-	note: ''
+	provider_npi: '',
+	note: '',
+	provider_npi_for: ''
 });
 
 export function visitEditValues(v: Visit, zone: string): VisitFormValues {
@@ -56,13 +70,15 @@ export function visitEditValues(v: Visit, zone: string): VisitFormValues {
 		kind: v.kind,
 		provider: v.provider ?? '',
 		location: v.location ?? '',
+		provider_npi: v.providerNpi ?? '',
 		note: v.note ?? ''
 	};
 	const originals = Object.fromEntries(FIELDS.map((f) => [`${f}_original`, shown[f]]));
-	return { ...shown, ...originals };
+	return { ...shown, provider_npi_for: v.providerNpi ? shown.provider : '', ...originals };
 }
 
 const MINUTES = /^\d{1,4}$/;
+const NPI = new RegExp(`^\\d{${PROVIDER_NPI_LEN}}$`);
 const TEXT_MAX: Record<'provider' | 'location' | 'note', number> = {
 	provider: VISIT_PROVIDER_MAX_LEN,
 	location: VISIT_LOCATION_MAX_LEN,
@@ -98,6 +114,10 @@ function build(v: VisitFormValues, mode: VisitMode): Outcome {
 		} else if (f === 'kind') {
 			if (!(VISIT_KINDS as readonly string[]).includes(text)) return { field: f };
 			input.kind = text;
+		} else if (f === 'provider_npi') {
+			if (text !== '' && !NPI.test(text)) return { field: f };
+			if (text !== '') input.provider_npi = text;
+			else if (edit) input.provider_npi = null;
 		} else {
 			if ([...text].length > TEXT_MAX[f]) return { field: f };
 			if (text !== '') input[f] = text;
@@ -113,6 +133,12 @@ export function readVisitForm(
 ): { values: VisitFormValues; input: EntryBody | null; field: string | null } {
 	const text = (k: string) => String(form.get(k) ?? '');
 	const values = Object.fromEntries(FIELDS.map((f) => [f, text(f)])) as VisitFormValues;
+	values.provider_npi_for = text('provider_npi_for');
+	// Any edit of the picked provider text drops its registry number.
+	if (values.provider.trim() !== values.provider_npi_for.trim()) {
+		values.provider_npi = '';
+		values.provider_npi_for = '';
+	}
 	if (mode.kind === 'edit') {
 		for (const f of FIELDS) {
 			const o = form.get(`${f}_original`);

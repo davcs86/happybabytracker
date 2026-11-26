@@ -204,6 +204,81 @@ export const VISIT_DUE_LOOK_AHEAD_DAYS = 7;
 // Mirrors MaxOutcomeVaccinations and MaxOutcomeMedications (constants.go): the rows one outcome may add.
 export const MAX_OUTCOME_VACCINATIONS = 10;
 export const MAX_OUTCOME_MEDICATIONS = 5;
+// Mirrors NPINameMinLen, NPINameMaxLen, NPIPostalCodeLen and ProviderNPILen (constants.go).
+export const NPI_NAME_MIN_LEN = 2;
+export const NPI_NAME_MAX_LEN = 60;
+export const NPI_POSTAL_CODE_LEN = 5;
+export const PROVIDER_NPI_LEN = 10;
+// Mirror NPINamePattern and NPIOrgPattern (constants.go); they apply after trimming.
+export const NPI_NAME_PATTERN = new RegExp(
+	`^\\p{L}[\\p{L} .'-]{${NPI_NAME_MIN_LEN - 1},${NPI_NAME_MAX_LEN - 1}}$`,
+	'u'
+);
+export const NPI_ORG_PATTERN = new RegExp(
+	`^[\\p{L}0-9][\\p{L}0-9 &.'-]{${NPI_NAME_MIN_LEN - 1},${NPI_NAME_MAX_LEN - 1}}$`,
+	'u'
+);
+// Mirrors NPIStates (constants.go), in the page spec's order of names.
+export const NPI_STATE_LABEL = {
+	AL: 'Alabama',
+	AK: 'Alaska',
+	AZ: 'Arizona',
+	AR: 'Arkansas',
+	CA: 'California',
+	CO: 'Colorado',
+	CT: 'Connecticut',
+	DE: 'Delaware',
+	FL: 'Florida',
+	GA: 'Georgia',
+	HI: 'Hawaii',
+	ID: 'Idaho',
+	IL: 'Illinois',
+	IN: 'Indiana',
+	IA: 'Iowa',
+	KS: 'Kansas',
+	KY: 'Kentucky',
+	LA: 'Louisiana',
+	ME: 'Maine',
+	MD: 'Maryland',
+	MA: 'Massachusetts',
+	MI: 'Michigan',
+	MN: 'Minnesota',
+	MS: 'Mississippi',
+	MO: 'Missouri',
+	MT: 'Montana',
+	NE: 'Nebraska',
+	NV: 'Nevada',
+	NH: 'New Hampshire',
+	NJ: 'New Jersey',
+	NM: 'New Mexico',
+	NY: 'New York',
+	NC: 'North Carolina',
+	ND: 'North Dakota',
+	OH: 'Ohio',
+	OK: 'Oklahoma',
+	OR: 'Oregon',
+	PA: 'Pennsylvania',
+	RI: 'Rhode Island',
+	SC: 'South Carolina',
+	SD: 'South Dakota',
+	TN: 'Tennessee',
+	TX: 'Texas',
+	UT: 'Utah',
+	VT: 'Vermont',
+	VA: 'Virginia',
+	WA: 'Washington',
+	WV: 'West Virginia',
+	WI: 'Wisconsin',
+	WY: 'Wyoming',
+	DC: 'District of Columbia',
+	AS: 'American Samoa',
+	GU: 'Guam',
+	MP: 'Northern Mariana Islands',
+	PR: 'Puerto Rico',
+	VI: 'U.S. Virgin Islands'
+} as const;
+export type NpiState = keyof typeof NPI_STATE_LABEL;
+export const NPI_STATES = Object.keys(NPI_STATE_LABEL) as readonly NpiState[];
 // The home shows at most this many due entries.
 export const HOME_DUE_MAX = 3;
 export const INVITE_VALIDITY = '72 hours';

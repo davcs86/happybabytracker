@@ -179,6 +179,8 @@ export type Visit = Noted & {
 	cancelledAt: string | null;
 	provider: string | null;
 	location: string | null;
+	// Set only by picking a registry result, with the provider text it filled in.
+	providerNpi: string | null;
 	outcomeNotes: string | null;
 	revision: number;
 };
@@ -196,6 +198,29 @@ export type VisitRow = Visit & {
 export type VisitQuery = ListQuery & { order?: 'asc' | 'desc' };
 export type VisitCalendarDetail = 'generic' | 'full';
 export type VisitLinkedChoice = 'delete' | 'keep';
+
+// The US provider registry search: the terms travel only in a POST body.
+export type ProviderKind = 'person' | 'organization';
+export type ProviderQuery = {
+	kind: ProviderKind;
+	lastName?: string;
+	firstName?: string;
+	organization?: string;
+	state: string;
+	city?: string;
+	postalCode?: string;
+};
+// Registry text as sent (capitals); address is the practice location.
+export type ProviderResult = {
+	npi: string;
+	name: string;
+	credential: string | null;
+	taxonomy: string | null;
+	address: string;
+	phone: string | null;
+};
+// more: the registry sent its full page, so more matches may exist.
+export type ProviderPage = { results: ProviderResult[]; more: boolean };
 
 // A browser's subscription is a secret of the device: it travels only in the body of an upsert.
 export type PushState = { enabled: false } | { enabled: true; publicKey: string };

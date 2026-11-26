@@ -36,6 +36,7 @@ const VIEW_KEYS = [
 	'note',
 	'outcome_notes',
 	'provider',
+	'provider_npi',
 	'revision',
 	'starts_at',
 	'status'
@@ -94,6 +95,7 @@ test('create: the view, the defaults, the validation order and the POST-only key
 		cancelled_at: null,
 		provider: 'Dr. Lee',
 		location: null,
+		provider_npi: null,
 		note: 'Check-up',
 		outcome_notes: null,
 		revision: 0,
@@ -207,6 +209,33 @@ test('patch: absent keeps, null clears, every write adds one to the revision; ca
 		body: { error: 'not_past' }
 	});
 	expect((await ana('GET', at)).body.revision).toBe(5);
+});
+
+test('provider_npi: after location in the order, tied to the provider text it came with', async () => {
+	const ana = await stubAs(ANA);
+	const npi = '9000000015';
+	const ok = { starts_at: iso(realNow() + DAY), kind: 'sick' };
+	const post = (body: unknown) => ana('POST', base(), body);
+	expect(await post({ ...ok, location: 'x'.repeat(201), provider_npi: 'x' })).toEqual(
+		invalid('location')
+	);
+	expect(
+		await post({ ...ok, provider: 'Q', provider_npi: '1234567890', note: 'x'.repeat(501) })
+	).toEqual(invalid('provider_npi'));
+	expect(await post({ ...ok, provider_npi: npi })).toEqual(invalid('provider_npi'));
+	const made = await post({ ...ok, provider: 'AVERY QUILL, MD', provider_npi: npi });
+	expect(made).toMatchObject({ status: 201, body: { provider_npi: npi } });
+	const at = `${base()}/${made.body.id}`;
+	const patch = (body: unknown) => ana('PATCH', at, body);
+	expect((await patch({ location: 'x' })).body.provider_npi).toBe(npi);
+	expect((await patch({ provider: 'AVERY QUILL, MD' })).body.provider_npi).toBe(npi);
+	expect((await patch({ provider: 'Dr Q' })).body.provider_npi).toBeNull();
+	expect((await patch({ provider: 'Dr Q', provider_npi: npi })).body.provider_npi).toBe(npi);
+	expect((await patch({ provider: null })).body).toMatchObject({
+		provider: null,
+		provider_npi: null
+	});
+	expect(await patch({ provider_npi: npi })).toEqual(invalid('provider_npi'));
 });
 
 test('outcome: the checks in order, the rows linked with the visit’s date, then stale on a second submit', async () => {
