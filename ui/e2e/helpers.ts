@@ -101,6 +101,8 @@ export async function expectLanding(page: Page, landing: Landing) {
 
 // Sign out sits in the More sheet on a phone and in the side navigation from 768 px.
 export async function signOut(page: Page) {
+	// Before the stylesheet applies, More shows at every width: read visibility on the loaded page.
+	await page.waitForLoadState();
 	const more = page.getByRole('button', { name: 'More', exact: true });
 	if (await more.isVisible()) {
 		const sheet = page.getByRole('dialog', { name: 'More' });
