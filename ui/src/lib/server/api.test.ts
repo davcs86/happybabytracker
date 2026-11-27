@@ -94,7 +94,8 @@ describe('createApi requests and shapes', () => {
 					id: 'p1',
 					username: 'ana',
 					display_name: 'Ana',
-					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' }
+					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' },
+					sso_linked: true
 				}
 			})
 		);
@@ -107,17 +108,48 @@ describe('createApi requests and shapes', () => {
 					username: 'ana',
 					displayName: 'Ana',
 					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' },
-					passwordChangedAt: null
+					passwordChangedAt: null,
+					ssoLinked: true
 				}
 			}
 		});
 	});
 
-	it('maps an admin session without a parent', async () => {
-		const f = mockFetch(async () => json({ kind: 'admin', expires_at: '2026-11-21T12:00:00Z' }));
+	it('maps an admin session to its admin object, without a parent', async () => {
+		const f = mockFetch(async () =>
+			json({
+				kind: 'admin',
+				expires_at: '2026-11-21T12:00:00Z',
+				admin: { username: 'root', sso_linked: false }
+			})
+		);
 		expect(await createApi(env, asFetch(f), SESSION).session()).toEqual({
 			ok: true,
-			data: { kind: 'admin' }
+			data: { kind: 'admin', admin: { username: 'root', ssoLinked: false } }
+		});
+	});
+
+	it.each([
+		[
+			'a parent without sso_linked',
+			{
+				kind: 'parent',
+				parent: {
+					id: 'p1',
+					username: 'ana',
+					display_name: 'Ana',
+					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' }
+				}
+			}
+		],
+		['an admin without sso_linked', { kind: 'admin', admin: { username: 'root' } }],
+		['an admin without its admin object', { kind: 'admin' }]
+	])('maps %s to error', async (_name, body) => {
+		const f = mockFetch(async () => json({ expires_at: '2026-11-21T12:00:00Z', ...body }));
+		expect(await createApi(env, asFetch(f), SESSION).session()).toEqual({
+			ok: false,
+			status: 200,
+			reason: 'error'
 		});
 	});
 
@@ -387,6 +419,7 @@ describe('createApi redesign data', () => {
 			display_name: 'Eve',
 			disabled: false,
 			has_password: false,
+			sso_linked: false,
 			created_at: '2026-11-21T00:00:00Z'
 		};
 		const link = {
@@ -484,6 +517,7 @@ describe('createApi admin, account, kid and access calls', () => {
 		display_name: 'Eve',
 		disabled: false,
 		has_password: false,
+		sso_linked: true,
 		created_at: '2026-11-21T00:00:00Z'
 	};
 	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
@@ -715,6 +749,7 @@ describe('createApi admin, account, kid and access calls', () => {
 					displayName: 'Eve',
 					disabled: false,
 					hasPassword: false,
+					ssoLinked: true,
 					createdAt: '2026-11-21T00:00:00Z',
 					lastActiveAt: null,
 					link: null
@@ -778,7 +813,8 @@ describe('createApi admin, account, kid and access calls', () => {
 					username: 'ana',
 					display_name: 'Ana B',
 					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' },
-					password_changed_at: '2026-11-20T10:00:00Z'
+					password_changed_at: '2026-11-20T10:00:00Z',
+					sso_linked: false
 				});
 			if (u.endsWith('/sessions') && i?.method === 'GET')
 				return json({
@@ -804,7 +840,8 @@ describe('createApi admin, account, kid and access calls', () => {
 				username: 'ana',
 				displayName: 'Ana B',
 				units,
-				passwordChangedAt: '2026-11-20T10:00:00Z'
+				passwordChangedAt: '2026-11-20T10:00:00Z',
+				ssoLinked: false
 			}
 		});
 		expect(sent(f, 0)).toEqual({
@@ -838,12 +875,207 @@ describe('createApi admin, account, kid and access calls', () => {
 		});
 	});
 
+	it('maps a listed parent without sso_linked to error', async () => {
+		const old: Partial<typeof PARENT_WIRE> = { ...PARENT_WIRE };
+		delete old.sso_linked;
+		const f = mockFetch(async () => json({ parents: [old] }));
+		expect(await createApi(env, asFetch(f), SESSION).listParents()).toEqual({
+			ok: false,
+			status: 200,
+			reason: 'error'
+		});
+	});
+
+	it("unlinks a parent's single sign-on through its id", async () => {
+		const f = mockFetch(async () => new Response(null, { status: 204 }));
+		const api = createApi(env, asFetch(f), SESSION);
+		expect(await api.unlinkParentSso('p-1')).toEqual({ ok: true, data: null });
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/admin/parents/p-1/unlink-sso',
+			method: 'POST',
+			body: undefined
+		});
+		expect(await api.unlinkParentSso('../x')).toEqual({
+			ok: false,
+			status: 404,
+			reason: 'not_found'
+		});
+		expect(f).toHaveBeenCalledTimes(1);
+	});
+
 	it('maps a list without its key to error', async () => {
 		const f = mockFetch(async () => json({ items: [] }));
 		expect(await createApi(env, asFetch(f), SESSION).listKids()).toMatchObject({
 			ok: false,
 			reason: 'error'
 		});
+	});
+});
+
+describe('createApi SSO calls', () => {
+	const NEW = { token: 't', kind: 'parent', expires_at: '2026-12-21T00:00:00Z' };
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => {
+		const [url, init] = f.mock.calls[i];
+		const h = new Headers(init?.headers);
+		return {
+			url,
+			method: init?.method,
+			body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+			session: h.get('x-session-token'),
+			address: h.get('x-client-address')
+		};
+	};
+	const ISS = 'https://auth.example';
+
+	it('reads the auth mode', async () => {
+		for (const mode of ['local', 'oidc', 'both']) {
+			const f = mockFetch(async () => json({ mode }));
+			expect(await createApi(env, asFetch(f)).authMode()).toEqual({ ok: true, data: mode });
+			expect(sent(f)).toMatchObject({ url: 'http://api:9210/v1/auth', method: 'GET' });
+		}
+	});
+
+	it('maps an unknown mode to error', async () => {
+		const f = mockFetch(async () => json({ mode: 'none' }));
+		expect(await createApi(env, asFetch(f)).authMode()).toEqual({
+			ok: false,
+			status: 200,
+			reason: 'error'
+		});
+	});
+
+	it('opens an SSO session, with the device label only when given', async () => {
+		const f = mockFetch(async () => json(NEW));
+		const api = createApi(env, asFetch(f), undefined, '1.2.3.4');
+		expect(await api.oidcSession(ISS, 'sub-1', 'Firefox on Mac')).toEqual({
+			ok: true,
+			data: { token: 't', kind: 'parent', expiresAt: '2026-12-21T00:00:00Z' }
+		});
+		await api.oidcSession(ISS, 'sub-1');
+		expect(sent(f, 0)).toMatchObject({
+			url: 'http://api:9210/v1/session/oidc',
+			method: 'POST',
+			body: { iss: ISS, sub: 'sub-1', device_label: 'Firefox on Mac' }
+		});
+		expect(sent(f, 1).body).toEqual({ iss: ISS, sub: 'sub-1' });
+	});
+
+	it('keeps the not_linked and mode_refused codes', async () => {
+		for (const code of ['not_linked', 'mode_refused']) {
+			const f = mockFetch(async () => json({ error: code }, 403));
+			expect(await createApi(env, asFetch(f)).oidcSession(ISS, 's')).toEqual({
+				ok: false,
+				status: 403,
+				reason: 'forbidden',
+				code
+			});
+		}
+	});
+
+	it('redeems an invite by SSO, with the device label only when given', async () => {
+		const f = mockFetch(async () => json(NEW));
+		const api = createApi(env, asFetch(f), undefined, '1.2.3.4');
+		expect(await api.redeemTokenOidc('Ab_9-', ISS, 'sub-1', 'Safari on iPhone')).toEqual({
+			ok: true,
+			data: { token: 't', kind: 'parent', expiresAt: '2026-12-21T00:00:00Z' }
+		});
+		await api.redeemTokenOidc('Ab_9-', ISS, 'sub-1');
+		expect(sent(f, 0)).toMatchObject({
+			url: 'http://api:9210/v1/tokens/Ab_9-/redeem-oidc',
+			method: 'POST',
+			body: { iss: ISS, sub: 'sub-1', device_label: 'Safari on iPhone' }
+		});
+		expect(sent(f, 1).body).toEqual({ iss: ISS, sub: 'sub-1' });
+	});
+
+	it('keeps the already_linked code of an SSO redemption', async () => {
+		const f = mockFetch(async () => json({ error: 'already_linked' }, 409));
+		expect(await createApi(env, asFetch(f)).redeemTokenOidc('Ab_9-', ISS, 's')).toEqual({
+			ok: false,
+			status: 409,
+			reason: 'conflict',
+			code: 'already_linked'
+		});
+	});
+
+	it.each(['..', '.', '', 'a/b', 'a?b', 'a%2Fb', 'a'.repeat(129)])(
+		'an SSO redemption of a malformed token %j is not_found without a request',
+		async (token) => {
+			const f = mockFetch(async () => json(NEW));
+			expect(await createApi(env, asFetch(f)).redeemTokenOidc(token, ISS, 's')).toEqual({
+				ok: false,
+				status: 404,
+				reason: 'not_found'
+			});
+			expect(f).not.toHaveBeenCalled();
+		}
+	);
+
+	it('re-authenticates a parent and the admin, sending the client address when given', async () => {
+		const f = mockFetch(async () => new Response(null, { status: 204 }));
+		const api = createApi(env, asFetch(f), SESSION, '203.0.113.9');
+		expect(await api.reauth('a password')).toEqual({ ok: true, data: null });
+		expect(await api.adminReauth('an admin password')).toEqual({ ok: true, data: null });
+		expect(sent(f, 0)).toEqual({
+			url: 'http://api:9210/v1/me/reauth',
+			method: 'POST',
+			body: { password: 'a password' },
+			session: SESSION,
+			address: '203.0.113.9'
+		});
+		expect(sent(f, 1)).toEqual({
+			url: 'http://api:9210/v1/admin/me/reauth',
+			method: 'POST',
+			body: { password: 'an admin password' },
+			session: SESSION,
+			address: '203.0.113.9'
+		});
+		await createApi(env, asFetch(f), SESSION).reauth('a password');
+		expect(sent(f, 2).address).toBeNull();
+	});
+
+	it('keeps the wrong_password, mode_refused and rate_limited answers of a re-auth', async () => {
+		for (const [status, code, reason] of [
+			[403, 'wrong_password', 'forbidden'],
+			[403, 'mode_refused', 'forbidden'],
+			[429, 'rate_limited', 'rate_limited']
+		] as const) {
+			const f = mockFetch(async () => json({ error: code }, status));
+			const api = createApi(env, asFetch(f), SESSION);
+			expect(await api.reauth('x')).toEqual({ ok: false, status, reason, code });
+			expect(await api.adminReauth('x')).toEqual({ ok: false, status, reason, code });
+		}
+	});
+
+	it('links an identity for a parent and the admin', async () => {
+		const f = mockFetch(async () => new Response(null, { status: 204 }));
+		const api = createApi(env, asFetch(f), SESSION);
+		expect(await api.linkIdentity(ISS, 'sub-1')).toEqual({ ok: true, data: null });
+		expect(await api.adminLinkIdentity(ISS, 'sub-2')).toEqual({ ok: true, data: null });
+		expect(sent(f, 0)).toMatchObject({
+			url: 'http://api:9210/v1/me/identities',
+			method: 'POST',
+			body: { iss: ISS, sub: 'sub-1' },
+			session: SESSION
+		});
+		expect(sent(f, 1)).toMatchObject({
+			url: 'http://api:9210/v1/admin/me/identities',
+			method: 'POST',
+			body: { iss: ISS, sub: 'sub-2' },
+			session: SESSION
+		});
+	});
+
+	it('keeps the reauth_required and already_linked codes of a link', async () => {
+		for (const [status, code, reason] of [
+			[403, 'reauth_required', 'forbidden'],
+			[409, 'already_linked', 'conflict']
+		] as const) {
+			const f = mockFetch(async () => json({ error: code }, status));
+			const api = createApi(env, asFetch(f), SESSION);
+			expect(await api.linkIdentity(ISS, 's')).toEqual({ ok: false, status, reason, code });
+			expect(await api.adminLinkIdentity(ISS, 's')).toEqual({ ok: false, status, reason, code });
+		}
 	});
 });
 

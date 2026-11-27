@@ -1,3 +1,5 @@
+import type { AUTH_MODES } from './constants';
+
 export type SessionKind = 'admin' | 'parent';
 
 export type Units = {
@@ -14,9 +16,16 @@ export type Parent = {
 	displayName: string;
 	units: Units;
 	passwordChangedAt: string | null;
+	ssoLinked: boolean;
 };
 
-export type Session = { kind: SessionKind; parent?: Parent };
+export type Session = {
+	kind: SessionKind;
+	parent?: Parent;
+	admin?: { username: string; ssoLinked: boolean };
+};
+
+export type AuthMode = (typeof AUTH_MODES)[number];
 
 export type NewSession = { token: string; kind: SessionKind; expiresAt: string };
 
@@ -68,6 +77,7 @@ export type AdminParent = {
 	displayName: string;
 	disabled: boolean;
 	hasPassword: boolean;
+	ssoLinked: boolean;
 	createdAt: string;
 	// Only the list carries these; null when the parent has no session / no unused link.
 	lastActiveAt: string | null;

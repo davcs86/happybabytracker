@@ -10,6 +10,7 @@ const parent = (over: Partial<AdminParent> = {}): AdminParent => ({
 	displayName: 'Ana',
 	disabled: false,
 	hasPassword: true,
+	ssoLinked: false,
 	createdAt: at(1000),
 	lastActiveAt: null,
 	link: null,

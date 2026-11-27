@@ -717,7 +717,8 @@ describe('formUnits', () => {
 			username: 'ana',
 			displayName: 'Ana',
 			units: { weight: 'lb', length: 'in', volume: 'floz', temp },
-			passwordChangedAt: null
+			passwordChangedAt: null,
+			ssoLinked: false
 		}
 	});
 
