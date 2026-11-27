@@ -40,7 +40,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	if (event.url.origin !== env.origin) return text('Bad origin', { status: 400 });
 
-	const token = event.cookies.get(SESSION_COOKIE);
+	// The callback never reads the session (spec 5.5), so a down API cannot turn it into a 503.
+	const token = path === '/auth/callback' ? undefined : event.cookies.get(SESSION_COOKIE);
 	event.locals.api = createApi(env, fetch, token);
 	if (token) {
 		const r = await event.locals.api.session();

@@ -4,6 +4,7 @@ import {
 	expectLanding,
 	login,
 	sessionCookie,
+	signIn,
 	signInWithForm
 } from './helpers.js';
 import {
@@ -15,6 +16,7 @@ import {
 	linkStubIdentity,
 	resetStub,
 	setAuthMode,
+	setScenario,
 	type AuthMode
 } from './stub-api.js';
 import { configureIssuer, issuerAuthorizeLog, issuerDown, resetIssuer } from './stub-issuer.js';
@@ -170,6 +172,28 @@ test('a replayed callback does not complete and keeps the session', async ({ pag
 	expect(replay?.status()).toBe(200);
 	await expectDidNotComplete(page);
 	expect((await sessionCookie(context))?.value).toBe(before?.value);
+});
+
+test('the callback answers 200 and clears hbt_oidc while the API is down, even signed in', async ({
+	page,
+	context
+}) => {
+	await setup('both');
+	await signIn(page, ANA);
+	const start = await page.request.post('/auth/sso', {
+		form: { next: '' },
+		headers: { origin: new URL(page.url()).origin, accept: 'text/html' },
+		maxRedirects: 0
+	});
+	expect(start.status()).toBe(303);
+	expect(await oidcCookie(context)).toBeDefined();
+	expect(await sessionCookie(context)).toBeDefined();
+
+	await setScenario('down');
+	const res = await page.goto('/auth/callback?code=stub-code&state=stub-state');
+	expect(res?.status()).toBe(200);
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText(DID_NOT_COMPLETE);
+	expect(await oidcCookie(context)).toBeUndefined();
 });
 
 test('the start sets a hardened hbt_oidc cookie; without it the callback does not complete', async ({
