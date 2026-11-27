@@ -12,7 +12,7 @@ works and moves to the CLI's `reset-password` at that bump; and a password chang
 bump that brings the image changes only its digest.
 
 Amended 2026-11-27 (owner, homelab-edge SSO spec § 3 at `1d12328`) in 5.5 and 18, still not built: link and SSO invite
-re-authentication (`max_age=0`, `auth_time`), callback state sealed in `hbt_oidc` only, SSO invite redemption ends the
+re-authentication (`max_age=1`, `auth_time`), callback state sealed in `hbt_oidc` only, SSO invite redemption ends the
 parent's other sessions, and ID-token signatures verified on a fresh key set.
 
 Items marked **(owner)** were decided by the owner in the design conversation.
@@ -323,7 +323,7 @@ same-origin POST that, for `link`, re-checks the live session against the bound 
 authorizes.
 
 **Re-authentication (owner, 2026-11-27; SSO spec § 3 "Linking").** `link` and `invite` send `prompt=login` and
-`max_age=0` (S17); `login` sends neither. For `link` and `invite` the callback refuses an ID token without `auth_time`,
+`max_age=1` (S17: `0` is refused by Authelia v4.39.28 even after re-authentication); `login` sends neither. For `link` and `invite` the callback refuses an ID token without `auth_time`,
 and one whose `auth_time` is earlier than the flow's start time minus 30 s (`OIDC_AUTH_TIME_SKEW_S` in
 `ui/src/lib/server/constants.ts`, Rule 7). The callback checks `state` against the cookie, exchanges the code, and
 validates the ID token (its signature on a key from the issuer's JWKS, `alg` RS256, `iss`, `aud`, `exp`, `nonce`, and
@@ -419,7 +419,7 @@ password redemption refused in `oidc` and an SSO redemption refused in `local` l
 username namespace across both tables; the three CLI verbs, and `create` racing the import; the admin still refused on
 every kid route after an SSO login (the matrix test); the cross-table uniqueness of a pair; re-auth counting against
 the limiter, and the password change too; the link flow's re-auth window, session binding and `already_linked`;
-invite redemption by SSO with `prompt=login`, `max_age=0` and the confirmation, including a used, expired or reset
+invite redemption by SSO with `prompt=login`, `max_age=1` and the confirmation, including a used, expired or reset
 token, and ending the parent's other sessions; the callback answering 200 and the session cookie arriving on the next
 navigation; the link callback naming the account with no session cookie on the request; unlink and the
 disabled-parent OIDC
@@ -977,7 +977,7 @@ Required by the homelab-edge SSO spec § 3 before the app goes public at `happyb
 | UI pages, form actions and server endpoints (`/logout`, `/account/notifications/subscribe`) | internet, through Caddy | the session cookie, reached by SSO or, in `local`/`both`, a password | Caddy per-IP zone for the site | ids only (13.3) | opaque, server-side; parent 30 days sliding, admin 12 h; deleted on logout, disable, reset, unlink | SvelteKit origin check (`ORIGIN`, 13.2); `SameSite=Strict` session cookie |
 | Password routes (5.5): `POST /login`, `/invite/{token}`, `/reset/{token}`, `/account` (`?/password`), `/account/link-sso`, `/admin/account/link-sso` | internet | a password; refused by mode as 5.5's table says: in `oidc` no invite or reset link is redeemed by password (403 `mode_refused`), so none yields a session without SSO **(owner, 2026-11-24)** | Caddy `<site>_login` and `<site>_login_hourly`; the 5.3 limiter per address and per username (login, re-auth, password change) or per address (redemption) | invite and reset tokens in the path: Caddy redacts them on the public site (SSO spec § 4.3), OTEL scrubs them (Rule 5); query, `Referer` and `Location` dropped; `Referrer-Policy: no-referrer` | a redemption issues a parent session | origin check; `SameSite=Strict` |
 | SSO starts: `POST /auth/sso`, `POST /invite/{token}?/sso` | internet | none, or the invite token | per-IP zone; the invite start also in the login zones | the token stays in its path; the transaction cookie is encrypted | `hbt_oidc`: 10 min, `Lax`, `Path=/auth` | origin check (form POST) |
-| `GET /auth/callback` | internet | `state` bound to the transaction cookie, never the session cookie; ID-token checks (signature on a JWKS at most 300 s old, `alg`, `iss`, `aud`, `exp`, `nonce`; for link and invite `auth_time` no earlier than the flow's start minus 30 s) | per-IP zone | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | answers 200, never a redirect; authorizes nothing for link and invite | `state` + PKCE + `nonce`; purpose, binding, username and start time in the cookie; `prompt=login` and `max_age=0` for link and invite |
+| `GET /auth/callback` | internet | `state` bound to the transaction cookie, never the session cookie; ID-token checks (signature on a JWKS at most 300 s old, `alg`, `iss`, `aud`, `exp`, `nonce`; for link and invite `auth_time` no earlier than the flow's start minus 30 s) | per-IP zone | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | answers 200, never a redirect; authorizes nothing for link and invite | `state` + PKCE + `nonce`; purpose, binding, username and start time in the cookie; `prompt=login` and `max_age=1` for link and invite |
 | `POST /auth/confirm` | internet | the pending cookie; for a link, the session whose hash it binds plus a re-auth within 5 minutes (API); for an invite, the token | per-IP zone | none | an invite issues a parent session | origin check; same-origin POST |
 | API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | the 5.3 limiter | `/v1/tokens/{token}`, `…/redeem` and `…/redeem-oidc` carry the token in the path; the API logs route patterns only (`middleware.go`) | — | not browser-reachable |
 | Health paths | internet, unauthenticated | none | per-IP zone | none | — | — |

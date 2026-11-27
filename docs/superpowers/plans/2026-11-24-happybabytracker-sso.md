@@ -62,7 +62,7 @@ The existing plans number themselves in their title (plan 1 … plan 7, spec § 
   - **Order in every handler:** decode the body → mode check → everything else (token lookup, limiter, hashing, re-auth window). A refused redemption therefore leaves the token usable.
 - **OIDC identities:** `provider` = the issuer URL (exact string), `subject` = `sub`, `secret_hash` NULL. Every OIDC lookup adds `provider <> 'local'`, so a pair can never match a password row. A pair belongs to one principal across both tables, and each principal has at most one OIDC identity per issuer.
 - **Callback state (SSO spec § 3, owner 2026-11-27):** `/auth/callback` never reads the session cookie or `locals.session`; what it shows or binds to (purpose, `next`, the username, the session hash, the start time) comes from the sealed `hbt_oidc` only. For `link` and `invite` it authorizes nothing: `POST /auth/confirm` does, and for `link` it re-checks the live session against the bound hash.
-- **Re-authentication and signing keys (SSO spec § 3, owner 2026-11-27):** `link` and `invite` send `prompt=login` and `max_age=0` and refuse an ID token whose `auth_time` is missing or earlier than the start time minus `OIDC_AUTH_TIME_SKEW_S`. The relying party calls `enableNonRepudiationChecks`, so ID-token signatures are verified on a JWKS at most 300 s old, failing closed.
+- **Re-authentication and signing keys (SSO spec § 3, owner 2026-11-27):** `link` and `invite` send `prompt=login` and `max_age=1` and refuse an ID token whose `auth_time` is missing or earlier than the start time minus `OIDC_AUTH_TIME_SKEW_S`. The relying party calls `enableNonRepudiationChecks`, so ID-token signatures are verified on a JWKS at most 300 s old, failing closed.
 - **Every route change touches `routes.go` and `routeClasses` in the same task** (How to Act 3). The access matrix runs with `AuthMode = both`, and its fixture seeds an `admins` row whose id the admin session carries. Per-mode refusals are tested apart from the matrix.
 - **Rule 5:** no `sub`, `preferred_username`, label, `code`, `state`, invite token, session token, password or client secret in any log line or error string, API or UI. UI SSO refusals log one fixed-shape line, `{"level":"warn","msg":"sso refused","code":<enumerated>}`. The callback's URL is never logged.
 - **Rule 6:**
@@ -725,7 +725,7 @@ git commit -m "feat(ui): API client and stub for the SSO routes"
 - Behaviour pinned by the spec:
   - Discovery loads on the first `start` and is cached. A rejected discovery is not cached, so the next attempt retries. Nothing is fetched at start-up.
   - **Signing keys (owner, 2026-11-27; SSO spec § 3):** right after discovery the relying party calls openid-client's `enableNonRepudiationChecks(config)`. openid-client 6 verifies ID-token signatures only then (without it, oauth4webapi's `validateJwt` checks the header's `alg` and the claims, never the signature). The JWKS then loads at the first ID-token check through oauth4webapi's cache (`getPublicSigKeyFromIssuerJwksUri`), which refetches once the cached set is 300 s old and throws if that fetch fails: no stale-key grace window, inside the SSO spec's 3600 s ceiling. A bad signature or a failed fetch gives `id_token`.
-  - The authorization URL carries `response_type=code`, `client_id`, `redirect_uri=${origin}/auth/callback`, `scope` (`oidc.scopes`), `state`, `nonce`, `code_challenge` (S256), `code_challenge_method=S256` and `response_mode=query`. It carries `prompt=login` and `max_age=0` for `link` and `invite` only (owner, 2026-11-27).
+  - The authorization URL carries `response_type=code`, `client_id`, `redirect_uri=${origin}/auth/callback`, `scope` (`oidc.scopes`), `state`, `nonce`, `code_challenge` (S256), `code_challenge_method=S256` and `response_mode=query`. It carries `prompt=login` and `max_age=1` for `link` and `invite` only (owner, 2026-11-27).
   - `finish` refuses with a code:
     - a query `error`: `idp_error`;
     - `state` ≠ `txn.state`: `state`;
@@ -755,7 +755,7 @@ Expected: `package.json` shows the exact version with no `^`, and `pnpm-lock.yam
 
 | Test | Assertion |
 |---|---|
-| `start builds the authorization URL` | every parameter above; `prompt=login` and `max_age=0` present for `link` and `invite`, both absent for `login` |
+| `start builds the authorization URL` | every parameter above; `prompt=login` and `max_age=1` present for `link` and `invite`, both absent for `login` |
 | `a full flow returns iss, sub and the label` | `iss === 'https://issuer.test'` |
 | `bad state` | `{ ok: false, code: 'state' }`, and no token call is made |
 | `wrong iss` / `wrong aud` / `expired token` / `wrong nonce` / `alg HS256 or none` | `code: 'id_token'` |
@@ -898,7 +898,7 @@ git commit -m "feat(ui): SSO login with a 200 callback, hooks and mode-aware log
 - [ ] **Step 1: Write the failing tests**
 
 `sso-invite.spec.ts`:
-- In `oidc` the invite page offers only SSO. The flow sends `prompt=login` and `max_age=0` (`authorizeLog`) and lands on the confirmation showing the stub user's `preferredUsername` and `bo`. Confirm lands on the welcome for `bo` with a 30-day cookie, and the stub holds the identity.
+- In `oidc` the invite page offers only SSO. The flow sends `prompt=login` and `max_age=1` (`authorizeLog`) and lands on the confirmation showing the stub user's `preferredUsername` and `bo`. Confirm lands on the welcome for `bo` with a 30-day cookie, and the stub holds the identity.
 - In `local`, the invite page offers only "Set a password", and posting `?/sso` by hand fails.
 - In `both`, both are offered; the password path still works.
 - Cancel returns to the invite page, which is still valid.
@@ -967,7 +967,7 @@ git commit -m "feat(ui): invite redemption by SSO with confirmation; invite and 
 
 `sso-link.spec.ts`, in `both`:
 - A parent with a password links:
-  - the authorize log shows `prompt=login` and `max_age=0`;
+  - the authorize log shows `prompt=login` and `max_age=1`;
   - the confirmation names the stub user and `ana`;
   - Confirm returns to `/account` with "linked";
   - after signing out, SSO login lands on the kid home.
