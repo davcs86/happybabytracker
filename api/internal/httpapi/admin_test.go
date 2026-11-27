@@ -497,9 +497,13 @@ func TestPasswordRedeemRefusedInOIDCLeavesTheTokenUsable(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["error"] != "unknown_field" {
 		t.Errorf("unknown field in oidc: %d %q, want 422 unknown_field", rec.Code, rec.Body.String())
 	}
+	wantErr(t, k.redeem("not-a-token", "invite password 1"), http.StatusForbidden, "mode_refused")
+	for i := 0; i <= constants.LoginAttemptsPerMinute; i++ {
+		wantErr(t, k.redeemFrom("203.0.113.20", invite, "invite password 1"), http.StatusForbidden, "mode_refused")
+	}
 	k.setMode(config.AuthBoth)
-	if rec := k.redeem(invite, "invite password 1"); rec.Code != http.StatusOK {
-		t.Fatalf("invite in both after the refusal: %d %q", rec.Code, rec.Body.String())
+	if rec := k.redeemFrom("203.0.113.20", invite, "invite password 1"); rec.Code != http.StatusOK {
+		t.Fatalf("invite in both after the refusals, from the refused address: %d %q", rec.Code, rec.Body.String())
 	}
 
 	reset := tokenOf(t, k.resetLink(admin, id)["reset_url"].(string), "reset")
