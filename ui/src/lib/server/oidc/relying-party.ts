@@ -60,7 +60,9 @@ export function createRelyingParty(oidc: OidcEnv, origin: string, deps: Deps = {
 		if (deps.jwksCache) {
 			client.setJwksCache(config, deps.jwksCache as Parameters<typeof client.setJwksCache>[1]);
 		}
-		tokenEndpoint = config.serverMetadata().token_endpoint;
+		// The canonical form, as customFetch receives it.
+		const advertised = config.serverMetadata().token_endpoint;
+		tokenEndpoint = advertised ? new URL(advertised).href : undefined;
 		return config;
 	}
 
@@ -111,7 +113,12 @@ export function createRelyingParty(oidc: OidcEnv, origin: string, deps: Deps = {
 				params.prompt = 'login';
 				params.max_age = '1';
 			}
-			const url = client.buildAuthorizationUrl(config, params).href;
+			let url: string;
+			try {
+				url = client.buildAuthorizationUrl(config, params).href;
+			} catch {
+				return { ok: false };
+			}
 			return { ok: true, url, state, nonce, verifier };
 		},
 

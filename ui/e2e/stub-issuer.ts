@@ -29,6 +29,7 @@ export type Issuer = {
 
 const DEFAULT_USER: IssuerUser = { sub: 'stub-subject-0001', preferredUsername: 'stub-user' };
 const KID = 'stub-key-1';
+const EC_KID = 'stub-key-ec';
 
 type Grant = {
 	redirectUri: string;
@@ -55,6 +56,14 @@ export function createIssuer(opts: {
 }): Issuer {
 	const signing = generateKeyPairSync('rsa', { modulusLength: 2048 });
 	const impostor = generateKeyPairSync('rsa', { modulusLength: 2048 });
+	// A published ES256 key, so a client that does not pin RS256 would accept an ES256 token.
+	const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+	const ecJwk = {
+		...ec.publicKey.export({ format: 'jwk' }),
+		kid: EC_KID,
+		alg: 'ES256',
+		use: 'sig'
+	};
 	const jwk = {
 		...signing.publicKey.export({ format: 'jwk' }),
 		kid: KID,
@@ -87,10 +96,18 @@ export function createIssuer(opts: {
 		if (grant.user.preferredUsername !== undefined) {
 			claims.preferred_username = grant.user.preferredUsername;
 		}
-		const input = `${b64u(JSON.stringify({ alg, typ: 'JWT', kid: KID }))}.${b64u(JSON.stringify(claims))}`;
+		const kid = alg === 'ES256' ? EC_KID : KID;
+		const input = `${b64u(JSON.stringify({ alg, typ: 'JWT', kid }))}.${b64u(JSON.stringify(claims))}`;
 		if (alg === 'none') return `${input}.`;
 		if (alg === 'HS256') {
 			return `${input}.${createHmac('sha256', opts.clientSecret).update(input).digest('base64url')}`;
+		}
+		if (alg === 'ES256') {
+			const sig = sign('sha256', Buffer.from(input), {
+				key: ec.privateKey,
+				dsaEncoding: 'ieee-p1363'
+			});
+			return `${input}.${sig.toString('base64url')}`;
 		}
 		const key = t.badSignature ? impostor.privateKey : signing.privateKey;
 		return `${input}.${sign('sha256', Buffer.from(input), key).toString('base64url')}`;
@@ -192,12 +209,14 @@ export function createIssuer(opts: {
 					jwks_uri: `${base}/jwks.json`,
 					response_types_supported: ['code'],
 					subject_types_supported: ['public'],
-					id_token_signing_alg_values_supported: ['RS256'],
+					id_token_signing_alg_values_supported: ['RS256', 'HS256', 'ES256'],
 					token_endpoint_auth_methods_supported: ['client_secret_basic'],
 					code_challenge_methods_supported: ['S256']
 				});
 			case 'GET /jwks.json':
-				return behaviour.jwksFails ? json({ error: 'unavailable' }, 503) : json({ keys: [jwk] });
+				return behaviour.jwksFails
+					? json({ error: 'unavailable' }, 503)
+					: json({ keys: [jwk, ecJwk] });
 			case 'GET /authorize':
 				return authorize(url);
 			case 'POST /token':

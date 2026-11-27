@@ -168,6 +168,7 @@ describe('createRelyingParty', () => {
 		['wrong nonce', { nonce: 'not-the-nonce' }],
 		['alg HS256', { alg: 'HS256' }],
 		['alg none', { alg: 'none' }],
+		['alg ES256', { alg: 'ES256' }],
 		['bad signature', { badSignature: true }]
 	])('%s', async (_, idToken) => {
 		expect(await flow({ idToken })).toEqual({ ok: false, code: 'id_token' });
@@ -287,11 +288,12 @@ describe('createRelyingParty', () => {
 
 		it.each<[string, string, string | null]>([
 			['300 characters', 'a'.repeat(300), 'a'.repeat(OIDC_LABEL_MAX_LEN)],
+			['a space at the cut', 'a'.repeat(63) + ' b', 'a'.repeat(63)],
 			['300 astral characters', '\u{1F600}'.repeat(300), '\u{1F600}'.repeat(OIDC_LABEL_MAX_LEN)],
 			['markup', '<script>alert(1)</script>', '<script>alert(1)</script>'],
-			['U+202E and BEL', 'ana‮\u0007.sso', 'ana.sso'],
+			['U+202E and BEL', 'ana\u202e\u0007.sso', 'ana.sso'],
 			['spaces only', '    ', null],
-			['format characters only', '​‮', null]
+			['format characters only', '\u200b\u202e', null]
 		])('odd label: %s', async (_, preferredUsername, label) => {
 			secrets.add(preferredUsername);
 			const r = await flow({ user: { sub: USER.sub, preferredUsername } });
@@ -305,6 +307,37 @@ describe('createRelyingParty', () => {
 		expect(await rp.start('login')).toEqual({ ok: false });
 		issuer.configure({ down: false });
 		expect(await rp.start('login')).toMatchObject({ ok: true });
+	});
+
+	// Rewrites the discovery document the issuer serves.
+	function discoveryAs(change: (doc: Record<string, unknown>) => void): Fetch {
+		return async (input, init) => {
+			const res = await toIssuer(input, init);
+			if (!new Request(input, init).url.endsWith('/.well-known/openid-configuration')) return res;
+			const doc = (await res.json()) as Record<string, unknown>;
+			change(doc);
+			return Response.json(doc);
+		};
+	}
+
+	it('a non-canonical token_endpoint still tells id_token from exchange', async () => {
+		issuer.configure({ idToken: { badSignature: true } });
+		const rp = createRelyingParty(OIDC, ORIGIN, {
+			fetch: discoveryAs((doc) => {
+				doc.token_endpoint = 'https://ISSUER.test:443/token';
+			})
+		});
+		const { callback, txn } = await begin(rp, 'login');
+		expect(await rp.finish(callback, txn)).toEqual({ ok: false, code: 'id_token' });
+	});
+
+	it('start without an authorization_endpoint gives ok false', async () => {
+		const rp = createRelyingParty(OIDC, ORIGIN, {
+			fetch: discoveryAs((doc) => {
+				delete doc.authorization_endpoint;
+			})
+		});
+		expect(await rp.start('login')).toEqual({ ok: false });
 	});
 
 	it('finish without a discovery gives discovery', async () => {
