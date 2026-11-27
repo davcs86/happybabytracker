@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -265,4 +266,223 @@ func TestOIDCLogCarriesNoSubject(t *testing.T) {
 	k.oidcLogin(map[string]string{"iss": testIssuer, "sub": "sub-unknown-5530", "device_label": label})
 	k.oidcLogin(map[string]string{"iss": "http://bad.example", "sub": sub})
 	wantCleanLog(t, k.Log.String(), 5, sub, "sub-unknown-5530", testIssuer, "issuer.example", label, invite, redeemed, login)
+}
+
+const (
+	reauthPath      = "/v1/me/reauth"
+	adminReauthPath = "/v1/admin/me/reauth"
+	linkPath        = "/v1/me/identities"
+	adminLinkPath   = "/v1/admin/me/identities"
+)
+
+func (k *kit) reauthFrom(path, addr, token, password string) *httptest.ResponseRecorder {
+	k.t.Helper()
+	r := k.newReq(http.MethodPost, path, map[string]string{"password": password})
+	r.Header.Set("X-Client-Address", addr)
+	r.Header.Set("X-Session-Token", token)
+	return k.serve(r)
+}
+
+func (k *kit) link(path, token, sub string) *httptest.ResponseRecorder {
+	k.t.Helper()
+	return k.do(http.MethodPost, path, token, map[string]string{"iss": testIssuer, "sub": sub})
+}
+
+// countVerifications replaces verifyPassword for the test and returns the call counter.
+func countVerifications(t *testing.T) *int {
+	t.Helper()
+	calls := 0
+	orig := verifyPassword
+	verifyPassword = func(hash, pw string) bool { calls++; return auth.VerifyPassword(hash, pw) }
+	t.Cleanup(func() { verifyPassword = orig })
+	return &calls
+}
+
+func wantNoContent(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("%s: %d %q, want 204", what, rec.Code, rec.Body.String())
+	}
+}
+
+func TestReauthModes(t *testing.T) {
+	k, db := fileKit(t)
+	parent, admin := k.asParent("ana"), k.asAdmin()
+	calls := countVerifications(t)
+	for _, m := range []config.AuthMode{config.AuthLocal, config.AuthOIDC} {
+		k.setMode(m)
+		for i := 0; i <= constants.LoginAttemptsPerMinute; i++ {
+			wantErr(t, k.reauthFrom(reauthPath, "203.0.113.30", parent, testParentPass), http.StatusForbidden, "mode_refused")
+			wantErr(t, k.reauthFrom(adminReauthPath, "203.0.113.30", admin, testAdminPass), http.StatusForbidden, "mode_refused")
+		}
+	}
+	if *calls != 0 {
+		t.Fatalf("%d password verifications while refused, want 0", *calls)
+	}
+
+	k.setMode(config.AuthBoth)
+	k.now = t0.Add(90 * time.Second)
+	wantNoContent(t, k.reauthFrom(reauthPath, "203.0.113.30", parent, testParentPass), "parent re-auth")
+	wantNoContent(t, k.reauthFrom(adminReauthPath, "203.0.113.30", admin, testAdminPass), "admin re-auth")
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sessions WHERE reauth_at = ?`, k.now.Unix()).Scan(&n); err != nil || n != 2 {
+		t.Errorf("sessions stamped at %d: %d, %v; want 2", k.now.Unix(), n, err)
+	}
+}
+
+func TestReauthWrongPassword(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	wantErr(t, k.reauthFrom(reauthPath, "203.0.113.31", k.asParent("ana"), "not the password"), http.StatusForbidden, "wrong_password")
+	wantErr(t, k.reauthFrom(adminReauthPath, "203.0.113.31", k.asAdmin(), testParentPass), http.StatusForbidden, "wrong_password")
+
+	id, _ := k.createParent(k.asAdmin(), "bob")
+	bob := k.seedSession("parent", id, constants.ParentSessionTTL)
+	calls := countVerifications(t)
+	wantErr(t, k.reauthFrom(reauthPath, "203.0.113.32", bob, ""), http.StatusForbidden, "wrong_password")
+	if *calls != 1 {
+		t.Errorf("a parent without a password: %d verifications, want 1", *calls)
+	}
+	wantErr(t, k.link(linkPath, bob, "sub-bob"), http.StatusForbidden, "reauth_required")
+}
+
+func TestReauthCountsAgainstTheLoginLimiter(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	ana := k.asParent("ana")
+	for i := 1; i <= constants.LoginAttemptsPerMinute; i++ {
+		k.login("203.0.113.40", fmt.Sprintf("filler%d", i), "x")
+	}
+	rec := k.reauthFrom(reauthPath, "203.0.113.40", ana, testParentPass)
+	wantErr(t, rec, http.StatusTooManyRequests, "rate_limited")
+	if rec.Header().Get("Retry-After") != "60" {
+		t.Errorf("Retry-After = %q", rec.Header().Get("Retry-After"))
+	}
+	admin := k.asAdmin()
+	wantErr(t, k.reauthFrom(adminReauthPath, "203.0.113.40", admin, testAdminPass), http.StatusTooManyRequests, "rate_limited")
+
+	for i := 0; i < constants.LoginAttemptsPerMinute; i++ {
+		wantErr(t, k.reauthFrom(reauthPath, fmt.Sprintf("203.0.113.%d", 50+i), ana, "wrong"), http.StatusForbidden, "wrong_password")
+		wantErr(t, k.reauthFrom(adminReauthPath, fmt.Sprintf("203.0.113.%d", 60+i), admin, "wrong"), http.StatusForbidden, "wrong_password")
+	}
+	wantErr(t, k.login("203.0.113.70", "ana", testParentPass), http.StatusTooManyRequests, "rate_limited")
+	wantErr(t, k.login("203.0.113.71", testAdminUser, testAdminPass), http.StatusTooManyRequests, "rate_limited")
+	wantErr(t, k.reauthFrom(reauthPath, "203.0.113.72", ana, testParentPass), http.StatusTooManyRequests, "rate_limited")
+}
+
+// reauthedParent returns a session of the parent (created when missing) re-authenticated at k.now.
+func (k *kit) reauthedParent(username string) string {
+	k.t.Helper()
+	tok := k.asParent(username)
+	wantNoContent(k.t, k.reauthFrom(reauthPath, "203.0.113.80", tok, testParentPass), "re-auth "+username)
+	return tok
+}
+
+func TestLinkWindow(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	wantErr(t, k.link(linkPath, k.asParent("ana"), "sub-never"), http.StatusForbidden, "reauth_required")
+	wantErr(t, k.link(adminLinkPath, k.asAdmin(), "sub-never"), http.StatusForbidden, "reauth_required")
+
+	start := k.now
+	edge := k.reauthedParent("ana")
+	late := k.reauthedParent("bob")
+	admin := k.asAdmin()
+	wantNoContent(t, k.reauthFrom(adminReauthPath, "203.0.113.81", admin, testAdminPass), "admin re-auth")
+	k.now = start.Add(constants.ReauthWindow)
+	wantNoContent(t, k.link(linkPath, edge, "sub-ana"), "link at 5 minutes")
+	wantNoContent(t, k.link(adminLinkPath, admin, "sub-admin"), "admin link at 5 minutes")
+	k.now = start.Add(constants.ReauthWindow + time.Second)
+	wantErr(t, k.link(linkPath, late, "sub-bob"), http.StatusForbidden, "reauth_required")
+	wantErr(t, k.link(linkPath, edge, "sub-ana-2"), http.StatusForbidden, "reauth_required")
+}
+
+func TestLinkKeepsTheReauthWindow(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	ana := k.reauthedParent("ana")
+	wantNoContent(t, k.link(linkPath, ana, "sub-ana"), "link")
+	r := k.newReq(http.MethodPost, linkPath, map[string]string{"iss": "https://other.example", "sub": "sub-ana"})
+	r.Header.Set("X-Session-Token", ana)
+	wantNoContent(t, k.serve(r), "a second issuer in the same window")
+}
+
+func TestLinkAlreadyLinked(t *testing.T) {
+	k := oidcAdminKit(t, "sub-admin")
+	k.setMode(config.AuthBoth)
+	held := k.addParent("held")
+	k.linkParent(held.ID, "sub-held")
+	ana := k.reauthedParent("ana")
+	wantErr(t, k.link(linkPath, ana, "sub-held"), http.StatusConflict, "already_linked")
+	wantErr(t, k.link(linkPath, ana, "sub-admin"), http.StatusConflict, "already_linked")
+	wantNoContent(t, k.link(linkPath, ana, "sub-ana"), "first link")
+	wantErr(t, k.link(linkPath, ana, "sub-ana-2"), http.StatusConflict, "already_linked")
+
+	admin := k.asAdmin()
+	wantNoContent(t, k.reauthFrom(adminReauthPath, "203.0.113.82", admin, testAdminPass), "admin re-auth")
+	wantErr(t, k.link(adminLinkPath, admin, "sub-held"), http.StatusConflict, "already_linked")
+	wantErr(t, k.link(adminLinkPath, admin, "sub-admin-2"), http.StatusConflict, "already_linked")
+}
+
+func TestLinkIsPerSession(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	a := k.reauthedParent("ana")
+	b := k.asParent("ana")
+	wantErr(t, k.link(linkPath, b, "sub-ana"), http.StatusForbidden, "reauth_required")
+	wantNoContent(t, k.link(linkPath, a, "sub-ana"), "the re-authenticated session")
+}
+
+func TestLinkModesAndValidation(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	ana := k.reauthedParent("ana")
+	for _, m := range []config.AuthMode{config.AuthLocal, config.AuthOIDC} {
+		k.setMode(m)
+		wantErr(t, k.link(linkPath, ana, "sub-ana"), http.StatusForbidden, "mode_refused")
+		wantErr(t, k.do(http.MethodPost, linkPath, ana, map[string]string{"iss": "http://x", "sub": ""}), http.StatusForbidden, "mode_refused")
+	}
+	k.setMode(config.AuthBoth)
+	never := k.asParent("bob")
+	wantErr(t, k.do(http.MethodPost, linkPath, never, map[string]string{"iss": "http://x", "sub": ""}), http.StatusForbidden, "reauth_required")
+	for field, body := range map[string]map[string]string{
+		"iss": {"iss": "local", "sub": "s"},
+		"sub": {"iss": testIssuer, "sub": strings.Repeat("s", constants.OIDCSubjectMaxLen+1)},
+	} {
+		rec := k.do(http.MethodPost, linkPath, ana, body)
+		if m := bodyMap(t, rec); rec.Code != http.StatusUnprocessableEntity || m["error"] != "invalid" || m["field"] != field {
+			t.Errorf("%v: %d %q, want 422 invalid %s", body, rec.Code, rec.Body.String(), field)
+		}
+	}
+	rec := k.do(http.MethodPost, linkPath, ana, map[string]string{"iss": testIssuer, "sub": "s", "device_label": "Phone"})
+	if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["error"] != "unknown_field" {
+		t.Errorf("device_label on a link: %d %q, want 422 unknown_field", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReauthAndLinkDecodeBeforeTheMode(t *testing.T) {
+	k := newKit(t)
+	parent, admin := k.asParent("ana"), k.asAdmin()
+	for _, m := range []config.AuthMode{config.AuthLocal, config.AuthOIDC} {
+		k.setMode(m)
+		for path, tok := range map[string]string{reauthPath: parent, adminReauthPath: admin, linkPath: parent, adminLinkPath: admin} {
+			rec := k.do(http.MethodPost, path, tok, matrixBody)
+			if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["error"] != "unknown_field" {
+				t.Errorf("%s %s: %d %q, want 422 unknown_field", m, path, rec.Code, rec.Body.String())
+			}
+		}
+	}
+}
+
+func TestAdminLinkUsesAdminIdentities(t *testing.T) {
+	k, db := fileKit(t)
+	k.setMode(config.AuthBoth)
+	admin := k.asAdmin()
+	wantNoContent(t, k.reauthFrom(adminReauthPath, "203.0.113.83", admin, testAdminPass), "admin re-auth")
+	wantNoContent(t, k.link(adminLinkPath, admin, "sub-admin"), "admin link")
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM admin_identities WHERE admin_id = ? AND provider = ? AND subject = 'sub-admin'`, k.adminID, testIssuer).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("admin_identities rows = %d, %v", n, err)
+	}
+	wantExpiry(t, k.oidcLogin(oidcBody("sub-admin")), "admin", constants.AdminSessionTTL)
 }

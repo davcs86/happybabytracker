@@ -72,6 +72,10 @@ func Routes(d Deps) []Route {
 
 		{http.MethodPatch, "/v1/me", Parent, d.updateProfile},
 		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},
+		{http.MethodPost, "/v1/me/reauth", Parent, d.reauth},
+		{http.MethodPost, "/v1/me/identities", Parent, d.linkIdentity},
+		{http.MethodPost, "/v1/admin/me/reauth", Admin, d.reauth},
+		{http.MethodPost, "/v1/admin/me/identities", Admin, d.linkIdentity},
 		{http.MethodGet, "/v1/me/sessions", Parent, d.listSessions},
 		{http.MethodDelete, "/v1/me/sessions/{session}", Parent, d.deleteSession},
 

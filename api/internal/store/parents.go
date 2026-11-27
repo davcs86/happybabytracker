@@ -14,7 +14,8 @@ import (
 
 const providerLocal = "local"
 
-const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash, i.secret_changed_at
+const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash, i.secret_changed_at,
+	EXISTS (SELECT 1 FROM identities o WHERE o.parent_id = p.id AND o.provider <> '` + providerLocal + `')
 	FROM parents p LEFT JOIN identities i ON i.parent_id = p.id AND i.provider = '` + providerLocal + `' `
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -27,7 +28,7 @@ func scanParent(row rowScanner) (model.Parent, string, error) {
 		changed sql.NullInt64
 	)
 	err := row.Scan(&p.ID, &p.Username, &p.DisplayName, &p.Disabled,
-		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash, &changed)
+		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash, &changed, &p.SSOLinked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Parent{}, "", ErrNotFound
 	}

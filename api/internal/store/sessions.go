@@ -45,12 +45,13 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash []byte, now time.T
 		p             model.Principal
 		parent, admin sql.NullString
 		expires       int64
+		reauth        sql.NullInt64
 	)
 	err := s.r.QueryRowContext(ctx,
-		`SELECT s.id, s.kind, s.parent_id, s.admin_id, s.expires_at
+		`SELECT s.id, s.kind, s.parent_id, s.admin_id, s.expires_at, s.reauth_at
 		 FROM sessions s LEFT JOIN parents p ON p.id = s.parent_id
 		 WHERE s.token_hash = ? AND s.expires_at > ? AND (p.id IS NULL OR p.disabled = 0)`,
-		tokenHash, now.Unix()).Scan(&p.SessionID, &p.Kind, &parent, &admin, &expires)
+		tokenHash, now.Unix()).Scan(&p.SessionID, &p.Kind, &parent, &admin, &expires, &reauth)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Principal{}, ErrNotFound
 	}
@@ -59,7 +60,16 @@ func (s *Store) SessionByToken(ctx context.Context, tokenHash []byte, now time.T
 	}
 	p.ParentID, p.AdminID = parent.String, admin.String
 	p.ExpiresAt = time.Unix(expires, 0).UTC()
+	if reauth.Valid {
+		p.ReauthAt = time.Unix(reauth.Int64, 0).UTC()
+	}
 	return p, nil
+}
+
+// StampReauth records a password re-authentication on one session; a vanished session is not an error.
+func (s *Store) StampReauth(ctx context.Context, sessionID string, now time.Time) error {
+	_, err := s.w.ExecContext(ctx, `UPDATE sessions SET reauth_at = ? WHERE id = ?`, now.Unix(), sessionID)
+	return err
 }
 
 // TouchSession records the use and moves the expiry; a vanished session is not an error.

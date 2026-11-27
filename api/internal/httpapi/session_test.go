@@ -272,9 +272,14 @@ func TestSessionShape(t *testing.T) {
 		t.Fatalf("admin: %d", admin.Code)
 	}
 	m := bodyMap(t, admin)
-	sameKeys(t, m, "kind", "expires_at")
+	sameKeys(t, m, "kind", "expires_at", "admin")
 	if m["kind"] != "admin" || m["expires_at"] != stamp(t0.Add(constants.AdminSessionTTL)) {
 		t.Fatalf("admin body = %v", m)
+	}
+	adminObj := m["admin"].(map[string]any)
+	sameKeys(t, adminObj, "username", "sso_linked")
+	if adminObj["username"] != testAdminUser || adminObj["sso_linked"] != false {
+		t.Fatalf("admin = %v", adminObj)
 	}
 
 	rec := k.do(http.MethodGet, "/v1/session", k.asParent("ana"), nil)
@@ -284,8 +289,8 @@ func TestSessionShape(t *testing.T) {
 		t.Fatalf("parent body = %v", m)
 	}
 	parent := m["parent"].(map[string]any)
-	sameKeys(t, parent, "id", "username", "display_name", "units", "password_changed_at")
-	if parent["id"] != p.ID || parent["username"] != "ana" || parent["display_name"] != "Name of ana" {
+	sameKeys(t, parent, "id", "username", "display_name", "units", "password_changed_at", "sso_linked")
+	if parent["id"] != p.ID || parent["username"] != "ana" || parent["display_name"] != "Name of ana" || parent["sso_linked"] != false {
 		t.Fatalf("parent = %v", parent)
 	}
 	if parent["password_changed_at"] != stamp(k.now) {
@@ -523,5 +528,47 @@ func TestPasswordLoginRefusedInOIDC(t *testing.T) {
 	}
 	if rec := k.login("198.51.100.7", "ana", testParentPass); rec.Code != http.StatusOK {
 		t.Fatalf("login in both after the refusals: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionViewsCarrySSOLinked(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	linked := func(token string) (parent, admin any) {
+		t.Helper()
+		rec := k.do(http.MethodGet, "/v1/session", token, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/session: %d %q", rec.Code, rec.Body.String())
+		}
+		m := bodyMap(t, rec)
+		if p, ok := m["parent"].(map[string]any); ok {
+			parent = p["sso_linked"]
+		}
+		if a, ok := m["admin"].(map[string]any); ok {
+			admin = a["sso_linked"]
+		}
+		return parent, admin
+	}
+	ana := k.reauthedParent("ana")
+	if p, _ := linked(ana); p != false {
+		t.Fatalf("parent before the link: sso_linked = %v", p)
+	}
+	wantNoContent(t, k.link(linkPath, ana, "sub-ana"), "parent link")
+	if p, _ := linked(ana); p != true {
+		t.Errorf("parent after the link: sso_linked = %v", p)
+	}
+	rec := k.do(http.MethodPatch, "/v1/me", ana, map[string]any{"display_name": "Ana"})
+	if rec.Code != http.StatusOK || bodyMap(t, rec)["sso_linked"] != true {
+		t.Errorf("PATCH /v1/me: %d %q, want sso_linked true", rec.Code, rec.Body.String())
+	}
+
+	admin := k.asAdmin()
+	if _, a := linked(admin); a != false {
+		t.Fatalf("admin before the link: sso_linked = %v", a)
+	}
+	wantNoContent(t, k.reauthFrom(adminReauthPath, "203.0.113.84", admin, testAdminPass), "admin re-auth")
+	wantNoContent(t, k.link(adminLinkPath, admin, "sub-admin"), "admin link")
+	if _, a := linked(admin); a != true {
+		t.Errorf("admin after the link: sso_linked = %v", a)
 	}
 }

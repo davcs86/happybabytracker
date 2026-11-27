@@ -281,8 +281,22 @@ func TestPairBelongsToOnePrincipal(t *testing.T) {
 	if _, err := s.w.Exec(`INSERT INTO identities(parent_id, provider, subject) VALUES (?, ?, 'sub-x')`, bob.ID, testIss); err == nil {
 		t.Error("the identities primary key accepted the pair twice")
 	}
-	if _, err := s.w.Exec(`INSERT INTO admin_identities(admin_id, provider, subject) VALUES (?, ?, 'sub-y')`, a.ID, testIss); err != nil {
+	asAdmin := model.Principal{Kind: "admin", AdminID: a.ID}
+	if err := s.LinkIdentity(ctx, asAdmin, "https://other.example", "sub-x"); err != nil {
+		t.Fatalf("the admin, another issuer: %v", err)
+	}
+	if err := s.LinkIdentity(ctx, asAdmin, testIss, "sub-x"); !errors.Is(err, ErrAlreadyLinked) {
+		t.Errorf("the parent's pair for the admin: %v, want ErrAlreadyLinked", err)
+	}
+	if err := s.LinkIdentity(ctx, asAdmin, testIss, "sub-y"); err != nil {
 		t.Fatal(err)
+	}
+	if err := s.LinkIdentity(ctx, model.Principal{Kind: "parent", ParentID: bob.ID}, testIss, "sub-y"); !errors.Is(err, ErrAlreadyLinked) {
+		t.Errorf("the admin's pair for a parent by link: %v, want ErrAlreadyLinked", err)
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM identities WHERE provider = ? AND subject = 'sub-y'`, testIss) +
+		scalar(t, s, `SELECT COUNT(*) FROM admin_identities WHERE provider = ? AND subject = 'sub-x'`, testIss); n != 0 {
+		t.Errorf("%d rows hold a pair under a second principal", n)
 	}
 	for _, c := range []struct {
 		iss, sub string
@@ -299,5 +313,71 @@ func TestPairBelongsToOnePrincipal(t *testing.T) {
 	}
 	if err := s.RedeemInviteOIDC(ctx, []byte("bob-tok"), testIss, "sub-y", []byte("s2"), t0, t0.Add(time.Hour), ""); !errors.Is(err, ErrAlreadyLinked) {
 		t.Errorf("the admin's pair for a parent: %v, want ErrAlreadyLinked", err)
+	}
+}
+
+func TestLinkIdentity(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	bob := mustParent(t, s, "bob")
+	a := mustAdmin(t, s)
+	asAna := model.Principal{Kind: "parent", ParentID: ana.ID}
+	asBob := model.Principal{Kind: "parent", ParentID: bob.ID}
+	asAdmin := model.Principal{Kind: "admin", AdminID: a.ID}
+
+	if err := s.LinkIdentity(ctx, asAna, testIss, "sub-ana"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.LinkIdentity(ctx, asAdmin, testIss, "sub-admin"); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider = ? AND subject = 'sub-ana' AND secret_hash IS NULL`, ana.ID, testIss); n != 1 {
+		t.Errorf("parent identity rows = %d, want 1", n)
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM admin_identities WHERE admin_id = ? AND provider = ? AND subject = 'sub-admin' AND secret_hash IS NULL`, a.ID, testIss); n != 1 {
+		t.Errorf("admin identity rows = %d, want 1", n)
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM identities WHERE subject = 'sub-admin'`); n != 0 {
+		t.Errorf("the admin's pair reached identities (%d rows)", n)
+	}
+
+	for _, c := range []struct {
+		name     string
+		p        model.Principal
+		iss, sub string
+	}{
+		{"pair held by another parent", asBob, testIss, "sub-ana"},
+		{"pair held by the admin", asBob, testIss, "sub-admin"},
+		{"parent already has the issuer", asAna, testIss, "sub-ana-2"},
+		{"parent's pair for the admin", asAdmin, testIss, "sub-ana"},
+		{"admin already has the issuer", asAdmin, testIss, "sub-admin-2"},
+	} {
+		if err := s.LinkIdentity(ctx, c.p, c.iss, c.sub); !errors.Is(err, ErrAlreadyLinked) {
+			t.Errorf("%s: %v, want ErrAlreadyLinked", c.name, err)
+		}
+	}
+	if err := s.LinkIdentity(ctx, asAna, "https://other.example", "sub-ana"); err != nil {
+		t.Errorf("a second issuer: %v", err)
+	}
+}
+
+func TestParentSSOLinked(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	if err := s.SetPassword(ctx, p.ID, "h", "", t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.ParentByID(ctx, p.ID); err != nil || got.SSOLinked {
+		t.Fatalf("with a password only: %+v, %v; want not linked", got, err)
+	}
+	if err := s.LinkIdentity(ctx, model.Principal{Kind: "parent", ParentID: p.ID}, testIss, "sub-ana"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.ParentByID(ctx, p.ID); err != nil || !got.SSOLinked || !got.HasPassword {
+		t.Fatalf("after a link: %+v, %v; want linked with the password kept", got, err)
+	}
+	list, err := s.ListParents(ctx)
+	if err != nil || len(list) != 1 || !list[0].SSOLinked {
+		t.Fatalf("ListParents = %+v, %v", list, err)
 	}
 }

@@ -112,3 +112,31 @@ func pairTaken(ctx context.Context, tx *sql.Tx, iss, sub string) (bool, error) {
 		iss, providerLocal, sub, iss, providerLocal, sub).Scan(&taken)
 	return taken, err
 }
+
+// LinkIdentity adds (iss, sub) to the principal's identity table, by p.Kind.
+// ErrAlreadyLinked when anyone holds the pair or the principal already has an identity for iss.
+func (s *Store) LinkIdentity(ctx context.Context, p model.Principal, iss, sub string) error {
+	hasIssuer := `SELECT EXISTS (SELECT 1 FROM identities WHERE parent_id = ? AND provider = ? AND provider <> ?)`
+	insert := `INSERT INTO identities(parent_id, provider, subject) VALUES (?, ?, ?)`
+	principalID := p.ParentID
+	if p.Kind == "admin" {
+		hasIssuer = `SELECT EXISTS (SELECT 1 FROM admin_identities WHERE admin_id = ? AND provider = ? AND provider <> ?)`
+		insert = `INSERT INTO admin_identities(admin_id, provider, subject) VALUES (?, ?, ?)`
+		principalID = p.AdminID
+	}
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		taken, err := pairTaken(ctx, tx, iss, sub)
+		if err != nil {
+			return err
+		}
+		var has bool
+		if err := tx.QueryRowContext(ctx, hasIssuer, principalID, iss, providerLocal).Scan(&has); err != nil {
+			return err
+		}
+		if taken || has {
+			return ErrAlreadyLinked
+		}
+		_, err = tx.ExecContext(ctx, insert, principalID, iss, sub)
+		return err
+	})
+}

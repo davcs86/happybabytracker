@@ -40,6 +40,8 @@ const (
 	OIDCIssuerMaxLen  = 512
 	OIDCSubjectMaxLen = 255
 
+	ReauthWindow = 5 * time.Minute
+
 	DisplayNameMinLen = 1
 	DisplayNameMaxLen = 64
 

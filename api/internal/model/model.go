@@ -33,6 +33,7 @@ type Principal struct {
 	AdminID   string
 	SessionID string
 	ExpiresAt time.Time
+	ReauthAt  time.Time // zero when the session never re-authenticated
 }
 
 type Units struct {
@@ -42,6 +43,7 @@ type Units struct {
 type Parent struct {
 	ID, Username, DisplayName string
 	Disabled, HasPassword     bool
+	SSOLinked                 bool // holds an identity whose provider is not local
 	Units                     Units
 	CreatedAt                 time.Time
 	PasswordChangedAt         *time.Time // nil when the local password predates the column or is unset

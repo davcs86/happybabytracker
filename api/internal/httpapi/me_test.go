@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +42,7 @@ func TestAdminCannotReachMe(t *testing.T) {
 
 func parentObject(t *testing.T, m map[string]any, name, display string, units ...string) {
 	t.Helper()
-	sameKeys(t, m, "id", "username", "display_name", "units", "password_changed_at")
+	sameKeys(t, m, "id", "username", "display_name", "units", "password_changed_at", "sso_linked")
 	u := m["units"].(map[string]any)
 	sameKeys(t, u, "weight", "length", "volume", "temp")
 	if m["username"] != name || m["display_name"] != display || m["id"] == "" ||
@@ -266,4 +268,39 @@ func TestDeleteOwnSession(t *testing.T) {
 		t.Fatalf("delete own: %d %q", rec.Code, rec.Body.String())
 	}
 	wantErr(t, k.do(http.MethodGet, "/v1/session", calling, nil), http.StatusUnauthorized, "no_session")
+}
+
+func (k *kit) changePasswordFrom(addr, token, current string) *httptest.ResponseRecorder {
+	k.t.Helper()
+	r := k.newReq(http.MethodPost, "/v1/me/password", map[string]string{"current": current, "new": "a brand new password"})
+	r.Header.Set("X-Client-Address", addr)
+	r.Header.Set("X-Session-Token", token)
+	return k.serve(r)
+}
+
+func TestChangePasswordCountsAgainstTheLimiter(t *testing.T) {
+	k := newKit(t)
+	ana := k.asParent("ana")
+	for i := 1; i <= constants.LoginAttemptsPerMinute; i++ {
+		k.login("203.0.113.90", fmt.Sprintf("filler%d", i), "x")
+	}
+	calls := countVerifications(t)
+	rec := k.changePasswordFrom("203.0.113.90", ana, testParentPass)
+	wantErr(t, rec, http.StatusTooManyRequests, "rate_limited")
+	if rec.Header().Get("Retry-After") != "60" {
+		t.Errorf("Retry-After = %q", rec.Header().Get("Retry-After"))
+	}
+	if *calls != 0 {
+		t.Errorf("%d verifications behind the limiter, want 0", *calls)
+	}
+
+	for i := 0; i < constants.LoginAttemptsPerMinute; i++ {
+		wantErr(t, k.changePasswordFrom(fmt.Sprintf("203.0.113.%d", 100+i), ana, "wrong"), http.StatusForbidden, "wrong_password")
+	}
+	wantErr(t, k.login("203.0.113.110", "ana", testParentPass), http.StatusTooManyRequests, "rate_limited")
+	wantErr(t, k.changePasswordFrom("203.0.113.111", ana, testParentPass), http.StatusTooManyRequests, "rate_limited")
+	rec = k.do(http.MethodPost, "/v1/me/password", ana, `{"x":1}`)
+	if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["error"] != "unknown_field" {
+		t.Errorf("unknown field behind the limiter: %d %q, want 422 unknown_field", rec.Code, rec.Body.String())
+	}
 }

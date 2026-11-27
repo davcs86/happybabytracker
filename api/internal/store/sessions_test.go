@@ -440,3 +440,32 @@ func TestParentActivity(t *testing.T) {
 		t.Errorf("after disabling ana: %v", got)
 	}
 }
+
+func TestStampReauth(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	id, err := s.CreateSession(ctx, "parent", p.ID, []byte("tok"), t0, t0.Add(time.Hour), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateSession(ctx, "parent", p.ID, []byte("tok-2"), t0, t0.Add(time.Hour), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SessionByToken(ctx, []byte("tok"), t0); err != nil || !got.ReauthAt.IsZero() {
+		t.Fatalf("before: %+v, %v; want a zero ReauthAt", got, err)
+	}
+	at := t0.Add(90*time.Second + 500*time.Millisecond)
+	if err := s.StampReauth(ctx, id, at); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar(t, s, `SELECT reauth_at FROM sessions WHERE id = ?`, id); int64(n) != at.Unix() {
+		t.Errorf("reauth_at = %d, want %d", n, at.Unix())
+	}
+	if got, err := s.SessionByToken(ctx, []byte("tok"), t0); err != nil || !got.ReauthAt.Equal(time.Unix(at.Unix(), 0)) || got.ReauthAt.Location() != time.UTC {
+		t.Errorf("after: %+v, %v; want ReauthAt %v UTC", got, err, time.Unix(at.Unix(), 0).UTC())
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM sessions WHERE id = ? AND reauth_at IS NULL`, other); n != 1 {
+		t.Error("the stamp reached another session")
+	}
+}

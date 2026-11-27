@@ -32,6 +32,12 @@ type sessionView struct {
 	Kind      string      `json:"kind"`
 	ExpiresAt string      `json:"expires_at"`
 	Parent    *parentView `json:"parent,omitempty"`
+	Admin     *adminView  `json:"admin,omitempty"`
+}
+
+type adminView struct {
+	Username  string `json:"username"`
+	SSOLinked bool   `json:"sso_linked"`
 }
 
 type parentView struct {
@@ -41,6 +47,7 @@ type parentView struct {
 	Units       unitsView `json:"units"`
 	// PasswordChangedAt is null when the date is unknown.
 	PasswordChangedAt *string `json:"password_changed_at"`
+	SSOLinked         bool    `json:"sso_linked"`
 }
 
 func newParentView(p model.Parent) parentView {
@@ -48,6 +55,7 @@ func newParentView(p model.Parent) parentView {
 		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
 		Units:             unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
 		PasswordChangedAt: optionalInstant(p.PasswordChangedAt),
+		SSOLinked:         p.SSOLinked,
 	}
 }
 
@@ -160,6 +168,49 @@ func (d Deps) checkCredentials(r *http.Request, username string, valid bool, pas
 	return kind, principalID, true, nil
 }
 
+// limitedSecret counts addr: then user: against the login limiter and returns the caller's local
+// password hash, "" when none; on false it has answered.
+func (d Deps) limitedSecret(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if !d.Limiter.Allow("addr:" + r.Header.Get(headerClientAddress)) {
+		respondRateLimited(w)
+		return "", false
+	}
+	ctx, p := r.Context(), PrincipalFrom(r.Context())
+	var username, hash string
+	if p.Kind == kindAdmin {
+		a, secret, err := d.Store.AdminByID(ctx, p.AdminID)
+		if err != nil {
+			respondPrincipalErr(w, err)
+			return "", false
+		}
+		username, hash = a.Username, secret
+	} else {
+		parent, err := d.Store.ParentByID(ctx, p.ParentID)
+		if err != nil {
+			respondPrincipalErr(w, err)
+			return "", false
+		}
+		username = parent.Username
+		if hash, err = d.Store.LocalSecret(ctx, p.ParentID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			respondInternal(w, err)
+			return "", false
+		}
+	}
+	if !d.Limiter.Allow("user:" + username) {
+		respondRateLimited(w)
+		return "", false
+	}
+	return hash, true
+}
+
+func respondPrincipalErr(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrNotFound) {
+		respondError(w, http.StatusUnauthorized, "no_session")
+		return
+	}
+	respondInternal(w, err)
+}
+
 func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {
 	p := PrincipalFrom(r.Context())
 	view := sessionView{Kind: p.Kind, ExpiresAt: formatTime(p.ExpiresAt)}
@@ -175,6 +226,17 @@ func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {
 		}
 		pv := newParentView(parent)
 		view.Parent = &pv
+	} else {
+		a, _, err := d.Store.AdminByID(r.Context(), p.AdminID)
+		if errors.Is(err, store.ErrNotFound) {
+			respondError(w, http.StatusUnauthorized, "no_session")
+			return
+		}
+		if err != nil {
+			respondInternal(w, err)
+			return
+		}
+		view.Admin = &adminView{Username: a.Username, SSOLinked: a.SSOLinked}
 	}
 	respondJSON(w, http.StatusOK, view)
 }

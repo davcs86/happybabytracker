@@ -23,17 +23,24 @@ func (d Deps) decodeOIDC(w http.ResponseWriter, r *http.Request) (oidcRequest, b
 	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthOIDC, config.AuthBoth) {
 		return in, false
 	}
-	switch {
-	case in.DeviceLabel != "" && !deviceLabelRE.MatchString(in.DeviceLabel):
+	if in.DeviceLabel != "" && !deviceLabelRE.MatchString(in.DeviceLabel) {
 		respondInvalid(w, "device_label")
-	case !validIssuer(in.Iss):
+		return in, false
+	}
+	return in, validPair(w, in.Iss, in.Sub)
+}
+
+// validPair answers 422 on iss, then on sub.
+func validPair(w http.ResponseWriter, iss, sub string) bool {
+	switch {
+	case !validIssuer(iss):
 		respondInvalid(w, "iss")
-	case in.Sub == "" || len(in.Sub) > constants.OIDCSubjectMaxLen:
+	case sub == "" || len(sub) > constants.OIDCSubjectMaxLen:
 		respondInvalid(w, "sub")
 	default:
-		return in, true
+		return true
 	}
-	return in, false
+	return false
 }
 
 func validIssuer(iss string) bool {
@@ -91,5 +98,59 @@ func (d Deps) redeemTokenOIDC(w http.ResponseWriter, r *http.Request) {
 		respondInternal(w, err)
 	default:
 		respondJSON(w, http.StatusOK, loginResponse{Token: token, Kind: kindParent, ExpiresAt: formatTime(expires)})
+	}
+}
+
+// reauth runs one password verification, against dummyHash when the principal has no local password.
+func (d Deps) reauth(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Password string `json:"password"`
+	}
+	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthBoth) {
+		return
+	}
+	hash, ok := d.limitedSecret(w, r)
+	if !ok {
+		return
+	}
+	if hash == "" {
+		hash = dummyHash()
+	}
+	if !verifyPassword(hash, in.Password) {
+		respondError(w, http.StatusForbidden, "wrong_password")
+		return
+	}
+	if err := d.Store.StampReauth(r.Context(), PrincipalFrom(r.Context()).SessionID, d.Now()); err != nil {
+		respondInternal(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// linkIdentity needs a re-auth on this session within ReauthWindow; a link leaves reauth_at as it is.
+func (d Deps) linkIdentity(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Iss string `json:"iss"`
+		Sub string `json:"sub"`
+	}
+	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthBoth) {
+		return
+	}
+	p := PrincipalFrom(r.Context())
+	if p.ReauthAt.IsZero() || d.Now().Sub(p.ReauthAt) > constants.ReauthWindow {
+		respondError(w, http.StatusForbidden, "reauth_required")
+		return
+	}
+	if !validPair(w, in.Iss, in.Sub) {
+		return
+	}
+	err := d.Store.LinkIdentity(r.Context(), p, in.Iss, in.Sub)
+	switch {
+	case errors.Is(err, store.ErrAlreadyLinked):
+		respondError(w, http.StatusConflict, "already_linked")
+	case err != nil:
+		respondInternal(w, err)
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
