@@ -34,7 +34,7 @@ func adminVerifies(t *testing.T, s *store.Store, username, password string) bool
 	return auth.VerifyPassword(hash, password)
 }
 
-// ignoredLines counts the WARN lines that carry the ignored-credentials message.
+// ignoredLines returns the lines carrying the ignored-credentials message.
 func ignoredLines(t *testing.T, out string) []string {
 	t.Helper()
 	var got []string

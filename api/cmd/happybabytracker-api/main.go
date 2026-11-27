@@ -31,6 +31,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "admin" {
+		os.Exit(runAdmin(context.Background(), os.Args[2:], os.Getenv, os.Stdin, os.Stdout, os.Stderr, time.Now()))
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	// Restoring default handling after the first signal lets a second one kill the process.

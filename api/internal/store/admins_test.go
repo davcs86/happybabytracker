@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
@@ -102,5 +103,98 @@ func TestOIDCIdentityIndexes(t *testing.T) {
 	}
 	if _, err := s.w.Exec(`INSERT INTO admin_identities(admin_id, provider, subject) VALUES (?, ?, 'sub-4')`, a.ID, iss); err == nil {
 		t.Error("a second identity for the admin and the same issuer was accepted")
+	}
+}
+
+func adminSession(t *testing.T, s *Store, kind, principal, token string) {
+	t.Helper()
+	if _, err := s.CreateSession(ctx, kind, principal, []byte(token), t0, t0.Add(time.Hour), ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func sessionAlive(t *testing.T, s *Store, token string) bool {
+	t.Helper()
+	_, err := s.SessionByToken(ctx, []byte(token), t0)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		t.Fatal(err)
+	}
+	return err == nil
+}
+
+func TestSetAdminPassword(t *testing.T) {
+	s := openMem(t)
+	a := mustAdmin(t, s)
+	p := mustParent(t, s, "ana")
+	adminSession(t, s, "admin", a.ID, "admin-1")
+	adminSession(t, s, "admin", a.ID, "admin-2")
+	adminSession(t, s, "parent", p.ID, "parent-1")
+	later := t0.Add(time.Hour)
+	if err := s.SetAdminPassword(ctx, "root-admin", "h-new", later); err != nil {
+		t.Fatal(err)
+	}
+	if _, hash, err := s.AdminByUsername(ctx, "root-admin"); err != nil || hash != "h-new" {
+		t.Errorf("hash = %q, %v; want h-new", hash, err)
+	}
+	var changed int64
+	if err := s.r.QueryRow(`SELECT secret_changed_at FROM admin_identities WHERE admin_id = ? AND provider = 'local'`, a.ID).Scan(&changed); err != nil || changed != later.Unix() {
+		t.Errorf("secret_changed_at = %d, %v; want %d", changed, err, later.Unix())
+	}
+	if sessionAlive(t, s, "admin-1") || sessionAlive(t, s, "admin-2") {
+		t.Error("an admin session survived")
+	}
+	if !sessionAlive(t, s, "parent-1") {
+		t.Error("the parent session was deleted")
+	}
+	if err := s.SetAdminPassword(ctx, "nobody", "h", later); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown admin: %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetAdminPasswordAddsAMissingLocalRow(t *testing.T) {
+	s := openMem(t)
+	a := mustAdmin(t, s)
+	if _, err := s.w.Exec(`DELETE FROM admin_identities WHERE admin_id = ?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetAdminPassword(ctx, "root-admin", "h-new", t0); err != nil {
+		t.Fatal(err)
+	}
+	if got, hash, err := s.AdminByUsername(ctx, "root-admin"); err != nil || hash != "h-new" || !got.HasPassword {
+		t.Errorf("AdminByUsername = %+v %q %v", got, hash, err)
+	}
+}
+
+func TestUnlinkAdminSSO(t *testing.T) {
+	s := openMem(t)
+	a := mustAdmin(t, s)
+	p := mustParent(t, s, "ana")
+	if _, err := s.w.Exec(`INSERT INTO admin_identities(admin_id, provider, subject) VALUES (?, 'https://issuer.example', 'sub-1')`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.w.Exec(`INSERT INTO identities(parent_id, provider, subject) VALUES (?, 'https://issuer.example', 'sub-2')`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	adminSession(t, s, "admin", a.ID, "admin-1")
+	adminSession(t, s, "parent", p.ID, "parent-1")
+	if err := s.UnlinkAdminSSO(ctx, "root-admin"); err != nil {
+		t.Fatal(err)
+	}
+	got, hash, err := s.AdminByUsername(ctx, "root-admin")
+	if err != nil || got.SSOLinked || hash != "h-admin" {
+		t.Errorf("AdminByUsername = %+v %q %v; want unlinked with its password", got, hash, err)
+	}
+	if sessionAlive(t, s, "admin-1") {
+		t.Error("the admin session survived")
+	}
+	var n int
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider <> 'local'`, p.ID).Scan(&n); err != nil || n != 1 {
+		t.Errorf("parent OIDC rows = %d, %v; want 1", n, err)
+	}
+	if !sessionAlive(t, s, "parent-1") {
+		t.Error("the parent session was deleted")
+	}
+	if err := s.UnlinkAdminSSO(ctx, "nobody"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown admin: %v, want ErrNotFound", err)
 	}
 }

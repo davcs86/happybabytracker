@@ -7,6 +7,7 @@ const (
 	MinPasswordLen      = 12
 	MaxPasswordLen      = 256
 	MinAdminPasswordLen = 16
+	CLIPasswordMaxBytes = 4*MaxPasswordLen + 2
 	MinSecretLen        = 32
 
 	InviteTTL            = 72 * time.Hour

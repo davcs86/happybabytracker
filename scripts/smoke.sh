@@ -1660,6 +1660,18 @@ code="$(form admin-login-2 "$ADDR_ADMIN" - /login "username=$ADMIN_USERNAME" "pa
 warnings="$(docker logs "$API" 2>&1 | grep -cF 'admin credentials in the environment are ignored' || true)"
 [ "$warnings" = 1 ] || fail "8 ignored-credentials warning" "$warnings lines"
 pass "8 a restart with a new ADMIN_PASSWORD keeps the old admin password and session, with one warning"
+printf '%s\n' "$ADMIN_PASSWORD_2" | docker run --rm -i --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges -v "$VOLUME":/data "$API_IMAGE" admin reset-password "$ADMIN_USERNAME" \
+  >"$WORK/cli.log" 2>&1 || fail "8 CLI reset-password" "exit $?"
+code="$(req admin-old-2 "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
+cleared="$(grep -ci '^set-cookie: hbt_session=;.*Max-Age=0' "$WORK/admin-old-2.headers" || true)"
+case "$code $(location admin-old-2) $cleared" in
+  "303 /login"*" 1") ;;
+  *) fail "8 old admin cookie after reset-password" "status $code, Location $(location admin-old-2), cleared $cleared" ;;
+esac
+NEW_ADMIN="$(login admin-login-2 "$ADDR_ADMIN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD_2")"
+[ -n "$NEW_ADMIN" ] || fail "8 new admin login"
+pass "8 the CLI's reset-password ends the old admin session and the new password logs in"
 
 # A parent login runs argon2 in the fresh API process before memory is read.
 login login-b "$ADDR_B" "$USER_B" "$PASSWORD_B" >/dev/null
@@ -1718,7 +1730,7 @@ API_MEM_EXPORT="$api_export"
   fail "10 export in its own process" "status $(cat "$WORK/export-mem.code")"
 docker logs "$API" >"$WORK/api-3.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
-for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log ui.log; do
+for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log cli.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi

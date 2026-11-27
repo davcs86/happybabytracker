@@ -79,3 +79,45 @@ func (s *Store) AdminByUsername(ctx context.Context, username string) (model.Adm
 func (s *Store) AdminByID(ctx context.Context, id string) (model.Admin, string, error) {
 	return scanAdmin(s.r.QueryRowContext(ctx, adminSelect+`WHERE a.id = ?`, id))
 }
+
+// SetAdminPassword upserts the admin's local identity and deletes all of its sessions.
+func (s *Store) SetAdminPassword(ctx context.Context, username, secretHash string, now time.Time) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		id, err := adminID(ctx, tx, username)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO admin_identities(admin_id, provider, subject, secret_hash, secret_changed_at) VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(provider, subject) DO UPDATE SET secret_hash = excluded.secret_hash, secret_changed_at = excluded.secret_changed_at`,
+			id, providerLocal, username, secretHash, now.Unix()); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE admin_id = ?`, id)
+		return err
+	})
+}
+
+// UnlinkAdminSSO deletes the admin's non-local identities and all of its sessions.
+func (s *Store) UnlinkAdminSSO(ctx context.Context, username string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		id, err := adminID(ctx, tx, username)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM admin_identities WHERE admin_id = ? AND provider <> ?`, id, providerLocal); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM sessions WHERE admin_id = ?`, id)
+		return err
+	})
+}
+
+func adminID(ctx context.Context, tx *sql.Tx, username string) (string, error) {
+	var id string
+	err := tx.QueryRowContext(ctx, `SELECT id FROM admins WHERE username = ?`, username).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return id, err
+}

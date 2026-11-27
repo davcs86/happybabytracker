@@ -20,15 +20,18 @@ var usernameRE = regexp.MustCompile(constants.UsernamePattern)
 
 // importAdmin copies the env admin only while no admin is stored; errors name the variable, never its value.
 func importAdmin(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger, now time.Time) error {
+	ignored := func() error {
+		if cfg.AdminUsername != "" || cfg.AdminPassword != "" {
+			log.Warn("admin credentials in the environment are ignored")
+		}
+		return nil
+	}
 	ok, err := st.HasAdmin(ctx)
 	if err != nil {
 		return err
 	}
 	if ok {
-		if cfg.AdminUsername != "" || cfg.AdminPassword != "" {
-			log.Warn("admin credentials in the environment are ignored")
-		}
-		return nil
+		return ignored()
 	}
 	if !usernameRE.MatchString(cfg.AdminUsername) {
 		return fmt.Errorf("ADMIN_USERNAME must match %s", constants.UsernamePattern)
@@ -42,7 +45,7 @@ func importAdmin(ctx context.Context, st *store.Store, cfg config.Config, log *s
 	case errors.Is(err, store.ErrConflict):
 		return errAdminCollision
 	case errors.Is(err, store.ErrAdminExists):
-		return nil
+		return ignored()
 	}
 	return err
 }
