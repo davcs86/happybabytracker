@@ -65,6 +65,7 @@ func Routes(d Deps) []Route {
 		{http.MethodPost, "/v1/admin/parents/{parent}/reset-link", Admin, d.resetLink},
 		{http.MethodPost, "/v1/admin/parents/{parent}/disable", Admin, d.setDisabled(true)},
 		{http.MethodPost, "/v1/admin/parents/{parent}/enable", Admin, d.setDisabled(false)},
+		{http.MethodPost, "/v1/admin/parents/{parent}/unlink-sso", Admin, d.unlinkParentSSO},
 
 		{http.MethodGet, "/v1/tokens/{token}", Internal, d.peekToken},
 		{http.MethodPost, "/v1/tokens/{token}/redeem", Internal, d.redeemToken},

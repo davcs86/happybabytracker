@@ -20,13 +20,14 @@ type adminParentView struct {
 	DisplayName string `json:"display_name"`
 	Disabled    bool   `json:"disabled"`
 	HasPassword bool   `json:"has_password"`
+	SSOLinked   bool   `json:"sso_linked"`
 	CreatedAt   string `json:"created_at"`
 }
 
 func newAdminParentView(p model.Parent) adminParentView {
 	return adminParentView{
 		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
-		Disabled: p.Disabled, HasPassword: p.HasPassword, CreatedAt: formatTime(p.CreatedAt),
+		Disabled: p.Disabled, HasPassword: p.HasPassword, SSOLinked: p.SSOLinked, CreatedAt: formatTime(p.CreatedAt),
 	}
 }
 
@@ -199,6 +200,19 @@ func (d Deps) setDisabled(disabled bool) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func (d Deps) unlinkParentSSO(w http.ResponseWriter, r *http.Request) {
+	err := d.Store.UnlinkParentSSO(r.Context(), r.PathValue("parent"))
+	if errors.Is(err, store.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (d Deps) peekToken(w http.ResponseWriter, r *http.Request) {

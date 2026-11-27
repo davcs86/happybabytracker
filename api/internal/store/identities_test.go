@@ -381,3 +381,73 @@ func TestParentSSOLinked(t *testing.T) {
 		t.Fatalf("ListParents = %+v, %v", list, err)
 	}
 }
+
+func TestUnlinkParentSSO(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	other := mustParent(t, s, "bob")
+	if err := s.SetPassword(ctx, p.ID, "h", "", t0); err != nil {
+		t.Fatal(err)
+	}
+	mustOIDCIdentity(t, s, "identities", "parent_id", p.ID, testIss, "sub-ana")
+	mustOIDCIdentity(t, s, "identities", "parent_id", other.ID, testIss, "sub-bob")
+	kid := mustKid(t, s, p.ID, "Kid")
+	exp := t0.Add(time.Hour)
+	mustSession(t, s, "parent", p.ID, []byte("a1"), exp)
+	mustSession(t, s, "parent", p.ID, []byte("a2"), exp)
+	mustSession(t, s, "parent", other.ID, []byte("b1"), exp)
+	dev := mustDevice(t, s, p.ID, "https://push.example.com/a")
+	mustDevice(t, s, other.ID, "https://push.example.com/b")
+	if err := s.SetPushOptin(ctx, kid.ID, p.ID, dev.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.SetNtfyTopic(ctx, p.ID, "hbt-", false, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetNtfyOptin(ctx, kid.ID, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := scalar(t, s, `SELECT (SELECT COUNT(*) FROM push_kid_optins) + (SELECT COUNT(*) FROM ntfy_kid_optins)`); n != 2 {
+		t.Fatalf("seeded opt-ins = %d, want 2", n)
+	}
+
+	for i := range 2 {
+		if err := s.UnlinkParentSSO(ctx, p.ID); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+		for q, want := range map[string]int{
+			`SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider <> 'local'`: 0,
+			`SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider = 'local'`:  1,
+			`SELECT COUNT(*) FROM sessions WHERE parent_id = ?`:                           0,
+			`SELECT COUNT(*) FROM push_subscriptions WHERE parent_id = ?`:                 0,
+			`SELECT COUNT(*) FROM ntfy_topics WHERE parent_id = ?`:                        0,
+			`SELECT COUNT(*) FROM ntfy_kid_optins WHERE parent_id = ?`:                    0,
+		} {
+			if n := scalar(t, s, q, p.ID); n != want {
+				t.Errorf("call %d: %s = %d, want %d", i, q, n, want)
+			}
+		}
+	}
+	if n := scalar(t, s, `SELECT COUNT(*) FROM push_kid_optins`); n != 0 {
+		t.Errorf("push opt-ins = %d, want 0", n)
+	}
+	for q, want := range map[string]int{
+		`SELECT COUNT(*) FROM identities WHERE parent_id = ?`:         1,
+		`SELECT COUNT(*) FROM sessions WHERE parent_id = ?`:           1,
+		`SELECT COUNT(*) FROM push_subscriptions WHERE parent_id = ?`: 1,
+	} {
+		if n := scalar(t, s, q, other.ID); n != want {
+			t.Errorf("the other parent: %s = %d, want %d", q, n, want)
+		}
+	}
+	if _, _, err := s.OIDCLogin(ctx, testIss, "sub-ana", []byte("new"), t0, exp, exp, ""); !errors.Is(err, ErrNotLinked) {
+		t.Errorf("login after unlink: %v, want ErrNotLinked", err)
+	}
+}
+
+func TestUnlinkParentSSOUnknownParent(t *testing.T) {
+	s := openMem(t)
+	if err := s.UnlinkParentSSO(ctx, "no-such-parent"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
+	}
+}

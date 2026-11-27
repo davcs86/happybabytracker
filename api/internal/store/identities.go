@@ -140,3 +140,22 @@ func (s *Store) LinkIdentity(ctx context.Context, p model.Principal, iss, sub st
 		return err
 	})
 }
+
+// UnlinkParentSSO removes the parent's non-local identities and ends their sessions, push devices and ntfy topic,
+// even when none was linked; ErrNotFound for an unknown parent.
+func (s *Store) UnlinkParentSSO(ctx context.Context, parentID string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM parents WHERE id = ?`, parentID).Scan(new(int)); errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM identities WHERE parent_id = ? AND provider <> ?`, parentID, providerLocal); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE parent_id = ?`, parentID); err != nil {
+			return err
+		}
+		return deleteChannels(ctx, tx, parentID)
+	})
+}

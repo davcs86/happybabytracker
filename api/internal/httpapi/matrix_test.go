@@ -70,6 +70,7 @@ var routeClasses = map[string]Access{
 	"POST /v1/admin/parents/{parent}/reset-link":          Admin,
 	"POST /v1/admin/parents/{parent}/disable":             Admin,
 	"POST /v1/admin/parents/{parent}/enable":              Admin,
+	"POST /v1/admin/parents/{parent}/unlink-sso":          Admin,
 	"GET /v1/tokens/{token}":                              Internal,
 	"POST /v1/tokens/{token}/redeem":                      Internal,
 	"POST /v1/tokens/{token}/redeem-oidc":                 Internal,

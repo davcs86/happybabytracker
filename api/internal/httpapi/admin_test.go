@@ -73,9 +73,9 @@ func TestAdminCreatesParent(t *testing.T) {
 	m := bodyMap(t, rec)
 	sameKeys(t, m, "parent", "invite_url", "expires_at")
 	parent := m["parent"].(map[string]any)
-	sameKeys(t, parent, "id", "username", "display_name", "disabled", "has_password", "created_at")
+	sameKeys(t, parent, "id", "username", "display_name", "disabled", "has_password", "sso_linked", "created_at")
 	if parent["username"] != "ana" || parent["display_name"] != "Ana Díaz" || parent["disabled"] != false ||
-		parent["has_password"] != false || parent["created_at"] != stamp(t0) || parent["id"] == "" {
+		parent["has_password"] != false || parent["sso_linked"] != false || parent["created_at"] != stamp(t0) || parent["id"] == "" {
 		t.Fatalf("parent = %v", parent)
 	}
 	tokenOf(t, m["invite_url"].(string), "invite")
@@ -310,7 +310,7 @@ func TestAdminListShowsNoKidData(t *testing.T) {
 		t.Fatalf("%d rows, want 2", len(rows))
 	}
 	for _, row := range rows {
-		sameKeys(t, row.(map[string]any), "id", "username", "display_name", "disabled", "has_password", "created_at", "last_active_at", "link")
+		sameKeys(t, row.(map[string]any), "id", "username", "display_name", "disabled", "has_password", "sso_linked", "created_at", "last_active_at", "link")
 	}
 	first, second := rows[0].(map[string]any), rows[1].(map[string]any)
 	if first["username"] != "ana" || first["has_password"] != false || second["username"] != "bob" || second["has_password"] != true {
@@ -369,6 +369,73 @@ func TestUnknownParentIs404(t *testing.T) {
 	for _, action := range []string{"reset-link", "disable", "enable"} {
 		wantErr(t, k.do(http.MethodPost, "/v1/admin/parents/no-such-parent/"+action, admin, nil), http.StatusNotFound, "not_found")
 	}
+}
+
+func TestUnlinkParentSSO(t *testing.T) {
+	k, db := fileKit(t)
+	admin := k.asAdmin()
+	ana := k.addParent("ana")
+	k.linkParent(ana.ID, "sub-ana")
+	tok, tok2 := k.asParent("ana"), k.asParent("ana")
+	kid := k.createKid(tok, nil)
+	dev := k.mustDevice(tok, testEndpoint)
+	if rec := k.do(http.MethodPut, optinPath(kid, dev), tok, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("push opt in: %d %q", rec.Code, rec.Body.String())
+	}
+	k.mustNtfy(tok)
+	if rec := k.do(http.MethodPut, ntfyOptinPath(kid), tok, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("ntfy opt in: %d %q", rec.Code, rec.Body.String())
+	}
+	listed := bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", admin, nil))["parents"].([]any)
+	if listed[0].(map[string]any)["sso_linked"] != true {
+		t.Fatalf("before unlink: %v", listed[0])
+	}
+
+	rec := k.do(http.MethodPost, "/v1/admin/parents/"+ana.ID+"/unlink-sso", admin, nil)
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("unlink: %d %q", rec.Code, rec.Body.String())
+	}
+	for q, want := range map[string]int{
+		`SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider <> 'local'`: 0,
+		`SELECT COUNT(*) FROM identities WHERE parent_id = ? AND provider = 'local'`:  1,
+		`SELECT COUNT(*) FROM sessions WHERE parent_id = ?`:                           0,
+		`SELECT COUNT(*) FROM push_subscriptions WHERE parent_id = ?`:                 0,
+		`SELECT COUNT(*) FROM ntfy_topics WHERE parent_id = ?`:                        0,
+		`SELECT COUNT(*) FROM ntfy_kid_optins WHERE parent_id = ?`:                    0,
+	} {
+		var n int
+		if err := db.QueryRow(q, ana.ID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != want {
+			t.Errorf("%s = %d, want %d", q, n, want)
+		}
+	}
+	var optins int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM push_kid_optins WHERE kid_id = ?`, kid).Scan(&optins); err != nil || optins != 0 {
+		t.Errorf("push opt-ins = %d, %v; want 0", optins, err)
+	}
+	for _, s := range []string{tok, tok2} {
+		wantErr(t, k.do(http.MethodGet, "/v1/session", s, nil), http.StatusUnauthorized, "no_session")
+	}
+	listed = bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", admin, nil))["parents"].([]any)
+	if listed[0].(map[string]any)["sso_linked"] != false {
+		t.Errorf("after unlink: %v", listed[0])
+	}
+	if rec := k.login("203.0.113.10", "ana", testParentPass); rec.Code != http.StatusOK {
+		t.Errorf("password login after unlink: %d %q", rec.Code, rec.Body.String())
+	}
+	k.setMode(config.AuthBoth)
+	wantErr(t, k.oidcLogin(oidcBody("sub-ana")), http.StatusForbidden, "not_linked")
+}
+
+func TestUnlinkUnknownParent(t *testing.T) {
+	k := newKit(t)
+	admin := k.asAdmin()
+	sameResponse(t, "unlink-sso",
+		k.do(http.MethodPost, "/v1/admin/parents/no-such-parent/unlink-sso", admin, nil),
+		k.do(http.MethodPost, "/v1/admin/parents/no-such-parent/reset-link", admin, nil))
+	wantErr(t, k.do(http.MethodPost, "/v1/admin/parents/no-such-parent/unlink-sso", admin, nil), http.StatusNotFound, "not_found")
 }
 
 func TestRedeemIsRateLimitedPerAddress(t *testing.T) {
