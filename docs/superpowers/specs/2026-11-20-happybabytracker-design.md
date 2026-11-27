@@ -1002,7 +1002,7 @@ Each plan after the second ends with: merge, the bump PR, a deploy, and a check 
 - The milestone catalog's exact items and the vaccine schedule files, from the named authorities,
   subject to the owner's review in 9.
 
-## 18. Threat model (draft, pending owner review before P6)
+## 18. Threat model (accepted by the owner, 2026-11-27)
 
 Required by the homelab-edge SSO spec § 3 before the app goes public at `happybaby.public.<domain>`.
 
@@ -1016,7 +1016,7 @@ Required by the homelab-edge SSO spec § 3 before the app goes public at `happyb
 | API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | the 5.3 limiter | `/v1/tokens/{token}`, `…/redeem` and `…/redeem-oidc` carry the token in the path; the API logs route patterns only (`middleware.go`) | — | not browser-reachable |
 | Health paths | internet, unauthenticated | none | per-IP zone | none | — | — |
 
-Residuals for the owner to accept or reject:
+Residuals, all accepted by the owner (2026-11-27):
 
 1. While `both` is on, a password login is reachable from the internet (SSO spec decision 18).
 2. An offboarded parent keeps their live sessions (sliding for 30 days, 5.3), any password login in `both`, and their

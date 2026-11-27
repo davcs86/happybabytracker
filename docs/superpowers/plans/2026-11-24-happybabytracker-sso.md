@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: plan only. Written against `main` fd9cf11 on 2026-11-24; re-grounded on 2026-11-27 against `main` as merged into this branch at 19eecfa (plans 1–7, 9 and 10 and the redesign merged) and updated for the owner's answers of that day (Open questions 1–9, 11–17 resolved; 10 open; 18 and 19 new), then for the plan's verification and the owner's answers to 18 and 19 the same day (1–9 and 11–19 resolved; 10 open). Execution waits for the owner's review, the open questions, and sign-off of "Deviations from the design".**
+**Status: plan only. Written against `main` fd9cf11 on 2026-11-24; re-grounded on 2026-11-27 against `main` as merged into this branch at 19eecfa (plans 1–7, 9 and 10 and the redesign merged) and updated for the owner's answers of that day (Open questions 1–9, 11–17 resolved; 10 open; 18 and 19 new), then for the plan's verification and the owner's answers to 18 and 19 the same day (1–9 and 11–19 resolved; 10 open), then the owner accepted the § 18 threat model (all 19 resolved). Execution waits for the owner's review, the open questions, and sign-off of "Deviations from the design".**
 
 **Goal:** The admin moves from env vars into its own tables with a break-glass CLI, and the app becomes a provider-neutral OIDC relying party (login, invite redemption and explicit linking by SSO) behind `AUTH_MODE` (`local` default, `oidc`, `both`), so the edge can put the UI on `happybaby.public.<domain>` behind Authelia.
 
@@ -1186,7 +1186,7 @@ git commit -m "docs: single sign-on, admin CLI and AUTH_MODE"
 
 ## Open questions for the owner
 
-Each row has the plan's proposal. Rows 1–9 and 11–19 are resolved; 10 is open.
+Each row has the plan's proposal. All rows are resolved.
 
 | # | Question | Plan's proposal | Where |
 |---|---|---|---|
@@ -1199,7 +1199,7 @@ Each row has the plan's proposal. Rows 1–9 and 11–19 are resolved; 10 is ope
 | 7 | **Resolved (owner, 2026-11-27), changed from the proposal: align with webhooks-mcp, a variable that is present counts as set even when empty.** **Env edge cases.** | An empty `OIDC_ISSUER`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET` counts as set, so the all-three-or-none check refuses a partial set; an empty `SESSION_SEAL_KEY` fails the ≥ 32 check; an empty `OIDC_SCOPES` is refused; `OIDC_AUTO_PROVISION` is refused when present (spec 13.2 amended). `OIDC_SCOPES` is not otherwise validated (a value without `openid` fails at the first SSO attempt). The cases the owner did not name are row 18. | Task 7 |
 | 8 | **Resolved (owner, 2026-11-27):** as proposed. **OTEL.** Spec 5.5 and CLAUDE.md Rule 5 ask that tokens and the callback query never reach OTEL, but neither image exports OTEL today. | Nothing to scrub. The plan pins instead that no UI or API log line carries a URL, code, state or token (Tasks 4, 9, 10). | — |
 | 9 | **Resolved (owner, 2026-11-27):** as proposed. **"Refusals log their code."** | The UI logs `{"msg":"sso refused","code":…}` with an enumerated code. The API's request line keeps its shape (route, status, principal kind), with no error code. | Tasks 9–12 |
-| 10 | **The threat model (spec § 18).** It is a draft pending your review, and residuals 1–6 are for you to accept or reject. | The plan implements what § 18 states. Your acceptance gates P6 (going public), not this PR. | — |
+| 10 | **The threat model (spec § 18).** **Resolved (owner, 2026-11-27):** § 18 and residuals 1–6 accepted as drafted. | The plan implements what § 18 states. Your acceptance gates P6 (going public), not this PR. | — |
 | 11 | **Resolved (owner, 2026-11-27):** the drafted copy is used, each sentence listed under "Deviations from the design". **Copy the spec does not fix.** | The "New sentences" table. Composing the screens from existing parts (AGENTS.md Rule 5) added a few sentences the draft did not have ("Signing you in", "Continue", the back-link labels, the `oidc` invite heading and lead, "Parents", "Account", the unlink consequence list, and row 19's footnote); they are in the same table for the same sign-off. | Tasks 10–12 |
 | 12 | **Resolved (owner, 2026-11-27):** as proposed. **`openid-client` version.** | **6.8.9** (2026-11-02), the newest release at least two weeks old on 2026-11-24; 6.9.0 (2026-11-13) and 6.9.1 (2026-11-20) were younger. Re-check at execution. | Task 9 |
 | 13 | **Resolved (owner, 2026-11-27): the edge's; already fixed in homelab-edge `docs/runbooks/sso.md` ("Authelia down": "the admin presses Reset link, which for a parent without one issues an invite link (72 h)").** **Cross-repo drift.** The runbook said a parent who joined by SSO gets "a reset link, redeemable in `both`", while this app's `resetLink` (`api/internal/httpapi/admin.go:152`) issues an **invite** when the parent has no local password, redeemable by password in `local`/`both`. | Nothing to do here. | — |
