@@ -445,6 +445,28 @@ func TestUnlinkParentSSO(t *testing.T) {
 	}
 }
 
+func TestUnlinkParentSSOWithoutIdentityStillPurges(t *testing.T) {
+	s := openMem(t)
+	p := mustParent(t, s, "ana")
+	mustSession(t, s, "parent", p.ID, []byte("a1"), t0.Add(time.Hour))
+	mustDevice(t, s, p.ID, "https://push.example.com/a")
+	if _, _, err := s.SetNtfyTopic(ctx, p.ID, "hbt-", false, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UnlinkParentSSO(ctx, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`SELECT COUNT(*) FROM sessions WHERE parent_id = ?`,
+		`SELECT COUNT(*) FROM push_subscriptions WHERE parent_id = ?`,
+		`SELECT COUNT(*) FROM ntfy_topics WHERE parent_id = ?`,
+	} {
+		if n := scalar(t, s, q, p.ID); n != 0 {
+			t.Errorf("%s = %d, want 0", q, n)
+		}
+	}
+}
+
 func TestUnlinkParentSSOUnknownParent(t *testing.T) {
 	s := openMem(t)
 	if err := s.UnlinkParentSSO(ctx, "no-such-parent"); !errors.Is(err, ErrNotFound) {
