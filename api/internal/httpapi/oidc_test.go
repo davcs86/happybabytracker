@@ -338,10 +338,13 @@ func TestReauthWrongPassword(t *testing.T) {
 
 	id, _ := k.createParent(k.asAdmin(), "bob")
 	bob := k.seedSession("parent", id, constants.ParentSessionTTL)
-	calls := countVerifications(t)
+	var hashes []string
+	orig := verifyPassword
+	verifyPassword = func(hash, pw string) bool { hashes = append(hashes, hash); return orig(hash, pw) }
+	t.Cleanup(func() { verifyPassword = orig })
 	wantErr(t, k.reauthFrom(reauthPath, "203.0.113.32", bob, ""), http.StatusForbidden, "wrong_password")
-	if *calls != 1 {
-		t.Errorf("a parent without a password: %d verifications, want 1", *calls)
+	if len(hashes) != 1 || hashes[0] != dummyHash() {
+		t.Errorf("a parent without a password: %d verifications, dummy hash used %v; want 1, true", len(hashes), len(hashes) == 1 && hashes[0] == dummyHash())
 	}
 	wantErr(t, k.link(linkPath, bob, "sub-bob"), http.StatusForbidden, "reauth_required")
 }
