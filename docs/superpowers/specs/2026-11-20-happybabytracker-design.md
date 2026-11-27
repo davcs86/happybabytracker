@@ -5,10 +5,11 @@ Status: **approved by the owner** (2026-11-20). Plans: `docs/superpowers/plans/`
 Amended 2026-11-24 for single sign-on and public exposure (5.5, 15, 18): **specified, not built.** The shared design is
 `davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` (§ 3 app contract, § 5, § 7, § 8;
 phase P6). Once an image with 5.5 ships, and until the edge sets `AUTH_MODE`, the app runs in `local` and behaves as
-before, with three exceptions from its first start: the env admin is copied into the `admins` table and its sessions
+before, with four exceptions from its first start: the env admin is copied into the `admins` table and its sessions
 end once; `ADMIN_USERNAME`/`ADMIN_PASSWORD` are ignored from then on, so rotating the admin password in SOPS no longer
-works and moves to the CLI's `reset-password` at that bump; and a password change counts against the login limiter
-(5.3, 5.5). The edge retires both SOPS keys in a later change: the
+works and moves to the CLI's `reset-password` at that bump; a password change counts against the login limiter
+(5.3, 5.5); and rotating `INTERNAL_API_TOKEN` no longer ends admin sessions, since the admin fingerprint, which also
+covered that token, is dropped (5.1, 5.5). The edge retires both SOPS keys in a later change: the
 bump that brings the image changes only its digest.
 
 Amended 2026-11-27 (owner, homelab-edge SSO spec § 3 at `77d9d99`; `max_age=1` from `0bbe7ca`) in 5.5 and 18, still
@@ -16,7 +17,9 @@ not built: link and SSO invite re-authentication (`max_age=1`, `auth_time`), cal
 SSO invite redemption ends the parent's other sessions, and ID-token signatures verified on a fresh key set. Later the
 same day (owner, 5.5 and 13.2): SSO sessions carry the device label as a password login does, a failed callback answers
 a small "did not complete" page, `admin_identities` records `secret_changed_at`, and a relying-party variable that is
-present counts as set even when empty.
+present counts as set even when empty. Later still: a failed mode read leaves the login page as in `local` (5.5, from
+the plan's review), and the UI refuses to start on a stray `SESSION_SEAL_KEY` or `OIDC_SCOPES` and on a non-`https:`
+issuer (owner, 13.2).
 
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
@@ -272,8 +275,11 @@ them creates the admin and the other changes nothing (`create` exits with an err
 
 **Modes.** `AUTH_MODE` is read by the **API**, which is the authority **(call)**: `local` (default), `oidc`, `both`; any
 other value stops the start. The UI reads the mode from `GET /v1/auth` on each load of the login, invite, reset and
-account pages. Switching mode needs no login: the API's env on the edge. In `oidc`, password redemption of invite and
-reset links is refused, and in `local`, SSO redemption is refused **(owner, 2026-11-24)**. What each mode allows:
+account pages. When that read fails, the login page renders as in `local`, in every mode: the password form, whose
+attempt then shows today's "The app cannot reach its server, try again soon"; the page itself never answers 503, so a
+failing API cannot break sign-in (DESIGN 3.4). Switching mode needs no login: the API's env on the edge. In `oidc`,
+password redemption of invite and reset links is refused, and in `local`, SSO redemption is refused
+**(owner, 2026-11-24)**. What each mode allows:
 
 | | `local` | `oidc` | `both` |
 |---|---|---|---|
@@ -828,7 +834,9 @@ shorter than 32 characters while `OIDC_ISSUER` is set, and on `OIDC_AUTO_PROVISI
 Amended 2026-11-27 (owner, as webhooks-mcp): a variable that is present counts as set even when empty. So an empty
 `OIDC_ISSUER`, `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` makes a partial set unless all three are present, an empty
 `SESSION_SEAL_KEY` fails the 32-character check, an empty `OIDC_SCOPES` is refused, and `OIDC_AUTO_PROVISION` is
-refused whenever it is present.
+refused whenever it is present. Also refused at start, each naming the variable (owner, 2026-11-27): `SESSION_SEAL_KEY`
+or `OIDC_SCOPES` present while none of the three relying-party variables is, and, with all three present, an
+`OIDC_ISSUER` that is not an absolute `https:` URL (an empty one included).
 Health: `GET /healthz` (the UI itself), `GET /healthz/api` and `GET /healthz/reminders` (the API's
 two answers passed through), so Gatus can probe everything through the one published name.
 

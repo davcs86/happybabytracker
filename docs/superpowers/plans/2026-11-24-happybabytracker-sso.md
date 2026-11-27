@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: plan only. Written against `main` fd9cf11 on 2026-11-24; re-grounded on 2026-11-27 against `main` as merged into this branch at 19eecfa (plans 1–7, 9 and 10 and the redesign merged) and updated for the owner's answers of that day (Open questions 1–9, 11–17 resolved; 10 open; 18 and 19 new). Execution waits for the owner's review, the open questions, and sign-off of "Deviations from the design".**
+**Status: plan only. Written against `main` fd9cf11 on 2026-11-24; re-grounded on 2026-11-27 against `main` as merged into this branch at 19eecfa (plans 1–7, 9 and 10 and the redesign merged) and updated for the owner's answers of that day (Open questions 1–9, 11–17 resolved; 10 open; 18 and 19 new), then for the plan's verification and the owner's answers to 18 and 19 the same day (1–9 and 11–19 resolved; 10 open). Execution waits for the owner's review, the open questions, and sign-off of "Deviations from the design".**
 
 **Goal:** The admin moves from env vars into its own tables with a break-glass CLI, and the app becomes a provider-neutral OIDC relying party (login, invite redemption and explicit linking by SSO) behind `AUTH_MODE` (`local` default, `oidc`, `both`), so the edge can put the UI on `happybaby.public.<domain>` behind Authelia.
 
@@ -63,7 +63,7 @@ The existing plans number themselves in their title, not in the file name, and t
 ## Global Constraints
 
 - **Contract with `davcs86/homelab-edge` (Rule 1):** ports 9210/9212, health paths, `/data`, image names, uid 10001 and the read-only root stay as they are. New env names are exactly the spec's: API `AUTH_MODE`; UI `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPES`, `SESSION_SEAL_KEY`, and the refused `OIDC_AUTO_PROVISION`. The CLI is `happybabytracker-api admin <verb>` with the password on stdin.
-- **Upgrade safety:** with `AUTH_MODE` unset, every image this plan produces behaves as `local` and as before, with exactly the header's three exceptions: the env admin is imported and its sessions end once; `ADMIN_USERNAME`/`ADMIN_PASSWORD` are then ignored with one warning per start; and the password change counts against the login limiter. Migrations stay forward-only.
+- **Upgrade safety:** with `AUTH_MODE` unset, every image this plan produces behaves as `local` and as before, with exactly the header's four exceptions: the env admin is imported and its sessions end once; `ADMIN_USERNAME`/`ADMIN_PASSWORD` are then ignored with one warning per start; the password change counts against the login limiter; and rotating `INTERNAL_API_TOKEN` no longer ends admin sessions, because Task 1 removes the admin fingerprint that covered it (`api/cmd/happybabytracker-api/main.go:186`, `README.md:328`). Migrations stay forward-only.
 - **Rule 2:** the admin is never a row in `parents` and never holds `kid_access`. Admin sessions stay refused outside `/v1/admin/*` and `/v1/session`, and the new session and token routes are `Internal`.
 - **Mode table (spec 5.5), verbatim:**
   - `POST /v1/session`: allowed in `local` and `both`, 403 `mode_refused` in `oidc`.
@@ -126,7 +126,7 @@ Inputs and conditions the spec implies but no happy path exercises. Each one has
 
 ## Deviations from the design
 
-The design (`docs/plans/ui-redesign/**`) has no SSO screen. Each item below is composed from existing parts; the execution PR's description copies this list under "Deviations from the design", and the owner signs it off (AGENTS.md Rule 5 and "Done means"). Every visible SSO element is absent in `local`, so the designed pages look as today on every deploy that leaves `AUTH_MODE` unset, except items 13, 14 and 17 (the admin nav, the admin Account page and the footnote), which show in every mode.
+The design (`docs/plans/ui-redesign/**`) has no SSO screen. Each item below is composed from existing parts; the execution PR's description copies this list under "Deviations from the design", and the owner signs it off (AGENTS.md Rule 5 and "Done means"). Every visible SSO element is absent in `local`, so the designed pages look as today on every deploy that leaves `AUTH_MODE` unset, except items 13, 14 and 17 (the admin nav, the admin Account page and the footnote), which show in every mode. Item 13 is accepted by the owner (2026-11-27) for the execution PR's sign-off, and item 17's wording is the owner's to sign off there (Open question 19, resolved).
 
 **New elements**
 
@@ -144,11 +144,11 @@ The design (`docs/plans/ui-redesign/**`) has no SSO screen. Each item below is c
 | 10 | My profile, `both` with settings and not linked | `SsoSection.svelte`: a `Card role="region"` "Single sign-on" placed in the left column after Password (DESIGN 2.1 column map: "details, password"), holding a form posting to `/account/link-sso`: a `Label` "Password" + `Input type="password" autocomplete="current-password"`, a field message under it, and an outline `Button` "Link single sign-on" | 12 |
 | 11 | My profile, linked | The same card with the muted line "Single sign-on is linked." | 12 |
 | 12 | `/account/link-sso` and `/admin/account/link-sso` (the no-JS and refusal page of item 10) | The account title line (h1 "Link single sign-on" + hairline, DESIGN 3.3) and the same `SsoSection` card with the refusal | 12 |
-| 13 | Admin nav (DESIGN 3.4 and P14 say the admin has no navigation) | `navModel` gains an admin branch with two entries, "Parents" (`shield-check`) and "Account" (`user`). ≥ 768 px: the admin layout's existing side `nav` "Primary" lists them under the brand line with AppShell's side-entry classes. < 768 px: the admin header row shows them as 48 × 48 outline icon links (the bell's pattern, `aria-label`, `title`, `aria-current`), before the "Admin" badge | 12 |
+| 13 | Admin nav (DESIGN 3.4 and P14 say the admin has no navigation; accepted by the owner, 2026-11-27, for the PR's sign-off) | `navModel` gains an admin branch with two entries, "Parents" (`shield-check`) and "Account" (`user`). ≥ 768 px: the admin layout's existing side `nav` "Primary" lists them under the brand line with AppShell's side-entry classes. < 768 px: the admin header row shows them as 48 × 48 outline icon links (the bell's pattern, `aria-label`, `title`, `aria-current`), before the "Admin" badge | 12 |
 | 14 | `/admin/account` | The account title line (h1 "Account" + hairline); a `Card role="region"` "Details" with `Label` "Username" and the read-only `Input` of `SetPasswordForm`; then `SsoSection` posting to `/admin/account/link-sso` | 12 |
 | 15 | Admin parents row, linked | A second `Badge` "Single sign-on" beside the status badge | 12 |
 | 16 | Admin parents row, linked | A row action as a P2 destructive confirm, built like Disable: `<details>` with the outline summary "Unlink single sign-on" (+ sr-only name), a card with the consequence list and the destructive `Button` "Unlink single sign-on"; the result in the page's existing action status | 12 |
-| 17 | Admin parents footnote | The prototype's second sentence becomes false once the admin is in the database (Open question 19); proposed replacement below | 12 |
+| 17 | Admin parents footnote | The prototype's second sentence becomes false once the admin is in the database; the replacement below (Open question 19, resolved: wording signed off in the execution PR) | 12 |
 
 **New sentences** (each is new copy; the spec-fixed and DESIGN sentences above are not repeated)
 
@@ -675,9 +675,11 @@ git commit -m "feat(api): admin unlinks a parent's SSO, purging sessions and cha
     - one or two of `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` present: the absent names (`OIDC_ISSUER=''` alone names the other two);
     - `OIDC_ISSUER` present and `SESSION_SEAL_KEY` absent or shorter than `MIN_SESSION_SEAL_KEY` code points (`''` included): `SESSION_SEAL_KEY`;
     - `OIDC_SCOPES` present and `''`: `OIDC_SCOPES`;
-    - `OIDC_AUTO_PROVISION` present, `''` and `'false'` included: `OIDC_AUTO_PROVISION`.
+    - `OIDC_AUTO_PROVISION` present, `''` and `'false'` included: `OIDC_AUTO_PROVISION`;
+    - none of the three present (owner, 2026-11-27, Open question 18 (a)): `SESSION_SEAL_KEY` when it is present, and `OIDC_SCOPES` when it is present, `''` included;
+    - all three present and `OIDC_ISSUER` not an absolute `https:` URL (`isHttpsUrl`: `URL.canParse(v) && new URL(v).protocol === 'https:'`; `''` included): `OIDC_ISSUER` (Open question 18 (b)).
     - `OIDC_SCOPES` absent gives `OIDC_DEFAULT_SCOPES`.
-    - With none of the three present, `oidc` is null, and `SESSION_SEAL_KEY` and a non-empty `OIDC_SCOPES` are ignored (Open question 18).
+    - With none of the six present, `oidc` is null.
   - `ui/src/lib/server/constants.ts`:
     - `OIDC_TXN_COOKIE = 'hbt_oidc'`, `OIDC_TXN_MAX_AGE_S = 600`, `OIDC_TXN_PATH = '/auth'`;
     - `MIN_SESSION_SEAL_KEY = 32`, `OIDC_DEFAULT_SCOPES = 'openid profile'`, `OIDC_CALLBACK_PATH = '/auth/callback'`;
@@ -702,7 +704,8 @@ git commit -m "feat(api): admin unlinks a parent's SSO, purging sessions and cha
 
 - [ ] **Step 1: Write the failing tests**
 
-- `env.test.ts`: each refusal above names its variable and never its value. `OIDC_ISSUER` without a seal key is refused, and so is `SESSION_SEAL_KEY=''` with the three present. `OIDC_ISSUER=''` alone is refused naming `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. `OIDC_SCOPES=''` is refused. `OIDC_AUTO_PROVISION` set to `''`, `'false'` or `'true'` is refused. No OIDC variable gives `oidc: null`. All five with `OIDC_SCOPES` absent give the default scopes.
+- `env.test.ts`: each refusal above names its variable and never its value. `OIDC_ISSUER` without a seal key is refused, and so is `SESSION_SEAL_KEY=''` with the three present. `OIDC_ISSUER=''` alone is refused naming `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET`. `OIDC_SCOPES=''` is refused. `OIDC_AUTO_PROVISION` set to `''`, `'false'` or `'true'` is refused. No OIDC variable gives `oidc: null`. All four with `OIDC_SCOPES` absent give the default scopes.
+- `env.test.ts`, Open question 18 (owner, 2026-11-27): with none of the three present, `SESSION_SEAL_KEY` alone (32 characters, and `''`) is refused naming `SESSION_SEAL_KEY`; `OIDC_SCOPES='openid profile'` alone, and `''` alone, are refused naming `OIDC_SCOPES`; both together name both, and `OIDC_SCOPES=''` alone names `OIDC_SCOPES` once. With all four otherwise valid, `OIDC_ISSUER` set to `''`, `'http://127.0.0.1:4182'`, `'auth.example.com'` (relative) or `'ftp://auth.example.com'` is refused naming `OIDC_ISSUER` only; `'https://auth.example.com'` and `'https://127.0.0.1:4182'` are accepted.
 - `seal.test.ts`:
   - a round trip;
   - a flipped byte, a value sealed with another key, a truncated value, `exp` in the past, and `stage: 'other'` each give null;
@@ -870,7 +873,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 ## Task 10: SSO login: the e2e issuer per slot, hooks, the login page by mode, `/auth/sso` and `/auth/callback`
 
 **Files:**
-- Modify: `ui/src/hooks.server.ts`, `ui/src/routes/login/{+page.server.ts,+page.svelte}`, `ui/playwright.config.ts`, `ui/playwright.screenshots.config.ts`, `ui/.gitignore`, `ui/e2e/{stacks.ts,stub-api.ts,stub-issuer.ts,login.spec.ts}`, `docs/wiki/{Sign-in-and-invites.md,How-these-screenshots-are-made.md}`, `docs/screenshots/**` (regenerated)
+- Modify: `ui/src/hooks.server.ts`, `ui/src/routes/login/{+page.server.ts,+page.svelte}`, `ui/playwright.config.ts`, `ui/playwright.screenshots.config.ts`, `ui/.gitignore`, `ui/e2e/{stacks.ts,stub-api.ts,stub-issuer.ts,login.spec.ts,unavailable.spec.ts}`, `docs/wiki/{Sign-in-and-invites.md,How-these-screenshots-are-made.md}`, `docs/screenshots/**` (regenerated)
 - Create: `ui/e2e/tls.ts`, `ui/src/lib/server/oidc/{start.ts,start.test.ts}`, `ui/src/lib/components/SsoOutcome.svelte`, `ui/src/routes/auth/sso/{+page.server.ts,+page.svelte}`, `ui/src/routes/auth/callback/{+page.server.ts,+page.svelte}`, `ui/e2e/sso-login.spec.ts`, `ui/e2e/screenshots/sso.shot.ts`
 
 **Interfaces:**
@@ -885,8 +888,8 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
   - `isPublic` adds `path.startsWith('/auth/')`.
   - The admin redirect (`:60`) skips `/auth/*`.
   - Responses for `/auth/*`, `/invite/*` and `/reset/*` get `referrer-policy: no-referrer`.
-- Login page load returns `{ mode: AuthMode; sso: ssoOffered(mode, env.oidc) }`. If `authMode()` fails, it is `error(503, UNAVAILABLE_MESSAGE)`. `ssoOffered` logs `oidc_not_configured` once per process (Open question 14).
-  - `local`, and `both` without settings: the password card only, as today (no markup change).
+- Login page load returns `{ mode: AuthMode; sso: ssoOffered(mode, env.oidc) }`. If `authMode()` fails, it returns `{ mode: 'local', sso: false }`, in every mode, and never `error(503, …)`: the login form is a plain POST without `use:enhance` (`login/+page.svelte:24`), so `load` runs again after the action, and an error there would replace the action's 503 alert "The app cannot reach its server, try again soon" (`login/+page.server.ts:36`, `e2e/unavailable.spec.ts:69-78`) with the error page (spec 5.5, DESIGN 3.4). `ssoOffered` logs `oidc_not_configured` once per process (Open question 14).
+  - `local`, `both` without settings, and a failed mode read: the password card only, as today (no markup change).
   - `oidc`: Deviations item 1 (item 2 without settings).
   - `both`: Deviations item 3.
   - The password action maps 403 `mode_refused` to "Password sign-in is turned off" before its other cases.
@@ -899,7 +902,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
   3. `finish`. A refusal, `auth_time` included, logs its code and renders `SsoOutcome` "Single sign-on did not complete" with `ssoBack` for the start's purpose (Open question 2, resolved).
   4. For `login`: `api.oidcSession(iss, sub, txn.deviceLabel ?? undefined)` (403 `not_linked` and `mode_refused` fail the same way, each logged), `setSessionCookie`, and render Deviations item 5 with `<meta http-equiv="refresh" content="0;url={to}">`, where `to = landing(kind, txn.next)`.
 - e2e harness (per worker slot; nothing shared across workers):
-  - `ensureTls()` creates `e2e/.tls/{cert,key}.pem` when missing, by `execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-days', '7', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', …, '-out', …])`. `stacks.ts`'s `globalSetup` calls it once, before the slots start.
+  - `ensureTls()` creates `e2e/.tls/{cert,key}.pem` only when either file is missing or `execFileSync('openssl', ['x509', '-checkend', '3600', '-noout', '-in', cert])` fails (the leaf expires within the hour; a local `.tls` outlives the 7 days, CI starts clean), by `execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes', '-days', '7', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1', '-keyout', …, '-out', …])`. `stacks.ts`'s `globalSetup` calls it once, before the slots start.
   - For each slot `stacks.ts` starts `node e2e/stub-issuer.ts` (`TEST_PARALLEL_INDEX`) before the UI, and waits for `${ISSUER_URL}/.well-known/openid-configuration`: `answers(url, ca?)` polls with `node:https` `get` and `{ ca }` when a CA is given, `fetch` otherwise.
   - Each slot's UI env gains `OIDC_ISSUER` (that slot's issuer), `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `SESSION_SEAL_KEY` (the fake values above) and `NODE_EXTRA_CA_CERTS=<cert path>`.
   - `playwright.config.ts` `use.ignoreHTTPSErrors: true`, so the browser follows the authorize URL to the self-signed issuer.
@@ -927,6 +930,8 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 
 `login.spec.ts`: a password login in `oidc` (the form posted by hand without JavaScript, as in smoke) shows "Password sign-in is turned off".
 
+`unavailable.spec.ts`: a new case, "the login page keeps the password form when the API is down": `setAuthMode('oidc')`, then `setScenario('down')`; `page.goto('/login')` answers 200 (not 503) with the Username and Password fields and "Sign in", and no "Continue with single sign-on"; `login(page, ANA.username, ANA.password)` then shows the alert "The app cannot reach its server, try again soon" with the Password field still on the page, and sets no cookie. The existing case at `:69-78` passes unchanged.
+
 `oidc/start.test.ts`: `ssoOffered(mode: AuthMode, oidc: OidcEnv | null): boolean` (the login, invite and account loads' one rule) is true only for `oidc` or `both` with settings; for `oidc` or `both` without settings it logs one `oidc_not_configured` line per process across calls. Deviations item 2 (`oidc` without settings) is not reachable in e2e, since every slot's UI has settings; its markup is the existing `Alert`, and its route is this unit test.
 
 `e2e/screenshots/sso.shot.ts` (both sizes): `sso/01-login-oidc`, `sso/02-login-both`, `sso/03-did-not-complete`, `sso/04-sso-unavailable`.
@@ -934,7 +939,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `cd ui && pnpm test src/lib/server/oidc && pnpm test:e2e e2e/sso-login.spec.ts`
-Expected: FAIL.
+Expected: FAIL. The new `unavailable.spec.ts` case is a guard, not a red test: it passes today (the load reads no mode) and must still pass after Step 3.
 
 - [ ] **Step 3: Implement**
 
@@ -985,7 +990,7 @@ git commit -m "feat(ui): SSO login with a 200 callback, hooks and mode-aware log
   - `/auth/confirm`:
     - Its load returns `{}`, and the page shows `SsoOutcome` "Nothing to confirm" with "Go to sign in".
     - The default action reads `choice` (`confirm` or `cancel`), opens the cookie (it must be `pending`) and **always** clears it.
-    - Cancel gives 303 to the start page (`/invite/{token}`).
+    - Cancel gives 303 to the start page: for `invite`, `/invite/{token}` (for `link`, Task 12).
     - For `invite`, Confirm calls `redeemTokenOidc(binding, iss, sub, deviceLabel ?? undefined)`. On success it sets the session cookie and gives 303 to `PARENT_HOME`. Refusals each log their code and render `SsoOutcome` "Single sign-on did not complete" with an `Alert`:
       - 404: the DESIGN 8.4 sentence with `INVITE_VALIDITY`, and "Go to sign in";
       - 409 `already_linked`: "That single sign-on account is already linked to an account";
@@ -1058,12 +1063,13 @@ git commit -m "feat(ui): invite redemption by SSO with confirmation; invite and 
   - `SsoSection.svelte` props `{ action: string; state: 'linkable' | 'linked'; form: { field?: string; message?: string } | null }`: Deviations items 10 and 11; one component for `/account`, `/admin/account` and both `link-sso` pages (Rule 2).
   - The account page loads (`/account` and `/admin/account`) also return `{ mode, sso: ssoOffered(mode, env.oidc) }` (spec 5.5: the mode is read on each load of the account pages). The section renders `linkable` in `both` with settings and `!ssoLinked`, `linked` when `ssoLinked`, and nothing otherwise (parents cannot unlink, spec 5.5).
   - The `/account` `password` action maps 429 `rate_limited` to "Too many attempts, try again in a minute" (Task 5 added the 429).
-  - `navModel(i: NavInput | AdminNavInput)` with `type AdminNavInput = { admin: true; pathname: string }`; for an `AdminNavInput` it returns `{ primary: [], more: [parents, account] }`, two `NavLink`s: `{ id: 'admin-parents', label: 'Parents', icon: ShieldCheckIcon, href: '/admin/parents', current: /^\/admin\/parents$/ }` and `{ id: 'admin-account', label: 'Account', icon: UserIcon, href: '/admin/account', current: /^\/admin\/account(\/|$)/ }`, note `'Open'`. `nav.ts` exports `SIDE_ENTRY_CLASS` (today's AppShell `SIDE` string), used by AppShell and the admin layout.
+  - `navModel(i: NavInput | AdminNavInput)` with `type AdminNavInput = { admin: true; pathname: string }`; for an `AdminNavInput` it returns `{ primary: [], more: [parents, account] }`, two `NavLink`s: `{ id: 'admin-parents', label: 'Parents', icon: ShieldCheckIcon, href: '/admin/parents', current: /^\/admin\/parents$/.test(pathname) }` and `{ id: 'admin-account', label: 'Account', icon: UserIcon, href: '/admin/account', current: /^\/admin\/account(\/|$)/.test(pathname) }`, note `'Open'`. `nav.ts` exports `SIDE_ENTRY_CLASS` (today's AppShell `SIDE` string), used by AppShell and the admin layout.
   - The admin layout renders those entries: Deviations item 13.
   - The admin account page `/admin/account`: Deviations item 14.
   - The callback for `link` seals an `OidcPending` with `binding`, `username` and `kind` (from the start cookie, never the session; Open question 1, resolved) and the label, and renders the confirmation.
   - `/auth/confirm` for `link`:
-    - `timingSafeEqual(sessionBinding(current cookie), binding)`, else "did not complete" (logged as `binding`);
+    - Cancel gives 303 to `ssoBack('link', kind, null).href` (`/account` or `/admin/account`), `kind` from the cookie; it authorizes nothing, so it runs no binding check;
+    - Confirm: `timingSafeEqual(sessionBinding(current cookie), binding)`, else "did not complete" (logged as `binding`);
     - then `linkIdentity` or `adminLinkIdentity`, chosen by `locals.session.kind`;
     - on success a 303 to `/account` or `/admin/account`, where the section now reads "linked";
     - 403 `reauth_required` gives "Confirm your password again, then link"; 409 and `mode_refused` as in Task 11; the back link is `ssoBack('link', kind, …)`.
@@ -1145,7 +1151,7 @@ The spec is not edited: its "specified, not built" status is the owner's to chan
 
 - **State table:** a row for plan 8.
 - **"What to do next":**
-  - this plan's image changes, and that the edge's `happybabytracker.md` runbook must move admin rotation to `admin reset-password` **before** the bump PR that brings this image is merged (SSO spec § 13);
+  - this plan's image changes, and that the edge's `happybabytracker.md` runbook must move admin rotation to `admin reset-password` **before** the bump PR that brings this image is merged (SSO spec § 13); in the same change its § 4 step 3 ("the API stores a keyed fingerprint of the admin username, password and internal token… changing any of the three signs the admin out") must go, since rotating `INTERNAL_API_TOKEN` no longer signs the admin out (header exception four);
   - the edge's `AUTH_MODE`, `OIDC_*` and `SESSION_SEAL_KEY` wiring is the edge plan's;
   - migration 0011 is forward-only: take an `edge-backup` archive before the deploy.
 
@@ -1180,7 +1186,7 @@ git commit -m "docs: single sign-on, admin CLI and AUTH_MODE"
 
 ## Open questions for the owner
 
-Each row has the plan's proposal. Rows 1–9 and 11–17 are resolved; 10 is open; 18 and 19 are new.
+Each row has the plan's proposal. Rows 1–9 and 11–19 are resolved; 10 is open.
 
 | # | Question | Plan's proposal | Where |
 |---|---|---|---|
@@ -1201,5 +1207,5 @@ Each row has the plan's proposal. Rows 1–9 and 11–17 are resolved; 10 is ope
 | 15 | **Resolved (owner, 2026-11-27):** as proposed. **Does a successful link clear `reauth_at`?** | No: a link needs a fresh re-auth window only, and each principal has at most one identity per issuer. | Task 5 |
 | 16 | **Resolved (owner, 2026-11-27):** as proposed. **The smoke assertion 8 wording** "the CLI's `reset-password` refuses and clears the old admin cookie". | Read as: after `reset-password`, the UI refuses the old admin cookie and clears it (303 `/login`, `Max-Age=0`). | Task 2 |
 | 17 | **Resolved (owner, 2026-11-27):** as proposed. **SSO in the smoke.** | The smoke gains no SSO step (it would need an issuer container). The real API's SSO routes are covered by Go tests, and the browser flow by Playwright against the stub API and the stub issuer. P6 on the edge is the first end-to-end check against Authelia. | — |
-| 18 | **New: the env cases row 7 leaves open.** (a) `SESSION_SEAL_KEY`, or a non-empty `OIDC_SCOPES`, present while none of the three relying-party variables is: webhooks-mcp refuses a stray `OAUTH_*` in `static`; spec 13.2 checks the seal key only "while `OIDC_ISSUER` is set". (b) All three present and `OIDC_ISSUER` empty or not an `https:` URL: present counts as set, and the spec has no shape rule. | (a) Ignored, as the spec reads today. (b) Not refused at start; each SSO attempt then fails with "Single sign-on is unavailable" and the password login is unaffected. Say if either should be refused at start instead (one more `bad` entry each in Task 7). | Task 7 |
-| 19 | **New: the admin parents footnote.** The prototype's "The admin’s own username and password can’t be changed here. They come from the deployment; changing them signs the admin out." (`Admin.dc.html`, `admin/parents/+page.svelte:293`, wiki `Admin.md:78`) is false once Task 1 lands: the env is read once, and rotation is the CLI's `reset-password`. AGENTS.md Rules 4 and 6 keep design sentences unless you decide. | "The admin’s own username can’t be changed. The operator resets the admin password with the admin command; that signs the admin out." (Deviations item 17). | Task 12 |
+| 18 | **Resolved (owner, 2026-11-27): refuse both at start.** (a) `SESSION_SEAL_KEY` or `OIDC_SCOPES` present while `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are absent: the UI refuses to start, naming the variable; (b) the three present and `OIDC_ISSUER` not an absolute `https:` URL: refused at start, naming `OIDC_ISSUER` (spec 13.2 amended). **The env cases row 7 leaves open.** (a) `SESSION_SEAL_KEY`, or a non-empty `OIDC_SCOPES`, present while none of the three relying-party variables is: webhooks-mcp refuses a stray `OAUTH_*` in `static`; spec 13.2 checks the seal key only "while `OIDC_ISSUER` is set". (b) All three present and `OIDC_ISSUER` empty or not an `https:` URL: present counts as set, and the spec has no shape rule. | (a) Ignored, as the spec read; (b) not refused at start. Superseded by the answer: Task 7 adds one `bad` entry for each. | Task 7 |
+| 19 | **Resolved (owner, 2026-11-27):** the plan's replacement footnote, listed under Deviations (item 17); its wording is signed off in the execution PR. **The admin parents footnote.** The prototype's "The admin’s own username and password can’t be changed here. They come from the deployment; changing them signs the admin out." (`Admin.dc.html`, `admin/parents/+page.svelte:293`, wiki `Admin.md:78`) is false once Task 1 lands: the env is read once, and rotation is the CLI's `reset-password`. AGENTS.md Rules 4 and 6 keep design sentences unless you decide. | "The admin’s own username can’t be changed. The operator resets the admin password with the admin command; that signs the admin out." (Deviations item 17). | Task 12 |
