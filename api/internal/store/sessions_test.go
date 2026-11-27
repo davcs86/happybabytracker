@@ -49,7 +49,8 @@ func TestSessionRoundTrip(t *testing.T) {
 	p := mustParent(t, s, "ana")
 	exp := t0.Add(constants.ParentSessionTTL)
 	id := mustSession(t, s, "parent", p.ID, []byte("h-parent"), exp)
-	adminID := mustSession(t, s, "admin", "", []byte("h-admin"), t0.Add(constants.AdminSessionTTL))
+	a := mustAdmin(t, s)
+	adminID := mustSession(t, s, "admin", a.ID, []byte("h-admin"), t0.Add(constants.AdminSessionTTL))
 
 	got, err := s.SessionByToken(ctx, []byte("h-parent"), t0)
 	if err != nil {
@@ -60,7 +61,7 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatalf("parent principal = %+v, want %+v", got, want)
 	}
 	got, err = s.SessionByToken(ctx, []byte("h-admin"), t0)
-	if err != nil || got.Kind != "admin" || got.ParentID != "" || got.SessionID != adminID {
+	if err != nil || got.Kind != "admin" || got.ParentID != "" || got.AdminID != a.ID || got.SessionID != adminID {
 		t.Fatalf("admin principal = %+v, %v", got, err)
 	}
 }
@@ -101,8 +102,12 @@ func TestCreateSessionRefusesInconsistentKind(t *testing.T) {
 	if _, err := s.CreateSession(ctx, "other", "", []byte("c"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("unknown session kind was accepted")
 	}
-	mustSession(t, s, "admin", "", []byte("d"), t0.Add(time.Hour))
-	if _, err := s.CreateSession(ctx, "admin", "", []byte("d"), t0, t0.Add(time.Hour), ""); err == nil {
+	if _, err := s.CreateSession(ctx, "admin", "", []byte("e"), t0, t0.Add(time.Hour), ""); err == nil {
+		t.Error("admin session without an admin id was accepted")
+	}
+	a := mustAdmin(t, s)
+	mustSession(t, s, "admin", a.ID, []byte("d"), t0.Add(time.Hour))
+	if _, err := s.CreateSession(ctx, "admin", a.ID, []byte("d"), t0, t0.Add(time.Hour), ""); err == nil {
 		t.Error("duplicate token hash was accepted")
 	}
 }
@@ -135,8 +140,6 @@ func TestDeleteSessions(t *testing.T) {
 	exp := t0.Add(time.Hour)
 	pid := mustSession(t, s, "parent", p.ID, []byte("p1"), exp)
 	mustSession(t, s, "parent", p.ID, []byte("p2"), exp)
-	mustSession(t, s, "admin", "", []byte("a1"), exp)
-	mustSession(t, s, "admin", "", []byte("a2"), exp)
 
 	if err := s.DeleteSession(ctx, pid); err != nil {
 		t.Fatal(err)
@@ -148,17 +151,6 @@ func TestDeleteSessions(t *testing.T) {
 		t.Errorf("deleting twice: %v, want nil", err)
 	}
 
-	if err := s.DeleteAdminSessions(ctx); err != nil {
-		t.Fatal(err)
-	}
-	for _, h := range []string{"a1", "a2"} {
-		if _, err := s.SessionByToken(ctx, []byte(h), t0); !errors.Is(err, ErrNotFound) {
-			t.Errorf("admin session %s survived: %v", h, err)
-		}
-	}
-	if _, err := s.SessionByToken(ctx, []byte("p2"), t0); err != nil {
-		t.Errorf("DeleteAdminSessions removed a parent session: %v", err)
-	}
 }
 
 func TestCreateParent(t *testing.T) {
@@ -377,7 +369,7 @@ func TestListSessions(t *testing.T) {
 	}
 	mustSession(t, s, "parent", ana.ID, []byte("gone"), t0.Add(time.Minute))
 	mustSession(t, s, "parent", bob.ID, []byte("bobs"), t0.Add(2*time.Hour))
-	mustSession(t, s, "admin", "", []byte("admin"), t0.Add(2*time.Hour))
+	mustSession(t, s, "admin", mustAdmin(t, s).ID, []byte("admin"), t0.Add(2*time.Hour))
 
 	now := t0.Add(time.Hour)
 	got, err := s.ListSessions(ctx, ana.ID, now)
@@ -431,7 +423,7 @@ func TestParentActivity(t *testing.T) {
 	if _, err := s.w.Exec(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`, t0.Add(30*time.Minute).Unix(), second); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateSession(ctx, "admin", "", []byte("adm"), t0.Add(time.Hour), exp.Add(time.Hour), ""); err != nil {
+	if _, err := s.CreateSession(ctx, "admin", mustAdmin(t, s).ID, []byte("adm"), t0.Add(time.Hour), exp.Add(time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.ParentActivity(ctx)

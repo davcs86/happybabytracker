@@ -62,7 +62,7 @@ func (d Deps) createParent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username, ok := auth.NormalizeUsername(in.Username)
-	if !ok || username == d.Cfg.AdminUsername {
+	if !ok {
 		respondInvalid(w, "username")
 		return
 	}

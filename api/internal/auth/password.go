@@ -1,4 +1,4 @@
-// Package auth holds the pure credential primitives: passwords, tokens, the login limiter and the admin check.
+// Package auth holds the pure credential primitives: passwords, tokens and the login limiter.
 package auth
 
 import (
@@ -33,8 +33,17 @@ func derive(pw, salt []byte, t, m uint32, p uint8, keyLen uint32) []byte {
 
 // HashPassword counts code points and refuses out-of-range input before any hashing.
 func HashPassword(pw string) (string, error) {
+	return hashWithMin(pw, constants.MinPasswordLen)
+}
+
+// HashAdminPassword is HashPassword with the admin's longer minimum.
+func HashAdminPassword(pw string) (string, error) {
+	return hashWithMin(pw, constants.MinAdminPasswordLen)
+}
+
+func hashWithMin(pw string, minLen int) (string, error) {
 	n := utf8.RuneCountInString(pw)
-	if n < constants.MinPasswordLen || n > constants.MaxPasswordLen {
+	if n < minLen || n > constants.MaxPasswordLen {
 		return "", ErrPasswordLength
 	}
 	salt := make([]byte, constants.Argon2SaltBytes)

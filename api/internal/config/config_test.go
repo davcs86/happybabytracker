@@ -84,15 +84,6 @@ func TestLoadRefuses(t *testing.T) {
 		variable string
 		val      string
 	}{
-		{"username empty", "ADMIN_USERNAME", ""},
-		{"username unset", "ADMIN_USERNAME", "\x00unset"},
-		{"username upper case", "ADMIN_USERNAME", "Qzadmin"},
-		{"username too short", "ADMIN_USERNAME", "qz"},
-		{"username too long", "ADMIN_USERNAME", strings.Repeat("q", 33)},
-		{"username bad char", "ADMIN_USERNAME", "qz admin"},
-		{"password empty", "ADMIN_PASSWORD", ""},
-		{"password 15 chars", "ADMIN_PASSWORD", "wxyzwxyzwxyzwxy"},
-		{"password 15 multibyte runes", "ADMIN_PASSWORD", strings.Repeat("é", 15)},
 		{"token empty", "INTERNAL_API_TOKEN", ""},
 		{"token 31 chars", "INTERNAL_API_TOKEN", strings.Repeat("k", 31)},
 		{"origin empty", "PUBLIC_ORIGIN", ""},
@@ -120,6 +111,21 @@ func TestLoadRefuses(t *testing.T) {
 				t.Errorf("error %q contains the value", err)
 			}
 		})
+	}
+}
+
+func TestLoadIgnoresAdminVariables(t *testing.T) {
+	for name, o := range map[string]map[string]string{
+		"unset":      {"ADMIN_USERNAME": "\x00unset", "ADMIN_PASSWORD": "\x00unset"},
+		"upper case": {"ADMIN_USERNAME": "David"},
+	} {
+		cfg, err := Load(env(o))
+		if err != nil {
+			t.Errorf("%s: Load: %v", name, err)
+		}
+		if name == "upper case" && cfg.AdminUsername != "David" {
+			t.Errorf("AdminUsername = %q, want the raw value", cfg.AdminUsername)
+		}
 	}
 }
 

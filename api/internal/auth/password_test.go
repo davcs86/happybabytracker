@@ -180,6 +180,26 @@ func TestPasswordLengthCountsCodePoints(t *testing.T) {
 	}
 }
 
+func TestAdminPasswordLengthBounds(t *testing.T) {
+	calls := countingKDF(t)
+	for _, pw := range []string{"", strings.Repeat("a", 15), strings.Repeat("é", 15), strings.Repeat("a", 257)} {
+		if _, err := HashAdminPassword(pw); err != ErrPasswordLength {
+			t.Errorf("%d runes: err = %v, want ErrPasswordLength", len([]rune(pw)), err)
+		}
+	}
+	if *calls != 0 {
+		t.Fatalf("kdf ran %d times for out-of-range passwords", *calls)
+	}
+	for _, pw := range []string{strings.Repeat("a", 16), strings.Repeat("é", 16), strings.Repeat("a", 256)} {
+		if _, err := HashAdminPassword(pw); err != nil {
+			t.Errorf("%d runes: unexpected error %v", len([]rune(pw)), err)
+		}
+	}
+	if *calls != 3 {
+		t.Fatalf("kdf ran %d times, want 3", *calls)
+	}
+}
+
 func TestErrorsCarryNoSecret(t *testing.T) {
 	_, err := HashPassword("tiny-secret")
 	if err == nil || strings.Contains(err.Error(), "tiny-secret") {

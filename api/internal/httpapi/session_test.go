@@ -132,8 +132,16 @@ func TestLoginFailuresLookAlike(t *testing.T) {
 	if rec := k.login("192.0.2.1", testAdminUser, testAdminPass); rec.Code != http.StatusOK {
 		t.Fatalf("admin success: %d", rec.Code)
 	}
-	if calls != 0 {
-		t.Errorf("admin success ran %d password verifications, want 0", calls)
+	if calls != 1 {
+		t.Errorf("admin success ran %d password verifications, want 1", calls)
+	}
+
+	calls = 0
+	if rec := k.login("192.0.2.2", "ana", testParentPass); rec.Code != http.StatusOK {
+		t.Fatalf("parent success: %d", rec.Code)
+	}
+	if calls != 1 {
+		t.Errorf("parent success ran %d password verifications, want 1", calls)
 	}
 }
 

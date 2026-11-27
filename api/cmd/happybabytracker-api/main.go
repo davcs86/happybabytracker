@@ -30,10 +30,6 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/vaccines"
 )
 
-const fingerprintKey = "admin_fingerprint"
-
-var errAdminCollision = errors.New("ADMIN_USERNAME collides with an existing parent account")
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -65,7 +61,7 @@ func start(ctx context.Context, getenv func(string) string, stdout io.Writer) (*
 	if err != nil {
 		return nil, err
 	}
-	if err := prepare(ctx, st, cfg); err != nil {
+	if err := prepare(ctx, st, cfg, log); err != nil {
 		return nil, errors.Join(err, st.Close())
 	}
 	pushState := "off"
@@ -120,11 +116,8 @@ func wirePush(d *httpapi.Deps, cfg config.Config) error {
 	return nil
 }
 
-func prepare(ctx context.Context, st *store.Store, cfg config.Config) error {
-	if err := checkAdminUsername(ctx, st, cfg); err != nil {
-		return err
-	}
-	if err := syncAdminFingerprint(ctx, st, cfg); err != nil {
+func prepare(ctx context.Context, st *store.Store, cfg config.Config, log *slog.Logger) error {
+	if err := importAdmin(ctx, st, cfg, log, time.Now()); err != nil {
 		return err
 	}
 	if err := growth.Load(); err != nil {
@@ -179,36 +172,4 @@ func run(ctx context.Context, getenv func(string) string, stdout io.Writer) erro
 		return errors.Join(err, srv.Close())
 	}
 	return nil
-}
-
-// syncAdminFingerprint ends every admin session when the admin credentials differ from the last start.
-func syncAdminFingerprint(ctx context.Context, st *store.Store, cfg config.Config) error {
-	want := auth.AdminFingerprint(cfg.InternalAPIToken, cfg.AdminUsername, cfg.AdminPassword)
-	have, ok, err := st.MetaGet(ctx, fingerprintKey)
-	if err != nil {
-		return err
-	}
-	if ok && have == want {
-		return nil
-	}
-	if err := st.DeleteAdminSessions(ctx); err != nil {
-		return err
-	}
-	return st.MetaSet(ctx, fingerprintKey, want)
-}
-
-// checkAdminUsername refuses to start when a parent already owns the admin's login name; the error omits the name.
-func checkAdminUsername(ctx context.Context, st *store.Store, cfg config.Config) error {
-	name, ok := auth.NormalizeUsername(cfg.AdminUsername)
-	if !ok {
-		return errors.New("ADMIN_USERNAME is not a valid username")
-	}
-	_, _, err := st.ParentByUsername(ctx, name)
-	if err == nil {
-		return errAdminCollision
-	}
-	if errors.Is(err, store.ErrNotFound) {
-		return nil
-	}
-	return err
 }

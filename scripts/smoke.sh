@@ -1647,21 +1647,19 @@ code="$(req admin-after-restart "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/pa
 [ "$code" = 200 ] || fail "7 admin session after restart" "status $code"
 pass "7 after an API restart the sessions of $USER_B and the admin still work"
 
-# 8. New admin credentials end the old admin session (API no_session: cookie cleared).
+# 8. Once the admin is stored, a new ADMIN_PASSWORD is ignored with one warning; the old session keeps working.
 API_MEM_1B="$(mem "$API")"
 docker logs "$API" >"$WORK/api-1.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD_2"
 wait_ok "$UI_URL/healthz/api" || fail "8 api with new password" "no 200 within 30 s"
 code="$(req admin-old "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
-cleared="$(grep -ci '^set-cookie: hbt_session=;.*Max-Age=0' "$WORK/admin-old.headers" || true)"
-case "$code $(location admin-old) $cleared" in
-  "303 /login"*" 1") ;;
-  *) fail "8 old admin cookie" "status $code, Location $(location admin-old), cleared $cleared" ;;
-esac
-NEW_ADMIN="$(login admin-login-2 "$ADDR_ADMIN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD_2")"
-[ -n "$NEW_ADMIN" ] || fail "8 new admin login"
-pass "8 after the admin password changes the old admin cookie is refused and cleared"
+[ "$code" = 200 ] || fail "8 old admin cookie" "status $code"
+code="$(form admin-login-2 "$ADDR_ADMIN" - /login "username=$ADMIN_USERNAME" "password=$ADMIN_PASSWORD_2")"
+[ "$code" = 400 ] || fail "8 login with the new password" "status $code"
+warnings="$(docker logs "$API" 2>&1 | grep -cF 'admin credentials in the environment are ignored' || true)"
+[ "$warnings" = 1 ] || fail "8 ignored-credentials warning" "$warnings lines"
+pass "8 a restart with a new ADMIN_PASSWORD keeps the old admin password and session, with one warning"
 
 # A parent login runs argon2 in the fresh API process before memory is read.
 login login-b "$ADDR_B" "$USER_B" "$PASSWORD_B" >/dev/null

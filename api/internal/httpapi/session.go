@@ -94,7 +94,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kind, parentID, authed, err := d.checkCredentials(r, username, valid, in.Password)
+	kind, principalID, authed, err := d.checkCredentials(r, username, valid, in.Password)
 	if err != nil {
 		respondInternal(w, err)
 		return
@@ -118,45 +118,45 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 	if kind == kindAdmin {
 		label = ""
 	}
-	if _, err := d.Store.CreateSession(r.Context(), kind, parentID, hash, now, now.Add(ttl), label); err != nil {
+	if _, err := d.Store.CreateSession(r.Context(), kind, principalID, hash, now, now.Add(ttl), label); err != nil {
 		respondInternal(w, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, loginResponse{Token: token, Kind: kind, ExpiresAt: formatTime(now.Add(ttl))})
 }
 
-// checkCredentials runs one password verification on every failing path; only the admin success skips it.
-func (d Deps) checkCredentials(r *http.Request, username string, valid bool, password string) (kind, parentID string, authed bool, err error) {
-	if valid && username == d.Cfg.AdminUsername {
-		if auth.CheckAdmin(d.Cfg, username, password) {
-			return kindAdmin, "", true, nil
-		}
-		verifyPassword(dummyHash(), password)
-		return "", "", false, nil
-	}
-
+// checkCredentials runs exactly one password verification on every path, against dummyHash when no hash was found.
+func (d Deps) checkCredentials(r *http.Request, username string, valid bool, password string) (kind, principalID string, authed bool, err error) {
 	hash, found := dummyHash(), false
-	var parent struct {
-		id       string
-		disabled bool
-	}
+	var disabled bool
 	if valid {
-		p, secret, err := d.Store.ParentByUsername(r.Context(), username)
+		a, secret, err := d.Store.AdminByUsername(r.Context(), username)
 		switch {
 		case err == nil:
-			parent.id, parent.disabled = p.ID, p.Disabled
+			kind, principalID = kindAdmin, a.ID
 			if secret != "" {
 				hash, found = secret, true
 			}
-		case !errors.Is(err, store.ErrNotFound):
+		case errors.Is(err, store.ErrNotFound):
+			p, secret, err := d.Store.ParentByUsername(r.Context(), username)
+			switch {
+			case err == nil:
+				kind, principalID, disabled = kindParent, p.ID, p.Disabled
+				if secret != "" {
+					hash, found = secret, true
+				}
+			case !errors.Is(err, store.ErrNotFound):
+				return "", "", false, err
+			}
+		default:
 			return "", "", false, err
 		}
 	}
 	verified := verifyPassword(hash, password)
-	if !found || !verified || parent.disabled {
+	if !found || !verified || disabled {
 		return "", "", false, nil
 	}
-	return kindParent, parent.id, true, nil
+	return kind, principalID, true, nil
 }
 
 func (d Deps) currentSession(w http.ResponseWriter, r *http.Request) {

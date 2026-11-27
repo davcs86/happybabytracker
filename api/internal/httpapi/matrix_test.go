@@ -306,7 +306,7 @@ func newMatrixFixture(t *testing.T) *fixture {
 	ctx := context.Background()
 	f := &fixture{kit: k}
 
-	f.token[aAdmin], f.sid[aAdmin] = f.seed("admin", "", constants.AdminSessionTTL)
+	f.token[aAdmin], f.sid[aAdmin] = f.seed("admin", k.adminID, constants.AdminSessionTTL)
 	for a, name := range map[actor]string{aG: "gwen", aC: "cora", aX: "xavi"} {
 		f.parent[a] = k.addParent(name)
 		f.token[a], f.sid[a] = f.seed("parent", f.parent[a].ID, constants.ParentSessionTTL)
@@ -433,13 +433,13 @@ func newMatrixFixture(t *testing.T) *fixture {
 	return f
 }
 
-func (f *fixture) seed(kind, parentID string, ttl time.Duration) (token, id string) {
+func (f *fixture) seed(kind, principalID string, ttl time.Duration) (token, id string) {
 	f.kit.t.Helper()
 	plain, hash, err := auth.NewToken()
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
-	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl), "")
+	id, err = f.kit.Store.CreateSession(context.Background(), kind, principalID, hash, f.kit.now, f.kit.now.Add(ttl), "")
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}

@@ -86,10 +86,7 @@ func TestAdminCreatesParent(t *testing.T) {
 		wantErr(t, k.do(http.MethodPost, "/v1/admin/parents", admin, map[string]string{"username": name, "display_name": "Other"}), http.StatusConflict, "username_taken")
 	}
 	for _, name := range []string{testAdminUser, " Root-Admin "} {
-		rec := k.do(http.MethodPost, "/v1/admin/parents", admin, map[string]string{"username": name, "display_name": "Admin"})
-		if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["field"] != "username" {
-			t.Errorf("admin's own username %q: %d %q, want 422 field username", name, rec.Code, rec.Body.String())
-		}
+		wantErr(t, k.do(http.MethodPost, "/v1/admin/parents", admin, map[string]string{"username": name, "display_name": "Admin"}), http.StatusConflict, "username_taken")
 	}
 }
 

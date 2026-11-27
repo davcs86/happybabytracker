@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"regexp"
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/constants"
@@ -31,8 +30,6 @@ type Config struct {
 	NPISearch   bool
 }
 
-var usernameRE = regexp.MustCompile(constants.UsernamePattern)
-
 // Load errors name the variable and never echo its value.
 func Load(getenv func(string) string) (Config, error) {
 	cfg := Config{
@@ -45,12 +42,6 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	if cfg.DataDir == "" {
 		cfg.DataDir = constants.DefaultDataDir
-	}
-	if !usernameRE.MatchString(cfg.AdminUsername) {
-		return Config{}, fmt.Errorf("ADMIN_USERNAME must match %s", constants.UsernamePattern)
-	}
-	if utf8.RuneCountInString(cfg.AdminPassword) < constants.MinAdminPasswordLen {
-		return Config{}, fmt.Errorf("ADMIN_PASSWORD must be at least %d characters", constants.MinAdminPasswordLen)
 	}
 	if utf8.RuneCountInString(cfg.InternalAPIToken) < constants.MinSecretLen {
 		return Config{}, fmt.Errorf("INTERNAL_API_TOKEN must be at least %d characters", constants.MinSecretLen)

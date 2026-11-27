@@ -53,16 +53,24 @@ func (s *Store) ParentByID(ctx context.Context, id string) (model.Parent, error)
 	return p, err
 }
 
-// CreateParent returns ErrConflict when the username is taken; the caller passes it normalised.
+// CreateParent returns ErrConflict when a parent or the admin holds the username; the caller passes it normalised.
 func (s *Store) CreateParent(ctx context.Context, username, displayName string, now time.Time) (model.Parent, error) {
 	id := model.NewID()
-	_, err := s.w.ExecContext(ctx,
-		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		id, username, displayName, now.Unix(), now.Unix())
-	var se *sqlite.Error
-	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		return model.Parent{}, ErrConflict
-	}
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM admins WHERE username = ?`, username).Scan(new(int)); err == nil {
+			return ErrConflict
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			id, username, displayName, now.Unix(), now.Unix())
+		var se *sqlite.Error
+		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return ErrConflict
+		}
+		return err
+	})
 	if err != nil {
 		return model.Parent{}, err
 	}

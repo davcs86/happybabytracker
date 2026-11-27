@@ -793,10 +793,13 @@ const routes: RouteDef[] = [
 			const body = await decode(req, res, ['username', 'display_name']);
 			if (!body) return;
 			const username = normalizeUsername(body.username ?? '');
-			if (!username || username === ADMIN.username) return error(res, 422, 'invalid', 'username');
+			if (!username) return error(res, 422, 'invalid', 'username');
 			const name = cleanDisplayName(body.display_name ?? '');
 			if (name === null) return error(res, 422, 'invalid', 'display_name');
-			if ([...state.parents.values()].some((p) => p.username === username)) {
+			if (
+				username === ADMIN.username ||
+				[...state.parents.values()].some((p) => p.username === username)
+			) {
 				return error(res, 409, 'username_taken');
 			}
 			const parent = account(nextId(state, 'p'), username, name, null);
