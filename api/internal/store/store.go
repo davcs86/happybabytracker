@@ -22,6 +22,10 @@ var (
 	ErrDuplicate    = errors.New("store: duplicate")
 	ErrLastGuardian = errors.New("store: last guardian")
 	ErrForbidden    = errors.New("store: forbidden")
+	// ErrNotLinked is an OIDC pair that names no principal, or names a disabled parent.
+	ErrNotLinked = errors.New("store: not linked")
+	// ErrAlreadyLinked is an OIDC pair held by anyone, or a principal that already has an identity for the issuer.
+	ErrAlreadyLinked = errors.New("store: already linked")
 	// ErrInvalidContents is a bottle whose contents are empty, repeat a name or name an unknown one.
 	ErrInvalidContents = errors.New("store: invalid bottle contents")
 	// ErrInvalidSides is a pumping session whose sides repeat a name, name an unknown one or imply another Side.

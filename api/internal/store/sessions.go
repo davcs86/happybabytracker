@@ -11,6 +11,14 @@ import (
 
 // CreateSession stores a session by token hash; principalID is the admin id when kind is "admin", else the parent id.
 func (s *Store) CreateSession(ctx context.Context, kind, principalID string, tokenHash []byte, now, expires time.Time, deviceLabel string) (string, error) {
+	return insertSession(ctx, s.w, kind, principalID, tokenHash, now, expires, deviceLabel)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func insertSession(ctx context.Context, q execer, kind, principalID string, tokenHash []byte, now, expires time.Time, deviceLabel string) (string, error) {
 	var parent, admin any
 	if principalID != "" && kind == "admin" {
 		admin = principalID
@@ -22,7 +30,7 @@ func (s *Store) CreateSession(ctx context.Context, kind, principalID string, tok
 		label = deviceLabel
 	}
 	id := model.NewID()
-	_, err := s.w.ExecContext(ctx,
+	_, err := q.ExecContext(ctx,
 		`INSERT INTO sessions(id, token_hash, kind, parent_id, admin_id, created_at, last_seen_at, expires_at, device_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, tokenHash, kind, parent, admin, now.Unix(), now.Unix(), expires.Unix(), label)
 	if err != nil {

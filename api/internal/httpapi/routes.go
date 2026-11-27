@@ -55,6 +55,7 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/healthz", Open, Health(d.Store, d.Now, d.LastTick)},
 		{http.MethodGet, "/healthz/reminders", Open, RemindersHealth(d.Store, d.Now)},
 		{http.MethodPost, "/v1/session", Internal, d.login},
+		{http.MethodPost, "/v1/session/oidc", Internal, d.oidcLogin},
 		{http.MethodGet, "/v1/auth", Internal, d.authMode},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
 		{http.MethodDelete, "/v1/session", Session, d.logout},
@@ -67,6 +68,7 @@ func Routes(d Deps) []Route {
 
 		{http.MethodGet, "/v1/tokens/{token}", Internal, d.peekToken},
 		{http.MethodPost, "/v1/tokens/{token}/redeem", Internal, d.redeemToken},
+		{http.MethodPost, "/v1/tokens/{token}/redeem-oidc", Internal, d.redeemTokenOIDC},
 
 		{http.MethodPatch, "/v1/me", Parent, d.updateProfile},
 		{http.MethodPost, "/v1/me/password", Parent, d.changePassword},

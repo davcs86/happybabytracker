@@ -37,6 +37,9 @@ const (
 
 	DeviceLabelPattern = `^[A-Za-z0-9 ]{1,48}$`
 
+	OIDCIssuerMaxLen  = 512
+	OIDCSubjectMaxLen = 255
+
 	DisplayNameMinLen = 1
 	DisplayNameMaxLen = 64
 
