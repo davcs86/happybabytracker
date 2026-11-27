@@ -1,9 +1,19 @@
 import { defineConfig } from '@playwright/test';
 import { SHOTS_NOW } from './e2e/screenshots/clock.js';
-import { STUB_TOKEN, STUB_URL, UI_ORIGIN, UI_PORT } from './e2e/stub-api.js';
+import {
+	ISSUER_URL,
+	STUB_OIDC_CLIENT,
+	STUB_SEAL_KEY,
+	STUB_TOKEN,
+	STUB_URL,
+	UI_ORIGIN,
+	UI_PORT
+} from './e2e/stub-api.js';
+import { ensureTls } from './e2e/tls.js';
 
 // Regenerates docs/screenshots; never part of the e2e suite (testMatch *.shot.ts only).
 const frozen = { SHOTS_NOW };
+const tls = ensureTls();
 const testEnv = {
 	...frozen,
 	INTERNAL_API_TOKEN: STUB_TOKEN,
@@ -14,7 +24,12 @@ const testEnv = {
 	ADDRESS_HEADER: 'x-forwarded-for',
 	XFF_DEPTH: '1',
 	HOST: '127.0.0.1',
-	PORT: String(UI_PORT)
+	PORT: String(UI_PORT),
+	OIDC_ISSUER: ISSUER_URL,
+	OIDC_CLIENT_ID: STUB_OIDC_CLIENT.id,
+	OIDC_CLIENT_SECRET: STUB_OIDC_CLIENT.secret,
+	SESSION_SEAL_KEY: STUB_SEAL_KEY,
+	NODE_EXTRA_CA_CERTS: tls.cert
 };
 const freeze = '--import ./e2e/screenshots/freeze-clock.ts';
 
@@ -53,6 +68,13 @@ export default defineConfig({
 		{
 			command: `node ${freeze} e2e/stub-api.ts`,
 			url: `${STUB_URL}/__requests`,
+			env: frozen,
+			reuseExistingServer: false
+		},
+		{
+			command: `node ${freeze} e2e/stub-issuer.ts`,
+			url: `${ISSUER_URL}/.well-known/openid-configuration`,
+			ignoreHTTPSErrors: true,
 			env: frozen,
 			reuseExistingServer: false
 		},

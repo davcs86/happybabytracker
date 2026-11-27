@@ -1,4 +1,9 @@
 import { createHash, createHmac, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createServer, request } from 'node:https';
+import { join, resolve } from 'node:path';
+import { ISSUER_PORT, ISSUER_URL, STUB_OIDC_CLIENT } from './stub-api.ts';
+import { TLS_DIR } from './tls.ts';
 
 export type IssuerUser = { sub: string; preferredUsername?: string };
 
@@ -242,3 +247,97 @@ export function createIssuer(opts: {
 		authorizeLog
 	};
 }
+
+function readBody(req: import('node:http').IncomingMessage): Promise<string> {
+	return new Promise((done, fail) => {
+		const chunks: Buffer[] = [];
+		req.on('data', (c: Buffer) => chunks.push(c));
+		req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+		req.on('error', fail);
+	});
+}
+
+// One HTTPS issuer per worker slot; its controls live on the same listener, outside the issuer's paths.
+export function startIssuer(port = ISSUER_PORT) {
+	const issuer = createIssuer({
+		issuer: ISSUER_URL,
+		clientId: STUB_OIDC_CLIENT.id,
+		clientSecret: STUB_OIDC_CLIENT.secret
+	});
+	const tls = {
+		cert: readFileSync(join(TLS_DIR, 'cert.pem')),
+		key: readFileSync(join(TLS_DIR, 'key.pem'))
+	};
+	const server = createServer(tls, async (req, res) => {
+		const url = new URL(req.url ?? '/', ISSUER_URL);
+		const body = req.method === 'GET' || req.method === 'HEAD' ? '' : await readBody(req);
+		const reply = (status: number, value?: unknown) => {
+			res.writeHead(status, value === undefined ? {} : { 'content-type': 'application/json' });
+			res.end(value === undefined ? undefined : JSON.stringify(value));
+		};
+		switch (`${req.method} ${url.pathname}`) {
+			case 'POST /__issuer/configure':
+				issuer.configure(JSON.parse(body || '{}') as Partial<IssuerBehaviour>);
+				return reply(204);
+			case 'POST /__issuer/reset':
+				issuer.reset();
+				return reply(204);
+			case 'POST /__issuer/down':
+				issuer.configure({ down: true });
+				return reply(204);
+			case 'GET /__issuer/authorize-log':
+				return reply(200, issuer.authorizeLog);
+		}
+		const headers = new Headers();
+		for (const [k, v] of Object.entries(req.headers)) {
+			if (typeof v === 'string') headers.set(k, v);
+		}
+		const answer = await issuer.handle(
+			new Request(url, { method: req.method, headers, body: body || undefined })
+		);
+		res.writeHead(answer.status, Object.fromEntries(answer.headers));
+		res.end(Buffer.from(await answer.arrayBuffer()));
+	});
+	server.listen(port, '127.0.0.1');
+	return server;
+}
+
+// Worker helpers: each calls its own slot's issuer, trusting only the stub's certificate.
+function control(
+	method: string,
+	path: string,
+	body?: unknown
+): Promise<{ status: number; text: string }> {
+	return new Promise((done, fail) => {
+		const req = request(
+			`${ISSUER_URL}${path}`,
+			{ method, ca: readFileSync(join(TLS_DIR, 'cert.pem')) },
+			(res) => {
+				const chunks: Buffer[] = [];
+				res.on('data', (c: Buffer) => chunks.push(c));
+				res.on('end', () =>
+					done({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString('utf8') })
+				);
+			}
+		);
+		req.on('error', fail);
+		req.end(body === undefined ? undefined : JSON.stringify(body));
+	});
+}
+
+async function expectNoContent(name: string, r: Promise<{ status: number }>) {
+	const { status } = await r;
+	if (status !== 204) throw new Error(`${name}: ${status}`);
+}
+
+export const configureIssuer = (b: Partial<IssuerBehaviour>) =>
+	expectNoContent('configureIssuer', control('POST', '/__issuer/configure', b));
+export const resetIssuer = () => expectNoContent('resetIssuer', control('POST', '/__issuer/reset'));
+export const issuerDown = () => expectNoContent('issuerDown', control('POST', '/__issuer/down'));
+export async function issuerAuthorizeLog(): Promise<Issuer['authorizeLog']> {
+	const r = await control('GET', '/__issuer/authorize-log');
+	if (r.status !== 200) throw new Error(`issuerAuthorizeLog: ${r.status}`);
+	return JSON.parse(r.text) as Issuer['authorizeLog'];
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === import.meta.filename) startIssuer();

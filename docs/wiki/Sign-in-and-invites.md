@@ -47,6 +47,39 @@ Wrong password. The message sits at the top of the card, above the fields.
 
 The server cannot be reached. The rate-limit page (`auth/03-login-rate-limited`) looks the same with the other sentence.
 
+### How do I sign in with single sign-on?
+
+Some deployments let you sign in with the single sign-on account your household already uses. The deployment's sign-in mode decides which buttons the sign-in page shows:
+
+| Mode | What the card shows |
+|---|---|
+| Passwords only (the default) | The username and password fields and **Sign in**, as above. No single sign-on button. |
+| Single sign-on only | One button, **Continue with single sign-on**, in place of the fields. |
+| Both | The password card as above, then an outline **Continue with single sign-on** button under it. |
+
+| Single sign-on only | Both |
+|---|---|
+| <img src="../screenshots/sso/01-login-oidc-mobile.png" alt="The Sign in page on a phone in single sign-on mode: the heading Sign in, the sentence Sign in to continue., and a card holding only the button Continue with single sign-on" width="260"> | <img src="../screenshots/sso/02-login-both-mobile.png" alt="The Sign in page on a phone with both modes: the username and password card with its Sign in button, then an outline Continue with single sign-on button under it" width="260"> |
+
+1. Press **Continue with single sign-on**. Your browser goes to the sign-in page of your single sign-on account.
+2. Sign in there (if you are already signed in there, this step can pass by itself).
+3. You come back to a short page, **Signing you in**, which moves on by itself to the same page a password sign-in lands on. If it does not, press **Continue**.
+
+This works only for an account that is already linked to single sign-on. If you tried to open a page before signing in, you land on it afterwards, as with a password.
+
+### What if single sign-on does not complete?
+
+| Did not complete | Unavailable |
+|---|---|
+| <img src="../screenshots/sso/03-did-not-complete-mobile.png" alt="A page outside the app with the heading Single sign-on did not complete and a Go to sign in button" width="260"> | <img src="../screenshots/sso/04-sso-unavailable-mobile.png" alt="A page outside the app with the heading Single sign-on is unavailable and a Go to sign in button" width="260"> |
+
+- **"Single sign-on did not complete"**: the round trip came back but could not sign you in. The single sign-on account is not linked to an account here, you declined or are not allowed in at the single sign-on page, the attempt took longer than 10 minutes, or the same return page was opened twice. You are not signed in. Press **Go to sign in** and try again; if it keeps happening, ask the administrator whether your account is linked.
+- **"Single sign-on is unavailable"**: the app cannot reach the single sign-on service, or single sign-on is turned off on this deployment. Press **Go to sign in**; in a deployment with both modes, your password still works.
+- **"Sign-in is unavailable"** in the card, with no button: the deployment allows single sign-on only but is not set up for it. Nobody can sign in until the operator fixes it.
+- **"Password sign-in is turned off"** on the sign-in page: the deployment allows single sign-on only, so a password is refused. Use **Continue with single sign-on**.
+
+The page never says which of the causes it was, and nothing about your single sign-on account is kept in the app's logs.
+
 ### How do I use an invite link?
 
 A guardian or the administrator gives you a link. It works once and lasts 72 hours.
@@ -109,6 +142,7 @@ An expired or already used reset link gives the same message as the invite, with
 |---|---|---|---|
 | Sign in | `/login` | Signed out. A signed-in visit goes to the landing page instead. | `auth/01-login-empty`, `auth/02-login-wrong-password`, `auth/03-login-rate-limited`, `auth/04-login-api-down` |
 | Set your password (invite) | `/invite/[token]` | Anyone holding the link; the link is the only credential. | `auth/05-invite-valid`, `auth/06-invite-mismatch`, `auth/07-invite-too-short`, `auth/08-invite-rate-limited`, `auth/10-invite-invalid` |
+| Single sign-on outcome | `/auth/callback` (the return from single sign-on), `/auth/sso` | Anyone; answers with a page, never a redirect | `sso/03-did-not-complete`, `sso/04-sso-unavailable`; the sign-in page by mode is `sso/01-login-oidc`, `sso/02-login-both` |
 | Welcome after the invite | `/` | Signed in, no child yet | `auth/09-invite-success-welcome` |
 | Set a new password (reset) | `/reset/[token]` | Anyone holding the link | `auth/11-reset-valid`, `auth/12-reset-too-short`, `auth/13-reset-invalid` |
 | Sign out | `/logout` (POST only) | Signed in; ends the session and lands on `/login` | Not a page; the landing is `auth/01-login-empty`. A GET to `/logout` is refused (405). |

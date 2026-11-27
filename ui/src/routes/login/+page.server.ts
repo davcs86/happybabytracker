@@ -4,10 +4,16 @@ import { deviceLabel } from '#lib/server/device-label.js';
 import { setSessionCookie } from '#lib/server/cookie.js';
 import { getEnv } from '#lib/server/env.js';
 import { landing } from '#lib/server/landing.js';
+import { ssoOffered } from '#lib/server/oidc/start.js';
+import type { AuthMode } from '#lib/types.js';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals, url }) => {
+// A failed mode read keeps the password form: the action's own 503 alert must stay on this page.
+export const load: PageServerLoad = async ({ locals, url }) => {
 	if (locals.session) redirect(303, landing(locals.session.kind, url.searchParams.get('next')));
+	const r = await locals.api.authMode();
+	const mode: AuthMode = r.ok ? r.data : 'local';
+	return { mode, sso: r.ok && ssoOffered(mode, getEnv().oidc) };
 };
 
 export const actions: Actions = {
@@ -26,6 +32,9 @@ export const actions: Actions = {
 			deviceLabel(request.headers.get('user-agent') ?? '')
 		);
 		if (!r.ok) {
+			if (r.code === 'mode_refused') {
+				return fail(403, { username, message: 'Password sign-in is turned off' });
+			}
 			if (r.reason === 'rate_limited') {
 				return fail(429, { username, message: 'Too many attempts, try again in a minute' });
 			}

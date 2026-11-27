@@ -17,6 +17,8 @@ export default defineConfig({
 		// The design's motion is user-triggered and honours this; tests assert the settled page.
 		reducedMotion: 'reduce',
 		extraHTTPHeaders: { 'x-forwarded-proto': 'http', 'x-forwarded-for': '203.0.113.10' },
+		// The browser follows the authorize URL to the slot's self-signed stub issuer.
+		ignoreHTTPSErrors: true,
 		launchOptions: process.env.PW_CHROMIUM_PATH
 			? { executablePath: process.env.PW_CHROMIUM_PATH }
 			: {}

@@ -13,8 +13,13 @@ import { themeOrAuto } from '#lib/server/theme.js';
 
 const isHealth = (path: string) => path === '/healthz' || path.startsWith('/healthz/');
 const isAdminArea = (path: string) => path === '/admin' || path.startsWith('/admin/');
+const isAuth = (path: string) => path.startsWith('/auth/');
+// Pages whose URL can carry a one-time token or an authorization code.
+const sameOriginReferrer = (path: string) =>
+	isAuth(path) || path.startsWith('/invite/') || path.startsWith('/reset/');
 const isPublic = (path: string) =>
 	path === '/login' ||
+	isAuth(path) ||
 	path === '/logout' ||
 	path === '/theme' ||
 	path.startsWith('/invite/') ||
@@ -57,7 +62,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 			redirect(303, `/login?next=${encodeURIComponent(path + event.url.search)}`);
 		}
 	} else if (session.kind === 'admin') {
-		if (!path.startsWith('/admin/') && path !== '/logout') redirect(303, ADMIN_HOME);
+		if (!path.startsWith('/admin/') && path !== '/logout' && !isAuth(path)) {
+			redirect(303, ADMIN_HOME);
+		}
 	} else if (isAdminArea(path)) {
 		error(404, 'Not found');
 	}
@@ -67,5 +74,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 		transformPageChunk: ({ html }) => html.replace('%hbt.theme%', theme)
 	});
 	if (!path.startsWith('/_app/')) response.headers.set('cache-control', 'no-store');
+	if (sameOriginReferrer(path)) response.headers.set('referrer-policy', 'same-origin');
 	return response;
 };

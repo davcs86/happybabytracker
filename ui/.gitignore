@@ -24,3 +24,6 @@ vite.config.ts.timestamp-*
 # Playwright
 test-results
 
+
+# The stub issuer's self-signed certificate (e2e/tls.ts)
+/e2e/.tls

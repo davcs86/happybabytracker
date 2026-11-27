@@ -1,6 +1,7 @@
 // Index order of the README; a shot outside these areas is refused.
 export const AREAS = [
 	'auth',
+	'sso',
 	'shell',
 	'sheets',
 	'home',
