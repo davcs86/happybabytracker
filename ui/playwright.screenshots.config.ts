@@ -54,6 +54,8 @@ export default defineConfig({
 		deviceScaleFactor: 1,
 		locale: 'en-US',
 		timezoneId: 'UTC',
+		// The browser follows the authorize URL to the self-signed stub issuer.
+		ignoreHTTPSErrors: true,
 		launchOptions: {
 			...(process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {}),
 			// Partial re-raster of just-typed inputs differs by a shade between runs.

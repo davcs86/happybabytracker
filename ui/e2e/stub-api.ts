@@ -788,7 +788,11 @@ const activeGuardians = (state: State, kidId: string) =>
 		(g) => g.kidId === kidId && g.role === 'guardian' && !state.parents.get(g.parentId)?.disabled
 	).length;
 
+// IssueToken: replaces the parent's unused tokens of that kind.
 function issueLink(state: State, kind: TokenRow['kind'], parentId: string) {
+	for (const [t, row] of state.tokens) {
+		if (row.parentId === parentId && row.kind === kind && row.usable) state.tokens.delete(t);
+	}
 	const token = randomBytes(32).toString('base64url');
 	state.tokens.set(token, { kind, parentId, usable: true, issuedAt: now() });
 	const ttl = kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S;
@@ -5315,7 +5319,11 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	const tokenMatch = /^\/v1\/tokens\/([^/]+)(\/redeem|\/redeem-oidc)?$/.exec(path);
 	if (tokenMatch) {
 		const row = state.tokens.get(decodeURIComponent(tokenMatch[1]));
-		const usable = row?.usable && !state.parents.get(row.parentId)?.disabled ? row : undefined;
+		const live =
+			row?.usable &&
+			now() < row.issuedAt + (row.kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S) &&
+			!state.parents.get(row.parentId)?.disabled;
+		const usable = live ? row : undefined;
 		if (!tokenMatch[2] && method === 'GET') {
 			if (!usable) return error(res, 404, 'not_found');
 			const parent = state.parents.get(usable.parentId);

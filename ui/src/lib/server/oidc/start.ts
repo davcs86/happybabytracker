@@ -1,5 +1,6 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import { OIDC_TXN_MAX_AGE_S } from '../constants';
+import { INVITE_VALIDITY } from '../../constants';
 import { setOidcCookie } from '../cookie';
 import { deviceLabel } from '../device-label';
 import { getEnv, type OidcEnv } from '../env';
@@ -10,6 +11,9 @@ import { seal } from './seal';
 import type { OidcPurpose, OidcStart } from './types';
 
 export const SSO_UNAVAILABLE = 'Single sign-on is unavailable';
+export const SSO_DID_NOT_COMPLETE = 'Single sign-on did not complete';
+export const SSO_LABEL_FALLBACK = 'the single sign-on account you just signed in with';
+export const INVITE_NO_LONGER_VALID = `This link is no longer valid. Ask the person who sent it for a new one. This kind of link lasts ${INVITE_VALIDITY}.`;
 
 let warnedNotConfigured = false;
 

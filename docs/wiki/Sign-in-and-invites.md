@@ -112,6 +112,46 @@ If the server limits the attempts, a message at the top of the form says "Too ma
 
 After a successful invite: signed in, and no child yet.
 
+### Can I finish an invite with single sign-on?
+
+The deployment's sign-in mode decides what the invite page offers:
+
+| Mode | What the invite page shows |
+|---|---|
+| Passwords only (the default) | **Set your password** with the two password fields, as above. No single sign-on button. |
+| Single sign-on only | **Finish setting up your account**, "Continue with single sign-on to finish.", your read-only username and one button, **Continue with single sign-on**, in place of the password fields. |
+| Both | The set-password card as above, then an outline **Continue with single sign-on** button under it. Either way finishes the invite. |
+
+| Single sign-on only | Both |
+|---|---|
+| <img src="../screenshots/sso/05-invite-oidc-mobile.png" alt="The invite page on a phone in single sign-on mode: the heading Finish setting up your account, the sentence Continue with single sign-on to finish., a card with the read-only username bo and the button Continue with single sign-on" width="260"> | <img src="../screenshots/sso/06-invite-both-mobile.png" alt="The invite page on a phone with both modes: the Set your password card with its two password fields and Set password button, then an outline Continue with single sign-on button under it" width="260"> |
+
+1. Press **Continue with single sign-on**. The single sign-on page asks you to sign in again, even if you are already signed in there: that proves the account is yours right now.
+2. You come back to a page that reads **You are linking** *your single sign-on name* **to** *your username*, for example "You are linking bo.sso to bo". If the single sign-on account has no name to show, it reads "the single sign-on account you just signed in with".
+3. Press **Confirm**. The invite is used, the single sign-on account is linked to yours, and you are signed in, as after setting a password. From then on you sign in with **Continue with single sign-on**.
+
+**Cancel** links nothing and takes you back to the invite page; the link still works.
+
+| Phone |
+|---|
+| <img src="../screenshots/sso/07-confirm-invite-mobile.png" alt="The confirmation page on a phone: the heading You are linking bo.sso to bo, and a card with a Confirm button and an outline Cancel button" width="260"> |
+
+If it does not complete:
+
+| What you see | What it means |
+|---|---|
+| "Single sign-on did not complete" with **Go to your invite link** | The single sign-on page did not ask you to sign in again, or the round trip failed or took longer than 10 minutes. Nothing was linked; open the invite again and retry. |
+| "Single sign-on did not complete" and "This link is no longer valid. …" | The invite was replaced, used, expired or the account was disabled while you were away, or it was not an invite link. Ask for a new link. |
+| "That single sign-on account is already linked to an account" | That single sign-on account already belongs to another account here. Use a different one, or ask the administrator. |
+| "Single sign-on is turned off" | The deployment switched to passwords only while you were away. Open the invite again and set a password. |
+| "Password sign-in is turned off" | A password was sent while the deployment allows single sign-on only. Use **Continue with single sign-on**. |
+
+| Phone |
+|---|
+| <img src="../screenshots/sso/09-confirm-link-no-longer-valid-mobile.png" alt="A page outside the app with the heading Single sign-on did not complete, a bordered message reading This link is no longer valid. Ask the person who sent it for a new one. This kind of link lasts 72 hours., and a Go to sign in button" width="260"> |
+
+Confirming twice (a double press, or going back and pressing again) signs you in once; the second press shows "Single sign-on did not complete".
+
 ### What if the link says it is no longer valid?
 
 | Phone |
@@ -136,15 +176,22 @@ A guardian or the administrator issues you a reset link. It lasts 1 hour, so use
 
 An expired or already used reset link gives the same message as the invite, with "This kind of link lasts 1 hour." and the heading **Set a new password** (`auth/13-reset-invalid`). A short password is refused on the field (`auth/12-reset-too-short`).
 
+A reset link sets a password, so it works only while password sign-in is on: with passwords only or both modes the page is as above. In a deployment with single sign-on only, the page shows no form and reads "This link works only while password sign-in is on. Ask the person who sent it.", with **Go to sign in**. A reset link is the operator's break-glass path; the operator turns both modes on for it.
+
+| Phone |
+|---|
+| <img src="../screenshots/sso/08-reset-oidc-mobile.png" alt="The Set a new password page on a phone in single sign-on mode: a bordered message reading This link works only while password sign-in is on. Ask the person who sent it., and a Go to sign in button" width="260"> |
+
 ## Screens
 
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
 | Sign in | `/login` | Signed out. A signed-in visit goes to the landing page instead. | `auth/01-login-empty`, `auth/02-login-wrong-password`, `auth/03-login-rate-limited`, `auth/04-login-api-down` |
-| Set your password (invite) | `/invite/[token]` | Anyone holding the link; the link is the only credential. | `auth/05-invite-valid`, `auth/06-invite-mismatch`, `auth/07-invite-too-short`, `auth/08-invite-rate-limited`, `auth/10-invite-invalid` |
-| Single sign-on outcome | `/auth/callback` (the return from single sign-on), `/auth/sso` | Anyone; answers with a page, never a redirect | `sso/03-did-not-complete`, `sso/04-sso-unavailable`; the sign-in page by mode is `sso/01-login-oidc`, `sso/02-login-both` |
+| Set your password (invite) | `/invite/[token]` | Anyone holding the link; the link is the only credential. | `auth/05-invite-valid`, `auth/06-invite-mismatch`, `auth/07-invite-too-short`, `auth/08-invite-rate-limited`, `auth/10-invite-invalid`; by mode `sso/05-invite-oidc`, `sso/06-invite-both` |
+| Single sign-on outcome | `/auth/callback` (the return from single sign-on), `/auth/sso` | Anyone; answers with a page, never a redirect | `sso/03-did-not-complete`, `sso/04-sso-unavailable`, the invite confirmation `sso/07-confirm-invite`; the sign-in page by mode is `sso/01-login-oidc`, `sso/02-login-both` |
+| Confirm single sign-on | `/auth/confirm` (POST from the confirmation; a visit shows "Nothing to confirm") | Anyone holding the pending single sign-on from the confirmation | `sso/09-confirm-link-no-longer-valid` |
 | Welcome after the invite | `/` | Signed in, no child yet | `auth/09-invite-success-welcome` |
-| Set a new password (reset) | `/reset/[token]` | Anyone holding the link | `auth/11-reset-valid`, `auth/12-reset-too-short`, `auth/13-reset-invalid` |
+| Set a new password (reset) | `/reset/[token]` | Anyone holding the link | `auth/11-reset-valid`, `auth/12-reset-too-short`, `auth/13-reset-invalid`; single sign-on only `sso/08-reset-oidc` |
 | Sign out | `/logout` (POST only) | Signed in; ends the session and lands on `/login` | Not a page; the landing is `auth/01-login-empty`. A GET to `/logout` is refused (405). |
 
 ### Rules the screens show

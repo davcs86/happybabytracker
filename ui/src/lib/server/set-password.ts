@@ -3,9 +3,10 @@ import { createApi } from './api';
 import { PARENT_HOME, UNAVAILABLE_MESSAGE } from './constants';
 import { setSessionCookie } from './cookie';
 import { getEnv } from './env';
+import { SSO_UNAVAILABLE, ssoOffered, startSso } from './oidc/start';
 import { MAX_PASSWORD_LEN, MIN_PASSWORD_LEN } from '../constants';
 import { passwordProblem } from '../password';
-import type { TokenInfo } from '../types';
+import type { AuthMode, TokenInfo } from '../types';
 
 type Event = RequestEvent<{ token: string }>;
 
@@ -14,9 +15,13 @@ const failure = (status: number, message: string) => fail(status, { field: null,
 // Serves /invite/[token] and /reset/[token]; a link of the other kind shows as invalid.
 export function setPasswordRoute(kind: TokenInfo['kind']) {
 	async function load({ locals, params }: Event) {
-		const r = await locals.api.peekToken(params.token);
-		if (r.ok && r.data.kind === kind) return { valid: true as const, username: r.data.username };
-		if (r.ok || r.reason === 'not_found') return { valid: false as const };
+		const [r, m] = await Promise.all([locals.api.peekToken(params.token), locals.api.authMode()]);
+		const mode: AuthMode = m.ok ? m.data : 'local';
+		const sso = m.ok && ssoOffered(mode, getEnv().oidc);
+		if (r.ok && r.data.kind === kind) {
+			return { valid: true as const, username: r.data.username, mode, sso };
+		}
+		if (r.ok || r.reason === 'not_found') return { valid: false as const, mode, sso };
 		error(503, UNAVAILABLE_MESSAGE);
 	}
 
@@ -32,6 +37,7 @@ export function setPasswordRoute(kind: TokenInfo['kind']) {
 			setSessionCookie(cookies, r.data.token, r.data.kind);
 			redirect(303, PARENT_HOME);
 		}
+		if (r.code === 'mode_refused') return failure(403, 'Password sign-in is turned off');
 		switch (r.reason) {
 			case 'not_found':
 				return fail(404, { invalid: true });
@@ -49,5 +55,18 @@ export function setPasswordRoute(kind: TokenInfo['kind']) {
 		}
 	}
 
-	return { load, actions: { default: submit } };
+	// The mode is read again here, never taken from the page that posted.
+	async function sso(event: Event) {
+		const mode = await event.locals.api.authMode();
+		if (!mode.ok || mode.data === 'local') return failure(503, SSO_UNAVAILABLE);
+		const r = await startSso(event, 'invite', { binding: event.params.token });
+		if (!r.ok) return failure(503, r.message);
+		// The issuer's authorization endpoint, from its discovery document.
+		redirect(303, r.location, { external: true });
+	}
+
+	// SvelteKit refuses a default action beside named ones.
+	const actions: Record<string, typeof submit | typeof sso> =
+		kind === 'invite' ? { password: submit, sso } : { default: submit };
+	return { load, actions };
 }

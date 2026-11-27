@@ -194,7 +194,7 @@ redeem() { # name addr url password -> session cookie
   local path="${3#"$ORIGIN"}" code session
   [ "$path" != "$3" ] || fail "invite link $1" "link is not under $ORIGIN"
   remember "${path##*/}"
-  code="$(form "$1" "$2" - "$path" "password=$4" "confirm=$4")"
+  code="$(form "$1" "$2" - "$path?/password" "password=$4" "confirm=$4")"
   session="$(set_cookie "$1")"
   { [ "$code" = 303 ] && [ -n "$session" ]; } || fail "redeem $1" "status $code, no session cookie"
   remember "$session"

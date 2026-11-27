@@ -18,7 +18,9 @@
 		valid,
 		lifetime,
 		username,
-		form
+		form,
+		action,
+		mode
 	}: {
 		heading: string;
 		description: string;
@@ -26,6 +28,8 @@
 		lifetime: string;
 		username?: string;
 		form: FormResult;
+		action?: string;
+		mode: 'password' | 'sso' | 'both' | 'off';
 	} = $props();
 
 	let password = $state('');
@@ -50,7 +54,7 @@
 	<div class="mx-auto flex w-full max-w-[400px] flex-col gap-4">
 		<p class="text-base font-bold">Happy baby</p>
 		<h1>{heading}</h1>
-		{#if valid && !form?.invalid}
+		{#if valid && !form?.invalid && mode !== 'off'}
 			<p class="text-sm leading-normal text-muted-foreground">{description}</p>
 		{/if}
 		{#if !valid || form?.invalid}
@@ -63,9 +67,43 @@
 				</Alert.Root>
 				<Button href="/login" variant="outline" size="xl">Go to sign in</Button>
 			</div>
+		{:else if mode === 'off'}
+			<div class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4">
+				<Alert.Root>
+					<Alert.Description>
+						{form?.message ??
+							'This link works only while password sign-in is on. Ask the person who sent it.'}
+					</Alert.Description>
+				</Alert.Root>
+				<Button href="/login" variant="outline" size="xl">Go to sign in</Button>
+			</div>
+		{:else if mode === 'sso'}
+			<form
+				method="POST"
+				action="?/sso"
+				class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4"
+			>
+				{#if form?.message}
+					<Alert.Root>
+						<Alert.Description>{form.message}</Alert.Description>
+					</Alert.Root>
+				{/if}
+				<div class="grid gap-1.5">
+					<Label for="username" class="text-xs">Username</Label>
+					<Input
+						id="username"
+						value={username}
+						autocomplete="username"
+						readonly
+						class="text-muted-foreground"
+					/>
+				</div>
+				<Button type="submit" size="xl">Continue with single sign-on</Button>
+			</form>
 		{:else}
 			<form
 				method="POST"
+				{action}
 				class="flex flex-col gap-3.5 rounded-2xl border bg-card p-4"
 				novalidate
 				{onsubmit}
@@ -124,6 +162,13 @@
 				</div>
 				<Button type="submit" size="xl">Set password</Button>
 			</form>
+			{#if mode === 'both'}
+				<form method="POST" action="?/sso">
+					<Button type="submit" variant="outline" size="xl" class="w-full">
+						Continue with single sign-on
+					</Button>
+				</form>
+			{/if}
 		{/if}
 	</div>
 </main>

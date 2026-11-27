@@ -24,6 +24,7 @@ test('a valid link shows the username and a set-password form', async ({ page })
 	await expect(page.getByLabel('Username')).toHaveValue(INVITEE);
 	await expect(page.getByLabel('New password')).toBeVisible();
 	await expect(page.getByLabel('Confirm password')).toBeVisible();
+	await expect(page.locator('form')).toHaveAttribute('action', '?/password');
 	await expectAccessible(page);
 });
 
