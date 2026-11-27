@@ -39,3 +39,18 @@ export const THEME_COOKIE = 'hbt_theme';
 export const THEME_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
 // A same-origin path with its query: one leading slash, no backslash, no whitespace.
 export const RETURN_PATH_PATTERN = /^\/(?![/\\])[^\s\\]*$/;
+// The sealed OIDC transaction cookie: read only under /auth, gone after one flow.
+export const OIDC_TXN_COOKIE = 'hbt_oidc';
+export const OIDC_TXN_MAX_AGE_S = 600;
+export const OIDC_TXN_PATH = '/auth';
+export const MIN_SESSION_SEAL_KEY = 32;
+export const OIDC_DEFAULT_SCOPES = 'openid profile';
+export const OIDC_CALLBACK_PATH = '/auth/callback';
+// One call to the issuer.
+export const OIDC_TIMEOUT_MS = 5000;
+// In code points, after Cc and Cf characters are removed.
+export const OIDC_LABEL_MAX_LEN = 64;
+// The whole Set-Cookie of hbt_oidc stays under this.
+export const OIDC_COOKIE_MAX_BYTES = 4096;
+// Allowed clock skew when auth_time is compared with the flow's start.
+export const OIDC_AUTH_TIME_SKEW_S = 30;

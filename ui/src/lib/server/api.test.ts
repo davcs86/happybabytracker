@@ -10,7 +10,8 @@ const env: Env = {
 	internalApiToken: TOKEN,
 	apiBaseUrl: 'http://api:9210/',
 	origin: 'https://x.test',
-	port: 9212
+	port: 9212,
+	oidc: null
 };
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
 	new Response(JSON.stringify(body), {
