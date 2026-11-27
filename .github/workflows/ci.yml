@@ -56,7 +56,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm test --retry=1 --reporter=default --reporter=json --outputFile.json=flaky-report/vitest.json
       - id: playwright
         run: echo "version=$(pnpm exec playwright --version)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -65,7 +65,28 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
       # Headless tests launch only the headless shell; the OS packages are not cached.
       - run: pnpm exec playwright install --with-deps --only-shell chromium
-      - run: pnpm test:e2e --trace off
+      - run: pnpm test:e2e --trace off --retries=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: flaky-report/playwright.json
+      - if: always()
+        run: |
+          {
+            echo '### Flaky tests (passed only on retry)'
+            echo '| Layer | File | Test |'
+            echo '|---|---|---|'
+            if [ -f flaky-report/vitest.json ]; then
+              jq -r '.testResults[] as $f | $f.assertionResults[] | select(.status == "passed" and (.failureMessages | length > 0)) | "| unit | \($f.name | sub("^" + env.PWD + "/"; "")) | \(.fullName) |"' flaky-report/vitest.json
+            fi
+            if [ -f flaky-report/playwright.json ]; then
+              jq -r '.. | objects | select(has("specs")) | .specs[] as $s | $s.tests[] | select(.status == "flaky") | "| e2e | \($s.file) | \($s.title) (\(.projectName)) |"' flaky-report/playwright.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: flaky-report
+          path: ui/flaky-report/
+          if-no-files-found: ignore
 
   images:
     needs: [api, ui]
