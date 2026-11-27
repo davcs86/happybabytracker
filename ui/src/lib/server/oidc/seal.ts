@@ -18,12 +18,35 @@ export function seal(sealKey: string, payload: OidcCookie): string {
 	return Buffer.concat([iv, ct, cipher.getAuthTag()]).toString('base64url');
 }
 
+const str = (v: unknown) => typeof v === 'string';
+const strOrNull = (v: unknown) => v === null || typeof v === 'string';
+const isKind = (v: unknown) => v === null || v === 'admin' || v === 'parent';
+
 function isCookie(v: unknown): v is OidcCookie {
 	if (typeof v !== 'object' || v === null) return false;
 	const c = v as Record<string, unknown>;
-	if (typeof c.exp !== 'number') return false;
-	if (c.stage === 'start') return typeof c.startedAt === 'number';
-	return c.stage === 'pending';
+	if (typeof c.exp !== 'number' || !isKind(c.kind) || !strOrNull(c.deviceLabel)) return false;
+	if (c.stage === 'start') {
+		return (
+			(c.purpose === 'login' || c.purpose === 'invite' || c.purpose === 'link') &&
+			str(c.state) &&
+			str(c.nonce) &&
+			str(c.verifier) &&
+			typeof c.startedAt === 'number' &&
+			strOrNull(c.next) &&
+			strOrNull(c.binding) &&
+			strOrNull(c.username)
+		);
+	}
+	return (
+		c.stage === 'pending' &&
+		(c.purpose === 'invite' || c.purpose === 'link') &&
+		str(c.binding) &&
+		str(c.username) &&
+		str(c.iss) &&
+		str(c.sub) &&
+		strOrNull(c.label)
+	);
 }
 
 // Null on any failure: a forged, stale, foreign or expired value is never trusted.

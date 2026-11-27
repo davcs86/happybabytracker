@@ -1,3 +1,4 @@
+import { createDecipheriv, hkdfSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { OIDC_COOKIE_MAX_BYTES, OIDC_TXN_COOKIE, OIDC_TXN_MAX_AGE_S } from '../constants';
 import { open, seal } from './seal';
@@ -119,5 +120,62 @@ describe('seal', () => {
 		const value = seal(KEY, link);
 		expect(open(KEY, value, NOW)).toEqual(link);
 		expect(setCookieBytes(value)).toBeLessThan(OIDC_COOKIE_MAX_BYTES);
+	});
+
+	it('decrypts with the spec parameters', () => {
+		const raw = Buffer.from(seal(KEY, start), 'base64url');
+		const k = Buffer.from(hkdfSync('sha256', KEY, '', 'hbt_oidc v1', 32));
+		const decipher = createDecipheriv('aes-256-gcm', k, raw.subarray(0, 12));
+		decipher.setAAD(Buffer.from('hbt_oidc'));
+		decipher.setAuthTag(raw.subarray(raw.length - 16));
+		const plain = Buffer.concat([
+			decipher.update(raw.subarray(12, raw.length - 16)),
+			decipher.final()
+		]);
+		expect(JSON.parse(plain.toString('utf8'))).toEqual(start);
+	});
+
+	it.each<[string, Record<string, unknown>]>([
+		['purpose', { purpose: 'other' }],
+		['purpose missing', { purpose: undefined }],
+		['state', { state: 1 }],
+		['nonce', { nonce: null }],
+		['verifier', { verifier: undefined }],
+		['next', { next: 7 }],
+		['binding', { binding: false }],
+		['username', { username: 3 }],
+		['kind', { kind: 'root' }],
+		['deviceLabel', { deviceLabel: {} }],
+		['exp', { exp: '1800000600' }]
+	])('gives null for a start payload with a bad %s', (_, change) => {
+		const bad = { ...start, ...change } as unknown as OidcStart;
+		expect(open(KEY, seal(KEY, bad), NOW)).toBeNull();
+	});
+
+	it.each<[string, Record<string, unknown>]>([
+		['purpose login', { purpose: 'login' }],
+		['purpose', { purpose: 'other' }],
+		['binding', { binding: null }],
+		['username', { username: null }],
+		['kind', { kind: 'root' }],
+		['iss', { iss: 1 }],
+		['sub', { sub: undefined }],
+		['label', { label: 5 }],
+		['deviceLabel', { deviceLabel: [] }],
+		['exp', { exp: null }]
+	])('gives null for a pending payload with a bad %s', (_, change) => {
+		const bad = { ...pending, ...change } as unknown as OidcPending;
+		expect(open(KEY, seal(KEY, bad), NOW)).toBeNull();
+	});
+
+	it('opens a pending link payload with a kind and null labels', () => {
+		const link: OidcPending = {
+			...pending,
+			purpose: 'link',
+			kind: 'admin',
+			label: null,
+			deviceLabel: null
+		};
+		expect(open(KEY, seal(KEY, link), NOW)).toEqual(link);
 	});
 });
