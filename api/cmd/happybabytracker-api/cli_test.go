@@ -269,7 +269,7 @@ func TestUsage(t *testing.T) {
 			if r.code != 2 {
 				t.Fatalf("exit = %d, want 2 (%+v)", r.code, r)
 			}
-			if len(r.messages(t)) != 1 {
+			if m := r.messages(t); len(m) != 1 || m[0] != usageMsg {
 				t.Errorf("output %+v, want one usage line", r)
 			}
 		})
@@ -299,6 +299,8 @@ func TestPasswordOnStdin(t *testing.T) {
 		{name: "spaces kept", stdin: " " + pw + " \n", stored: " " + pw + " "},
 		{name: "inner cr kept", stdin: "pw\r" + pw + "\n", stored: "pw\r" + pw},
 		{name: "only one newline stripped", stdin: pw + "\n\n", stored: pw + "\n"},
+		{name: "exactly 16 chars", stdin: "0123456789abcdef\n", stored: "0123456789abcdef"},
+		{name: "256 four-byte runes at the byte cap", stdin: strings.Repeat("😀", 256) + "\r\n", stored: strings.Repeat("😀", 256)},
 		{name: "empty", stdin: "", refused: true},
 		{name: "15 multibyte runes", stdin: strings.Repeat("é", 15) + "\n", refused: true},
 		{name: "257 runes", stdin: strings.Repeat("y", 257), refused: true},
