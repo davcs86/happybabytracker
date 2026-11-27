@@ -11,6 +11,10 @@ works and moves to the CLI's `reset-password` at that bump; and a password chang
 (5.3, 5.5). The edge retires both SOPS keys in a later change: the
 bump that brings the image changes only its digest.
 
+Amended 2026-11-27 (owner, homelab-edge SSO spec § 3 at `1d12328`) in 5.5 and 18, still not built: link and SSO invite
+re-authentication (`max_age=0`, `auth_time`), callback state sealed in `hbt_oidc` only, SSO invite redemption ends the
+parent's other sessions, and ID-token signatures verified on a fresh key set.
+
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
 
@@ -212,9 +216,10 @@ Authelia is approved for the edge but not deployed, and it is planned for **publ
 - One Go package turns a request into a principal. Adding a second way to authenticate changes that
   package and the UI's login route, and nothing that checks access.
 
-### 5.5 Single sign-on (amended 2026-11-24, not built)
+### 5.5 Single sign-on (amended 2026-11-24 and 2026-11-27, not built)
 
-Implements the shared app contract (homelab-edge SSO spec § 3) and replaces the seam of 5.4. The app stays a
+Implements the shared app contract (homelab-edge SSO spec § 3, with its 2026-11-27 bullets "Callback state" and
+"Signing keys" and its amended "Linking" and "Conformance") and replaces the seam of 5.4. The app stays a
 provider-neutral OIDC client: nothing here names Authelia, and a fork runs with `AUTH_MODE=local` and no IdP.
 
 **Principals.** The admin moves from env vars into its own tables, so it is still never a row in `parents` and still
@@ -284,7 +289,12 @@ working while the issuer is unreachable.
 partial set and on `OIDC_AUTO_PROVISION` set to anything: it is **not** implemented, parents are created by the admin
 (5.3) **(call: a deliberate deviation from the shared config list)**.
 Discovery and the JWKS are fetched on first use and cached; a failure fails that SSO attempt only ("Single sign-on is
-unavailable"), never the start or the password login. When the API reports `oidc` or `both` and the UI has no
+unavailable"), never the start or the password login. **Signing keys (owner, 2026-11-27):** the relying party calls
+openid-client's `enableNonRepudiationChecks`, without which openid-client 6 does not verify ID-token signatures at all;
+keys then come from oauth4webapi's JWKS cache, which refetches once it is 300 s old and fails if that fetch fails, so no
+ID token is accepted on a key set older than 300 s (the SSO spec's ceiling is 3600 s, with no grace window). A bad
+signature or a failed refetch fails that attempt through the callback's "did not complete" path.
+When the API reports `oidc` or `both` and the UI has no
 relying-party settings, the UI shows no SSO button, its login page in `oidc` says sign-in is unavailable, and it logs
 `oidc_not_configured` **(call)**. Library: `openid-client`, exact pin **(call)**.
 
@@ -301,20 +311,33 @@ relying-party settings, the UI shows no SSO button, its login page in `oidc` say
 
 **The flow.** The start writes a transaction cookie `hbt_oidc` (`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10
 minutes, in `ui/src/lib/server/constants.ts`), AEAD-encrypted with a key derived from `SESSION_SEAL_KEY` **(call)**. It
-holds the PKCE (S256) verifier, `state`, `nonce`, the purpose, `next` for `login`, and the purpose's binding: for `link` the session token's hash, for
-`invite` the raw invite token. `link` and `invite` send `prompt=login` (SSO spec § 3, S17); `login` does not. The
-callback checks `state` against the cookie, exchanges the code, and validates the ID token (`alg` RS256 from the
-issuer's JWKS, `iss`, `aud`, `exp`, `nonce`). It then answers **200**, never a redirect, so the next step is a
-same-origin navigation that carries the `SameSite=Strict` session cookie, whatever site the IdP is on **(call)**:
+holds the PKCE (S256) verifier, `state`, `nonce`, the purpose, the flow's start time (unix seconds), `next` for
+`login`, and the purpose's binding: for `link` the session token's hash and the account's username, for `invite` the raw
+invite token. It stays well under 4 KB and holds no other secret.
+
+**Callback state (owner, 2026-11-27; SSO spec § 3).** The callback is a cross-site top-level navigation, so it relies
+only on `hbt_oidc`: it never reads the `SameSite=Strict` session cookie, even when a browser sends it. Everything it
+shows or binds to (purpose, `next`, the username, the session hash, the start time) comes from the sealed cookie. For
+`link` and `invite` nothing is authorized at the callback: authorization happens only at `POST /auth/confirm`, a
+same-origin POST that, for `link`, re-checks the live session against the bound hash. The sealed cookie alone never
+authorizes.
+
+**Re-authentication (owner, 2026-11-27; SSO spec § 3 "Linking").** `link` and `invite` send `prompt=login` and
+`max_age=0` (S17); `login` sends neither. For `link` and `invite` the callback refuses an ID token without `auth_time`,
+and one whose `auth_time` is earlier than the flow's start time minus 30 s (`OIDC_AUTH_TIME_SKEW_S` in
+`ui/src/lib/server/constants.ts`, Rule 7). The callback checks `state` against the cookie, exchanges the code, and
+validates the ID token (its signature on a key from the issuer's JWKS, `alg` RS256, `iss`, `aud`, `exp`, `nonce`, and
+`auth_time` as above). It then answers **200**, never a redirect, so the next step is a same-origin navigation that
+carries the `SameSite=Strict` session cookie, whatever site the IdP is on **(call)**:
 
 - an IdP error in the callback (`error=access_denied` for a person outside the group, or any other) or a failed check
   clears `hbt_oidc` and answers the login page (or the invite or account page the flow started from) with "Single
   sign-on did not complete"; nothing reaches the API **(call)**.
 - `login`: calls `POST /v1/session/oidc {iss, sub}`, sets the session cookie, and answers a page that continues to
   `next` (the admin home for an admin) by meta refresh, with a Continue link.
-- `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, iss, sub, label}` (same attributes, the
-  remaining lifetime) and answers "You are linking <label> to <username>" with Confirm and Cancel; for `invite` the
-  username comes from `GET /v1/tokens/{token}`.
+- `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, username, iss, sub, label}` (same
+  attributes, the remaining lifetime) and answers "You are linking <label> to <username>" with Confirm and Cancel; for
+  `link` the username comes from the start cookie, for `invite` from `GET /v1/tokens/{token}`.
 
 `POST /auth/confirm` is same-origin, so it carries the session cookie. It clears `hbt_oidc`; on Confirm, for `link` it
 checks that the session cookie's token hashes to the bound hash and calls `POST /v1/me/identities` or
@@ -338,8 +361,10 @@ The IdP gates who may open the app (group `happybabytracker`); the app reads no 
   `reauth_required`. Both identity routes and `redeem-oidc` answer 409 `already_linked` when the pair belongs to anyone
   or the principal already has an OIDC identity for that issuer.
 - `redeem-oidc` does, in one transaction, what `redeem` does without the password: it marks an unused, unexpired invite
-  of an enabled parent used, adds the identity and issues a parent session. A reset token, like an unknown, used or
-  expired one, → 404 `not_found` **(call)**.
+  of an enabled parent used, adds the identity, ends that parent's other sessions and issues a parent session **(owner,
+  2026-11-27)**. Password redemption ends them the same way, in its own transaction (5.3; `RedeemToken` →
+  `setPassword`, `api/internal/store/tokens.go`, `parents.go`). A reset token, like an unknown, used or expired one, →
+  404 `not_found` **(call)**.
 - `POST /v1/me/password` now counts against the same limiter, so a stolen session cannot guess the current password
   from the internet without limit **(call)**.
 
@@ -394,12 +419,15 @@ password redemption refused in `oidc` and an SSO redemption refused in `local` l
 username namespace across both tables; the three CLI verbs, and `create` racing the import; the admin still refused on
 every kid route after an SSO login (the matrix test); the cross-table uniqueness of a pair; re-auth counting against
 the limiter, and the password change too; the link flow's re-auth window, session binding and `already_linked`;
-invite redemption by SSO with `prompt=login` and the confirmation, including a used, expired or reset token; the
-callback answering 200 and the session cookie arriving on the next navigation; unlink and the disabled-parent OIDC
+invite redemption by SSO with `prompt=login`, `max_age=0` and the confirmation, including a used, expired or reset
+token, and ending the parent's other sessions; the callback answering 200 and the session cookie arriving on the next
+navigation; the link callback naming the account with no session cookie on the request; unlink and the
+disabled-parent OIDC
 request each deleting sessions, push subscriptions and the ntfy topic; the UI's refusals of a partial relying-party
 set and of `OIDC_AUTO_PROVISION`; the conformance cases of the SSO spec § 3 (bad `state`, wrong `iss`/`aud`, expired
-token, unlinked `sub`, replayed code, link while another IdP session is live) against a stub issuer; no `sub`, label or
-token in captured logs.
+token, unlinked `sub`, replayed code, link while another IdP session is live, a missing or stale `auth_time` on a link
+and on an SSO invite, an ID token on a key set older than 300 s with the refetch failing) against a stub issuer, plus
+an ID token with a bad signature; no `sub`, label or token in captured logs.
 
 The access matrix (`matrix_test.go`) runs with `AUTH_MODE=both`, so no route answers `mode_refused` there; its fixture
 seeds an `admins` row and gives the admin session that `admin_id`. Every new JSON handler decodes its body before the
@@ -949,7 +977,7 @@ Required by the homelab-edge SSO spec § 3 before the app goes public at `happyb
 | UI pages, form actions and server endpoints (`/logout`, `/account/notifications/subscribe`) | internet, through Caddy | the session cookie, reached by SSO or, in `local`/`both`, a password | Caddy per-IP zone for the site | ids only (13.3) | opaque, server-side; parent 30 days sliding, admin 12 h; deleted on logout, disable, reset, unlink | SvelteKit origin check (`ORIGIN`, 13.2); `SameSite=Strict` session cookie |
 | Password routes (5.5): `POST /login`, `/invite/{token}`, `/reset/{token}`, `/account` (`?/password`), `/account/link-sso`, `/admin/account/link-sso` | internet | a password; refused by mode as 5.5's table says: in `oidc` no invite or reset link is redeemed by password (403 `mode_refused`), so none yields a session without SSO **(owner, 2026-11-24)** | Caddy `<site>_login` and `<site>_login_hourly`; the 5.3 limiter per address and per username (login, re-auth, password change) or per address (redemption) | invite and reset tokens in the path: Caddy redacts them on the public site (SSO spec § 4.3), OTEL scrubs them (Rule 5); query, `Referer` and `Location` dropped; `Referrer-Policy: no-referrer` | a redemption issues a parent session | origin check; `SameSite=Strict` |
 | SSO starts: `POST /auth/sso`, `POST /invite/{token}?/sso` | internet | none, or the invite token | per-IP zone; the invite start also in the login zones | the token stays in its path; the transaction cookie is encrypted | `hbt_oidc`: 10 min, `Lax`, `Path=/auth` | origin check (form POST) |
-| `GET /auth/callback` | internet | `state` bound to the transaction cookie; ID-token checks (`alg`, `iss`, `aud`, `exp`, `nonce`) | per-IP zone | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | answers 200, never a redirect | `state` + PKCE + `nonce`; purpose and binding in the cookie; `prompt=login` for link and invite |
+| `GET /auth/callback` | internet | `state` bound to the transaction cookie, never the session cookie; ID-token checks (signature on a JWKS at most 300 s old, `alg`, `iss`, `aud`, `exp`, `nonce`; for link and invite `auth_time` no earlier than the flow's start minus 30 s) | per-IP zone | `code`/`state` in the query: dropped from Caddy logs, scrubbed from OTEL | answers 200, never a redirect; authorizes nothing for link and invite | `state` + PKCE + `nonce`; purpose, binding, username and start time in the cookie; `prompt=login` and `max_age=0` for link and invite |
 | `POST /auth/confirm` | internet | the pending cookie; for a link, the session whose hash it binds plus a re-auth within 5 minutes (API); for an invite, the token | per-IP zone | none | an invite issues a parent session | origin check; same-origin POST |
 | API 9210 | compose network only, never published | `INTERNAL_API_TOKEN` + session token | the 5.3 limiter | `/v1/tokens/{token}`, `…/redeem` and `…/redeem-oidc` carry the token in the path; the API logs route patterns only (`middleware.go`) | — | not browser-reachable |
 | Health paths | internet, unauthenticated | none | per-IP zone | none | — | — |

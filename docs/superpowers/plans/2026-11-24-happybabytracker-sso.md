@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status: plan only, written against `main` fd9cf11 (plans 1–7 merged) on 2026-11-24. Execution waits for the owner's review and the answers under "Open questions for the owner".**
+**Status: plan only, written against `main` fd9cf11 (plans 1–7 merged) on 2026-11-24, updated 2026-11-27 for the owner's decisions of that day (Open questions 1 and 4 resolved; re-authentication, callback state and signing keys added to Tasks 4, 7 and 9–12). Execution waits for the owner's review and the answers still open under "Open questions for the owner".**
 
 **Goal:** The admin moves from env vars into its own tables with a break-glass CLI, and the app becomes a provider-neutral OIDC relying party (login, invite redemption and explicit linking by SSO) behind `AUTH_MODE` (`local` default, `oidc`, `both`), so the edge can put the UI on `happybaby.public.<domain>` behind Authelia.
 
@@ -10,7 +10,7 @@
 
 **Tech Stack:** Go 1.27, `modernc.org/sqlite`, argon2id (`golang.org/x/crypto`); SvelteKit 3 / Svelte 5 (Node adapter), Playwright, Vitest. **New:** `openid-client` (exact pin, Open question 12). No new Go module.
 
-**Spec:** `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` § 5.5 (the whole section) and the 2026-11-24 amendments in the header, § 2, § 5.1, § 5.3, § 5.4, § 6.1, § 6.3, § 13, § 14, § 15 and § 18. Cross-repo source of truth: `davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` § 3 (app contract and conformance cases), § 4.3, § 4.6 (the `happybabytracker` client), § 5 (happybabytracker row), § 8 and § 10 (P6), and `docs/runbooks/sso.md`. The edge's wiring (compose, Caddy zones and redaction, SOPS keys, `extra_hosts`, Gatus, the edge runbook) is a separate plan in that repo.
+**Spec:** `docs/superpowers/specs/2026-11-20-happybabytracker-design.md` § 5.5 (the whole section) and the 2026-11-24 and 2026-11-27 amendments in the header, § 2, § 5.1, § 5.3, § 5.4, § 6.1, § 6.3, § 13, § 14, § 15 and § 18. Cross-repo source of truth: `davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` § 3 (app contract and conformance cases, with the 2026-11-27 bullets "Callback state" and "Signing keys" and the amended "Linking" and "Conformance", commit `1d12328`), § 4.3, § 4.6 (the `happybabytracker` client), § 5 (happybabytracker row), § 8 and § 10 (P6), and `docs/runbooks/sso.md`. The edge's wiring (compose, Caddy zones and redaction, SOPS keys, `extra_hosts`, Gatus, the edge runbook) is a separate plan in that repo.
 
 ## Plan number and file name
 
@@ -61,6 +61,8 @@ The existing plans number themselves in their title (plan 1 … plan 7, spec § 
   - Re-auth and the identity routes: allowed in `both` only.
   - **Order in every handler:** decode the body → mode check → everything else (token lookup, limiter, hashing, re-auth window). A refused redemption therefore leaves the token usable.
 - **OIDC identities:** `provider` = the issuer URL (exact string), `subject` = `sub`, `secret_hash` NULL. Every OIDC lookup adds `provider <> 'local'`, so a pair can never match a password row. A pair belongs to one principal across both tables, and each principal has at most one OIDC identity per issuer.
+- **Callback state (SSO spec § 3, owner 2026-11-27):** `/auth/callback` never reads the session cookie or `locals.session`; what it shows or binds to (purpose, `next`, the username, the session hash, the start time) comes from the sealed `hbt_oidc` only. For `link` and `invite` it authorizes nothing: `POST /auth/confirm` does, and for `link` it re-checks the live session against the bound hash.
+- **Re-authentication and signing keys (SSO spec § 3, owner 2026-11-27):** `link` and `invite` send `prompt=login` and `max_age=0` and refuse an ID token whose `auth_time` is missing or earlier than the start time minus `OIDC_AUTH_TIME_SKEW_S`. The relying party calls `enableNonRepudiationChecks`, so ID-token signatures are verified on a JWKS at most 300 s old, failing closed.
 - **Every route change touches `routes.go` and `routeClasses` in the same task** (How to Act 3). The access matrix runs with `AuthMode = both`, and its fixture seeds an `admins` row whose id the admin session carries. Per-mode refusals are tested apart from the matrix.
 - **Rule 5:** no `sub`, `preferred_username`, label, `code`, `state`, invite token, session token, password or client secret in any log line or error string, API or UI. UI SSO refusals log one fixed-shape line, `{"level":"warn","msg":"sso refused","code":<enumerated>}`. The callback's URL is never logged.
 - **Rule 6:**
@@ -434,7 +436,7 @@ git commit -m "feat(api): AUTH_MODE with GET /v1/auth; password routes refused i
   - `(*Store).RedeemInviteOIDC(ctx, tokenHash []byte, iss, sub string, sessionHash []byte, now, expires time.Time) error`, in one transaction:
     1. Marks used an unused, unexpired `kind = 'invite'` token of an enabled parent; otherwise `ErrNotFound`. A reset token is `ErrNotFound`.
     2. `ErrAlreadyLinked` when the pair is in either table or the parent already has an identity for `iss`.
-    3. Inserts the identity, deletes the parent's sessions (as `RedeemToken` does; Open question 4) and inserts the session.
+    3. Inserts the identity, deletes all that parent's existing sessions and inserts the new one (owner, 2026-11-27, Open question 4). Password redemption deletes them the same way: `RedeemToken` calls `setPassword(ctx, tx, parentID, secretHash, "")`, whose `DELETE FROM sessions WHERE parent_id = ? AND id <> ?` keeps none (`store/tokens.go`, `store/parents.go:133`).
     - Any error rolls back, so the token stays usable.
   - `pairTaken(ctx, tx *sql.Tx, iss, sub string) (bool, error)`, shared with Task 5.
   - `constants.OIDCIssuerMaxLen = 512` and `constants.OIDCSubjectMaxLen = 255` (Open question 6).
@@ -457,11 +459,13 @@ Store tests (`identities_test.go`):
 - `TestRedeemInviteOIDC`.
 - `TestRedeemInviteOIDCRefusals`: a reset token, a used token, an expired token, a disabled parent, and a token the admin replaced with `IssueToken` (Review Focus 4) each give `ErrNotFound`.
 - `TestRedeemInviteOIDCAlreadyLinked`: the pair is held by another parent, or by the admin, or the parent already has this issuer. Each gives `ErrAlreadyLinked`, and the token stays redeemable afterwards.
+- `TestRedeemInviteOIDCEndsOtherSessions`: seed two sessions for the invited parent and one for another parent. After the call the invited parent holds exactly one session, the one whose hash was passed, and the other parent's session is kept. A refused call (`ErrAlreadyLinked`) leaves both seeded sessions in place.
 - `TestPairBelongsToOnePrincipal`: an index-level backstop. A pair inserted under a parent cannot be inserted under the admin through any store function.
 
 Handler tests (`oidc_test.go`):
 - `TestOIDCLoginModes`: `local` gives 403 `mode_refused`; `oidc` and `both` give 200 for a linked pair. The parent cookie lifetime is 30 days and the admin's 12 hours. An unknown pair and a disabled parent give the same 403 `not_linked` body, byte for byte.
 - `TestRedeemOIDCModes`: in `local`, 403 `mode_refused`, and the token then redeems by password in `local`.
+- `TestRedeemOIDCEndsOtherSessions`: a session token the parent held before the redemption then answers 401 `no_session` on `GET /v1/session`; the returned token answers 200.
 - `TestOIDCValidation`: `iss` empty, `http://…`, 513 bytes or `local`; `sub` empty or 256 bytes. Each gives 422 with the field.
 - `TestAdminAfterSSOLoginIsRefusedOnKidRoutes`: an admin session from `/v1/session/oidc` gets 403 on `GET /v1/kids` and on a kid route (Rule 2; the matrix covers the class).
 - `TestOIDCLogCarriesNoSubject`: `wantCleanLog` with `sub`, `iss` and the token banned.
@@ -605,14 +609,16 @@ git commit -m "feat(api): admin unlinks a parent's SSO, purging sessions and cha
   - `ui/src/lib/server/constants.ts`:
     - `OIDC_TXN_COOKIE = 'hbt_oidc'`, `OIDC_TXN_MAX_AGE_S = 600`, `OIDC_TXN_PATH = '/auth'`;
     - `MIN_SESSION_SEAL_KEY = 32`, `OIDC_DEFAULT_SCOPES = 'openid profile'`, `OIDC_CALLBACK_PATH = '/auth/callback'`;
-    - `OIDC_TIMEOUT_MS = 5000` (a call), `OIDC_LABEL_MAX_LEN = 64` (a call), `OIDC_COOKIE_MAX_BYTES = 4096`.
+    - `OIDC_TIMEOUT_MS = 5000` (a call), `OIDC_LABEL_MAX_LEN = 64` (a call), `OIDC_COOKIE_MAX_BYTES = 4096`;
+    - `OIDC_AUTH_TIME_SKEW_S = 30` (owner, 2026-11-27: the `auth_time` skew of SSO spec § 3 "Linking").
   - `ui/src/lib/constants.ts`: `AUTH_MODES = ['local', 'oidc', 'both'] as const`.
   - `oidc/types.ts`:
     - `type OidcPurpose = 'login' | 'invite' | 'link'`;
-    - `type OidcStart = { stage: 'start'; purpose: OidcPurpose; state: string; nonce: string; verifier: string; next: string | null; binding: string | null; username: string | null; exp: number }`;
+    - `type OidcStart = { stage: 'start'; purpose: OidcPurpose; state: string; nonce: string; verifier: string; startedAt: number; next: string | null; binding: string | null; username: string | null; exp: number }`;
     - `type OidcPending = { stage: 'pending'; purpose: 'invite' | 'link'; binding: string; username: string; iss: string; sub: string; label: string | null; exp: number }`;
     - `type OidcCookie = OidcStart | OidcPending`.
-    - `username` in `OidcStart` is filled for `link` (Open question 1).
+    - `startedAt` is the flow's start time in unix seconds, for the `auth_time` check (Task 9).
+    - `username` in `OidcStart` is filled for `link` with the account's username, read from the session at the start (owner, 2026-11-27, Open question 1), so the callback never needs the session cookie.
   - `oidc/seal.ts`:
     - `seal(sealKey: string, payload: OidcCookie): string`.
     - `open(sealKey: string, value: string | undefined, nowS: number): OidcCookie | null`.
@@ -627,7 +633,9 @@ git commit -m "feat(api): admin unlinks a parent's SSO, purging sessions and cha
   - a round trip;
   - a flipped byte, a value sealed with another key, a truncated value, `exp` in the past, and `stage: 'other'` each give null;
   - two seals of the same payload differ (random IV);
-  - a pending payload with a 64-character label and 400-character `iss`/`sub` stays under `OIDC_COOKIE_MAX_BYTES` with its attributes.
+  - a pending payload with a 64-character label and 400-character `iss`/`sub` stays under `OIDC_COOKIE_MAX_BYTES` with its attributes;
+  - a `link` start payload with a 32-character username, a 43-character binding and `startedAt` round-trips, and stays under `OIDC_COOKIE_MAX_BYTES`;
+  - a start payload without a numeric `startedAt` gives null.
 - `cookie.test.ts`: the attributes.
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -672,13 +680,13 @@ git commit -m "feat(ui): relying-party settings and the sealed OIDC transaction 
     - controls `POST /__auth-mode {mode}` and `POST /__identity {iss, sub, username}`;
     - helpers `setAuthMode(mode)` and `linkStubIdentity(iss, sub, username)`;
     - mode refusals on `POST /v1/session` and `…/redeem`;
-    - every Task 3–6 route with the Go order (decode, mode, validation, then the rest), its codes and fields, and `sso_linked` in the views;
+    - every Task 3–6 route with the Go order (decode, mode, validation, then the rest), its codes and fields, and `sso_linked` in the views; `redeem-oidc` ends the parent's other stub sessions, as Task 4 does;
     - `/__reset` restores `local` and clears the identities.
 
 - [ ] **Step 1: Write the failing tests**
 
 - `api.test.ts`: the paths, bodies and headers of each method (the client address is sent on `reauth` and `adminReauth` when given); `toSession` for both kinds; `toAdminParent` with `sso_linked`. A response missing `sso_linked` gives reason `error`.
-- `stub-sso.spec.ts`: for each new route, the answers of the spec 5.5 table in each mode, as `{ status, body }` pairs, mirroring `oidc_test.go` and `me_test.go`. A password redemption refused in `oidc` and an SSO redemption refused in `local` leave the token usable.
+- `stub-sso.spec.ts`: for each new route, the answers of the spec 5.5 table in each mode, as `{ status, body }` pairs, mirroring `oidc_test.go` and `me_test.go`. A password redemption refused in `oidc` and an SSO redemption refused in `local` leave the token usable. After `redeem-oidc`, a session the parent held before answers 401 `no_session`, as `TestRedeemOIDCEndsOtherSessions`.
 
 - [ ] **Step 2: Run them to verify they fail**
 
@@ -707,21 +715,23 @@ git commit -m "feat(ui): API client and stub for the SSO routes"
 **Interfaces:**
 - Consumes: `OidcEnv`, `OidcStart` (Task 7).
 - Produces:
-  - `type SsoCode = 'discovery' | 'idp_error' | 'state' | 'exchange' | 'id_token' | 'not_linked' | 'mode_refused' | 'already_linked' | 'reauth_required' | 'binding' | 'not_found' | 'oidc_not_configured'`.
+  - `type SsoCode = 'discovery' | 'idp_error' | 'state' | 'exchange' | 'id_token' | 'auth_time' | 'not_linked' | 'mode_refused' | 'already_linked' | 'reauth_required' | 'binding' | 'not_found' | 'oidc_not_configured'`.
   - `logSsoRefusal(code: SsoCode): void`: the fixed-shape line of Global Constraints.
-  - `createRelyingParty(oidc: OidcEnv, origin: string, deps?: { fetch?: typeof fetch }): RelyingParty`.
+  - `createRelyingParty(oidc: OidcEnv, origin: string, deps?: { fetch?: typeof fetch; jwksCache?: { jwks: { keys: object[] }; uat: number } }): RelyingParty`. `deps.jwksCache` exists only for the signing-key conformance case: after discovery it is handed to openid-client's exported `setJwksCache`.
   - `relyingParty(env: Env): RelyingParty | null`: one per process; null when `env.oidc` is null.
   - `type RelyingParty`:
     - `start(purpose: OidcPurpose): Promise<{ ok: true; url: string; state: string; nonce: string; verifier: string } | { ok: false }>`;
     - `finish(callback: URL, txn: OidcStart): Promise<{ ok: true; iss: string; sub: string; label: string | null } | { ok: false; code: SsoCode }>`.
 - Behaviour pinned by the spec:
-  - Discovery and the JWKS load on the first `start` and are cached. A rejected discovery is not cached, so the next attempt retries. Nothing is fetched at start-up.
-  - The authorization URL carries `response_type=code`, `client_id`, `redirect_uri=${origin}/auth/callback`, `scope` (`oidc.scopes`), `state`, `nonce`, `code_challenge` (S256), `code_challenge_method=S256` and `response_mode=query`. It carries `prompt=login` for `link` and `invite` only.
+  - Discovery loads on the first `start` and is cached. A rejected discovery is not cached, so the next attempt retries. Nothing is fetched at start-up.
+  - **Signing keys (owner, 2026-11-27; SSO spec § 3):** right after discovery the relying party calls openid-client's `enableNonRepudiationChecks(config)`. openid-client 6 verifies ID-token signatures only then (without it, oauth4webapi's `validateJwt` checks the header's `alg` and the claims, never the signature). The JWKS then loads at the first ID-token check through oauth4webapi's cache (`getPublicSigKeyFromIssuerJwksUri`), which refetches once the cached set is 300 s old and throws if that fetch fails: no stale-key grace window, inside the SSO spec's 3600 s ceiling. A bad signature or a failed fetch gives `id_token`.
+  - The authorization URL carries `response_type=code`, `client_id`, `redirect_uri=${origin}/auth/callback`, `scope` (`oidc.scopes`), `state`, `nonce`, `code_challenge` (S256), `code_challenge_method=S256` and `response_mode=query`. It carries `prompt=login` and `max_age=0` for `link` and `invite` only (owner, 2026-11-27).
   - `finish` refuses with a code:
     - a query `error`: `idp_error`;
     - `state` ≠ `txn.state`: `state`;
     - a failed code exchange, including a replayed code: `exchange`;
-    - an ID token check failure (`alg` other than RS256 through `id_token_signed_response_alg: 'RS256'`, `iss`, `aud`, `exp`, `nonce`): `id_token`.
+    - an ID token check failure (the signature, `alg` other than RS256 through `id_token_signed_response_alg: 'RS256'`, `iss`, `aud`, `exp`, `nonce`): `id_token`;
+    - for `link` and `invite` only, an ID token with no numeric `auth_time`, or with `auth_time < txn.startedAt - OIDC_AUTH_TIME_SKEW_S`: `auth_time`. The check is the relying party's own: it does not pass `maxAge` to openid-client's code grant, which compares `auth_time` with the callback's clock and its 30 s tolerance and would refuse every sign-in that took longer than that.
   - The label is `preferred_username` from the ID token, else from one userinfo call with the expected `sub`. A userinfo failure gives null. The label is cleaned as Review Focus 2 says, and an empty result gives null.
   - Client authentication at the token endpoint is `client_secret_basic` (Open question 3).
   - Calls are bounded by `OIDC_TIMEOUT_MS`.
@@ -729,7 +739,9 @@ git commit -m "feat(ui): API client and stub for the SSO routes"
   - `createIssuer(opts: { issuer: string; clientId: string; clientSecret: string })` returns `{ handle(req: Request): Promise<Response>; authorize(url: string): Promise<string>; configure(b: Partial<IssuerBehaviour>): void; authorizeLog: Array<{ prompt: string | null }> }`.
   - It serves discovery, `jwks.json`, authorization (a 302 to the redirect URI, or `error=access_denied`), the token endpoint (`client_secret_basic`, PKCE checked, single-use codes) and userinfo.
   - It signs RS256 with a `node:crypto` key pair; there is no new dependency.
-  - `IssuerBehaviour = { user: { sub: string; preferredUsername?: string }; reauthUser?: { sub: string; preferredUsername?: string }; deny?: boolean; idToken?: Partial<{ iss: string; aud: string; expOffsetS: number; alg: string; nonce: string }>; userinfoFails?: boolean }`.
+  - `IssuerBehaviour = { user: { sub: string; preferredUsername?: string }; reauthUser?: { sub: string; preferredUsername?: string }; deny?: boolean; idToken?: Partial<{ iss: string; aud: string; expOffsetS: number; alg: string; nonce: string; authTime: number | null; badSignature: boolean }>; userinfoFails?: boolean; jwksFails?: boolean }`.
+  - The ID token carries `auth_time` = the authorize call's time unless `idToken.authTime` sets it (`null` omits the claim). `badSignature` signs with a second key pair under the published `kid`. `jwksFails` answers 503 on `jwks.json`.
+  - `authorizeLog` entries are `{ prompt: string | null; maxAge: string | null }`.
   - `reauthUser` answers when `prompt=login` was sent (the "another IdP session is live" case).
 
 - [ ] **Step 1: Add the dependency**
@@ -743,10 +755,14 @@ Expected: `package.json` shows the exact version with no `^`, and `pnpm-lock.yam
 
 | Test | Assertion |
 |---|---|
-| `start builds the authorization URL` | every parameter above; `prompt=login` present for `link` and `invite`, absent for `login` |
+| `start builds the authorization URL` | every parameter above; `prompt=login` and `max_age=0` present for `link` and `invite`, both absent for `login` |
 | `a full flow returns iss, sub and the label` | `iss === 'https://issuer.test'` |
 | `bad state` | `{ ok: false, code: 'state' }`, and no token call is made |
 | `wrong iss` / `wrong aud` / `expired token` / `wrong nonce` / `alg HS256 or none` | `code: 'id_token'` |
+| `bad signature` (`badSignature`) | `code: 'id_token'` |
+| `auth_time on a link` / `on an SSO invite` (`txn.startedAt = S`, `authTime` set) | `S - 30` passes; `S - 31` gives `code: 'auth_time'`; `null` (no claim) gives `code: 'auth_time'` |
+| `login ignores auth_time` | `authTime: null` with purpose `login` passes |
+| `key set older than 300 s, refetch fails` | `deps.jwksCache` holds the issuer's real key with `uat = now - 301` and `jwksFails` is set: `code: 'id_token'`. Control: the same with `uat = now - 10` passes, since the cached key is used. Each case builds its own `createRelyingParty`, so no earlier fetch is cached |
 | `replayed code` | the second `finish` with the same callback gives `code: 'exchange'` |
 | `IdP error` (`error=access_denied`) | `code: 'idp_error'` |
 | `link while another IdP session is live` | with `reauthUser` set, the `link` flow returns `reauthUser.sub`; `authorizeLog` shows `prompt=login` |
@@ -760,9 +776,9 @@ Expected: `package.json` shows the exact version with no `^`, and `pnpm-lock.yam
 Run: `cd ui && pnpm test src/lib/server/oidc`
 Expected: FAIL.
 
-- [ ] **Step 4: Implement `relying-party.ts` and `log.ts` on openid-client's discovery, authorization-URL, code-grant and userinfo functions**
+- [ ] **Step 4: Implement `relying-party.ts` and `log.ts` on openid-client's discovery, `enableNonRepudiationChecks`, authorization-URL, code-grant and userinfo functions**
 
-Use its `customFetch` option for `deps.fetch`, and never its insecure-request option.
+Use its `customFetch` option for `deps.fetch`, and never its insecure-request option. Re-check at execution that the pinned version still verifies ID-token signatures only under `enableNonRepudiationChecks` and still refetches the JWKS at 300 s (`getPublicSigKeyFromIssuerJwksUri` in the resolved oauth4webapi's `build/index.js`, read for 6.8.9 with oauth4webapi 3.8.9).
 
 - [ ] **Step 5: Run the UI pipeline**
 
@@ -784,7 +800,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 **Interfaces:**
 - Consumes: `relyingParty`, `seal`/`open`, `setOidcCookie`/`clearOidcCookie`, `api.authMode`, `api.oidcSession`, `landing`, `safeNext`.
 - Produces:
-  - `startSso(event: RequestEvent, purpose: OidcPurpose, extra: { next?: string | null; binding?: string; username?: string }): Promise<{ ok: true; location: string } | { ok: false; message: string }>`. It seals an `OidcStart` with `exp = now + OIDC_TXN_MAX_AGE_S`, sets the cookie and returns the IdP URL. A failure gives "Single sign-on is unavailable" and logs `discovery`.
+  - `startSso(event: RequestEvent, purpose: OidcPurpose, extra: { next?: string | null; binding?: string; username?: string }): Promise<{ ok: true; location: string } | { ok: false; message: string }>`. It seals an `OidcStart` with `startedAt = now` (unix seconds) and `exp = now + OIDC_TXN_MAX_AGE_S`, sets the cookie and returns the IdP URL. A failure gives "Single sign-on is unavailable" and logs `discovery`.
   - The callback load returns one of `{ outcome: 'continue'; to: string }`, `{ outcome: 'confirm'; label: string; username: string }` (Tasks 11, 12) or `{ outcome: 'failed'; back: string }`.
 - `hooks.server.ts`:
   - `isPublic` adds `path.startsWith('/auth/')`.
@@ -799,10 +815,10 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
   - Its load returns `{}`, and the page shows a link back to `/login`.
   - The default action re-reads `authMode()`. In `local` it fails with the unavailable message. Otherwise it calls `startSso(event, 'login', { next: safeNext(form next) })` and `redirect(303, location)`.
   - On failure it renders "Single sign-on is unavailable" with a link to `/login`.
-- `/auth/callback` load (GET; answers **200** whatever happens):
+- `/auth/callback` load (GET; answers **200** whatever happens). It never reads the session cookie or `locals.session` (Global Constraints, callback state):
   1. `open` the cookie. A null or `pending` cookie fails with `state`.
   2. `clearOidcCookie`.
-  3. `finish`. A refusal logs its code and renders "Single sign-on did not complete" with a link back (`/login` for `login`; Open question 2).
+  3. `finish`. A refusal, `auth_time` included, logs its code and renders "Single sign-on did not complete" with a link back (`/login` for `login`; Open question 2).
   4. For `login`: `api.oidcSession(iss, sub)` (403 `not_linked` and `mode_refused` fail the same way, each logged), `setSessionCookie`, and render a page with `<meta http-equiv="refresh" content="0;url={to}">` and a Continue link, where `to = landing(kind, txn.next)`.
 - e2e harness:
   - `playwright.config.ts` creates `e2e/.tls/{cert,key}.pem` once, when missing. It runs `openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 7 -subj /CN=127.0.0.1 -addext subjectAltName=IP:127.0.0.1 -keyout … -out …` through `execFileSync`. The file is kept across config loads, because worker processes load the config again.
@@ -818,6 +834,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 - `oidc` shows only "Continue with single sign-on" (copy proposal), passes axe, and works without JavaScript.
 - **The callback answers 200** (`response.status()` of the callback navigation is 200, with no `Location`). The session cookie arrives on the next navigation: after the meta refresh the page is the kid home (`expectLanding(page, { kid: MIA })`), with the 30-day hardened cookie.
 - `next=/kids/<id>/timeline` survives the round trip; `next=//evil.example` lands on `/`.
+- The authorize log shows neither `prompt` nor `max_age` for a login.
 - An admin linked by SSO lands on `/admin/parents`; then `/kids/<id>` gives a 303 to `/admin/parents` (Rule 2 at the UI).
 - An unlinked `sub` and `deny` (`access_denied`, a person outside the group) each give "Single sign-on did not complete", with no session cookie.
 - **Replayed callback** (Review Focus 1): `page.goto` of the same callback URL again gives "did not complete" with 200, and the session is not replaced.
@@ -881,13 +898,14 @@ git commit -m "feat(ui): SSO login with a 200 callback, hooks and mode-aware log
 - [ ] **Step 1: Write the failing tests**
 
 `sso-invite.spec.ts`:
-- In `oidc` the invite page offers only SSO. The flow sends `prompt=login` (`authorizeLog`) and lands on the confirmation showing the stub user's `preferredUsername` and `bo`. Confirm lands on the welcome for `bo` with a 30-day cookie, and the stub holds the identity.
+- In `oidc` the invite page offers only SSO. The flow sends `prompt=login` and `max_age=0` (`authorizeLog`) and lands on the confirmation showing the stub user's `preferredUsername` and `bo`. Confirm lands on the welcome for `bo` with a 30-day cookie, and the stub holds the identity.
 - In `local`, the invite page offers only "Set a password", and posting `?/sso` by hand fails.
 - In `both`, both are offered; the password path still works.
 - Cancel returns to the invite page, which is still valid.
 - Review Focus 1: a double Confirm (two posts with the same cookie) gives one session; the second post renders "did not complete" (200).
 - Review Focus 4: the token is replaced (`/__` reissue), used (redeemed by password in another context), or expired, or the parent disabled, between the start and Confirm. Each gives "This link is no longer valid", and no session cookie.
 - A reset token used for `?/sso` gives "This link is no longer valid" at the callback.
+- Re-authentication (owner, 2026-11-27): the issuer configured with `authTime` 120 s before the start, or with `authTime: null`, gives "Single sign-on did not complete" at the callback, no confirmation and no session cookie; the invite page is still valid afterwards.
 - Review Focus 2: `preferredUsername` set to 300 characters with `<b>` renders escaped and cut, and Confirm still works (the cookie survived).
 - No `preferredUsername` gives the label "the single sign-on account you just signed in with".
 - `already_linked` gives its message.
@@ -937,7 +955,7 @@ git commit -m "feat(ui): invite redemption by SSO with confirmation; invite and 
     - `ssoLinked`: "Single sign-on is linked." (parents cannot unlink, spec 5.5);
     - otherwise nothing.
   - The admin account page `/admin/account`: the username and the same section. The admin nav adds "Account".
-  - The callback for `link` seals an `OidcPending` with `binding`, `username` (from the start) and the label, and renders the confirmation.
+  - The callback for `link` seals an `OidcPending` with `binding`, `username` (from the start cookie, never the session; Open question 1, resolved) and the label, and renders the confirmation.
   - `/auth/confirm` for `link`:
     - `timingSafeEqual(sessionBinding(current cookie), binding)`, else "did not complete" (logged as `binding`);
     - then `linkIdentity` or `adminLinkIdentity`, chosen by `locals.session.kind`;
@@ -949,11 +967,13 @@ git commit -m "feat(ui): invite redemption by SSO with confirmation; invite and 
 
 `sso-link.spec.ts`, in `both`:
 - A parent with a password links:
-  - the authorize log shows `prompt=login`;
+  - the authorize log shows `prompt=login` and `max_age=0`;
   - the confirmation names the stub user and `ana`;
   - Confirm returns to `/account` with "linked";
   - after signing out, SSO login lands on the kid home.
 - **Link while another IdP session is live:** the issuer's current user is `david`, and `reauthUser` is `natalia` on `prompt=login`. The confirmation names `natalia`, and the identity linked is hers.
+- **The callback without the session cookie** (callback state, Open question 1): the test captures the callback URL with `page.route` on `/auth/callback*` (aborting that first navigation), saves and removes `hbt_session` (`context.clearCookies({ name: 'hbt_session' })`), unroutes, and opens the captured URL. The confirmation names the stub user and `ana`. With the saved cookie restored (`context.addCookies`), Confirm links; without it, Confirm gives "did not complete" and nothing is linked.
+- **Re-authentication** (owner, 2026-11-27): the issuer configured with `authTime` 120 s before the start, or with `authTime: null`, gives "Single sign-on did not complete" at the callback, no confirmation, and nothing linked.
 - A wrong password gives "The password is incorrect", and no redirect to the IdP.
 - Review Focus 3:
   - between the start and Confirm, sign out and sign in as `cleo` in another page of the same context: Confirm gives "did not complete", and nothing is linked for either account;
@@ -1036,14 +1056,14 @@ git commit -m "docs: single sign-on, admin CLI and AUTH_MODE"
 
 ## Open questions for the owner
 
-Each row has the plan's proposal. Rows 1–7 change code if answered differently; the rest are confirmations.
+Each row has the plan's proposal. Rows 1 and 4 are resolved (owner, 2026-11-27). Rows 2, 3 and 5–7 change code if answered differently; the rest are confirmations.
 
 | # | Question | Plan's proposal | Where |
 |---|---|---|---|
-| 1 | **The link confirmation's `<username>`.** Spec 5.5 has the callback say "You are linking <label> to <username>". When the IdP is cross-site, the callback does not carry the `SameSite=Strict` session cookie, so it cannot read the account. The spec puts only the binding hash in `hbt_oidc`. | The link start also writes the account's username into the sealed cookie. | Tasks 7, 12 |
+| 1 | **Resolved (owner, 2026-11-27; SSO spec § 3 "Callback state").** The link confirmation's `<username>`: a cross-site callback does not carry the `SameSite=Strict` session cookie. | Accepted: the link start writes the account's username into the sealed cookie, beside the session-binding hash, the purpose, `next` and the start time; the callback never reads the session; authorization happens only at `POST /auth/confirm`, which re-checks the live session against the bound hash (spec 5.5 "Callback state"). | Tasks 7, 10, 12 |
 | 2 | **The callback's failure page.** The spec says the callback "answers the login page (or the invite or account page the flow started from)" with the message. Re-rendering those pages at `/auth/callback` needs their data (mode, token peek, sessions). | A small page with "Single sign-on did not complete" and a link back to where the flow started. | Tasks 10–12 |
 | 3 | **Token-endpoint client authentication.** Neither spec states it for the `happybabytracker` client, and the edge registration must match. | `client_secret_basic`, as the xstockstrat web client and Authelia's default use. | Task 9 |
-| 4 | **Does `redeem-oidc` end the parent's other sessions?** It does "what `redeem` does without the password", and `redeem` ends them. | Yes. | Task 4 |
+| 4 | **Resolved (owner, 2026-11-27: "preferably yes").** Does `redeem-oidc` end the parent's other sessions? | Yes, in the same store transaction, as password redemption does (`RedeemToken` → `setPassword`, `store/parents.go:133`); tests `TestRedeemInviteOIDCEndsOtherSessions` and `TestRedeemOIDCEndsOtherSessions` (spec 5.5). | Tasks 4, 8 |
 | 5 | **Unlink on a parent with no SSO identity.** | 204, and still purges their sessions, push subscriptions and ntfy topic. The UI offers Unlink only on linked rows. | Task 6 |
 | 6 | **`iss`/`sub` validation at the API.** Not in the spec. | 422 `iss` unless it is an absolute `https:` URL of at most 512 bytes; 422 `sub` unless 1–255 bytes. Separately, every OIDC lookup excludes `provider = 'local'`; that is not optional, since a pair `("local", <username>)` would otherwise match a password row. | Task 4 |
 | 7 | **Env edge cases.** | An empty string counts as unset for the three relying-party variables, `OIDC_SCOPES` and `SESSION_SEAL_KEY`. `OIDC_AUTO_PROVISION` is refused even when empty. `SESSION_SEAL_KEY` and `OIDC_SCOPES` are ignored without `OIDC_ISSUER`. `OIDC_SCOPES` is not validated (a value without `openid` fails at the first SSO attempt). | Task 7 |
@@ -1052,7 +1072,7 @@ Each row has the plan's proposal. Rows 1–7 change code if answered differently
 | 10 | **The threat model (spec § 18).** It is a draft pending your review, and residuals 1–6 are for you to accept or reject. | The plan implements what § 18 states. Your acceptance gates P6 (going public), not this PR. | — |
 | 11 | **Copy the spec does not fix:** "Sign-in is unavailable"; "Password sign-in is turned off"; the reset page in `oidc`; "Linking is turned off"; "The password is incorrect"; "Confirm your password again, then link"; "That single sign-on account is already linked to an account"; "Single sign-on is linked."; the unlink confirmation; "Nothing to confirm". | As written in Tasks 10–12. | Tasks 10–12 |
 | 12 | **`openid-client` version.** | **6.8.9** (2026-11-02), the newest release at least two weeks old on 2026-11-24; 6.9.0 (2026-11-13) and 6.9.1 (2026-11-20) are younger. Re-check at execution. | Task 9 |
-| 13 | **Cross-repo drift (edge, not this plan).** `homelab-edge` `docs/runbooks/sso.md` § 8 says a parent who joined by SSO gets "a reset link, redeemable in `both`". This app's `resetLink` issues an **invite** to a parent without a password (spec 5.5), and that invite is redeemable by password in `local`/`both`. | The edge plan's runbook says "invite". | — |
+| 13 | **Cross-repo drift (edge, not this plan).** `homelab-edge` `docs/runbooks/sso.md` § 8 ("Authelia down") says a parent who joined by SSO gets "a reset link, redeemable in `both`". This app's `resetLink` (`api/internal/httpapi/admin.go:113`) issues an **invite** when the parent has no local password (`HasPassword`, a `provider = 'local'` identity), and that invite is redeemable by password in `local`/`both` (spec 5.5). The admin presses the row's "Reset link" button and the page shows "Invite link for <username>", valid 72 hours, at `/invite/{token}`. | The edge plan's runbook says: "the admin presses Reset link, which for a parent with no password issues an invite link (72 h); with the app in `local` or `both` the parent opens it and sets a password (the SSO choice on that page fails while Authelia is down), then signs in with it". | — |
 | 14 | **The `oidc_not_configured` log.** | Once per process. | Task 10 |
 | 15 | **Does a successful link clear `reauth_at`?** | No: a link needs a fresh re-auth window only, and each principal has at most one identity per issuer. | Task 5 |
 | 16 | **The smoke assertion 8 wording** "the CLI's `reset-password` refuses and clears the old admin cookie". | Read as: after `reset-password`, the UI refuses the old admin cookie and clears it (303 `/login`, `Max-Age=0`). | Task 2 |
