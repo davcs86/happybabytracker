@@ -4,9 +4,12 @@ import { resolve } from 'node:path';
 
 // A stub keeps UI tests green on a broken contract: scripts/smoke.sh (real API + real UI) is the final check.
 
-export const STUB_PORT = 4181;
+// Each Playwright worker has its own stub and UI, at its TEST_PARALLEL_INDEX slot; slot 0 when unset.
+export const slotPorts = (slot: number) => ({ stub: 4181 + 100 * slot, ui: 4173 + 100 * slot });
+const SLOT = slotPorts(Number(process.env.TEST_PARALLEL_INDEX ?? 0));
+export const STUB_PORT = SLOT.stub;
 export const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
-export const UI_PORT = 4173;
+export const UI_PORT = SLOT.ui;
 export const UI_ORIGIN = `http://127.0.0.1:${UI_PORT}`;
 export const STUB_TOKEN = 'fake-internal-api-token-000000000000';
 export const ADMIN = { username: 'admin', password: 'fake-admin-password-0000' };
@@ -56,7 +59,11 @@ export const SCENARIOS = [
 	'ntfy_off',
 	'channels_off',
 	// Every export slot taken: a valid export answers 503 busy.
-	'export_busy'
+	'export_busy',
+	// The provider lookup is off unless one of these is set (NPI_SEARCH, off at the edge by default).
+	'npi_on',
+	'npi_unavailable',
+	'npi_rate_limited'
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 // Longer than the UI's 5 s API timeout.
@@ -104,6 +111,7 @@ type Account = {
 	disabled: boolean;
 	units: Units;
 	createdAt: number;
+	passwordChangedAt: number | null;
 };
 type SessionRow = {
 	id: string;
@@ -112,8 +120,14 @@ type SessionRow = {
 	expiresAt: number;
 	createdAt: number;
 	lastSeenAt: number;
+	deviceLabel: string | null;
 };
-type TokenRow = { kind: 'invite' | 'reset'; parentId: string; usable: boolean };
+type TokenRow = {
+	kind: 'invite' | 'reset';
+	parentId: string;
+	usable: boolean;
+	issuedAt: number;
+};
 type KidRow = {
 	id: string;
 	name: string;
@@ -161,6 +175,7 @@ type State = {
 	medications: CourseStub[];
 	doses: DoseStub[];
 	milestones: MilestoneStub[];
+	visits: VisitStub[];
 	reminders: ReminderStub[];
 	pushDevices: PushDeviceStub[];
 	// By parent id.
@@ -199,7 +214,8 @@ function account(id: string, username: string, displayName: string, password: st
 		password,
 		disabled: false,
 		units: { ...DEFAULT_UNITS },
-		createdAt: now()
+		createdAt: now(),
+		passwordChangedAt: password === null ? null : now()
 	};
 }
 
@@ -269,11 +285,11 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		sessions: new Map(),
 		// Used, expired and disabled-parent links all answer 404, as the API does.
 		tokens: new Map<string, TokenRow>([
-			[TOKENS.invite, { kind: 'invite', parentId: bo.id, usable: true }],
-			[TOKENS.reset, { kind: 'reset', parentId: ana.id, usable: true }],
-			[TOKENS.used, { kind: 'invite', parentId: bo.id, usable: false }],
-			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false }],
-			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false }]
+			[TOKENS.invite, { kind: 'invite', parentId: bo.id, usable: true, issuedAt: now() }],
+			[TOKENS.reset, { kind: 'reset', parentId: ana.id, usable: true, issuedAt: now() }],
+			[TOKENS.used, { kind: 'invite', parentId: bo.id, usable: false, issuedAt: now() }],
+			[TOKENS.expired, { kind: 'reset', parentId: ana.id, usable: false, issuedAt: now() }],
+			[TOKENS.disabledParent, { kind: 'invite', parentId: dee.id, usable: false, issuedAt: now() }]
 		]),
 		kids: new Map([mia, leo, ivy, ...milestoneKids].map((k) => [k.id, k])),
 		grants: [
@@ -311,6 +327,7 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 				createdAt: midnight(addMonths(otto.birthDate, 4), otto.timeZone)
 			}
 		],
+		visits: [],
 		reminders: [],
 		pushDevices: [],
 		ntfyTopics: new Map(),
@@ -443,6 +460,15 @@ async function decodeBody(
 		error(res, 400, 'bad_request');
 		return null;
 	}
+	return checkFields(res, value, fields);
+}
+
+// One decoded object, the whole body or a nested block: decodeJSON's unknown_field 422 and bad_request 400.
+function checkFields(
+	res: ServerResponse,
+	value: unknown,
+	fields: Record<string, FieldKind>
+): Body | null {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) {
 		error(res, 400, 'bad_request');
 		return null;
@@ -487,17 +513,36 @@ const header = (req: IncomingMessage, name: string) => {
 };
 const codePoints = (s: string) => [...s].length;
 
-function newSession(state: State, kind: 'admin' | 'parent', parentId: string | null) {
+function newSession(
+	state: State,
+	kind: 'admin' | 'parent',
+	parentId: string | null,
+	deviceLabel: string | null = null
+) {
 	const token = `stub-session-${String(state.nextId++).padStart(30, '0')}`;
 	const t = now();
 	const expiresAt = t + (kind === 'admin' ? ADMIN_TTL_S : PARENT_TTL_S);
 	const id = nextId(state, 's');
-	state.sessions.set(token, { id, kind, parentId, expiresAt, createdAt: t, lastSeenAt: t });
+	state.sessions.set(token, {
+		id,
+		kind,
+		parentId,
+		expiresAt,
+		createdAt: t,
+		lastSeenAt: t,
+		deviceLabel
+	});
 	return { token, kind, expires_at: iso(expiresAt) };
 }
 
 function parentView(p: Account) {
-	return { id: p.id, username: p.username, display_name: p.displayName, units: p.units };
+	return {
+		id: p.id,
+		username: p.username,
+		display_name: p.displayName,
+		units: p.units,
+		password_changed_at: p.passwordChangedAt === null ? null : iso(p.passwordChangedAt)
+	};
 }
 
 function adminParentView(p: Account) {
@@ -508,6 +553,24 @@ function adminParentView(p: Account) {
 		disabled: p.disabled,
 		has_password: p.password !== null,
 		created_at: iso(p.createdAt)
+	};
+}
+
+// What only the list shows: the newest session activity and the parent's unused link (a disabled parent has no sessions).
+function adminListExtras(state: State, p: Account) {
+	const seen = [...state.sessions.values()]
+		.filter((s) => s.parentId === p.id)
+		.map((s) => s.lastSeenAt);
+	const token = [...state.tokens.values()].find((t) => t.parentId === p.id && t.usable);
+	return {
+		last_active_at: seen.length === 0 ? null : iso(Math.max(...seen)),
+		link: token
+			? {
+					kind: token.kind,
+					issued_at: iso(token.issuedAt),
+					expires_at: iso(token.issuedAt + (token.kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S))
+				}
+			: null
 	};
 }
 
@@ -647,7 +710,7 @@ const activeGuardians = (state: State, kidId: string) =>
 
 function issueLink(state: State, kind: TokenRow['kind'], parentId: string) {
 	const token = randomBytes(32).toString('base64url');
-	state.tokens.set(token, { kind, parentId, usable: true });
+	state.tokens.set(token, { kind, parentId, usable: true, issuedAt: now() });
 	const ttl = kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S;
 	return { url: `${UI_ORIGIN}/${kind}/${token}`, expiresAt: iso(now() + ttl) };
 }
@@ -705,6 +768,8 @@ type RouteDef = {
 	pattern: RegExp;
 	access: Access;
 	kidParam?: boolean;
+	// A route registered only while this holds; otherwise the path is an unknown route.
+	when?: (state: State) => boolean;
 	run: Handler;
 };
 
@@ -715,7 +780,9 @@ const routes: RouteDef[] = [
 		access: 'admin',
 		run: (state, _req, res) => {
 			const rows = [...state.parents.values()].sort((a, b) => a.username.localeCompare(b.username));
-			send(res, 200, { parents: rows.map(adminParentView) });
+			send(res, 200, {
+				parents: rows.map((p) => ({ ...adminParentView(p), ...adminListExtras(state, p) }))
+			});
 		}
 	},
 	{
@@ -822,6 +889,7 @@ const routes: RouteDef[] = [
 			const n = codePoints(body.new ?? '');
 			if (n < MIN_PASSWORD || n > MAX_PASSWORD) return error(res, 422, 'invalid', 'new');
 			parent.password = body.new;
+			parent.passwordChangedAt = now();
 			for (const [t, s] of state.sessions) {
 				if (s.parentId === parent.id && t !== p.token) state.sessions.delete(t);
 			}
@@ -841,7 +909,8 @@ const routes: RouteDef[] = [
 					id: s.id,
 					created_at: iso(s.createdAt),
 					last_seen_at: iso(s.lastSeenAt),
-					current: s.id === p.session.id
+					current: s.id === p.session.id,
+					device_label: s.deviceLabel
 				}))
 			});
 		}
@@ -951,6 +1020,7 @@ const routes: RouteDef[] = [
 			state.grants = state.grants.filter((g) => g.kidId !== id);
 			state.medications = state.medications.filter((m) => m.kidId !== id);
 			state.milestones = state.milestones.filter((m) => m.kidId !== id);
+			state.visits = state.visits.filter((v) => v.kidId !== id);
 			state.doses = state.doses.filter((d) => d.kidId !== id);
 			state.reminders = state.reminders.filter((r) => r.kidId !== id);
 			for (const o of [...state.pushDevices, ...state.ntfyTopics.values()]) dropKid(o, id);
@@ -976,7 +1046,8 @@ const routes: RouteDef[] = [
 					parent_id: parent.id,
 					username: parent.username,
 					display_name: parent.displayName,
-					role: g.role
+					role: g.role,
+					disabled: parent.disabled
 				}))
 			});
 		}
@@ -1066,7 +1137,8 @@ const MODULES = [
 	'growth',
 	'vaccination',
 	'sickness',
-	'medication'
+	'medication',
+	'visits'
 ] as const;
 const MODULE_OF: Record<TrackerKey, string> = {
 	bottles: 'bottles',
@@ -1077,7 +1149,7 @@ const MODULE_OF: Record<TrackerKey, string> = {
 	meals: 'feeding',
 	symptoms: 'sickness'
 };
-const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication'];
+const OLDER_BAND_MODULES = ['growth', 'vaccination', 'sickness', 'medication', 'visits'];
 const BOTTLE_CONTENTS = ['breast_milk', 'formula', 'cow_milk', 'other'];
 const DIAPER_KINDS = ['wet', 'dirty', 'both', 'dry'];
 const NURSING_SIDES = ['left', 'right'];
@@ -1994,6 +2066,27 @@ const kidRoute = (
 	run: (state, req, res, _p, [kidId]) => run(state, req, res, state.kids.get(kidId) as KidRow)
 });
 
+// lastEntries in home.go: the newest entry of each tracker whose module is on, null when it has none.
+function lastEntries(state: State, kid: KidRow) {
+	const on = moduleStates(state, kid)
+		.filter((m) => m.enabled)
+		.map((m) => m.module as string);
+	const out: Record<string, unknown> = {};
+	for (const key of TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]))) {
+		const newest = itemsOf(state, key, kid.id).reduce<Item | null>(
+			(best, i) =>
+				best === null || i.at > best.at || (i.at === best.at && i.id > best.id) ? i : best,
+			null
+		);
+		out[TIMELINE_TYPES[key]] = newest && {
+			type: TIMELINE_TYPES[key],
+			at: iso(newest.at),
+			...newest.out
+		};
+	}
+	return out;
+}
+
 const overviewRoutes: RouteDef[] = [
 	kidRoute('GET', 'timeline', 'caregiver', (state, req, res, kid) => {
 		const url = new URL(req.url ?? '/', STUB_URL);
@@ -2001,18 +2094,23 @@ const overviewRoutes: RouteDef[] = [
 		if (typeof q === 'string') return error(res, 422, 'invalid', q);
 		const given = url.searchParams.getAll('types');
 		let keys: TrackerKey[];
+		let visits: boolean;
 		if (given.length === 0) {
 			const on = moduleStates(state, kid)
 				.filter((m) => m.enabled)
 				.map((m) => m.module as string);
 			keys = TRACKER_KEYS.filter((k) => on.includes(MODULE_OF[k]));
+			visits = on.includes('visits');
 		} else {
 			const names = given.length === 1 ? given[0].split(',') : [''];
-			const wanted = names.map((n) => TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n));
+			const wanted = names.map((n) =>
+				n === VISIT_TYPE ? n : TRACKER_KEYS.find((k) => TIMELINE_TYPES[k] === n)
+			);
 			if (wanted.some((k, i) => !k || wanted.indexOf(k) !== i)) {
 				return error(res, 422, 'invalid', 'types');
 			}
-			keys = wanted as TrackerKey[];
+			keys = wanted.filter((k) => k !== VISIT_TYPE) as TrackerKey[];
+			visits = wanted.includes(VISIT_TYPE);
 		}
 		const items = keys.flatMap((key) =>
 			itemsOf(state, key, kid.id).map((i) => ({
@@ -2020,6 +2118,15 @@ const overviewRoutes: RouteDef[] = [
 				out: { type: TIMELINE_TYPES[key], at: iso(i.at), ...i.out }
 			}))
 		);
+		if (visits) {
+			for (const v of state.visits.filter((x) => x.kidId === kid.id)) {
+				items.push({
+					at: v.startsAt,
+					id: v.id,
+					out: { type: VISIT_TYPE, at: iso(v.startsAt), ...visitRowView(state, v) }
+				});
+			}
+		}
 		respondPage(res, 'items', items, q);
 	}),
 	kidRoute('GET', 'summary', 'caregiver', (state, req, res, kid) => {
@@ -2052,6 +2159,11 @@ const overviewRoutes: RouteDef[] = [
 			send(res, 204);
 		}
 	},
+	kidRoute('GET', 'counts', 'guardian', (state, _req, res, kid) => {
+		send(res, 200, {
+			entries: TRACKER_KEYS.reduce((n, key) => n + itemsOf(state, key, kid.id).length, 0)
+		});
+	}),
 	kidRoute('GET', 'home', 'caregiver', (state, _req, res, kid) => {
 		const today = todayIn(kid.timeZone);
 		const months = ageMonths(kid.birthDate, today);
@@ -2069,7 +2181,8 @@ const overviewRoutes: RouteDef[] = [
 			due:
 				state.scenario === 'home_due_many'
 					? MANY_DUE
-					: [...medicationDue(state, kid), ...vaccineDue(state, kid)]
+					: [...medicationDue(state, kid), ...vaccineDue(state, kid), ...visitDue(state, kid)],
+			last: lastEntries(state, kid)
 		});
 	})
 ];
@@ -2106,6 +2219,7 @@ type Length = { mm: number; in_hundredths: number; typed_unit: string };
 type GrowthStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	measuredOn: string;
 	weight: Weight | null;
 	length: Length | null;
@@ -2153,6 +2267,7 @@ function leoGrowth(): GrowthStub[] {
 	) => ({
 		kidId: LEO.id,
 		id,
+		visitId: null,
 		measuredOn,
 		weight: newWeight('kg', grams),
 		length: mm === null ? null : newLength('cm', mm),
@@ -2238,6 +2353,7 @@ function growthView(g: GrowthStub, kid: KidRow) {
 		g.weight && g.length ? (g.weight.grams * 1000) / (g.length.mm * g.length.mm) : null;
 	return {
 		id: g.id,
+		visit_id: g.visitId,
 		measured_on: g.measuredOn,
 		weight: g.weight,
 		length: g.length,
@@ -2415,6 +2531,7 @@ const growthRoutes: RouteDef[] = [
 		const g: GrowthStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			measuredOn: '',
 			weight: null,
 			length: null,
@@ -2513,6 +2630,7 @@ type StubLine = {
 type AdministrationStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	givenOn: string;
 	antigens: string[];
 	lot: string | null;
@@ -2799,6 +2917,7 @@ function vaccineDue(state: State, kid: KidRow) {
 
 const administrationView = (a: AdministrationStub) => ({
 	id: a.id,
+	visit_id: a.visitId,
 	given_on: a.givenOn,
 	antigens: a.antigens,
 	lot: a.lot,
@@ -2944,6 +3063,7 @@ const vaccineRoutes: RouteDef[] = [
 		const a: AdministrationStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			givenOn: '',
 			antigens: [],
 			lot: null,
@@ -3017,6 +3137,7 @@ type Schedule = { kind: string; times: string[]; hours: number };
 type CourseStub = {
 	kidId: string;
 	id: string;
+	visitId: string | null;
 	name: string;
 	dose: string;
 	schedule: Schedule;
@@ -3262,7 +3383,8 @@ function medicationView(state: State, c: CourseStub) {
 		note: c.note,
 		last_dose: last ? { id: last.id, given_at: iso(last.givenAt), amount: last.amount } : null,
 		next_due: next === Infinity ? null : { due_at: iso(next) },
-		dose_count: doses.length
+		dose_count: doses.length,
+		visit_id: c.visitId
 	};
 }
 
@@ -3421,6 +3543,7 @@ const medicationRoutes: RouteDef[] = [
 		const c: CourseStub = {
 			kidId: kid.id,
 			id: '',
+			visitId: null,
 			name: '',
 			dose: '',
 			schedule: { kind: '', times: [], hours: 0 },
@@ -3529,6 +3652,799 @@ const medicationRoutes: RouteDef[] = [
 	medicationEntryRoute('DELETE', 'medication-doses', {}, doseOf, (state, res, _kid, d) => {
 		state.doses = state.doses.filter((x) => x !== d);
 		send(res, 204);
+	})
+];
+
+// Medical visits: the Go handlers (httpapi/visits.go, store/visits.go) in memory. The outcome re-uses the three
+// modules' stub validators, as the API re-uses their mergeOnto; the calendar file is a marked stand-in.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const VISIT_KINDS = ['well_child', 'sick', 'specialist', 'dental', 'emergency', 'other'];
+const VISIT_KIND_LABEL: Record<string, string> = {
+	well_child: 'Well-child visit',
+	sick: 'Sick visit',
+	specialist: 'Specialist visit',
+	dental: 'Dental visit',
+	emergency: 'Emergency visit',
+	other: 'Other visit'
+};
+const DEFAULT_VISIT_DURATION_MIN = 30;
+const VISIT_DURATION_MIN = { min: 5, max: 720 };
+const VISIT_PROVIDER_MAX_LEN = 120;
+const VISIT_LOCATION_MAX_LEN = 200;
+const VISIT_OUTCOME_NOTES_MAX_LEN = 4000;
+const MAX_VISITS_PER_KID = 2000;
+const VISIT_HORIZON_S = 731 * DAY_S;
+const VISIT_DUE_LOOK_AHEAD_DAYS = 7;
+const MAX_OUTCOME_VACCINATIONS = 10;
+const MAX_OUTCOME_MEDICATIONS = 5;
+const VISIT_TYPE = 'visit';
+const STUB_ICS_HOST = 'stub.example';
+
+type VisitStub = {
+	kidId: string;
+	id: string;
+	startsAt: number;
+	durationMin: number;
+	kind: string;
+	provider: string | null;
+	location: string | null;
+	providerNpi: string | null;
+	note: string | null;
+	outcomeNotes: string | null;
+	cancelledAt: number | null;
+	revision: number;
+};
+
+const VISIT_FIELDS: Record<string, FieldKind> = {
+	starts_at: 'time',
+	duration_min: 'int',
+	kind: 'string',
+	provider: 'string',
+	location: 'string',
+	provider_npi: 'string',
+	note: 'string'
+};
+const VISIT_PATCH_FIELDS: Record<string, FieldKind> = {
+	...VISIT_FIELDS,
+	outcome_notes: 'string',
+	cancelled: 'bool'
+};
+const OUTCOME_FIELDS: Record<string, FieldKind> = {
+	revision: 'int',
+	outcome_notes: 'string',
+	growth: 'raw',
+	vaccinations: 'raw',
+	medications: 'raw'
+};
+
+// visitStatus: derived on every read, never stored.
+const visitStatus = (v: VisitStub) =>
+	v.cancelledAt !== null ? 'cancelled' : now() < v.startsAt ? 'upcoming' : 'past';
+const visitPast = (v: VisitStub) => v.cancelledAt === null && v.startsAt <= now();
+
+const linkedGrowth = (state: State, v: VisitStub) =>
+	state.growth
+		.filter((g) => g.visitId === v.id)
+		.sort((a, b) =>
+			a.measuredOn === b.measuredOn ? (a.id < b.id ? -1 : 1) : a.measuredOn < b.measuredOn ? -1 : 1
+		);
+const linkedVaccinations = (state: State, v: VisitStub) =>
+	state.vaccinations
+		.filter((a) => a.visitId === v.id)
+		.sort((a, b) =>
+			a.givenOn === b.givenOn ? (a.id < b.id ? -1 : 1) : a.givenOn < b.givenOn ? -1 : 1
+		);
+const linkedCourses = (state: State, v: VisitStub) =>
+	state.medications
+		.filter((c) => c.visitId === v.id)
+		.sort((a, b) => a.startAt - b.startAt || (a.id < b.id ? -1 : 1));
+const hasOutcome = (state: State, v: VisitStub) =>
+	v.outcomeNotes !== null ||
+	state.growth.some((g) => g.visitId === v.id) ||
+	state.vaccinations.some((a) => a.visitId === v.id) ||
+	state.medications.some((c) => c.visitId === v.id);
+
+const visitBaseView = (v: VisitStub) => ({
+	id: v.id,
+	starts_at: iso(v.startsAt),
+	duration_min: v.durationMin,
+	kind: v.kind,
+	status: visitStatus(v),
+	cancelled_at: v.cancelledAt === null ? null : iso(v.cancelledAt),
+	provider: v.provider,
+	location: v.location,
+	provider_npi: v.providerNpi,
+	note: v.note,
+	outcome_notes: v.outcomeNotes,
+	revision: v.revision
+});
+
+// The list and the timeline: linked holds counts.
+function visitRowView(state: State, v: VisitStub) {
+	return {
+		...visitBaseView(v),
+		linked: {
+			growth: linkedGrowth(state, v).length,
+			vaccinations: linkedVaccinations(state, v).length,
+			medications: linkedCourses(state, v).length
+		}
+	};
+}
+
+// One visit, a write's answer: linked holds the rows, oldest first.
+function visitDetailView(state: State, v: VisitStub) {
+	return {
+		...visitBaseView(v),
+		linked: {
+			growth: linkedGrowth(state, v).map((g) => ({ id: g.id, measured_on: g.measuredOn })),
+			vaccinations: linkedVaccinations(state, v).map((a) => ({
+				id: a.id,
+				given_on: a.givenOn,
+				antigens: a.antigens
+			})),
+			medications: linkedCourses(state, v).map((c) => ({
+				id: c.id,
+				name: c.name,
+				dose_count: state.doses.filter((d) => d.medication === c.id).length
+			}))
+		}
+	};
+}
+
+// textOK: absent, or 1 to max characters that are not only spaces.
+const visitTextOK = (s: string | null, max: number) =>
+	s === null || (s.trim() !== '' && runes(s) <= max);
+
+// visitInput.mergeOnto: starts_at, duration_min, kind, provider, location, provider_npi, note, outcome_notes,
+// cancelled; an unchanged stored start stays valid. null keeps starts_at, duration_min and kind, clears the texts.
+function mergeVisit(v: VisitStub, body: Body, kid: KidRow): string {
+	const stored = v.startsAt;
+	const storedProvider = v.provider;
+	if (typeof body.starts_at === 'string') v.startsAt = unix(body.starts_at);
+	const t = now();
+	if (
+		v.startsAt === 0 ||
+		(v.startsAt !== stored &&
+			(v.startsAt < midnight(kid.birthDate, kid.timeZone) || v.startsAt > t + VISIT_HORIZON_S))
+	) {
+		return 'starts_at';
+	}
+	if (typeof body.duration_min === 'number') v.durationMin = body.duration_min;
+	if (v.durationMin < VISIT_DURATION_MIN.min || v.durationMin > VISIT_DURATION_MIN.max) {
+		return 'duration_min';
+	}
+	if (typeof body.kind === 'string') v.kind = body.kind;
+	if (!VISIT_KINDS.includes(v.kind)) return 'kind';
+	const texts = [
+		['provider', 'provider', VISIT_PROVIDER_MAX_LEN],
+		['location', 'location', VISIT_LOCATION_MAX_LEN],
+		['provider_npi', 'providerNpi', 0],
+		['note', 'note', NOTE_MAX_LEN],
+		['outcome_notes', 'outcomeNotes', VISIT_OUTCOME_NOTES_MAX_LEN]
+	] as const;
+	for (const [key, prop, max] of texts) {
+		if (prop === 'providerNpi') {
+			// mergeProviderNPI (plan 10 B7): a changed provider without provider_npi clears it.
+			if ('provider' in body && v.provider !== storedProvider && !(key in body))
+				v.providerNpi = null;
+			if (key in body) v.providerNpi = body[key] as string | null;
+			if (v.providerNpi !== null && (!npiValid(v.providerNpi) || v.provider === null)) return key;
+			continue;
+		}
+		if (key in body) v[prop] = body[key] as string | null;
+		if (!visitTextOK(v[prop], max)) return key;
+	}
+	if ('cancelled' in body) {
+		if (body.cancelled === null) return 'cancelled';
+		if (body.cancelled === false) v.cancelledAt = null;
+		else if (v.cancelledAt === null) v.cancelledAt = t;
+	}
+	return '';
+}
+
+const visitOf = (state: State, kidId: string, id: string) =>
+	ENTRY_ID.test(id) ? state.visits.find((v) => v.kidId === kidId && v.id === id) : undefined;
+
+// The page in store/visits.go: [from, to) by starts_at, newest first, or soonest first with order=asc.
+function respondVisitPage(res: ServerResponse, items: Item[], q: Page, asc: boolean) {
+	const later = (a: Item, b: { at: number; id: string }) =>
+		a.at > b.at || (a.at === b.at && a.id > b.id);
+	const rows = items
+		.filter((i) => i.at >= q.from && i.at < q.to)
+		.filter((i) => !q.after || (asc ? later(i, q.after) : later(q.after as Item, i)))
+		.sort((a, b) => (asc ? 1 : -1) * (a.at - b.at || (a.id < b.id ? -1 : 1)));
+	const page = rows.slice(0, q.limit);
+	const last = rows.length > q.limit ? page[page.length - 1] : null;
+	send(res, 200, {
+		visits: page.map((i) => i.out),
+		next_cursor: last ? Buffer.from(`${last.at}:${last.id}`).toString('base64url') : null
+	});
+}
+
+// visitDue in home.go: upcoming visits before the end of the kid-local day VISIT_DUE_LOOK_AHEAD_DAYS after today,
+// soonest first; empty when the module is off.
+function visitDue(state: State, kid: KidRow) {
+	if (!moduleStates(state, kid).some((m) => m.module === 'visits' && m.enabled)) return [];
+	const t = now();
+	const end = midnight(addDays(todayIn(kid.timeZone), VISIT_DUE_LOOK_AHEAD_DAYS + 1), kid.timeZone);
+	return state.visits
+		.filter(
+			(v) => v.kidId === kid.id && v.cancelledAt === null && v.startsAt > t && v.startsAt < end
+		)
+		.sort((a, b) => a.startsAt - b.startsAt || (a.id < b.id ? -1 : 1))
+		.map((v) => ({ kind: VISIT_TYPE, id: v.id, starts_at: iso(v.startsAt), visit_kind: v.kind }));
+}
+
+// A STUB, not the API's file: a marked stand-in carrying the UID, the sequence and the summary only.
+function stubIcs(v: VisitStub, kid: KidRow, full: boolean): string {
+	const summary = full
+		? `${kid.name}: ${VISIT_KIND_LABEL[v.kind]}${v.provider ? ` with ${v.provider}` : ''}`
+		: 'Medical visit';
+	return [
+		'BEGIN:VCALENDAR',
+		'VERSION:2.0',
+		'PRODID:-//happybabytracker//stub//EN',
+		'METHOD:PUBLISH',
+		'BEGIN:VEVENT',
+		`UID:visit-${v.id}@${STUB_ICS_HOST}`,
+		`SEQUENCE:${v.revision}`,
+		`SUMMARY:${summary}`,
+		'COMMENT:STUB CALENDAR FILE, NOT A REAL EVENT',
+		`STATUS:${v.cancelledAt === null ? 'CONFIRMED' : 'CANCELLED'}`,
+		'END:VEVENT',
+		'END:VCALENDAR',
+		''
+	].join('\r\n');
+}
+
+// An entry route: the malformed id first, then the body (PATCH, outcome), then the 404 an unknown or another kid's
+// visit shares.
+const visitRoute = (
+	method: string,
+	suffix: string,
+	fields: Record<string, FieldKind> | null,
+	run: (
+		state: State,
+		req: IncomingMessage,
+		res: ServerResponse,
+		kid: KidRow,
+		body: Body,
+		id: string
+	) => unknown
+): RouteDef => ({
+	method,
+	pattern: new RegExp(`^\\/v1\\/kids\\/([^/]+)\\/visits\\/([^/]+)${suffix}$`),
+	access: 'caregiver',
+	kidParam: true,
+	run: async (state, req, res, _p, [kidId, id]) => {
+		if (!ENTRY_ID.test(id)) return noKid(res);
+		const body = fields ? await decodeBody(req, res, fields) : {};
+		if (!body) return;
+		return run(state, req, res, state.kids.get(kidId) as KidRow, body, id);
+	}
+});
+
+// The outcome's blocks: each the body its module's POST takes, re-validated by that module's stub validator.
+type OutcomeRows = {
+	growth: GrowthStub | null;
+	vaccinations: AdministrationStub[];
+	medications: CourseStub[];
+};
+
+function outcomeRows(v: VisitStub, kid: KidRow, body: Body): OutcomeRows | string {
+	const day = todayIn(kid.timeZone, v.startsAt);
+	const out: OutcomeRows = { growth: null, vaccinations: [], medications: [] };
+	if (body.growth) {
+		const g: GrowthStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			measuredOn: day,
+			weight: null,
+			length: null,
+			head: null,
+			note: null
+		};
+		const f = mergeGrowth(g, body.growth as Body, kid);
+		if (f) return `growth.${f}`;
+		out.growth = g;
+	}
+	for (const [i, a] of ((body.vaccinations ?? []) as Body[]).entries()) {
+		const row: AdministrationStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			givenOn: day,
+			antigens: [],
+			lot: null,
+			product: null,
+			note: null
+		};
+		const f = mergeAdministration(row, a, kid);
+		if (f) return `vaccinations[${i}].${f}`;
+		out.vaccinations.push(row);
+	}
+	for (const [i, m] of ((body.medications ?? []) as Body[]).entries()) {
+		const c: CourseStub = {
+			kidId: kid.id,
+			id: '',
+			visitId: v.id,
+			name: '',
+			dose: '',
+			schedule: { kind: '', times: [], hours: 0 },
+			startAt: v.startsAt,
+			endOn: null,
+			active: true,
+			note: null
+		};
+		const f = mergeMedication(c, m, kid);
+		if (f) return `medications[${i}].${f}`;
+		out.medications.push(c);
+	}
+	return out;
+}
+
+// decodeJSON over the nested blocks: a block of the wrong JSON type is 400, an unknown key in one 422.
+function outcomeBlocksOK(res: ServerResponse, body: Body): boolean {
+	const list = (v: unknown) => v === null || v === undefined || Array.isArray(v);
+	if (!list(body.vaccinations) || !list(body.medications)) {
+		error(res, 400, 'bad_request');
+		return false;
+	}
+	const blocks: [unknown, Record<string, FieldKind>][] = [
+		...(body.growth == null
+			? []
+			: [[body.growth, GROWTH_FIELDS] as [unknown, Record<string, FieldKind>]]),
+		...((body.vaccinations ?? []) as unknown[]).map(
+			(a) => [a, ADMINISTRATION_FIELDS] as [unknown, Record<string, FieldKind>]
+		),
+		...((body.medications ?? []) as unknown[]).map(
+			(m) => [m, MEDICATION_FIELDS] as [unknown, Record<string, FieldKind>]
+		)
+	];
+	return blocks.every(([block, fields]) => checkFields(res, block, fields) !== null);
+}
+
+// Provider lookup: httpapi/providers.go and the npi package in memory. The fixtures are fictional: their NPIs start
+// with 9, which no issued NPI does, and pass the check digit; CASEY QUILLBY gets mail in WA but practises in OR.
+
+// The API's limits (constants.go), mirrored for the stub only.
+const NPI_SEARCH_LIMIT = 20;
+const NPI_NAME = /^\p{L}[\p{L} .'-]{1,59}$/u;
+const NPI_ORG = /^[\p{L}0-9][\p{L}0-9 &.'-]{1,59}$/u;
+const NPI_POSTAL_CODE = /^[0-9]{5}$/;
+const NPI_STATES = [
+	'AL',
+	'AK',
+	'AZ',
+	'AR',
+	'CA',
+	'CO',
+	'CT',
+	'DE',
+	'FL',
+	'GA',
+	'HI',
+	'ID',
+	'IL',
+	'IN',
+	'IA',
+	'KS',
+	'KY',
+	'LA',
+	'ME',
+	'MD',
+	'MA',
+	'MI',
+	'MN',
+	'MS',
+	'MO',
+	'MT',
+	'NE',
+	'NV',
+	'NH',
+	'NJ',
+	'NM',
+	'NY',
+	'NC',
+	'ND',
+	'OH',
+	'OK',
+	'OR',
+	'PA',
+	'RI',
+	'SC',
+	'SD',
+	'TN',
+	'TX',
+	'UT',
+	'VT',
+	'VA',
+	'WA',
+	'WV',
+	'WI',
+	'WY',
+	'DC',
+	'AS',
+	'GU',
+	'MP',
+	'PR',
+	'VI'
+];
+const PROVIDER_SEARCH_FIELDS: Record<string, FieldKind> = {
+	kind: 'string',
+	last_name: 'string',
+	first_name: 'string',
+	organization: 'string',
+	state: 'string',
+	city: 'string',
+	postal_code: 'string'
+};
+
+// npi.Valid: ten digits, the last the Luhn check digit of 80840 and the first nine.
+function npiValid(s: string): boolean {
+	if (!/^[0-9]{10}$/.test(s)) return false;
+	let sum = 0;
+	[...`80840${s}`].reverse().forEach((c, i) => {
+		const d = Number(c) * (i % 2 === 1 ? 2 : 1);
+		sum += d > 9 ? d - 9 : d;
+	});
+	return sum % 10 === 0;
+}
+const withCheckDigit = (nine: string) =>
+	[...'0123456789'].map((d) => nine + d).find(npiValid) as string;
+
+type RegistryAddress = {
+	address1: string;
+	address2?: string;
+	city: string;
+	state: string;
+	postalCode: string;
+	phone?: string;
+};
+type RegistryRecord = {
+	npi: string;
+	kind: 'person' | 'organization';
+	first?: string;
+	last?: string;
+	organization?: string;
+	credential?: string;
+	taxonomy?: string;
+	location: RegistryAddress;
+	mailing: RegistryAddress;
+};
+
+const at = (city: string, state: string, postalCode: string, address1: string, phone?: string) => ({
+	address1,
+	city,
+	state,
+	postalCode,
+	...(phone ? { phone } : {})
+});
+const REGISTRY: RegistryRecord[] = [
+	{
+		npi: withCheckDigit('900000001'),
+		kind: 'person',
+		first: 'AVERY',
+		last: 'QUILL',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		location: {
+			...at('SEATTLE', 'WA', '981012756', '12 PINE ST', '206-555-0100'),
+			address2: 'SUITE 4'
+		},
+		mailing: at('SEATTLE', 'WA', '98101', 'PO BOX 12')
+	},
+	{
+		npi: withCheckDigit('900000002'),
+		kind: 'person',
+		first: 'BLAIR',
+		last: 'QUILLAN',
+		taxonomy: 'Family Medicine',
+		location: at('TACOMA', 'WA', '98402', '300 CEDAR AVE'),
+		mailing: at('TACOMA', 'WA', '98402', '300 CEDAR AVE')
+	},
+	{
+		npi: withCheckDigit('900000003'),
+		kind: 'person',
+		first: 'CASEY',
+		last: 'QUILLBY',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		location: at('PORTLAND', 'OR', '97201', '77 RIVER RD', '503-555-0177'),
+		mailing: at('SEATTLE', 'WA', '98101', '9 HARBOR WAY')
+	},
+	{
+		npi: withCheckDigit('900000004'),
+		kind: 'organization',
+		organization: 'QUILLFEATHER PEDIATRICS',
+		taxonomy: 'Clinic/Center',
+		location: at('SEATTLE', 'WA', '98101', '40 ELM AVE'),
+		mailing: at('SEATTLE', 'WA', '98101', '40 ELM AVE')
+	},
+	{
+		npi: withCheckDigit('900000005'),
+		kind: 'organization',
+		organization: 'QUILL & SONS CLINIC 2',
+		taxonomy: 'Clinic/Center',
+		location: at('SALEM', 'OR', '97301', '5 OAK ST', '503-555-0105'),
+		mailing: at('SALEM', 'OR', '97301', '5 OAK ST')
+	},
+	// A full registry page, so the search says there may be more.
+	...Array.from({ length: NPI_SEARCH_LIMIT }, (_, i) => ({
+		npi: withCheckDigit(`91000${String(i).padStart(4, '0')}`),
+		kind: 'person' as const,
+		first: `ROBIN${'ABCDEFGHIJKLMNOPQRST'[i]}`,
+		last: 'LARK',
+		taxonomy: 'Pediatrics',
+		location: at('SPOKANE', 'WA', '99201', `${i + 1} BIRD LN`),
+		mailing: at('SPOKANE', 'WA', '99201', `${i + 1} BIRD LN`)
+	}))
+];
+
+type ProviderQueryStub = {
+	kind: string;
+	last: string;
+	first: string;
+	organization: string;
+	state: string;
+	city: string;
+	postal: string;
+};
+
+// providerSearchInput.query (plan 10 B4): the first invalid field in body order, or the query.
+function providerQuery(body: Body): ProviderQueryStub | string {
+	const str = (k: string) => (typeof body[k] === 'string' ? (body[k] as string) : undefined);
+	const text = (k: string, allowed: boolean, required: boolean, re: RegExp) => {
+		const v = str(k);
+		if (v === undefined) return required ? null : '';
+		const t = v.trim();
+		return allowed && re.test(t) ? t : null;
+	};
+	const kind = str('kind');
+	if (kind !== 'person' && kind !== 'organization') return 'kind';
+	const person = kind === 'person';
+	const last = text('last_name', person, person, NPI_NAME);
+	if (last === null) return 'last_name';
+	const first = text('first_name', person, false, NPI_NAME);
+	if (first === null) return 'first_name';
+	const organization = text('organization', !person, !person, NPI_ORG);
+	if (organization === null) return 'organization';
+	const state = (str('state') ?? '').trim().toUpperCase();
+	if (!NPI_STATES.includes(state)) return 'state';
+	const city = text('city', true, false, NPI_NAME);
+	if (city === null) return 'city';
+	const postal = str('postal_code') ?? '';
+	if (str('postal_code') !== undefined && !NPI_POSTAL_CODE.test(postal)) return 'postal_code';
+	return { kind, last, first, organization, state, city, postal };
+}
+
+const startsWithCI = (value: string | undefined, term: string) =>
+	(value ?? '').toUpperCase().startsWith(term.toUpperCase());
+
+// The registry's trailing-wildcard match, then the API's own filter on the practice location (ruling 1).
+function searchRegistry(q: ProviderQueryStub) {
+	const upstream = REGISTRY.filter((r) =>
+		r.kind !== q.kind
+			? false
+			: q.kind === 'person'
+				? startsWithCI(r.last, q.last) && startsWithCI(r.first, q.first)
+				: startsWithCI(r.organization, q.organization)
+	).slice(0, NPI_SEARCH_LIMIT);
+	const results = upstream
+		.filter(
+			(r) =>
+				r.location.state === q.state &&
+				(q.city === '' || r.location.city.toUpperCase() === q.city.toUpperCase()) &&
+				(q.postal === '' || r.location.postalCode.slice(0, 5) === q.postal)
+		)
+		.map((r) => ({
+			npi: r.npi,
+			name: r.kind === 'person' ? `${r.first} ${r.last}` : (r.organization as string),
+			credential: r.credential ?? null,
+			taxonomy: r.taxonomy ?? null,
+			address: [r.location.address1, r.location.address2, r.location.city]
+				.filter(Boolean)
+				.join(', ')
+				.concat(`, ${r.location.state} ${r.location.postalCode.slice(0, 5)}`),
+			phone: r.location.phone ?? null
+		}));
+	return { results, more: upstream.length === NPI_SEARCH_LIMIT };
+}
+
+const npiSearchOn = (state: State) =>
+	state.scenario === 'npi_on' ||
+	state.scenario === 'npi_unavailable' ||
+	state.scenario === 'npi_rate_limited';
+
+const providerRoutes: RouteDef[] = [
+	{
+		method: 'GET',
+		pattern: /^\/v1\/providers$/,
+		access: 'parent',
+		run: (state, _req, res) => send(res, 200, { search: { enabled: npiSearchOn(state) } })
+	},
+	// Validation, then the per-parent limit, then the registry (plan 10 B3).
+	{
+		method: 'POST',
+		pattern: /^\/v1\/providers\/search$/,
+		access: 'parent',
+		when: npiSearchOn,
+		run: async (state, req, res) => {
+			const body = await decodeBody(req, res, PROVIDER_SEARCH_FIELDS);
+			if (!body) return;
+			const q = providerQuery(body);
+			if (typeof q === 'string') return error(res, 422, 'invalid', q);
+			if (state.scenario === 'npi_rate_limited') {
+				return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
+			}
+			if (state.scenario === 'npi_unavailable') return error(res, 503, 'unavailable');
+			send(res, 200, searchRegistry(q));
+		}
+	}
+];
+
+const visitRoutes: RouteDef[] = [
+	kidRoute('GET', 'visits', 'caregiver', (state, req, res, kid) => {
+		const url = new URL(req.url ?? '/', STUB_URL);
+		const horizon = now() + VISIT_HORIZON_S;
+		// As the API: the horizon is the default to before from is checked against it.
+		if (!url.searchParams.has('to'))
+			url.searchParams.set('to', new Date(horizon * 1000).toISOString());
+		const q = parsePage(url);
+		if (typeof q === 'string') return error(res, 422, 'invalid', q);
+		if (q.to > horizon) return error(res, 422, 'invalid', 'to');
+		const order = url.searchParams.get('order');
+		if (order !== null && order !== 'asc' && order !== 'desc') {
+			return error(res, 422, 'invalid', 'order');
+		}
+		const items = state.visits
+			.filter((v) => v.kidId === kid.id)
+			.map((v) => ({ at: v.startsAt, id: v.id, out: visitRowView(state, v) }));
+		respondVisitPage(res, items, q, order === 'asc');
+	}),
+	kidRoute('POST', 'visits', 'caregiver', async (state, req, res, kid) => {
+		const body = await decodeBody(req, res, VISIT_FIELDS);
+		if (!body) return;
+		const v: VisitStub = {
+			kidId: kid.id,
+			id: '',
+			startsAt: 0,
+			durationMin: DEFAULT_VISIT_DURATION_MIN,
+			kind: '',
+			provider: null,
+			location: null,
+			providerNpi: null,
+			note: null,
+			outcomeNotes: null,
+			cancelledAt: null,
+			revision: 0
+		};
+		const field = mergeVisit(v, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (state.visits.filter((x) => x.kidId === kid.id).length >= MAX_VISITS_PER_KID) {
+			return error(res, 409, 'limit');
+		}
+		v.id = nextId(state, 'vis');
+		state.visits.push(v);
+		send(res, 201, visitDetailView(state, v));
+	}),
+	visitRoute('GET', '', null, (state, _req, res, kid, _body, id) => {
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		send(res, 200, visitDetailView(state, v));
+	}),
+	// UpdateVisit: merged on the stored row, then has_outcome (from the stored outcome) and not_past.
+	visitRoute('PATCH', '', VISIT_PATCH_FIELDS, (state, _req, res, kid, body, id) => {
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const merged = structuredClone(v);
+		const field = mergeVisit(merged, body, kid);
+		if (field) return error(res, 422, 'invalid', field);
+		if (hasOutcome(state, v) && (merged.cancelledAt !== null || merged.startsAt > now())) {
+			return error(res, 409, 'has_outcome');
+		}
+		if (merged.outcomeNotes !== null && !visitPast(merged)) return error(res, 409, 'not_past');
+		Object.assign(v, merged, { revision: v.revision + 1 });
+		send(res, 200, visitDetailView(state, v));
+	}),
+	// DeleteVisit: linked (default delete) before the 404; delete takes each row as its module deletes it.
+	visitRoute('DELETE', '', null, (state, req, res, kid, _body, id) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const linked = q.get('linked');
+		if (linked !== null && linked !== 'delete' && linked !== 'keep') {
+			return error(res, 422, 'invalid', 'linked');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		if (linked === 'keep') {
+			for (const row of [...state.growth, ...state.vaccinations, ...state.medications]) {
+				if (row.visitId === v.id) row.visitId = null;
+			}
+		} else {
+			const courses = state.medications.filter((c) => c.visitId === v.id).map((c) => c.id);
+			state.growth = state.growth.filter((g) => g.visitId !== v.id);
+			state.vaccinations = state.vaccinations.filter((a) => a.visitId !== v.id);
+			state.medications = state.medications.filter((c) => c.visitId !== v.id);
+			state.doses = state.doses.filter((d) => !courses.includes(d.medication));
+			state.reminders = state.reminders.filter((r) => !courses.includes(r.medicationId));
+		}
+		state.visits = state.visits.filter((x) => x !== v);
+		send(res, 204);
+	}),
+	// recordOutcome: revision, something to record, the caps, the 404, the blocks' fields, then stale, not_past and
+	// the per-kid caps; one write or none.
+	visitRoute('POST', '\\/outcome', OUTCOME_FIELDS, (state, _req, res, kid, body, id) => {
+		if (!outcomeBlocksOK(res, body)) return;
+		const vaccinations = (body.vaccinations ?? []) as Body[];
+		const medications = (body.medications ?? []) as Body[];
+		if (typeof body.revision !== 'number') return error(res, 422, 'invalid', 'revision');
+		if (!('outcome_notes' in body) && !body.growth && !vaccinations.length && !medications.length) {
+			return error(res, 422, 'invalid', 'outcome');
+		}
+		if (vaccinations.length > MAX_OUTCOME_VACCINATIONS) {
+			return error(res, 422, 'invalid', 'vaccinations');
+		}
+		if (medications.length > MAX_OUTCOME_MEDICATIONS) {
+			return error(res, 422, 'invalid', 'medications');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const notes = body.outcome_notes as string | null | undefined;
+		if (
+			notes !== undefined &&
+			(notes === null || !visitTextOK(notes, VISIT_OUTCOME_NOTES_MAX_LEN))
+		) {
+			return error(res, 422, 'invalid', 'outcome_notes');
+		}
+		const rows = outcomeRows(v, kid, body);
+		if (typeof rows === 'string') return error(res, 422, 'invalid', rows);
+		if (body.revision !== v.revision) return error(res, 409, 'stale');
+		if (!visitPast(v)) return error(res, 409, 'not_past');
+		const count = (list: { kidId: string }[]) => list.filter((r) => r.kidId === kid.id).length;
+		if (
+			(rows.growth && count(state.growth) + 1 > MAX_GROWTH_PER_KID) ||
+			count(state.vaccinations) + rows.vaccinations.length > MAX_VACCINE_ADMINISTRATIONS_PER_KID ||
+			count(state.medications) + rows.medications.length > MAX_MEDICATIONS_PER_KID
+		) {
+			return error(res, 409, 'limit');
+		}
+		if (rows.growth) {
+			rows.growth.id = nextId(state, 'g');
+			state.growth.push(rows.growth);
+		}
+		for (const a of rows.vaccinations) {
+			a.id = nextId(state, 'v');
+			state.vaccinations.push(a);
+		}
+		for (const c of rows.medications) {
+			c.schedule = canonicalSchedule(c.schedule);
+			c.id = nextId(state, 'm');
+			state.medications.push(c);
+			materialiseCourse(state, c, now());
+		}
+		if (notes !== undefined) v.outcomeNotes = notes;
+		v.revision += 1;
+		send(res, 200, visitDetailView(state, v));
+	}),
+	visitRoute('GET', '\\/calendar', null, (state, req, res, kid, _body, id) => {
+		const q = new URL(req.url ?? '/', STUB_URL).searchParams;
+		const detail = q.get('detail');
+		if (detail !== null && detail !== 'generic' && detail !== 'full') {
+			return error(res, 422, 'invalid', 'detail');
+		}
+		const v = visitOf(state, kid.id, id);
+		if (!v) return noKid(res);
+		const file = stubIcs(v, kid, detail === 'full');
+		res.writeHead(200, {
+			'content-type': 'text/calendar; charset=utf-8',
+			'content-disposition': `attachment; filename="visit-${todayIn(kid.timeZone, v.startsAt)}.ics"`,
+			'cache-control': 'no-store',
+			'x-content-type-options': 'nosniff',
+			'content-length': String(Buffer.byteLength(file))
+		});
+		res.end(file);
 	})
 ];
 
@@ -4166,6 +5082,8 @@ routes.push(
 	...growthRoutes,
 	...vaccineRoutes,
 	...medicationRoutes,
+	...visitRoutes,
+	...providerRoutes,
 	...milestoneRoutes,
 	...exportRoutes,
 	...pushRoutes,
@@ -4186,8 +5104,12 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	const live = session && session.expiresAt > now() ? session : undefined;
 
 	if (path === '/v1/session' && method === 'POST') {
-		const body = await decode(req, res, ['username', 'password']);
+		const body = await decode(req, res, ['username', 'password', 'device_label']);
 		if (!body) return;
+		const label = body.device_label ?? '';
+		if (label !== '' && !/^[A-Za-z0-9 ]{1,48}$/.test(label)) {
+			return error(res, 422, 'invalid', 'device_label');
+		}
 		if (state.scenario === 'rate_limited') {
 			return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
 		}
@@ -4204,7 +5126,7 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 		) {
 			return error(res, 401, 'invalid_credentials');
 		}
-		return send(res, 200, newSession(state, 'parent', parent.id));
+		return send(res, 200, newSession(state, 'parent', parent.id, label === '' ? null : label));
 	}
 
 	if (path === '/v1/session' && (method === 'GET' || method === 'DELETE')) {
@@ -4246,7 +5168,10 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 				return error(res, 422, 'invalid', 'password');
 			usable.usable = false;
 			const parent = state.parents.get(usable.parentId);
-			if (parent) parent.password = body.password;
+			if (parent) {
+				parent.password = body.password;
+				parent.passwordChangedAt = now();
+			}
 			for (const [t, s] of state.sessions)
 				if (s.parentId === usable.parentId) state.sessions.delete(t);
 			return send(res, 200, newSession(state, 'parent', usable.parentId));
@@ -4254,7 +5179,7 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 	}
 
 	for (const r of routes) {
-		const m = r.method === method ? r.pattern.exec(path) : null;
+		const m = r.method === method && (!r.when || r.when(state)) ? r.pattern.exec(path) : null;
 		if (!m) continue;
 		const params = m.slice(1).map((s) => decodeURIComponent(s));
 		const p = admit(state, res, sessionToken, r.access, r.kidParam ? params[0] : undefined);

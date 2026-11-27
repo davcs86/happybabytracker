@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notifications</title>
+<script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+<script src="./hbt-med.js"></script>
+<script src="./hbt-ms.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select{font-family:inherit;color:inherit}summary{cursor:pointer}button[aria-disabled=true]{opacity:.55;cursor:not-allowed}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Notifications · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;flex-wrap:wrap;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<button onClick="{{ resetAll }}" style="min-height:34px;border-radius:8px;border:1px solid #d8d0c8;background:#fff;color:#2a2420;font-size:12px;font-weight:600;cursor:pointer">Reset sample data</button>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>Plan 6 §4.6</b><br>Notifications, one page for the signed-in parent. Use the panel for every state: channels, browser support, the browser prompt answer, JS off, iPhone Safari, key rotation.<br><br><b>“Ana enables here”</b><br>Flow 13: the registered device moves to Ana, Dan loses it and its child choices. Nothing warns either of them (as built).<br><br><b>shadcn-svelte parts</b><br>Card, Button, Input, Label, Checkbox (24 px), Alert, Separator.<br><br><b>No-JS</b><br>Everything works except the one enable button. The help line stays visible.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<sc-if value="{{ desktop }}" hint-placeholder-val="{{ false }}"><div data-hbt="side" role="navigation" aria-label="Primary" style="width:200px;flex:none;border-right:1px solid var(--border);padding:20px 12px;display:flex;flex-direction:column;gap:4px;background:var(--card)"><div style="font-weight:700;font-size:16px;padding:0 10px 14px">Happy baby</div>
+<sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.sideStyle }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div></sc-if>
+<div data-hbt="frame" style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+<div role="main" style="flex:1;overflow:auto;padding:16px 16px 28px;display:flex;flex-direction:column;gap:18px">
+<div data-hbt="head" style="display:flex;align-items:center;gap:8px;min-height:48px;margin-bottom:8px"><a href="My Profile.dc.html" style="min-height:44px;display:inline-flex;align-items:center;gap:6px;font-size:14px;color:var(--fg);text-decoration:underline"><span aria-hidden="true">‹</span><span>Account</span></a><div data-hbt-bell style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px"><a href="Notifications.dc.html" aria-label="Notification settings" aria-current="page" data-shadcn="Button" style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;border:1px solid var(--primary);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></a><span data-role style="font-size:12px;font-weight:600;padding:4px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)">{{ roleLabel }}</span></div></div>
+<div data-w="grid" style="display:flex;flex-direction:column;gap:16px;max-width:448px;width:100%">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1;overflow-wrap:anywhere">Notifications</h1><div data-sub style="height:0;border-top:1px solid var(--border);margin:2px 0 0"></div></div></div>
+<sc-if value="{{ pageErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere">{{ pageErr }}</div></sc-if>
+<sc-if value="{{ saved }}" hint-placeholder-val="{{ false }}"><div role="status" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere">{{ saved }}</div></sc-if>
+
+<div data-w="l"><sc-if value="{{ pushOn }}" hint-placeholder-val="{{ true }}"><section data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><h2 style="margin:0;font-size:18px;font-weight:600">This device</h2>
+<sc-if value="{{ isIos }}" hint-placeholder-val="{{ false }}"><div style="font-size:14.5px;line-height:1.5">On iPhone and iPad, add this app to your Home Screen first, then open it from there to turn on notifications.</div></sc-if>
+<sc-if value="{{ isHere }}" hint-placeholder-val="{{ false }}"><sc-if value="{{ hintAfter }}" hint-placeholder-val="{{ false }}"><div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">{{ hintAfterText }}</div></sc-if>
+<form onSubmit="{{ noSubmit }}" style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:6px"><label for="dev-name" style="font-size:13px;color:var(--muted)">Device name</label><input id="dev-name" type="text" autocomplete="off" value="{{ devName }}" onChange="{{ onDevName }}" aria-invalid="{{ devInvalid }}" aria-describedby="dev-name-err" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px;min-width:0;box-sizing:border-box"><sc-if value="{{ devErr }}" hint-placeholder-val="{{ false }}"><div id="dev-name-err" role="alert" style="font-size:13px;font-weight:600">{{ devErr }}</div></sc-if></div>
+<fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:2px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:4px">Reminders on this device for</legend><sc-for list="{{ devKids }}" as="k" hint-placeholder-count="3"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input type="checkbox" checked="{{ k.checked }}" onChange="{{ k.on }}" style="width:24px;height:24px;flex:none">{{ k.name }}</label></sc-for></fieldset>
+<button type="button" onClick="{{ saveDev }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer">Save</button></form>
+<button type="button" onClick="{{ turnOffHere }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Turn off on this device</button></sc-if>
+<sc-if value="{{ isUnsupported }}" hint-placeholder-val="{{ false }}"><div style="font-size:14.5px;line-height:1.5">This browser cannot receive notifications.</div></sc-if>
+<sc-if value="{{ canEnable }}" hint-placeholder-val="{{ false }}"><sc-if value="{{ hasJs }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ enable }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer">Turn on notifications on this device</button></sc-if><div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">Turning on notifications needs JavaScript, and the browser asks for your permission.</div></sc-if>
+</section>
+<sc-if value="{{ hasOthers }}" hint-placeholder-val="{{ false }}"><section role="region" aria-label="Your other devices" data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><h2 style="margin:0;font-size:18px;font-weight:600">Your other devices</h2><sc-for list="{{ others }}" as="d" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px;border-top:1px solid var(--border);padding:6px 0"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;overflow-wrap:anywhere">{{ d.label }}</div><div style="font-size:12.5px;color:var(--muted)">Added {{ d.added }} UTC</div></div><button type="button" onClick="{{ d.on }}" aria-label="{{ d.aria }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Remove</button></div></sc-for></section></sc-if></sc-if>
+
+<sc-if value="{{ pushOff }}" hint-placeholder-val="{{ false }}"><section data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><h2 style="margin:0;font-size:18px;font-weight:600">Web Push</h2><div style="font-size:14.5px;line-height:1.5">Web Push is not configured on this server.</div>
+<sc-if value="{{ hasOld }}" hint-placeholder-val="{{ false }}"><section role="region" aria-label="Your devices" style="display:flex;flex-direction:column;gap:4px"><h3 style="margin:8px 0 0;font-size:15px;font-weight:600">Your devices</h3><sc-for list="{{ oldDevs }}" as="d" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:12px;border-top:1px solid var(--border);padding:6px 0"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;overflow-wrap:anywhere">{{ d.label }}</div><div style="font-size:12.5px;color:var(--muted)">Added {{ d.added }} UTC</div></div><button type="button" onClick="{{ d.on }}" aria-label="{{ d.aria }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Remove</button></div></sc-for></section></sc-if></section></sc-if></div>
+
+<div data-w="r"><sc-if value="{{ ntfyShown }}" hint-placeholder-val="{{ false }}"><section data-shadcn="Card" style="border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px"><h2 style="margin:0;font-size:18px;font-weight:600">ntfy</h2>
+<div style="font-size:14px;line-height:1.5">ntfy keeps each message for up to 72 hours on its server, so your child’s name is stored there in plain text for that long.</div>
+<sc-if value="{{ ntfyOff }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ ntfyTurnOn }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer">Turn on ntfy</button></sc-if>
+<sc-if value="{{ ntfyIsOn }}" hint-placeholder-val="{{ false }}"><dl style="margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:14px"><dt style="color:var(--muted)">Server</dt><dd style="margin:0;overflow-wrap:anywhere">{{ ntfyServer }}</dd><dt style="color:var(--muted)">Topic</dt><dd style="margin:0;overflow-wrap:anywhere"><code style="font-family:'Geist Mono',monospace">{{ ntfyTopic }}</code></dd></dl>
+<div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">Subscribe to this topic on this server in the ntfy app.</div>
+<form onSubmit="{{ noSubmit }}" style="display:flex;flex-direction:column;gap:10px"><fieldset style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:2px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:4px">Reminders through ntfy for</legend><sc-for list="{{ ntfyKids }}" as="k" hint-placeholder-count="3"><label style="display:flex;align-items:center;gap:12px;min-height:44px;font-size:15px"><input type="checkbox" checked="{{ k.checked }}" onChange="{{ k.on }}" style="width:24px;height:24px;flex:none">{{ k.name }}</label></sc-for></fieldset><button type="button" onClick="{{ ntfySaveKids }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer">Save</button></form>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" onClick="{{ ntfyNewTopic }}" aria-describedby="ntfy-new-help" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">New topic</button><button type="button" onClick="{{ ntfyTurnOff }}" data-shadcn="Button" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Turn off ntfy</button></div>
+<div id="ntfy-new-help" style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">A new topic replaces this one: subscribe to the new one in the ntfy app.</div></sc-if></section></sc-if>
+
+<sc-if value="{{ noChannel }}" hint-placeholder-val="{{ false }}"><div style="font-size:13.5px;color:var(--muted);line-height:1.5;overflow-wrap:anywhere">No notification channel is set up on this server. Reminders still appear on the home Due list.</div></sc-if></div>
+</div></div>
+<div data-hbt="tabs" role="navigation" aria-label="Primary" style="flex:none;display:{{ phoneDisplay }};border-top:1px solid var(--border);background:var(--card);padding:6px 6px 10px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a href="{{ t.href }}" onClick="{{ t.on }}" style="{{ t.tabStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div>
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(20,12,8,.5);display:flex;align-items:flex-end;justify-content:center;z-index:5"><div onClick="{{ stop }}" role="dialog" aria-label="{{ sheetTitle }}" data-shadcn="Sheet" style="width:100%;max-width:480px;max-height:92%;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 32px rgba(0,0,0,.2)">
+<div style="width:36px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+<div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:600;flex:1">{{ sheetTitle }}</div><button onClick="{{ closeSheet }}" aria-label="Close" style="width:44px;height:44px;border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5"><b>Couldn’t save.</b> {{ formErr }}</div></sc-if>
+<sc-if value="{{ isForm }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<sc-if value="{{ form.note }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;line-height:1.5">{{ form.note }}</div></sc-if>
+<sc-if value="{{ form.hasList }}" hint-placeholder-val="{{ false }}"><ul style="margin:0;padding-left:20px;font-size:14px;line-height:1.6"><sc-for list="{{ form.list }}" as="li" hint-placeholder-count="3"><li>{{ li.text }}</li></sc-for></ul></sc-if>
+<sc-for list="{{ form.groups }}" as="g" hint-placeholder-count="1"><div role="group" aria-label="{{ g.label }}"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ g.label }}</div><div style="display:flex;flex-wrap:wrap;gap:8px"><sc-for list="{{ g.pills }}" as="p" hint-placeholder-count="3"><button onClick="{{ p.on }}" aria-pressed="{{ p.pressed }}" class="hbt-chip" style="{{ p.style }}">{{ p.label }}</button></sc-for></div><sc-if value="{{ g.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;margin-top:6px;font-weight:600">{{ g.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.fields }}" as="f" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;gap:6px"><label for="{{ f.id }}" style="font-size:12px;color:var(--muted)">{{ f.label }}</label><input id="{{ f.id }}" type="{{ f.type }}" inputmode="{{ f.mode }}" autocomplete="{{ f.auto }}" value="{{ f.value }}" onChange="{{ f.on }}" aria-invalid="{{ f.invalid }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:15px"><sc-if value="{{ f.hint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ f.hint }}</div></sc-if><sc-if value="{{ f.err }}" hint-placeholder-val="{{ false }}"><div role="alert" style="font-size:12.5px;font-weight:600">{{ f.err }}</div></sc-if></div></sc-for>
+<sc-for list="{{ form.checks }}" as="c" hint-placeholder-count="1"><label style="display:flex;align-items:center;gap:10px;min-height:44px;font-size:14px"><input type="checkbox" checked="{{ c.checked }}" onChange="{{ c.on }}" style="width:24px;height:24px;flex:none">{{ c.label }}</label></sc-for>
+<sc-if value="{{ form.extra }}" hint-placeholder-val="{{ false }}"><button onClick="{{ form.onExtra }}" aria-disabled="true" data-shadcn="Button" style="min-height:48px;border-radius:12px;border:1px dashed var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer">{{ form.extra }}</button></sc-if>
+<div style="display:flex;gap:8px"><button onClick="{{ closeSheet }}" data-shadcn="Button" style="flex:1;min-height:56px;border-radius:14px;border:1px solid var(--border);background:var(--card);font-size:16px;font-weight:600;cursor:pointer;padding:0 16px;color:var(--fg)">{{ form.cancel }}</button><button onClick="{{ form.submit }}" aria-disabled="{{ form.off }}" data-shadcn="Button" style="{{ form.submitStyle }}">{{ form.label }}</button></div>
+<sc-if value="{{ form.offHint }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--muted);line-height:1.5">{{ form.offHint }}</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ isTheme }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><fieldset data-shadcn="RadioGroup" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:8px">Choose how Happy baby looks. It applies to every screen.</legend><sc-for list="{{ themeOpts }}" as="o" hint-placeholder-count="3"><label class="hbt-radiorow"><input type="radio" name="hbt-theme" value="{{ o.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}"><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">{{ o.label }}</span><span style="font-size:13px;color:var(--muted);line-height:1.4">{{ o.hint }}</span></span><span aria-hidden="true" style="{{ o.swatch }}"></span></label></sc-for></fieldset><button onClick="{{ closeSheet }}" data-shadcn="Button" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer">Done</button></div></sc-if>
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="5"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;min-height:52px;border-top:1px solid var(--border);color:var(--fg);text-decoration:none;font-size:15px">{{ m.label }}<span style="margin-left:auto;font-size:12px;color:var(--muted)">{{ m.note }}</span></a></sc-for></div></sc-if>
+</div></div></sc-if>
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}"><div role="{{ toastRole }}" style="position:absolute;left:12px;right:12px;bottom:84px;display:flex;align-items:center;gap:4px;padding:6px 6px 6px 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9"><span style="flex:1">{{ toastText }}</span><sc-if value="{{ toastRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doRetry }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Try again</button></sc-if><sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doUndo }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Undo</button></sc-if></div></sc-if>
+</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={dark:false,desktop:false,cg:false,sheet:null,toast:null,undo:null,retry:null,toastErr:false,formErr:null,f:{},err:{},br:'ok',nojs:false,perm:'allow',hintAfter:'',devSel:null,devName:null,ntSel:null,devErr:'',pageErr:null,saved:null,justOn:false,rotatedShown:false};
+  componentWillUnmount(){clearTimeout(this.tt);}
+  toast(text,undo){clearTimeout(this.tt);this.setState({toast:text,undo:undo||null,retry:null,toastErr:false});this.tt=setTimeout(()=>this.setState({toast:null,undo:null}),6000);}
+  fail(er,retry){clearTimeout(this.tt);if(this.state.sheet){this.setState({formErr:er.msg});}else{const c=er.code==='network'||er.code==='server';this.setState({toast:er.msg,undo:null,retry:c?retry:null,toastErr:true});this.tt=setTimeout(()=>this.setState({toast:null,retry:null,toastErr:false}),c?12000:6000);}}
+
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false;
+    const H=window.HBT,A=window.HBTA,s=this.state,fp=H.pref('fail')||'off',self=this,P=h=>({__html:h}),now=Date.now(),D=s.desktop,f=s.f||{},er=s.err||{};
+    const R=fn=>(...a)=>{fn(...a);this.setState({});};
+    const IC={Home:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',Timeline:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',Growth:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',More:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>'};
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)',tl:'oklch(0.45 0.15 38)',soft:'oklch(0.3 0.05 55)',ink:'oklch(0.84 0.11 55)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)',tl:'oklch(0.8 0.12 55)',soft:'oklch(0.95 0.04 55)',ink:'oklch(0.42 0.12 38)'};
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--toast-link:${L.tl};--soft:${L.soft};--ink:${L.ink};--destructive:${DK?'oklch(0.76 0.14 25)':'oklch(0.46 0.17 27)'};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const pill=on=>'';
+    const btn='min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer';
+    const btnP='min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    const badge='font-size:12px;font-weight:600;padding:3px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted);white-space:nowrap';
+    const card='border:1px solid var(--border);border-radius:16px;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:12px';
+    const opt=(label,on,cur)=>({label,on,style:seg(cur)});
+    const W=fn=>{const e=H.tryWrite('other');if(e)return self.fail(e,()=>W(fn));fn();};
+    const isG=!s.cg;
+    const toggles=[
+      {title:'Next save',opts:[opt('Works',R(()=>H.setPref('fail','off')),fp==='off'),opt('Offline',R(()=>H.setPref('fail','network')),fp==='network'),opt('Error',R(()=>H.setPref('fail','server')),fp==='server')]},
+      {title:'Channels on this server',opts:[opt('None',R(()=>window.HBTM.setChannel('none')),window.HBTM.channel()==='none'),opt('Web Push',R(()=>window.HBTM.setChannel('push')),window.HBTM.channel()==='push'),opt('+ ntfy',R(()=>window.HBTM.setChannel('both')),window.HBTM.channel()==='both')]},
+      {title:'This browser',opts:[opt('Push OK',R(()=>this.setState({br:'ok',nojs:false})),(s.br||'ok')==='ok'&&!s.nojs),opt('iPhone Safari',R(()=>this.setState({br:'ios',nojs:false})),s.br==='ios'),opt('No push',R(()=>this.setState({br:'unsupported',nojs:false})),s.br==='unsupported'),opt('JS off',R(()=>this.setState({br:'ok',nojs:true})),!!s.nojs)]},
+      {title:'Browser prompt answer',opts:[opt('Allow',()=>this.setState({perm:'allow',pageErr:null}),(s.perm||'allow')==='allow'),opt('Block',()=>this.setState({perm:'blocked',pageErr:null}),s.perm==='blocked'),opt('Dismiss',()=>this.setState({perm:'dismissed',pageErr:null}),s.perm==='dismissed'),opt('Error',()=>this.setState({perm:'error',pageErr:null}),s.perm==='error')]},
+      {title:'After enabling (open question 7.2-3)',opts:[opt('As built',()=>this.setState({hintAfter:''}),s.hintAfter!=='proposal'),opt('One-line instruction',()=>this.setState({hintAfter:'proposal'}),s.hintAfter==='proposal')]},
+      {title:'Simulate',opts:[opt('Ana enables here',R(()=>{window.HBTM.enableHere('ana');this.setState({devSel:null,devName:null,saved:null});}),false),opt('Key rotated',()=>this.setState({rotatedShown:!s.rotatedShown}),!!s.rotatedShown)]},
+      {title:'Role',opts:[opt('Guardian',()=>this.setState({cg:false}),!s.cg),opt('Caregiver',()=>this.setState({cg:true}),s.cg)]},
+      {title:'Theme',opts:[opt('Light',()=>HBTUI.setTheme('light'),HBTUI.theme()==='light'),opt('Dark',()=>HBTUI.setTheme('dark'),HBTUI.theme()==='dark'),opt('Auto',()=>HBTUI.setTheme('auto'),HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const tabDefs=[['Home','Kid Home.dc.html'],['Timeline','Timeline.dc.html'],['Growth','Growth.dc.html'],['More','']];
+    const tabs=tabDefs.map(([l,h])=>({label:l,icon:P(IC[l]),href:h||'#more',on:l==='More'?(e=>{e.preventDefault();this.setState({sheet:'more',f:{},err:{},formErr:null});}):undefined,
+      tabStyle:`flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;text-decoration:none;color:${l==='More'?'var(--primary)':'var(--muted)'}`,
+      sideStyle:`display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;background:${l==='More'?'var(--bg)':'transparent'};color:${l==='More'?'var(--primary)':'var(--fg)'}`}));
+    const setF=(k,v)=>this.setState({f:{...this.state.f,[k]:v}});
+    const fld=(id,label,key,o)=>({id,label,type:(o&&o.type)||'text',mode:(o&&o.mode)||'text',auto:(o&&o.auto)||'off',value:f[key]===undefined?'':f[key],on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',hint:(o&&o.hint)||''});
+    const grp=(label,items,cur,key,err)=>({label,err:err||'',pills:items.map(i=>({label:i[0],pressed:cur===i[1],style:pill(cur===i[1]),on:()=>setF(key,i[1])}))});
+    const bad=e=>this.setState({err:e,formErr:'Check the fields with a message.'});
+    const open=(sh,f0)=>()=>this.setState({sheet:sh,f:f0||{},err:{},formErr:null});
+    const done=(msg,undo)=>{this.setState({sheet:null,f:{},err:{},formErr:null});this.toast(msg,undo);};
+    const guard=(fn,okMsg,keepSnap)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err&&typeof r.err==='string')return self.fail({code:'rule',msg:r.err});if(r&&r.err)return bad(r.err);done(typeof okMsg==='function'?okMsg(r):okMsg,keepSnap?snap:null);});
+    const act=(fn,okMsg,undo)=>W(()=>{const snap=A.snapshot();const r=fn();if(r&&r.err)return self.fail({code:'rule',msg:typeof r.err==='string'?r.err:'Check the fields.'});this.toast(typeof okMsg==='function'?okMsg(r):okMsg,undo?snap:null);});
+    const dangerStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--fg);color:var(--bg);font-size:15px;font-weight:600;cursor:pointer';
+    const okStyle='flex:1;min-height:52px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer';
+    let form={note:'',hasList:false,list:[],groups:[],fields:[],checks:[],extra:'',onExtra:()=>{},cancel:'Cancel',label:'',submit:()=>{},submitStyle:okStyle,off:false,offHint:''};
+    let titles={more:'More',theme:'Change theme',theme:'Change theme'},X={};
+    const dt=t=>A.when(t,now);
+    const myKids=H.kids();
+
+    const M=window.HBTM,kid=H.kid(),kn=H.kidName(kid),zone='America/Los_Angeles';
+    const PW=fn=>{const e=H.tryWrite('other');if(e){this.setState({pageErr:e.code==='network'?M.ERR.network:M.ERR.server,saved:null});return;}this.setState({pageErr:null});fn();};
+    const v=(k,d)=>f[k]===undefined?d:f[k];
+    const inp=(id,label,key,d,o)=>({isInput:true,id,label,type:(o&&o.type)||'text',mode:(o&&o.mode)||'text',value:v(key,d),on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',desc:id+'-err',hint:(o&&o.hint)||''});
+    const sel=(id,label,key,d,opts,o)=>({isSelect:true,id,label,value:v(key,d),on:e=>setF(key,e.target.value),invalid:!!er[key],err:er[key]||'',desc:id+'-err',hint:(o&&o.hint)||'',opts});
+    const mkOpts=(a,first)=>[...(first?[{value:'',label:first}]:[]),...a.map(x=>({value:x,label:x}))];
+
+    const me=A.you(),pid=me.id,br=s.br||'ok',chan=M.channel(),js=!s.nojs;
+    const myK=H.kids().filter(k=>me.access[k.id]);const allowed=myK.map(k=>k.id);
+    const here=M.here(pid),devs=M.devices(pid);
+    const fmtU=t=>new Date(t).toISOString().slice(0,16).replace('T',' ');
+    const sel2=s.devSel||null;const kidsSel=sel2||(here?here.kids:[]);
+    const tog=(arr,id)=>arr.includes(id)?arr.filter(x=>x!==id):[...arr,id];
+    const nt=M.ntfy(pid);const ntSel=s.ntSel||(nt?nt.kids:[]);
+    const PROB={blocked:'Notifications are blocked for this site. Allow them in the browser’s settings, then try again.',dismissed:'Notifications were not turned on. You can try again.',error:'Notifications could not be turned on. Try again.',rotated:'Turn notifications off and on again on this device.',check:'This device could not be checked with the server. Reload the page to try again.'};
+    const perm=s.perm||'allow';
+    const enable=()=>{ if(perm==='blocked'||perm==='dismissed'||perm==='error'){this.setState({pageErr:PROB[perm],saved:null});return;}
+      PW(()=>{const r=M.enableHere(pid);if(r.err){this.setState({pageErr:r.err,saved:null});return;}this.setState({devSel:null,devName:null,saved:null,justOn:true});}); };
+    const others=devs.filter(d=>!here||d.id!==here.id).map(d=>({label:d.label,added:fmtU(d.added),aria:'Remove '+d.label,on:()=>PW(()=>{M.removeDevice(d.id);this.setState({saved:null});})}));
+    const nameVal=here?(s.devName!=null&&s.devName!==undefined?s.devName:here.label):'';
+    const afterHint=s.hintAfter==='proposal'&&s.justOn&&here;
+    X={pageErr:s.pageErr||(s.rotatedShown?PROB.rotated:''),saved:s.saved||'',noSubmit:e=>e.preventDefault(),
+      pushOn:chan!=='none',pushOff:chan==='none',isIos:chan!=='none'&&br==='ios'&&!here,isHere:chan!=='none'&&br!=='ios'&&!!here,isUnsupported:chan!=='none'&&br==='unsupported'&&!here,
+      canEnable:chan!=='none'&&br==='ok'&&!here,hasJs:js,enable,
+      hintAfter:afterHint,hintAfterText:'Choose which children this device gets reminders for, then press Save. A device with no child receives nothing.',
+      devName:nameVal,onDevName:e=>this.setState({devName:e.target.value}),devErr:s.devErr||'',devInvalid:!!s.devErr,
+      devKids:myK.map(k=>({name:k.name,checked:kidsSel.includes(k.id),on:()=>this.setState({devSel:tog(kidsSel,k.id)})})),
+      saveDev:()=>PW(()=>{const r=M.saveDevice(here.id,{label:nameVal,kids:kidsSel},allowed);if(r.err){this.setState({devErr:r.err.label,saved:null});return;}this.setState({devErr:'',devSel:null,devName:null,saved:'Saved',justOn:false});}),
+      turnOffHere:()=>PW(()=>{M.removeDevice(here.id);this.setState({devSel:null,devName:null,saved:null,justOn:false});}),
+      hasOthers:others.length>0,others,hasOld:devs.length>0,oldDevs:devs.map(d=>({label:d.label,added:fmtU(d.added),aria:'Remove '+d.label,on:()=>PW(()=>{M.removeDevice(d.id);})})),
+      ntfyShown:chan==='both',ntfyOff:!nt,ntfyIsOn:!!nt,ntfyServer:M.ntfyServer(),ntfyTopic:nt?nt.topic:'',
+      ntfyKids:myK.map(k=>({name:k.name,checked:ntSel.includes(k.id),on:()=>this.setState({ntSel:tog(ntSel,k.id)})})),
+      ntfyTurnOn:()=>PW(()=>{M.ntfyOn(pid);this.setState({ntSel:null,saved:null});}),
+      ntfySaveKids:()=>PW(()=>{const r=M.ntfySave(pid,ntSel,allowed);if(r.page){this.setState({pageErr:r.page});return;}this.setState({ntSel:null,saved:'Saved'});}),
+      ntfyNewTopic:()=>PW(()=>{M.ntfyNew(pid);this.setState({saved:null});}),
+      ntfyTurnOff:()=>PW(()=>{M.ntfyOff(pid);this.setState({ntSel:null,saved:null});}),
+      noChannel:chan==='none'&&devs.length===0};
+
+    const sh=s.sheet;
+    const NV=window.HBTUI.nav({cg:s.cg,sheets:['theme'],open:id=>this.setState({sheet:id,f:{},err:{},formErr:null})});
+    const moreItems=NV.more;
+    const sideTabs=tabs.length?[...tabs.filter(t=>t.label!=='More'),...NV.side]:[];
+    return {subAge:(window.HBTUI?window.HBTUI.age(H.kid()):''),toggles,tabs,appStyle,desktop:D,phoneDisplay:D?'none':'flex',roleLabel:s.cg?'Caregiver':'Guardian',guardian:isG,caregiver:s.cg,formErr:s.formErr,
+      resetAll:()=>{H.reset();A.reset();this.setState({sheet:null,toast:null,undo:null,f:{},err:{},formErr:null,br:'ok',nojs:false,perm:'allow',devSel:null,devName:null,ntSel:null,devErr:'',pageErr:null,saved:null,justOn:false,rotatedShown:false});},
+      sheet:!!sh,isForm:!!sh&&sh!=='more'&&sh!=='theme',isMore:sh==='more',...window.HBTUI.themeVals(sh),sheetTitle:titles[sh]||'',form,moreItems,sideTabs,closeSheet:()=>this.setState({sheet:null,f:{},err:{},formErr:null}),stop:e=>e.stopPropagation(),
+      toast:!!s.toast,toastText:s.toast,toastUndo:!!s.undo,toastRole:s.toastErr?'alert':'status',toastRetry:!!s.retry,
+      doRetry:()=>{const r=s.retry;this.setState({toast:null,retry:null,toastErr:false});if(r)r();},
+      doUndo:()=>{const u=s.undo;if(!u)return;W(()=>{A.restore(u);this.setState({undo:null});this.toast('Undone');});},
+      ...X};
+  }
+}
+</script>
+</body>
+</html>

@@ -3,8 +3,10 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import NotificationDevice from '#lib/components/NotificationDevice.svelte';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { keepValues } from '#lib/components/field.js';
+	import { Alert } from '#lib/components/ui/alert/index.js';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { Card } from '#lib/components/ui/card/index.js';
 	import { PUSH_OFF_MESSAGE } from '#lib/constants.js';
 	import { notificationsSubscribePath } from '#lib/paths.js';
 	import {
@@ -20,9 +22,9 @@
 	const IOS_SENTENCE =
 		'On iPhone and iPad, add this app to your Home Screen first, then open it from there to turn on notifications';
 	const NTFY_SENTENCE =
-		"ntfy keeps each message for up to 72 hours on its server, so your child's name is stored there in plain text for that long";
+		'ntfy keeps each message for up to 72 hours on its server, so your child’s name is stored there in plain text for that long';
 	const BLOCKED =
-		"Notifications are blocked for this site. Allow them in the browser's settings, then try again.";
+		'Notifications are blocked for this site. Allow them in the browser’s settings, then try again.';
 	const NOT_TURNED_ON = 'Notifications could not be turned on. Try again.';
 	const DISMISSED = 'Notifications were not turned on. You can try again.';
 	const OTHER_KEY = 'Turn notifications off and on again on this device.';
@@ -161,147 +163,186 @@
 	<title>Notifications · happybabytracker</title>
 </svelte:head>
 
-<h1 class="mb-4 text-xl font-semibold">Notifications</h1>
+<div
+	class="mt-6.5 flex max-w-[448px] flex-col gap-[18px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+>
+	<div class="flex flex-col gap-1.5 xl:col-span-2">
+		<h1>Notifications</h1>
+		<div aria-hidden="true" class="mt-0.5 border-t"></div>
+	</div>
+	{#if saved}<Alert role="status" class="xl:col-span-2">Saved</Alert>{/if}
+	{#if pageError}<Alert class="xl:col-span-2">{pageError}</Alert>{/if}
 
-{#if saved}<p role="status" class="mb-4 text-sm">Saved</p>{/if}
-{#if pageError}<p class="{ERROR_CLASS} mb-4" role="alert">{pageError}</p>{/if}
-
-{#if data.push.enabled}
-	<section aria-labelledby="this-device-heading" class="flex max-w-md flex-col gap-3">
-		<h2 id="this-device-heading" class="font-semibold">This device</h2>
-		{#if support === 'ios'}<p class="text-sm">{IOS_SENTENCE}.</p>{/if}
-		{#if current}
-			<NotificationDevice
-				device={current}
-				kids={data.kids}
-				editable
-				values={deviceForm?.values ?? null}
-				labelError={deviceForm?.field === 'label' ? deviceForm.message : null}
-				onremoved={forget}
-			/>
-		{:else if support === 'unsupported'}
-			<p class="text-sm">This browser cannot receive notifications.</p>
-		{:else if support !== 'ios'}
-			{#if support === 'ready'}
-				<Button
-					type="button"
-					class="self-start"
-					disabled={busy}
-					aria-describedby="enable-help"
-					onclick={enable}>Turn on notifications on this device</Button
-				>
-			{/if}
-			<p id="enable-help" class="text-sm text-muted-foreground">
-				Turning on notifications needs JavaScript, and the browser asks for your permission.
-			</p>
-		{/if}
-		<p class="text-sm text-muted-foreground">{PUSH_SIGN_OUT_SENTENCE}</p>
-		{#if problem}<p class={ERROR_CLASS} role="alert">{problem}</p>{/if}
-	</section>
-	{#if others.length}
-		<section aria-labelledby="other-devices-heading" class="mt-8 flex max-w-md flex-col gap-3">
-			<h2 id="other-devices-heading" class="font-semibold">Your other devices</h2>
-			<ul aria-label="Your other devices" class="flex flex-col gap-2">
-				{#each others as device (device.id)}
-					<li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-						<NotificationDevice
-							{device}
-							kids={data.kids}
-							editable={false}
-							values={null}
-							labelError={null}
-						/>
-					</li>
-				{/each}
-			</ul>
-		</section>
-	{/if}
-{:else}
-	<section aria-labelledby="push-heading" class="flex max-w-md flex-col gap-3">
-		<h2 id="push-heading" class="font-semibold">Web Push</h2>
-		<p class="text-sm">{PUSH_OFF_MESSAGE}</p>
-		{#if data.devices.length}
-			<ul aria-label="Your devices" class="flex flex-col gap-2">
-				{#each data.devices as device (device.id)}
-					<li class="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3">
-						<NotificationDevice
-							{device}
-							kids={data.kids}
-							editable={false}
-							values={null}
-							labelError={null}
-						/>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</section>
-{/if}
-
-{#if data.ntfy.enabled}
-	<section aria-labelledby="ntfy-heading" class="mt-8 flex max-w-md flex-col gap-3">
-		<h2 id="ntfy-heading" class="font-semibold">ntfy</h2>
-		<p class="text-sm">{NTFY_SENTENCE}.</p>
-		{#if data.ntfy.topic}
-			<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-				<dt class="font-medium">Server</dt>
-				<dd class="break-all">{data.ntfy.server}</dd>
-				<dt class="font-medium">Topic</dt>
-				<dd class="break-all"><code>{data.ntfy.topic}</code></dd>
-			</dl>
-			<p class="text-sm text-muted-foreground">
-				Subscribe to this topic on this server in the ntfy app.
-			</p>
-			<form method="POST" action="?/ntfy_kids" class="flex flex-col gap-4" use:enhance={keepValues}>
-				<fieldset class="flex flex-col gap-2">
-					<legend class="mb-1 text-sm font-medium">Reminders through ntfy for</legend>
-					{#each data.kids as kid (kid.id)}
-						<div class="flex items-center gap-2">
-							<input
-								id="ntfy-kid-{kid.id}"
-								type="checkbox"
-								name="kid"
-								value={kid.id}
-								checked={data.ntfy.kids.includes(kid.id)}
-								class="size-4"
-							/>
-							<label for="ntfy-kid-{kid.id}">{kid.name}</label>
-						</div>
-					{/each}
-				</fieldset>
-				<Button type="submit" class="self-start">Save</Button>
-			</form>
-			<form method="POST" action="?/ntfy_off" use:enhance>
-				<Button type="submit" variant="outline" size="sm">Turn off ntfy</Button>
-			</form>
-			<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
-			<details class="rounded-lg border p-3" open={regenerateFailed}>
-				<summary class="cursor-pointer text-sm font-medium">New topic</summary>
-				<form method="POST" action="?/ntfy_regenerate" class="mt-3 flex flex-col gap-3" use:enhance>
-					<p class="text-sm">
-						The current topic stops working. Subscribe to the new topic in the ntfy app again.
-						{SIGN_OUT_SENTENCE}
-					</p>
-					<Button
-						type="submit"
-						variant="outline"
-						class="self-start border-destructive text-destructive">Yes, create a new topic</Button
+	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if data.push.enabled}
+			<Card role="region" aria-labelledby="this-device-heading" class="gap-3 p-4">
+				<h2 id="this-device-heading" class="text-[18px] font-semibold">This device</h2>
+				{#if support === 'ios'}<p class="text-[14.5px] leading-normal">{IOS_SENTENCE}.</p>{/if}
+				{#if current}
+					<NotificationDevice
+						device={current}
+						kids={data.kids}
+						editable
+						values={deviceForm?.values ?? null}
+						labelError={deviceForm?.field === 'label' ? deviceForm.message : null}
+						onremoved={forget}
+					/>
+				{:else if support === 'unsupported'}
+					<p class="text-[14.5px] leading-normal">This browser cannot receive notifications.</p>
+				{:else if support !== 'ios'}
+					{#if support === 'ready'}
+						<Button type="button" disabled={busy} aria-describedby="enable-help" onclick={enable}
+							>Turn on notifications on this device</Button
+						>
+					{/if}
+					<p
+						id="enable-help"
+						class="text-[13.5px] leading-normal [overflow-wrap:anywhere] text-muted-foreground"
 					>
-				</form>
-			</details>
+						Turning on notifications needs JavaScript, and the browser asks for your permission.
+					</p>
+				{/if}
+				<p class="text-[13.5px] leading-normal [overflow-wrap:anywhere] text-muted-foreground">
+					{PUSH_SIGN_OUT_SENTENCE}
+				</p>
+				{#if problem}<Alert>{problem}</Alert>{/if}
+			</Card>
+			{#if others.length}
+				<Card role="region" aria-labelledby="other-devices-heading" class="gap-3 p-4">
+					<h2 id="other-devices-heading" class="text-[18px] font-semibold">Your other devices</h2>
+					<ul aria-label="Your other devices" class="flex flex-col">
+						{#each others as device (device.id)}
+							<li class="flex items-center gap-3 border-t py-1.5">
+								<NotificationDevice
+									{device}
+									kids={data.kids}
+									editable={false}
+									values={null}
+									labelError={null}
+								/>
+							</li>
+						{/each}
+					</ul>
+				</Card>
+			{/if}
 		{:else}
-			<form method="POST" action="?/ntfy_on" use:enhance>
-				<Button type="submit" class="self-start">Turn on ntfy</Button>
-			</form>
+			<Card role="region" aria-labelledby="push-heading" class="gap-3 p-4">
+				<h2 id="push-heading" class="text-[18px] font-semibold">Web Push</h2>
+				<p class="text-[14.5px] leading-normal">{PUSH_OFF_MESSAGE}</p>
+				{#if data.devices.length}
+					<h3 class="mt-2 text-[15px] font-semibold">Your devices</h3>
+					<ul aria-label="Your devices" class="flex flex-col">
+						{#each data.devices as device (device.id)}
+							<li class="flex items-center gap-3 border-t py-1.5">
+								<NotificationDevice
+									{device}
+									kids={data.kids}
+									editable={false}
+									values={null}
+									labelError={null}
+								/>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</Card>
 		{/if}
-		<p class="text-sm text-muted-foreground">{SIGN_OUT_SENTENCE}</p>
-	</section>
-{:else if data.ntfy.hasTopic}
-	<section aria-labelledby="ntfy-heading" class="mt-8 flex max-w-md flex-col gap-3">
-		<h2 id="ntfy-heading" class="font-semibold">ntfy</h2>
-		<p class="text-sm">A topic from earlier is still stored for your account. Remove it.</p>
-		<form method="POST" action="?/ntfy_off" use:enhance>
-			<Button type="submit" variant="outline" size="sm">Remove the stored topic</Button>
-		</form>
-	</section>
-{/if}
+	</div>
+
+	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if data.ntfy.enabled}
+			<Card role="region" aria-labelledby="ntfy-heading" class="gap-3 p-4">
+				<h2 id="ntfy-heading" class="text-[18px] font-semibold">ntfy</h2>
+				<p class="text-sm leading-normal">{NTFY_SENTENCE}.</p>
+				{#if data.ntfy.topic}
+					<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+						<dt class="text-muted-foreground">Server</dt>
+						<dd class="[overflow-wrap:anywhere]">{data.ntfy.server}</dd>
+						<dt class="text-muted-foreground">Topic</dt>
+						<dd class="[overflow-wrap:anywhere]">
+							<code class="font-mono">{data.ntfy.topic}</code>
+						</dd>
+					</dl>
+					<p class="text-[13.5px] leading-normal text-muted-foreground">
+						Subscribe to this topic on this server in the ntfy app.
+					</p>
+					<form
+						method="POST"
+						action="?/ntfy_kids"
+						class="flex flex-col gap-2.5"
+						use:enhance={keepValues}
+					>
+						<fieldset class="flex flex-col">
+							<legend class="mb-1 text-[13px] text-muted-foreground"
+								>Reminders through ntfy for</legend
+							>
+							{#each data.kids as kid (kid.id)}
+								<label
+									class="flex min-h-11 items-center gap-3 text-[15px] [overflow-wrap:anywhere]"
+								>
+									<input
+										type="checkbox"
+										name="kid"
+										value={kid.id}
+										checked={data.ntfy.kids.includes(kid.id)}
+										class="size-6 shrink-0 accent-primary"
+									/>{kid.name}
+								</label>
+							{/each}
+						</fieldset>
+						<Button type="submit">Save</Button>
+					</form>
+					<div class="flex flex-wrap items-start gap-2">
+						<form method="POST" action="?/ntfy_off" use:enhance>
+							<Button type="submit" variant="outline">Turn off ntfy</Button>
+						</form>
+						<!-- Two steps without JavaScript: the button exists only inside the opened details. -->
+						<details class="open:w-full" open={regenerateFailed}>
+							<summary
+								class="{buttonVariants({
+									variant: 'outline'
+								})} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+								>New topic</summary
+							>
+							<form
+								method="POST"
+								action="?/ntfy_regenerate"
+								class="mt-2 flex flex-col gap-3 rounded-xl border-[1.5px] border-destructive bg-card p-3"
+								use:enhance
+							>
+								<p class="text-sm leading-normal">
+									The current topic stops working. Subscribe to the new topic in the ntfy app again.
+									{SIGN_OUT_SENTENCE}
+								</p>
+								<Button type="submit" variant="destructive">Yes, create a new topic</Button>
+							</form>
+						</details>
+					</div>
+				{:else}
+					<form method="POST" action="?/ntfy_on" use:enhance>
+						<Button type="submit" class="w-full">Turn on ntfy</Button>
+					</form>
+				{/if}
+				<p class="text-[13.5px] leading-normal [overflow-wrap:anywhere] text-muted-foreground">
+					{SIGN_OUT_SENTENCE}
+				</p>
+			</Card>
+		{:else if data.ntfy.hasTopic}
+			<Card role="region" aria-labelledby="ntfy-heading" class="gap-3 p-4">
+				<h2 id="ntfy-heading" class="text-[18px] font-semibold">ntfy</h2>
+				<p class="text-sm leading-normal">
+					A topic from earlier is still stored for your account. Remove it.
+				</p>
+				<form method="POST" action="?/ntfy_off" use:enhance>
+					<Button type="submit" variant="outline">Remove the stored topic</Button>
+				</form>
+			</Card>
+		{/if}
+		{#if !data.push.enabled && !data.ntfy.enabled}
+			<p class="text-[13.5px] leading-normal text-muted-foreground">
+				No notification channel is set up on this server. Reminders still appear on the home Due
+				list.
+			</p>
+		{/if}
+	</div>
+</div>

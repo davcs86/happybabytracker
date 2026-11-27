@@ -288,7 +288,8 @@ test('medications: the view, trimmed text, canonical schedules, the list, the ca
 			'next_due',
 			'note',
 			'schedule',
-			'start_at'
+			'start_at',
+			'visit_id'
 		].sort()
 	);
 	expect(none.body).toMatchObject({

@@ -27,13 +27,15 @@
 	);
 </script>
 
-<div class="flex flex-col gap-2">
+<div class="flex flex-col gap-1.5">
 	<Label for={id}>{label}</Label>
 	{@render children({
 		id,
 		'aria-invalid': error ? 'true' : undefined,
 		'aria-describedby': describedBy
 	})}
-	{#if hint}<p id="{id}-hint" class="text-sm text-muted-foreground">{hint}</p>{/if}
+	{#if hint}<p id="{id}-hint" class="text-[12.5px] leading-normal text-muted-foreground">
+			{hint}
+		</p>{/if}
 	{#if error}<p id="{id}-error" class={ERROR_CLASS} role="alert">{error}</p>{/if}
 </div>

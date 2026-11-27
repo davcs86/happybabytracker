@@ -6,7 +6,8 @@ import {
 	expectNotFoundPage,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -57,7 +58,7 @@ const save = (page: Page) => page.getByRole('button', { name: 'Save', exact: tru
 // The save lands on a timeline page that exists, not just on its URL.
 async function onTimeline(page: Page) {
 	await page.waitForURL(TIMELINE_DAY);
-	await expect(page.getByRole('heading', { name: /^Timeline for /, level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 }
 
 async function deleteEntry(page: Page) {
@@ -371,7 +372,7 @@ test('a time in the skipped hour of a Madrid night saves an hour later, in the k
 	await page.getByRole('radio', { name: 'Wet' }).check();
 	await save(page);
 	await page.waitForURL(/\/timeline\?from=2026-03-29&to=2026-03-29$/);
-	await expect(page.getByRole('heading', { name: 'Timeline for Leo', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 	const [stored] = await rows(api, 'diapers', LEO.id);
 	expect(stored.at).toBe('2026-03-29T01:30:00Z');
 
@@ -2327,7 +2328,10 @@ test.describe('the sickness tracker', () => {
 		await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
 		await expect(field(page, 'Temperature unit')).toHaveAttribute('aria-invalid', 'true');
 		await expect(field(page, 'Temperature unit')).toHaveAccessibleDescription(TEMP_MESSAGE);
-		await expect(page.getByRole('alert')).toHaveText(TEMP_MESSAGE);
+		await expect(page.getByRole('alert')).toHaveText([
+			'Check the fields with a message.',
+			TEMP_MESSAGE
+		]);
 		await expect(field(page, 'Symptom')).toHaveValue('fever');
 		await expect(field(page, 'Temperature')).toHaveValue('50');
 		await expect(field(page, 'Method')).toHaveValue('rectal');
@@ -2356,7 +2360,11 @@ test.describe('the sickness tracker', () => {
 			await saveAndWait(page);
 			await expectFieldError(field(page, 'Temperature'), TEMP_MESSAGE);
 			await expect(field(page, 'Temperature')).toHaveValue(typed);
-			if (typed !== '') await expect(page.getByRole('alert')).not.toContainText(typed);
+			if (typed !== '') {
+				await expect(page.getByRole('alert').filter({ hasText: TEMP_MESSAGE })).not.toContainText(
+					typed
+				);
+			}
 		}
 		expect(await rows(api, 'symptoms')).toEqual([]);
 		const posts = (await receivedRequests()).filter(
@@ -2532,10 +2540,13 @@ test.describe('the sickness tracker', () => {
 	}) => {
 		await stubAs(ANA);
 		await signIn(page, ANA);
-		await page.goto(`/kids/${LEO.id}`);
-		await page.getByRole('link', { name: 'Sickness', exact: true }).click();
+		await openSheet(
+			page,
+			`/kids/${LEO.id}`,
+			(p) => p.getByRole('link', { name: 'Sickness', exact: true }),
+			'Log a symptom'
+		);
 		await expect(page).toHaveURL(`/kids/${LEO.id}/log/symptoms`);
-		await expect(page.getByRole('heading', { name: 'Log a symptom', level: 1 })).toBeVisible();
 		await expect(field(page, 'Symptom')).toBeVisible();
 		await expect(field(page, 'Left minutes')).toHaveCount(0);
 		await expectAccessible(page);

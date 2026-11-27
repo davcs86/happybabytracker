@@ -483,3 +483,28 @@ func TestKidGrowthSource(t *testing.T) {
 		t.Errorf("patch to who: %d %q, stored %v", rec.Code, rec.Body.String(), source(kid))
 	}
 }
+
+func TestKidCounts(t *testing.T) {
+	k := newKit(t)
+	ana, bo, cy := k.asParent("ana"), k.asParent("bob"), k.asParent("cy")
+	kid := k.createKid(ana, nil)
+	k.grant(ana, kid, "bob", "caregiver")
+	k.createDiaper(ana, kid, nil)
+	k.createDiaper(bo, kid, map[string]any{"kind": "dirty"})
+
+	rec := k.do(http.MethodGet, "/v1/kids/"+kid+"/counts", ana, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("guardian: %d %q", rec.Code, rec.Body.String())
+	}
+	m := bodyMap(t, rec)
+	sameKeys(t, m, "entries")
+	if m["entries"] != float64(2) {
+		t.Errorf("entries = %v, want 2", m["entries"])
+	}
+	wantErr(t, k.do(http.MethodGet, "/v1/kids/"+kid+"/counts", bo, nil), http.StatusForbidden, "forbidden")
+	stranger := k.do(http.MethodGet, "/v1/kids/"+kid+"/counts", cy, nil)
+	unknown := k.do(http.MethodGet, "/v1/kids/no-such-kid/counts", cy, nil)
+	if stranger.Code != http.StatusNotFound || stranger.Body.String() != unknown.Body.String() {
+		t.Errorf("no grant: %d %q, unknown kid: %d %q; want identical 404s", stranger.Code, stranger.Body.String(), unknown.Code, unknown.Body.String())
+	}
+}

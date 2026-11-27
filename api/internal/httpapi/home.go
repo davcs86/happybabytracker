@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/kidtime"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/schedule"
@@ -21,13 +22,23 @@ type runningView struct {
 const (
 	vaccinationModule model.Module = "vaccination"
 	medicationModule  model.Module = "medication"
+	visitsModule      model.Module = "visits"
 )
 
 // The Kind of a due entry: a vaccine visit or a medication reminder.
 const (
 	dueKindVaccine    = "vaccine"
 	dueKindMedication = "medication"
+	dueKindVisit      = "visit"
 )
+
+// dueVisitView names no provider and no reason.
+type dueVisitView struct {
+	Kind      string `json:"kind"`
+	ID        string `json:"id"`
+	StartsAt  string `json:"starts_at"`
+	VisitKind string `json:"visit_kind"`
+}
 
 type dueVaccineView struct {
 	Kind   string  `json:"kind"`
@@ -57,6 +68,7 @@ type homeView struct {
 	Running            runningView    `json:"running"`
 	Today              daySummaryView `json:"today"`
 	Due                []any          `json:"due"`
+	Last               map[string]any `json:"last"`
 }
 
 // vaccineDue lists the vaccine visits that are due or overdue on today; empty when the module is off, no schedule
@@ -101,6 +113,47 @@ func (d Deps) medicationDue(w http.ResponseWriter, r *http.Request, kid model.Ki
 			state = "due"
 		}
 		out = append(out, dueMedicationView{Kind: dueKindMedication, Medication: dueMedicationRef{e.MedicationID, e.Name}, DueAt: instantString(e.DueAt), State: state})
+	}
+	return out, true
+}
+
+// visitDue lists the upcoming visits that start before the end of the kid-local day VisitDueLookAheadDays after
+// today, soonest first; empty when the module is off.
+func (d Deps) visitDue(w http.ResponseWriter, r *http.Request, kid model.Kid, states []store.ModuleState, loc *time.Location, now time.Time) ([]dueVisitView, bool) {
+	out := []dueVisitView{}
+	if !slices.ContainsFunc(states, func(s store.ModuleState) bool { return s.Module == visitsModule && s.Enabled }) {
+		return out, true
+	}
+	today, _ := kidtime.DayBounds(loc, now)
+	end := time.Date(today.Year(), today.Month(), today.Day()+constants.VisitDueLookAheadDays+1, 0, 0, 0, 0, loc)
+	rows, err := d.Store.ListVisits(r.Context(), kid.ID, store.ListQuery{From: now, To: end, Limit: constants.MaxVisitsPerKid}, true)
+	if !entryOK(w, err) {
+		return nil, false
+	}
+	for _, v := range rows {
+		if v.CancelledAt == nil && now.Before(v.StartsAt) {
+			out = append(out, dueVisitView{Kind: dueKindVisit, ID: v.ID, StartsAt: instantString(v.StartsAt), VisitKind: string(v.Kind)})
+		}
+	}
+	return out, true
+}
+
+// lastEntries holds, for each tracker whose module is on, its newest entry as a timeline row, or nil when it has none.
+func (d Deps) lastEntries(w http.ResponseWriter, r *http.Request, kidID string, states []store.ModuleState, now time.Time) (map[string]any, bool) {
+	out := map[string]any{}
+	q := store.ListQuery{From: time.Unix(0, 0).UTC(), To: now.Add(constants.MaxFutureSkew), Limit: 1}
+	for _, typ := range store.TimelineTypes {
+		if !slices.ContainsFunc(states, func(s store.ModuleState) bool { return s.Module == timelineModules[typ] && s.Enabled }) {
+			continue
+		}
+		items, err := d.Store.Timeline(r.Context(), kidID, []string{typ}, q)
+		if !entryOK(w, err) {
+			return nil, false
+		}
+		out[typ] = nil
+		if len(items) > 0 {
+			out[typ] = newTimelineView(items[0], now)
+		}
 	}
 	return out, true
 }
@@ -151,6 +204,16 @@ func (d Deps) home(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, e := range vaccines {
 		v.Due = append(v.Due, e)
+	}
+	visits, ok := d.visitDue(w, r, kid, km.States, loc, now)
+	if !ok {
+		return
+	}
+	for _, e := range visits {
+		v.Due = append(v.Due, e)
+	}
+	if v.Last, ok = d.lastEntries(w, r, kid.ID, km.States, now); !ok {
+		return
 	}
 	respondJSON(w, http.StatusOK, v)
 }

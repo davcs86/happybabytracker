@@ -10,10 +10,11 @@ import (
 )
 
 type sessionInfoView struct {
-	ID         string `json:"id"`
-	CreatedAt  string `json:"created_at"`
-	LastSeenAt string `json:"last_seen_at"`
-	Current    bool   `json:"current"`
+	ID          string  `json:"id"`
+	CreatedAt   string  `json:"created_at"`
+	LastSeenAt  string  `json:"last_seen_at"`
+	Current     bool    `json:"current"`
+	DeviceLabel *string `json:"device_label"`
 }
 
 // pickUnit returns the unit to store: the stored one when the patch omits it, else the patch if allowed.
@@ -110,7 +111,7 @@ func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 		respondInternal(w, err)
 		return
 	}
-	if err := d.Store.SetPassword(ctx, p.ParentID, hash, p.SessionID); err != nil {
+	if err := d.Store.SetPassword(ctx, p.ParentID, hash, p.SessionID, d.Now()); err != nil {
 		respondInternal(w, err)
 		return
 	}
@@ -127,6 +128,9 @@ func (d Deps) listSessions(w http.ResponseWriter, r *http.Request) {
 	rows := make([]sessionInfoView, len(sessions))
 	for i, s := range sessions {
 		rows[i] = sessionInfoView{ID: s.ID, CreatedAt: formatTime(s.CreatedAt), LastSeenAt: formatTime(s.LastSeenAt), Current: s.ID == p.SessionID}
+		if s.DeviceLabel != "" {
+			rows[i].DeviceLabel = &s.DeviceLabel
+		}
 	}
 	respondJSON(w, http.StatusOK, struct {
 		Sessions []sessionInfoView `json:"sessions"`

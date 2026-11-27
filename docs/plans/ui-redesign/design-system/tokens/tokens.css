@@ -1,0 +1,153 @@
+/* Happy Baby Tracker brand preset: Tailwind 4 + shadcn (svelte and react) variable names.
+   Generated from the Claude Design prototype by gen_tokens.py. Do not edit values by hand:
+   change the prototype/preset, regenerate.
+   Mapping from the prototype's own variable names (they differ from shadcn's):
+     --bg -> --background     --fg -> --foreground     --card -> --card
+     --muted (a TEXT colour in the prototype) -> --muted-foreground
+     --soft2 (tab track) -> --muted (shadcn: a quiet surface)
+     --soft -> --accent       --ink -> --primary-ink (and --accent-foreground)
+     --primary-fg -> --primary-foreground     --toast-link, --destructive, --border, --primary unchanged */
+:root {
+  color-scheme: light;
+  --background: oklch(0.982 0.008 70);
+  --foreground: oklch(0.24 0.02 50);
+  --card: oklch(0.998 0.003 70);
+  --card-foreground: oklch(0.24 0.02 50);
+  --popover: oklch(0.998 0.003 70);
+  --popover-foreground: oklch(0.24 0.02 50);
+  --primary: oklch(0.53 0.17 38);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.998 0.003 70);
+  --secondary-foreground: oklch(0.24 0.02 50);
+  --muted: oklch(0.95 0.01 60);
+  --muted-foreground: oklch(0.48 0.02 50);
+  --accent: oklch(0.95 0.04 55);
+  --accent-foreground: oklch(0.42 0.12 38);
+  --destructive: oklch(0.46 0.17 27);
+  --border: oklch(0.9 0.012 60);
+  --input: oklch(0.9 0.012 60);
+  --ring: oklch(0.53 0.17 38);
+  --primary-ink: oklch(0.42 0.12 38);
+  --toast-link: oklch(0.8 0.12 55);
+  --overlay: rgba(20, 12, 8, 0.5);
+  --radius: 12px;
+  /* tracker hues: one hue per tracker, lightness and chroma fixed per theme */
+  --hue-bottle: 65;
+  --hue-nursing: 20;
+  --hue-diaper: 95;
+  --hue-sleep: 275;
+  --hue-pumping: 330;
+  --hue-solids: 140;
+  --hue-symptom: 60;
+  --chip-bg-l: 0.95; --chip-bg-c: 0.04; --chip-fg-l: 0.42; --chip-fg-c: 0.12; --chip-bar-l: 0.6; --chip-bar-c: 0.14;
+}
+/* Dark palette. Three ways to arrive here, one set of values:
+   1. data-theme="dark"      the user chose Dark (server renders it from the theme cookie: works without JS)
+   2. data-resolved="dark"   a tiny head script resolved Auto (or the choice) to dark before first paint
+   3. no data-theme/resolved the user has not chosen and JS is off: follow the device (prefers-color-scheme) */
+:root[data-theme='dark'],
+:root[data-resolved='dark'] {
+  --background: oklch(0.19 0.015 50);
+  --foreground: oklch(0.95 0.01 70);
+  --card: oklch(0.245 0.015 50);
+  --card-foreground: oklch(0.95 0.01 70);
+  --popover: oklch(0.245 0.015 50);
+  --popover-foreground: oklch(0.95 0.01 70);
+  --primary: oklch(0.78 0.13 55);
+  --primary-foreground: oklch(0.2 0.02 50);
+  --secondary: oklch(0.245 0.015 50);
+  --secondary-foreground: oklch(0.95 0.01 70);
+  --muted: oklch(0.27 0.015 50);
+  --muted-foreground: oklch(0.74 0.02 60);
+  --accent: oklch(0.3 0.05 55);
+  --accent-foreground: oklch(0.84 0.11 55);
+  --destructive: oklch(0.76 0.14 25);
+  --border: oklch(0.36 0.015 50);
+  --input: oklch(0.36 0.015 50);
+  --ring: oklch(0.78 0.13 55);
+  --primary-ink: oklch(0.84 0.11 55);
+  --toast-link: oklch(0.45 0.15 38);
+  --chip-bg-l: 0.3; --chip-bg-c: 0.05; --chip-fg-l: 0.84; --chip-fg-c: 0.11; --chip-bar-l: 0.7; --chip-bar-c: 0.12;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']):not([data-theme='dark']):not([data-resolved]) {
+  --background: oklch(0.19 0.015 50);
+    --foreground: oklch(0.95 0.01 70);
+    --card: oklch(0.245 0.015 50);
+    --card-foreground: oklch(0.95 0.01 70);
+    --popover: oklch(0.245 0.015 50);
+    --popover-foreground: oklch(0.95 0.01 70);
+    --primary: oklch(0.78 0.13 55);
+    --primary-foreground: oklch(0.2 0.02 50);
+    --secondary: oklch(0.245 0.015 50);
+    --secondary-foreground: oklch(0.95 0.01 70);
+    --muted: oklch(0.27 0.015 50);
+    --muted-foreground: oklch(0.74 0.02 60);
+    --accent: oklch(0.3 0.05 55);
+    --accent-foreground: oklch(0.84 0.11 55);
+    --destructive: oklch(0.76 0.14 25);
+    --border: oklch(0.36 0.015 50);
+    --input: oklch(0.36 0.015 50);
+    --ring: oklch(0.78 0.13 55);
+    --primary-ink: oklch(0.84 0.11 55);
+    --toast-link: oklch(0.45 0.15 38);
+    --chip-bg-l: 0.3; --chip-bg-c: 0.05; --chip-fg-l: 0.84; --chip-fg-c: 0.11; --chip-bar-l: 0.7; --chip-bar-c: 0.12;
+    color-scheme: dark;
+  }
+}
+/* `dark:` utilities (shadcn parts ship some): follow the resolved theme. Prefer tokens; avoid new `dark:` classes. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *, [data-resolved='dark'], [data-resolved='dark'] *));
+
+@theme {
+  --font-sans: 'Geist Variable', 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
+  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.2);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary-ink: var(--primary-ink);
+  --color-toast-link: var(--toast-link);
+  --radius-xs: 2px; --radius-sm: 8px; --radius-md: 10px; --radius-lg: 12px; --radius-xl: 14px; --radius-2xl: 16px; --radius-3xl: 20px;
+  --text-micro: 11px; --text-caption-sm: 11.5px; --text-caption: 12px; --text-caption-md: 12.5px; --text-small: 13px;
+  --text-small-md: 13.5px; --text-body-sm: 14px; --text-body-md: 14.5px; --text-body: 15px; --text-input: 16px;
+  --text-lead: 17px; --text-title: 18px; --text-display-sm: 22px; --text-display: 30px;
+}
+
+@layer base {
+  * { border-color: var(--border); }
+  body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 15px; line-height: 1.5; }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; overflow-wrap: anywhere; }
+  input, select, textarea { font-size: 16px; } /* 16 px stops iOS zooming on focus */
+  /* Form controls: the border turns primary and a 3 px 32 % ring is added (buttons and links use the 2 px outline above). */
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 32%, transparent); }
+  [aria-invalid='true'] { border-color: var(--destructive); } /* with an adjacent text message; never colour alone */
+}
+@layer components {
+  /* Tracker chip: 38 px square (40 on running cards), radius 12 */
+  .tracker-chip { width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex: none;
+    background: oklch(var(--chip-bg-l) var(--chip-bg-c) var(--h)); color: oklch(var(--chip-fg-l) var(--chip-fg-c) var(--h)); }
+  .tracker-bar { background: oklch(var(--chip-bar-l) var(--chip-bar-c) var(--h)); }
+  .tracker-bottle { --h: var(--hue-bottle); } .tracker-nursing { --h: var(--hue-nursing); } .tracker-diaper { --h: var(--hue-diaper); } .tracker-sleep { --h: var(--hue-sleep); } .tracker-pumping { --h: var(--hue-pumping); } .tracker-solids { --h: var(--hue-solids); } .tracker-symptom { --h: var(--hue-symptom); }
+}

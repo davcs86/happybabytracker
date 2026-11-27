@@ -7,7 +7,8 @@ import {
 	sessionCookieOptions,
 	setKidCookie,
 	setPushDeviceCookie,
-	setSessionCookie
+	setSessionCookie,
+	setThemeCookie
 } from './cookie';
 
 function fakeCookies() {
@@ -74,5 +75,17 @@ describe('kid cookie', () => {
 		const cookies = fakeCookies();
 		clearKidCookie(cookies);
 		expect(cookies.delete).toHaveBeenCalledWith('hbt_kid', hardened);
+	});
+});
+
+describe('theme cookie', () => {
+	it('is set as hbt_theme for a year, lax, with the theme only', () => {
+		const cookies = fakeCookies();
+		setThemeCookie(cookies, 'dark');
+		expect(cookies.set).toHaveBeenCalledWith('hbt_theme', 'dark', {
+			...hardened,
+			sameSite: 'lax',
+			maxAge: 365 * 24 * 60 * 60
+		});
 	});
 });

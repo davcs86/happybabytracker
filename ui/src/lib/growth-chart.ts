@@ -9,10 +9,10 @@ import {
 import type { CurvePoint, Curves, GrowthRow, Measure, Units } from './types';
 
 // viewBox units; the SVG scales to its box, so these fix proportions and text size only.
-export const CHART = { width: 420, height: 300, left: 36, right: 38, top: 24, bottom: 40 };
+export const CHART = { width: 340, height: 250, left: 36, right: 38, top: 24, bottom: 40 };
 const X_TICKS = 6;
 const Y_TICKS = 5;
-const LABEL_GAP = 11;
+const LABEL_GAP = 13;
 // Line styles by distance from the median line: dash pattern, never colour alone.
 const DASHES = ['', '6 3', '2 3', '8 3 2 3', '1 3'];
 const COORD_DECIMALS = 2;

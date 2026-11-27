@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MILESTONE_AGES, MILESTONE_DOMAINS } from './constants';
-import { checklistTitle, domainLabel, reachedLabel } from './milestones';
+import { checklistTitle, domainLabel, reachedId, reachedLabel } from './milestones';
+import type { Milestones } from './types';
 import { EXPORT_MESSAGES } from './server/export-form';
 import {
 	MILESTONE_FIELD_MESSAGES,
@@ -125,7 +126,9 @@ describe('wording', () => {
 				.replace(/<script[\s\S]*?<\/script>/g, '')
 				.replace(/<!--[\s\S]*?-->/g, '')
 		);
-		expect(markup.filter((m) => m.includes('<title'))).toHaveLength(4);
+		expect(markup.filter((m) => m.includes('<title') || m.includes('documentTitle='))).toHaveLength(
+			4
+		);
 		const all = [
 			...Object.values(MILESTONE_FIELD_MESSAGES),
 			MILESTONE_REACHED_MESSAGE,
@@ -134,5 +137,41 @@ describe('wording', () => {
 			...markup
 		];
 		expect(all.flatMap(judged)).toEqual([]);
+	});
+});
+
+describe('reachedId', () => {
+	const reached = (id: string, extra = {}) => ({
+		id,
+		note: null,
+		reachedOn: '2026-11-20',
+		...extra
+	});
+	const m = {
+		catalogShown: true,
+		checklists: [
+			{
+				items: [
+					{ id: 'smiles', reached: reached('r-smiles') },
+					{ id: 'rolls', reached: null }
+				]
+			}
+		],
+		custom: [
+			reached('c-old', { text: 'First wave' }),
+			reached('c-new', { text: 'First wave', reachedOn: '2026-11-22' })
+		],
+		retired: [],
+		reached: [reached('r-hidden', { item: 'claps' })]
+	} as unknown as Milestones;
+	it('finds the reached row of a catalog item, in a list or in the reached rows', () => {
+		expect(reachedId(m, { item: 'smiles' })).toBe('r-smiles');
+		expect(reachedId(m, { item: 'rolls' })).toBeNull();
+		expect(reachedId(m, { item: 'claps' })).toBe('r-hidden');
+		expect(reachedId(m, { item: 'unknown' })).toBeNull();
+	});
+	it('finds the newest custom milestone with that text', () => {
+		expect(reachedId(m, { text: 'First wave' })).toBe('c-new');
+		expect(reachedId(m, { text: 'Other' })).toBeNull();
 	});
 });

@@ -2,10 +2,11 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { ERROR_CLASS } from '#lib/components/field.js';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import DueList from '#lib/components/DueList.svelte';
-	import KidLinks from '#lib/components/KidLinks.svelte';
-	import KidSwitcher from '#lib/components/KidSwitcher.svelte';
+	import LatestList from '#lib/components/LatestList.svelte';
+	import { SECTION_HEADING } from '#lib/components/home.js';
 	import QuickLog from '#lib/components/QuickLog.svelte';
 	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
 	import TodaySummary from '#lib/components/TodaySummary.svelte';
@@ -14,6 +15,13 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	// One clock for every "x ago" and running timer on the page.
+	let now = $state(new Date());
+	$effect(() => {
+		const id = setInterval(() => (now = new Date()), 1000);
+		return () => clearInterval(id);
+	});
 
 	const timers = $derived<Timer[]>([
 		...(data.running.sleep ? [{ kind: 'sleep' as const, entry: data.running.sleep }] : []),
@@ -24,6 +32,18 @@
 		failed(...(kind === 'sleep' ? ['endSleep'] : ['endNursing', 'switchSide']))?.message ?? null;
 	const overrunFor = (kind: Timer['kind']) =>
 		!!failed(kind === 'sleep' ? 'endSleep' : 'endNursing')?.overrun;
+	// "{age} (corrected {age})" splits into the two age lines; the gestation comes from the kid.
+	const ages = $derived.by(() => {
+		const [born, rest] = data.age.split(' (');
+		if (rest === undefined) return { born, corrected: null };
+		const note = rest.replace(/\)$/, '');
+		const weeks = data.kid.gestationWeeks;
+		const gest = weeks === null ? '' : ` · born ${weeks}w ${data.kid.gestationDays ?? 0}d`;
+		const text = note.startsWith('corrected ')
+			? `Corrected age ${note.slice(10)}`
+			: `${note[0].toUpperCase()}${note.slice(1)}`;
+		return { born, corrected: `${text}${gest}` };
+	});
 	const dueList = $derived(
 		dueLines(data.due, HOME_DUE_MAX, data.kid.id, data.kid.timeZone, data.todayDate)
 	);
@@ -33,27 +53,27 @@
 	<title>{data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<KidSwitcher kids={data.kids} currentId={data.kid.id} />
-<h1 class="text-xl font-semibold">{data.kid.name}</h1>
-<p class="text-muted-foreground">{data.age}</p>
-<KidLinks kid={data.kid} />
-
-<div class="mt-4 flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start">
-	<div class="flex flex-col gap-6">
-		<QuickLog
-			entries={data.quickLog}
-			kidId={data.kid.id}
-			message={failed('startSleep')?.message ?? null}
-		/>
+<div
+	class="flex flex-col gap-[22px] xl:mx-auto xl:grid xl:w-[920px] xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6 xl:gap-y-[22px]"
+>
+	<div class="mt-5 xl:col-span-2">
+		<h1>{data.kid.name}</h1>
+		<p class="mt-1 text-sm text-muted-foreground">{ages.born}</p>
+		{#if ages.corrected}<p class="mt-0.5 text-[12.5px] text-muted-foreground">
+				{ages.corrected}
+			</p>{/if}
+	</div>
+	<div class="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-[22px]">
 		{#if timers.length > 0}
-			<section aria-labelledby="running-heading">
-				<h2 id="running-heading" class="mb-2 font-semibold">Running now</h2>
-				<ul class="flex flex-col gap-2">
+			<section aria-labelledby="running-heading" class="flex flex-col gap-2.5">
+				<h2 id="running-heading" class={SECTION_HEADING}>Running now</h2>
+				<ul class="flex flex-col gap-2.5">
 					{#each timers as timer (timer.kind)}
 						<RunningTimer
 							{timer}
 							zone={data.kid.timeZone}
 							kidId={data.kid.id}
+							{now}
 							message={messageFor(timer.kind)}
 							overrun={overrunFor(timer.kind)}
 						/>
@@ -61,30 +81,54 @@
 				</ul>
 			</section>
 		{/if}
-		<DueList lines={dueList} />
+		<QuickLog
+			entries={data.quickLog}
+			kidId={data.kid.id}
+			{now}
+			message={failed('startSleep')?.message ?? null}
+		/>
+		<LatestList
+			items={data.latest}
+			kidId={data.kid.id}
+			zone={data.kid.timeZone}
+			units={data.units}
+		/>
 	</div>
-	<TodaySummary rows={data.today} />
-</div>
-
-<p class="mt-6 text-sm">
-	<a href={resolve('/(app)/kids/new')} class="underline">Add a child</a>
-</p>
-
-{#if data.kid.role === 'caregiver'}
-	<!-- Two steps without JavaScript: the button exists only inside the opened details.
-	     A failure reopens it, so its message shows after a full-page POST too. -->
-	<details class="mt-6 max-w-md rounded-lg border p-3" open={!!failed('leave')?.message}>
-		<summary class="cursor-pointer text-sm font-medium">Leave this child</summary>
-		<form method="POST" action="?/leave" class="mt-3 flex flex-col gap-3" use:enhance>
-			{#if failed('leave')?.message}
-				<p class={ERROR_CLASS} role="alert">{failed('leave')?.message}</p>
-			{/if}
-			<p class="text-sm">
-				You will lose access to {data.kid.name}. A guardian has to add you again.
+	<div class="contents xl:flex xl:min-w-0 xl:flex-col xl:gap-[22px]">
+		<DueList lines={dueList} />
+		<TodaySummary rows={data.today} {now} />
+		{#if data.kid.role === 'guardian'}
+			<p>
+				<a
+					href={resolve('/(app)/kids/new')}
+					class="inline-flex min-h-11 items-center text-sm underline">Add a child</a
+				>
 			</p>
-			<Button type="submit" variant="outline" class="self-start border-destructive text-destructive"
-				>Yes, leave {data.kid.name}</Button
-			>
-		</form>
-	</details>
-{/if}
+		{:else}
+			<!-- Two steps without JavaScript: the button exists only inside the opened details.
+			     A failure reopens it, so its message shows after a full-page POST too. -->
+			<details class="group rounded-2xl border bg-card px-3.5" open={!!failed('leave')?.message}>
+				<summary
+					class="flex min-h-13 cursor-pointer list-none items-center justify-between text-sm font-semibold [&::-webkit-details-marker]:hidden"
+				>
+					Leave this child
+					<ChevronDownIcon
+						aria-hidden="true"
+						class="size-4 shrink-0 group-open:rotate-180 motion-safe:transition-transform"
+					/>
+				</summary>
+				<form method="POST" action="?/leave" class="flex flex-col gap-3 pb-3.5" use:enhance>
+					{#if failed('leave')?.message}
+						<p class={ERROR_CLASS} role="alert">{failed('leave')?.message}</p>
+					{/if}
+					<p class="text-[13.5px] leading-normal text-muted-foreground">
+						You will lose access to {data.kid.name}. A guardian has to add you again.
+					</p>
+					<Button type="submit" variant="destructive" class="px-5"
+						>Yes, leave {data.kid.name}</Button
+					>
+				</form>
+			</details>
+		{/if}
+	</div>
+</div>

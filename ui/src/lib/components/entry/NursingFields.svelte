@@ -9,11 +9,13 @@
 	import type { EntryStage, EntryValues } from '#lib/entry-edit.js';
 
 	let {
+		part,
 		stage,
 		values,
 		error,
 		estimate = null
 	}: {
+		part: 'primary' | 'optional';
 		stage: EntryStage;
 		values: EntryValues;
 		error: (name: string) => string | null;
@@ -22,57 +24,52 @@
 	} = $props();
 </script>
 
-<EntryTimeField name="started_at" label="Started at" {values} {error} required />
-{#if stage === 'new'}
-	<RadioField
-		name="side"
-		legend="Side"
-		options={NURSING_SIDES}
-		{values}
-		{error}
-		hint="Choose the side you start on to run a timer"
-	/>
-{/if}
-<!-- A running session shows no minutes: its seconds are credited by the timer, never typed. -->
-{#if stage === 'new'}
-	<fieldset class="flex flex-col gap-4 rounded-lg border p-3">
-		<legend class="px-1 text-sm font-medium">Or record a finished session</legend>
-		<EntryTimeField name="ended_at" label="Ended at" {values} {error} />
-		{@render minutes()}
-	</fieldset>
-{:else}
-	<EntryTimeField
-		name="ended_at"
-		label="Ended at"
-		{values}
-		{error}
-		hint={stage === 'running' ? END_RUNNING_HINT : null}
-	/>
-	{#if stage === 'done'}
-		{@render minutes()}
-		<input type="hidden" name="left_seconds_original" value={values.left_seconds_original} />
-		<input type="hidden" name="right_seconds_original" value={values.right_seconds_original} />
-	{/if}
-{/if}
-
-{#if values.advanced === '1'}
-	<div class="flex flex-col gap-4">
-		<WeightField
-			name="weight_before"
-			label="Weight before"
+{#if part === 'primary'}
+	<EntryTimeField name="started_at" label="Started at" {values} {error} required />
+	{#if stage === 'new'}
+		<RadioField
+			name="side"
+			legend="Side"
+			options={NURSING_SIDES}
 			{values}
-			error={error('weight_before')}
+			{error}
+			hint="Choose the side you start on to run a timer"
 		/>
-		<WeightField name="weight_after" label="Weight after" {values} error={error('weight_after')} />
-		<p class="text-sm text-muted-foreground">
-			In your weight unit. These weights stay with this session; they are not added to growth. {SCALE_CAVEAT}
-		</p>
-		{#if estimate}<p class="text-sm">{estimate}</p>{/if}
-	</div>
+	{/if}
+	<!-- A running session shows no minutes: its seconds are credited by the timer, never typed. -->
+	{#if stage === 'new'}
+		<fieldset class="flex flex-col gap-3.5 rounded-xl border p-3.5">
+			<legend class="px-1 text-[13px] leading-4 text-muted-foreground">
+				Or record a finished session
+			</legend>
+			<EntryTimeField name="ended_at" label="Ended at" {values} {error} />
+			{@render minutes()}
+		</fieldset>
+	{:else}
+		<EntryTimeField
+			name="ended_at"
+			label="Ended at"
+			{values}
+			{error}
+			hint={stage === 'running' ? END_RUNNING_HINT : null}
+		/>
+		{#if stage === 'done'}
+			{@render minutes()}
+			<input type="hidden" name="left_seconds_original" value={values.left_seconds_original} />
+			<input type="hidden" name="right_seconds_original" value={values.right_seconds_original} />
+		{/if}
+	{/if}
+{:else if values.advanced === '1'}
+	<WeightField name="weight_before" label="Weight before" {values} error={error('weight_before')} />
+	<WeightField name="weight_after" label="Weight after" {values} error={error('weight_after')} />
+	<p class="text-[12.5px] leading-normal text-muted-foreground">
+		In your weight unit. These weights stay with this session; they are not added to growth. {SCALE_CAVEAT}
+	</p>
+	{#if estimate}<p class="text-sm">{estimate}</p>{/if}
 {/if}
 
 {#snippet minutes()}
-	<div class="grid grid-cols-2 gap-4">
+	<div class="grid grid-cols-2 gap-3.5">
 		{#each NURSING_SIDES as side (side)}
 			<Field
 				id="entry-{side}_minutes"

@@ -105,7 +105,8 @@ describe('createApi requests and shapes', () => {
 					id: 'p1',
 					username: 'ana',
 					displayName: 'Ana',
-					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' }
+					units: { weight: 'kg', length: 'cm', volume: 'ml', temp: 'c' },
+					passwordChangedAt: null
 				}
 			}
 		});
@@ -356,6 +357,99 @@ describe('createApi logging', () => {
 	});
 });
 
+describe('createApi redesign data', () => {
+	const act = (body: unknown) =>
+		createApi(env, asFetch(mockFetch(async () => json(body))), SESSION);
+	const HOME_WITH = (last: unknown) => ({
+		age_months: 8,
+		corrected_birth_date: null,
+		band: '0-11',
+		modules: [{ module: 'bottles', enabled: true, default: true, overridden: false }],
+		running: { sleep: null, nursing: null },
+		today: {
+			date: '2026-11-20',
+			bottles: { count: 0, ml: 0, floz_hundredths: 0 },
+			nursing: { count: 0, seconds: 0 },
+			pumping: { count: 0, ml: 0, floz_hundredths: 0 },
+			diapers: { total: 0, wet: 0, dirty: 0, both: 0, dry: 0 },
+			sleep: { seconds: 0 },
+			meals: { count: 0 }
+		},
+		due: [],
+		...(last === undefined ? {} : { last })
+	});
+
+	it('reads last activity and the unused link of a listed parent, and tolerates their absence', async () => {
+		const base = {
+			id: 'p-1',
+			username: 'eve',
+			display_name: 'Eve',
+			disabled: false,
+			has_password: false,
+			created_at: '2026-11-21T00:00:00Z'
+		};
+		const link = {
+			kind: 'reset',
+			issued_at: '2026-11-25T09:00:00Z',
+			expires_at: '2026-11-25T10:00:00Z'
+		};
+		const r = await act({
+			parents: [
+				{ ...base, last_active_at: '2026-11-25T08:00:00Z', link },
+				{ ...base, id: 'p-2', last_active_at: null, link: null },
+				{ ...base, id: 'p-3' }
+			]
+		}).listParents();
+		expect(r).toMatchObject({
+			ok: true,
+			data: [
+				{
+					lastActiveAt: '2026-11-25T08:00:00Z',
+					link: { kind: 'reset', issuedAt: link.issued_at, expiresAt: link.expires_at }
+				},
+				{ lastActiveAt: null, link: null },
+				{ lastActiveAt: null, link: null }
+			]
+		});
+	});
+
+	it('reads the newest entry of each enabled tracker from home, null when it has none', async () => {
+		const wire = { type: 'diaper', at: '2026-11-25T08:00:00Z', id: 'd-1', kind: 'wet', note: null };
+		const r = await act(HOME_WITH({ diaper: wire, nursing: null })).home('k-1');
+		expect(r).toMatchObject({
+			ok: true,
+			data: { last: { nursing: null, diaper: { kind: 'diapers', entry: { id: 'd-1' } } } }
+		});
+		const old = await act(HOME_WITH(undefined)).home('k-1');
+		expect(old).toMatchObject({ ok: true, data: { last: {} } });
+	});
+
+	it('sends the device label only when there is one', async () => {
+		const f = mockFetch(async () => json({ token: 't', kind: 'parent', expires_at: 'e' }));
+		const api = createApi(env, asFetch(f), undefined, '1.2.3.4');
+		await api.login('ana', 'pw', 'Safari on iPhone');
+		await api.login('ana', 'pw');
+		expect(JSON.parse(String(f.mock.calls[0][1]?.body))).toEqual({
+			username: 'ana',
+			password: 'pw',
+			device_label: 'Safari on iPhone'
+		});
+		expect(JSON.parse(String(f.mock.calls[1][1]?.body))).toEqual({
+			username: 'ana',
+			password: 'pw'
+		});
+	});
+
+	it('reads the entry count of a kid', async () => {
+		const f = mockFetch(async () => json({ entries: 42 }));
+		expect(await createApi(env, asFetch(f), SESSION).kidCounts('k-1')).toEqual({
+			ok: true,
+			data: { entries: 42 }
+		});
+		expect(f.mock.calls[0][0]).toBe('http://api:9210/v1/kids/k-1/counts');
+	});
+});
+
 describe('createApi admin, account, kid and access calls', () => {
 	const KID_WIRE = {
 		id: 'k-1',
@@ -546,7 +640,9 @@ describe('createApi admin, account, kid and access calls', () => {
 		const api = createApi(env, asFetch(f), SESSION);
 		expect(await api.listAccess('k-1')).toEqual({
 			ok: true,
-			data: [{ parentId: 'p-1', username: 'ana', displayName: 'Ana', role: 'guardian' }]
+			data: [
+				{ parentId: 'p-1', username: 'ana', displayName: 'Ana', role: 'guardian', disabled: false }
+			]
 		});
 		await api.setAccess('k-1', '  Dan ', 'caregiver');
 		await api.removeAccess('k-1', 'p-2');
@@ -618,7 +714,9 @@ describe('createApi admin, account, kid and access calls', () => {
 					displayName: 'Eve',
 					disabled: false,
 					hasPassword: false,
-					createdAt: '2026-11-21T00:00:00Z'
+					createdAt: '2026-11-21T00:00:00Z',
+					lastActiveAt: null,
+					link: null
 				},
 				link: { kind: 'invite', url: 'https://x.test/invite/t', expiresAt: '2026-11-24T00:00:00Z' }
 			}
@@ -678,11 +776,21 @@ describe('createApi admin, account, kid and access calls', () => {
 					id: 'p-1',
 					username: 'ana',
 					display_name: 'Ana B',
-					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' }
+					units: { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' },
+					password_changed_at: '2026-11-20T10:00:00Z'
 				});
 			if (u.endsWith('/sessions') && i?.method === 'GET')
 				return json({
-					sessions: [{ id: 's-1', created_at: 'c', last_seen_at: 'l', current: true }]
+					sessions: [
+						{
+							id: 's-1',
+							created_at: 'c',
+							last_seen_at: 'l',
+							current: true,
+							device_label: 'Safari on iPhone'
+						},
+						{ id: 's-2', created_at: 'c', last_seen_at: 'l', current: false, device_label: null }
+					]
 				});
 			return new Response(null, { status: 204 });
 		});
@@ -690,7 +798,13 @@ describe('createApi admin, account, kid and access calls', () => {
 		const units = { weight: 'lb', length: 'in', volume: 'floz', temp: 'f' } as const;
 		expect(await api.updateProfile('Ana B', units)).toEqual({
 			ok: true,
-			data: { id: 'p-1', username: 'ana', displayName: 'Ana B', units }
+			data: {
+				id: 'p-1',
+				username: 'ana',
+				displayName: 'Ana B',
+				units,
+				passwordChangedAt: '2026-11-20T10:00:00Z'
+			}
 		});
 		expect(sent(f, 0)).toEqual({
 			url: 'http://api:9210/v1/me',
@@ -705,7 +819,16 @@ describe('createApi admin, account, kid and access calls', () => {
 		});
 		expect(await api.listSessions()).toEqual({
 			ok: true,
-			data: [{ id: 's-1', createdAt: 'c', lastSeenAt: 'l', current: true }]
+			data: [
+				{
+					id: 's-1',
+					createdAt: 'c',
+					lastSeenAt: 'l',
+					current: true,
+					deviceLabel: 'Safari on iPhone'
+				},
+				{ id: 's-2', createdAt: 'c', lastSeenAt: 'l', current: false, deviceLabel: null }
+			]
 		});
 		await api.deleteSession('s-2');
 		expect(sent(f, 3)).toMatchObject({
@@ -1319,6 +1442,59 @@ describe('createApi tracker calls', () => {
 			}
 		});
 
+		it('reads a visit row with its linked counts', async () => {
+			const visit = {
+				id: 'v-1',
+				starts_at: T0,
+				duration_min: 30,
+				kind: 'sick',
+				status: 'cancelled',
+				cancelled_at: T1,
+				provider: null,
+				location: null,
+				provider_npi: null,
+				note: null,
+				outcome_notes: null,
+				revision: 2,
+				linked: { growth: 0, vaccinations: 1, medications: 2 }
+			};
+			const f = respond({ items: [{ type: 'visit', at: T0, ...visit }], next_cursor: null });
+			expect(await api(f).timeline(KID)).toEqual({
+				ok: true,
+				data: {
+					items: [
+						{
+							kind: 'visit',
+							at: T0,
+							entry: {
+								id: 'v-1',
+								startsAt: T0,
+								durationMin: 30,
+								kind: 'sick',
+								status: 'cancelled',
+								cancelledAt: T1,
+								provider: null,
+								location: null,
+								providerNpi: null,
+								note: null,
+								outcomeNotes: null,
+								revision: 2,
+								linked: { growth: 0, vaccinations: 1, medications: 2 }
+							}
+						}
+					],
+					nextCursor: null
+				}
+			});
+			for (const bad of [
+				{ ...visit, linked: { growth: [], vaccinations: [], medications: [] } },
+				{ ...visit, status: 'missed' }
+			]) {
+				const g = respond({ items: [{ type: 'visit', at: T0, ...bad }], next_cursor: null });
+				expect(await api(g).timeline(KID)).toMatchObject({ ok: false, reason: 'error' });
+			}
+		});
+
 		it('reads day summaries for a date range', async () => {
 			const f = respond({ days: [DAY] });
 			expect(await api(f).summary(KID, '2026-11-20', '2026-11-22')).toEqual({
@@ -1394,7 +1570,8 @@ describe('createApi tracker calls', () => {
 					modules: [MODULE],
 					running: { sleep: ENTRIES.sleep.entry, nursing: null },
 					today: DAY,
-					due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }]
+					due: [{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }],
+					last: {}
 				}
 			});
 			expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/home');
@@ -1413,6 +1590,22 @@ describe('createApi tracker calls', () => {
 							state: 'overdue'
 						},
 						{ kind: 'vaccine', from: { n: 4, unit: 'm' }, status: 'overdue', count: 3 }
+					]
+				}
+			});
+		});
+
+		const VISIT_DUE_WIRE = { kind: 'visit', id: 'v-1', starts_at: T1, visit_kind: 'dental' };
+
+		it('reads a visit entry after the others, in the API order', async () => {
+			const f = respond({ ...HOME, due: [MED_DUE_WIRE, ...HOME.due, VISIT_DUE_WIRE] });
+			expect(await api(f).home(KID)).toMatchObject({
+				ok: true,
+				data: {
+					due: [
+						{ kind: 'medication' },
+						{ kind: 'vaccine' },
+						{ kind: 'visit', id: 'v-1', startsAt: T1, visitKind: 'dental' }
 					]
 				}
 			});
@@ -1470,6 +1663,15 @@ describe('createApi tracker calls', () => {
 			[
 				'a medication entry without a due time',
 				{ ...HOME, due: [{ ...MED_DUE_WIRE, due_at: undefined }] }
+			],
+			[
+				'a visit entry of an unknown kind of visit',
+				{ ...HOME, due: [{ ...VISIT_DUE_WIRE, visit_kind: 'checkup' }] }
+			],
+			['a visit entry without its id', { ...HOME, due: [{ ...VISIT_DUE_WIRE, id: undefined }] }],
+			[
+				'a visit entry without its start',
+				{ ...HOME, due: [{ ...VISIT_DUE_WIRE, starts_at: null }] }
 			]
 		])('maps %s to error', async (_name, body) => {
 			expect(await api(respond(body)).home(KID)).toMatchObject({ ok: false, reason: 'error' });
@@ -1557,6 +1759,7 @@ describe('createApi growth calls', () => {
 
 	const ROW_WIRE = {
 		id: 'g1',
+		visit_id: null,
 		measured_on: '2026-11-01',
 		weight: { grams: 3728, oz_hundredths: 13150, typed_unit: 'lb' },
 		length: { mm: 495, in_hundredths: 1949, typed_unit: 'cm' },
@@ -1572,6 +1775,7 @@ describe('createApi growth calls', () => {
 	};
 	const ROW = {
 		id: 'g1',
+		visitId: null,
 		measuredOn: '2026-11-01',
 		weight: { grams: 3728, ozHundredths: 13150, typedUnit: 'lb' },
 		length: { mm: 495, inHundredths: 1949, typedUnit: 'cm' },
@@ -1598,6 +1802,14 @@ describe('createApi growth calls', () => {
 		const g = respond(ROW_WIRE);
 		expect(await api(g).getGrowth(KID, 'g1')).toEqual({ ok: true, data: ROW });
 		expect(sent(g).url).toBe('http://api:9210/v1/kids/k-1/growth/g1');
+	});
+
+	it('reads the visit a measurement was recorded at', async () => {
+		const f = respond({ ...ROW_WIRE, visit_id: 'v-1' });
+		expect(await api(f).getGrowth(KID, 'g1')).toEqual({
+			ok: true,
+			data: { ...ROW, visitId: 'v-1' }
+		});
 	});
 
 	it('creates with the body as given; a refusal is invalid with the API field', async () => {
@@ -1669,6 +1881,8 @@ describe('createApi growth calls', () => {
 			{ scores: { ...ROW_WIRE.scores, bmi: { scored: false, reason: 'not_covered' } } }
 		],
 		['a missing scores block', { scores: undefined }],
+		['a missing visit id', { visit_id: undefined }],
+		['a numeric visit id', { visit_id: 7 }],
 		[
 			'a string percentile',
 			{ scores: { ...ROW_WIRE.scores, weight: { scored: true, z: 0, percentile: '5' } } }
@@ -1942,6 +2156,7 @@ describe('createApi vaccination calls', () => {
 	};
 	const ADMIN_WIRE = {
 		id: 'a1',
+		visit_id: null,
 		given_on: '2026-03-02',
 		antigens: ['diphtheria', 'hib'],
 		lot: null,
@@ -1950,6 +2165,7 @@ describe('createApi vaccination calls', () => {
 	};
 	const ADMIN = {
 		id: 'a1',
+		visitId: null,
 		givenOn: '2026-03-02',
 		antigens: ['diphtheria', 'hib'],
 		lot: null,
@@ -2037,6 +2253,14 @@ describe('createApi vaccination calls', () => {
 		});
 	});
 
+	it('reads the visit an administration was recorded at', async () => {
+		const f = respond({ ...ADMIN_WIRE, visit_id: 'v-1' });
+		expect(await api(f).getVaccination(KID, 'a1')).toEqual({
+			ok: true,
+			data: { ...ADMIN, visitId: 'v-1' }
+		});
+	});
+
 	it('maps a refusal to its field, the cap to limit, 404 and 503', async () => {
 		const input = { given_on: '2026-03-02', antigens: ['other'] };
 		expect(
@@ -2062,7 +2286,8 @@ describe('createApi vaccination calls', () => {
 		['a missing lot', { lot: undefined }],
 		['a numeric product', { product: 3 }],
 		['antigens that are not a list', { antigens: 'hib' }],
-		['a missing date', { given_on: undefined }]
+		['a missing date', { given_on: undefined }],
+		['a missing visit id', { visit_id: undefined }]
 	])('maps an administration with %s to error', async (_name, bad) => {
 		expect(
 			await api(respond({ vaccinations: [{ ...ADMIN_WIRE, ...bad }] })).listVaccinations(KID)
@@ -2241,7 +2466,8 @@ describe('createApi medication and dose calls', () => {
 		note: null,
 		last_dose: { id: 'd-1', given_at: T0, amount: null },
 		next_due: { due_at: T1 },
-		dose_count: 3
+		dose_count: 3,
+		visit_id: null
 	};
 	const COURSE = {
 		id: 'm-1',
@@ -2254,7 +2480,8 @@ describe('createApi medication and dose calls', () => {
 		note: null,
 		lastDose: { id: 'd-1', givenAt: T0, amount: null },
 		nextDue: { dueAt: T1 },
-		doseCount: 3
+		doseCount: 3,
+		visitId: null
 	};
 	const DOSE_WIRE = { id: 'd-1', medication: 'm-1', given_at: T0, amount: '2.5 ml', note: null };
 	const DOSE = { id: 'd-1', medication: 'm-1', givenAt: T0, amount: '2.5 ml', note: null };
@@ -2290,6 +2517,14 @@ describe('createApi medication and dose calls', () => {
 			},
 			{ url: 'http://api:9210/v1/kids/k-1/medications/m-1', method: 'DELETE', body: undefined }
 		]);
+	});
+
+	it('reads the visit a course was recorded at', async () => {
+		const f = respond({ ...COURSE_WIRE, visit_id: 'v-1' });
+		expect(await api(f).medications.get(KID, 'm-1')).toEqual({
+			ok: true,
+			data: { ...COURSE, visitId: 'v-1' }
+		});
 	});
 
 	it('reads the three schedule kinds and a course with no dose, no next due and no end', async () => {
@@ -2331,7 +2566,8 @@ describe('createApi medication and dose calls', () => {
 		['a fractional dose count', { ...COURSE_WIRE, dose_count: 1.5 }],
 		['a last dose without an id', { ...COURSE_WIRE, last_dose: { given_at: T0, amount: null } }],
 		['a next due that is not an object', { ...COURSE_WIRE, next_due: T1 }],
-		['a missing next due', { ...COURSE_WIRE, next_due: undefined }]
+		['a missing next due', { ...COURSE_WIRE, next_due: undefined }],
+		['a missing visit id', { ...COURSE_WIRE, visit_id: undefined }]
 	])('maps a course with %s to error', async (_name, body) => {
 		expect(await api(respond(body)).medications.get(KID, 'm-1')).toMatchObject({
 			ok: false,
@@ -3320,5 +3556,489 @@ describe('createApi export', () => {
 		for (const needle of ['k-secret', '2026-11-01', '2026-11-24', 'bottles', 'growth']) {
 			expect(logged()).not.toContain(needle);
 		}
+	});
+});
+
+describe('createApi visit calls', () => {
+	const KID = 'k-1';
+	const T0 = '2026-11-20T09:30:00Z';
+	const T1 = '2026-11-21T08:00:00Z';
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) =>
+		mockFetch(async () => (status === 204 ? new Response(null, { status }) : json(body, status)));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const NOT_FOUND = { ok: false, status: 404, reason: 'not_found' };
+
+	const BASE_WIRE = {
+		id: 'v-1',
+		starts_at: T0,
+		duration_min: 30,
+		kind: 'well_child',
+		status: 'past',
+		cancelled_at: null,
+		provider: 'Dr. Lee',
+		location: '12 Main St',
+		provider_npi: '9000000015',
+		note: '4-month check',
+		outcome_notes: 'Healthy.',
+		revision: 3
+	};
+	const BASE = {
+		id: 'v-1',
+		startsAt: T0,
+		durationMin: 30,
+		kind: 'well_child',
+		status: 'past',
+		cancelledAt: null,
+		provider: 'Dr. Lee',
+		location: '12 Main St',
+		providerNpi: '9000000015',
+		note: '4-month check',
+		outcomeNotes: 'Healthy.',
+		revision: 3
+	};
+	const VISIT_WIRE = {
+		...BASE_WIRE,
+		linked: {
+			growth: [{ id: 'g-1', measured_on: '2026-11-20' }],
+			vaccinations: [{ id: 'a-1', given_on: '2026-11-20', antigens: ['dtap', 'ipv'] }],
+			medications: [{ id: 'm-1', name: 'Amoxicillin', dose_count: 14 }]
+		}
+	};
+	const VISIT = {
+		...BASE,
+		linked: {
+			growth: [{ id: 'g-1', measuredOn: '2026-11-20' }],
+			vaccinations: [{ id: 'a-1', givenOn: '2026-11-20', antigens: ['dtap', 'ipv'] }],
+			medications: [{ id: 'm-1', name: 'Amoxicillin', doseCount: 14 }]
+		}
+	};
+	const ROW_WIRE = { ...BASE_WIRE, linked: { growth: 1, vaccinations: 1, medications: 1 } };
+	const ROW = { ...BASE, linked: { growth: 1, vaccinations: 1, medications: 1 } };
+
+	it('lists a page with its query, then gets, creates, updates, removes and records an outcome', async () => {
+		const f = mockFetch(async (u, init) =>
+			init?.method === 'DELETE'
+				? new Response(null, { status: 204 })
+				: json(
+						init?.method === 'GET' && u.includes('/visits?')
+							? { visits: [ROW_WIRE], next_cursor: 'n' }
+							: VISIT_WIRE,
+						init?.method === 'POST' && u.endsWith('/visits') ? 201 : 200
+					)
+		);
+		const v = api(f).visits;
+		expect(await v.list(KID, { from: T0, to: T1, limit: 10, cursor: 'c', order: 'asc' })).toEqual({
+			ok: true,
+			data: { items: [ROW], nextCursor: 'n' }
+		});
+		expect(await v.get(KID, 'v-1')).toEqual({ ok: true, data: VISIT });
+		expect(await v.create(KID, { kind: 'sick' })).toEqual({ ok: true, data: VISIT });
+		expect(await v.update(KID, 'v-1', { cancelled: true })).toEqual({ ok: true, data: VISIT });
+		expect(await v.remove(KID, 'v-1', 'keep')).toEqual({ ok: true, data: null });
+		expect(await v.remove(KID, 'v-1', 'delete')).toEqual({ ok: true, data: null });
+		expect(await v.outcome(KID, 'v-1', { revision: 3, outcome_notes: 'Healthy.' })).toEqual({
+			ok: true,
+			data: VISIT
+		});
+		const base = 'http://api:9210/v1/kids/k-1/visits';
+		expect([0, 1, 2, 3, 4, 5, 6].map((i) => sent(f, i))).toEqual([
+			{
+				url: `${base}?from=${encodeURIComponent(T0)}&to=${encodeURIComponent(T1)}&limit=10&cursor=c&order=asc`,
+				method: 'GET',
+				body: undefined
+			},
+			{ url: `${base}/v-1`, method: 'GET', body: undefined },
+			{ url: base, method: 'POST', body: { kind: 'sick' } },
+			{ url: `${base}/v-1`, method: 'PATCH', body: { cancelled: true } },
+			{ url: `${base}/v-1?linked=keep`, method: 'DELETE', body: undefined },
+			{ url: `${base}/v-1?linked=delete`, method: 'DELETE', body: undefined },
+			{
+				url: `${base}/v-1/outcome`,
+				method: 'POST',
+				body: { revision: 3, outcome_notes: 'Healthy.' }
+			}
+		]);
+	});
+
+	it('lists without a query, so the API applies its defaults', async () => {
+		const f = respond({ visits: [], next_cursor: null });
+		expect(await api(f).visits.list(KID)).toEqual({
+			ok: true,
+			data: { items: [], nextCursor: null }
+		});
+		expect(sent(f).url).toBe('http://api:9210/v1/kids/k-1/visits');
+	});
+
+	it('reads every kind and status, and a visit with nothing set or linked', async () => {
+		for (const kind of ['well_child', 'sick', 'specialist', 'dental', 'emergency', 'other']) {
+			for (const status of ['upcoming', 'past', 'cancelled']) {
+				const bare = {
+					...BASE_WIRE,
+					kind,
+					status,
+					cancelled_at: status === 'cancelled' ? T1 : null,
+					provider: null,
+					location: null,
+					provider_npi: null,
+					note: null,
+					outcome_notes: null,
+					linked: { growth: [], vaccinations: [], medications: [] }
+				};
+				expect(await api(respond(bare)).visits.get(KID, 'v-1')).toEqual({
+					ok: true,
+					data: {
+						...BASE,
+						kind,
+						status,
+						cancelledAt: status === 'cancelled' ? T1 : null,
+						provider: null,
+						location: null,
+						providerNpi: null,
+						note: null,
+						outcomeNotes: null,
+						linked: { growth: [], vaccinations: [], medications: [] }
+					}
+				});
+			}
+		}
+	});
+
+	it.each([
+		['an unknown kind', { kind: 'checkup' }],
+		['an unknown status', { status: 'missed' }],
+		['a fractional revision', { revision: 1.5 }],
+		['a missing duration', { duration_min: undefined }],
+		['a missing outcome note', { outcome_notes: undefined }],
+		['a missing provider NPI', { provider_npi: undefined }],
+		['a numeric provider NPI', { provider_npi: 9000000015 }],
+		['linked counts in place of rows', { linked: { growth: 1, vaccinations: 0, medications: 0 } }],
+		[
+			'a linked course without its dose count',
+			{ linked: { ...VISIT_WIRE.linked, medications: [{ id: 'm-1', name: 'X' }] } }
+		],
+		[
+			'linked antigens that are not a list',
+			{
+				linked: {
+					...VISIT_WIRE.linked,
+					vaccinations: [{ id: 'a-1', given_on: '2026-11-20', antigens: 'dtap' }]
+				}
+			}
+		]
+	])('maps a visit with %s to error', async (_name, bad) => {
+		expect(await api(respond({ ...VISIT_WIRE, ...bad })).visits.get(KID, 'v-1')).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('maps a list row with linked rows in place of counts to error', async () => {
+		const f = respond({ visits: [VISIT_WIRE], next_cursor: null });
+		expect(await api(f).visits.list(KID)).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	it.each([
+		['stale', 409, 'conflict', undefined],
+		['not_past', 409, 'conflict', undefined],
+		['limit', 409, 'conflict', undefined],
+		['has_outcome', 409, 'conflict', undefined],
+		['invalid', 422, 'invalid', 'growth.weight'],
+		['invalid', 422, 'invalid', 'vaccinations[1].lot'],
+		['invalid', 422, 'invalid', 'medications[0].schedule'],
+		['invalid', 422, 'invalid', 'revision'],
+		['invalid', 422, 'invalid', 'outcome'],
+		['invalid', 422, 'invalid', 'outcome_notes']
+	])(
+		'maps an outcome refused with %s (%i, field %s) to its code',
+		async (code, status, reason, field) => {
+			const body = field === undefined ? { error: code } : { error: code, field };
+			expect(await api(respond(body, status)).visits.outcome(KID, 'v-1', { revision: 3 })).toEqual({
+				ok: false,
+				status,
+				reason,
+				code,
+				...(field === undefined ? {} : { field })
+			});
+		}
+	);
+
+	it('maps has_outcome on an update and limit on a create to conflict', async () => {
+		expect(
+			await api(respond({ error: 'has_outcome' }, 409)).visits.update(KID, 'v-1', {
+				cancelled: true
+			})
+		).toEqual({ ok: false, status: 409, reason: 'conflict', code: 'has_outcome' });
+		expect(await api(respond({ error: 'limit' }, 409)).visits.create(KID, {})).toEqual({
+			ok: false,
+			status: 409,
+			reason: 'conflict',
+			code: 'limit'
+		});
+	});
+
+	it('answers not_found without a request for an id outside the pattern or an unknown linked choice', async () => {
+		const f = respond(VISIT_WIRE);
+		const v = api(f).visits;
+		for (const r of [
+			await v.list('../x'),
+			await v.get(KID, '../x'),
+			await v.get('k/1', 'v-1'),
+			await v.create('', {}),
+			await v.update(KID, 'v 1', {}),
+			await v.remove(KID, '..', 'keep'),
+			await v.remove(KID, 'v-1', 'all' as never),
+			await v.outcome(KID, 'v/1', { revision: 0 }),
+			await v.calendar(KID, '..', 'generic'),
+			await v.calendar(KID, 'v-1', 'private' as never)
+		]) {
+			expect(r).toEqual(NOT_FOUND);
+		}
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it('logs a visit call by its endpoint name, never the kid, the visit or the body', async () => {
+		const refuse = api(respond({ error: 'invalid', field: 'outcome_notes' }, 422)).visits;
+		await refuse.outcome('k-secret', 'v-secret', { revision: 1, outcome_notes: 'private note' });
+		await refuse.update('k-secret', 'v-secret', { provider: 'Dr. Secret' });
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'visit_outcome', status: 422 },
+			{ level: 'error', msg: 'api call failed', endpoint: 'update_visit', status: 422 }
+		]);
+		for (const needle of ['k-secret', 'v-secret', 'private note', 'Dr. Secret']) {
+			expect(logged()).not.toContain(needle);
+		}
+	});
+
+	describe('calendar', () => {
+		const DISPOSITION = 'attachment; filename="visit-2026-11-20.ics"';
+		const ics = (headers: Record<string, string> = {}) => {
+			let pulled = false;
+			const body = new ReadableStream<Uint8Array>(
+				{
+					pull(c) {
+						pulled = true;
+						c.enqueue(new TextEncoder().encode('BEGIN:VCALENDAR\r\n'));
+						c.close();
+					}
+				},
+				{ highWaterMark: 0 }
+			);
+			const res = new Response(body, {
+				status: 200,
+				headers: {
+					'content-type': 'text/calendar; charset=utf-8',
+					'content-disposition': DISPOSITION,
+					'cache-control': 'no-store',
+					...headers
+				}
+			});
+			return { res, pulled: () => pulled };
+		};
+
+		it('gets the file with the detail asked for and hands back the body unread, with its headers', async () => {
+			for (const detail of ['generic', 'full'] as const) {
+				const { res, pulled } = ics();
+				const f = mockFetch(async () => res);
+				const r = await api(f).visits.calendar(KID, 'v-1', detail);
+				const [url, init] = f.mock.calls[0];
+				expect(url).toBe(`http://api:9210/v1/kids/k-1/visits/v-1/calendar?detail=${detail}`);
+				expect(init?.method).toBe('GET');
+				expect(init?.body).toBeUndefined();
+				const h = new Headers(init?.headers);
+				expect(h.get('authorization')).toBe(`Bearer ${TOKEN}`);
+				expect(h.get('x-session-token')).toBe(SESSION);
+				expect(h.get('accept')).toBe('text/calendar');
+				expect(r.ok).toBe(true);
+				if (!r.ok) return;
+				expect(r.contentType).toBe('text/calendar; charset=utf-8');
+				expect(r.disposition).toBe(DISPOSITION);
+				expect(pulled()).toBe(false);
+				expect(await new Response(r.body).text()).toBe('BEGIN:VCALENDAR\r\n');
+			}
+			expect(logSpy).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['a JSON 200', { 'content-type': 'application/json' }],
+			['a calendar without its charset', { 'content-type': 'text/calendar' }],
+			['an inline disposition', { 'content-disposition': 'inline' }],
+			['a path in the name', { 'content-disposition': 'attachment; filename="../visit.ics"' }],
+			['a name in the file name', { 'content-disposition': 'attachment; filename="ivy.ics"' }],
+			['no disposition', { 'content-disposition': '' }]
+		])('refuses %s as a shape error and never streams it', async (_name, headers) => {
+			const { res, pulled } = ics(headers);
+			const r = await api(mockFetch(async () => res)).visits.calendar(KID, 'v-1', 'generic');
+			expect(r).toEqual({ ok: false, status: 200, reason: 'error' });
+			expect(pulled()).toBe(false);
+			expect(JSON.parse(String(logSpy.mock.calls[0][0]))).toEqual({
+				level: 'error',
+				msg: 'api call failed',
+				endpoint: 'visit_calendar',
+				status: 200
+			});
+		});
+
+		it('maps a refusal as call() does, and a network error to unavailable', async () => {
+			expect(
+				await api(respond({ error: 'not_found' }, 404)).visits.calendar(KID, 'v-1', 'full')
+			).toEqual({ ok: false, status: 404, reason: 'not_found', code: 'not_found' });
+			expect(
+				await api(respond({ error: 'invalid', field: 'detail' }, 422)).visits.calendar(
+					KID,
+					'v-1',
+					'full'
+				)
+			).toEqual({ ok: false, status: 422, reason: 'invalid', code: 'invalid', field: 'detail' });
+			const down = mockFetch(async () => {
+				throw new TypeError('fetch failed');
+			});
+			expect(await api(down).visits.calendar(KID, 'v-1', 'generic')).toEqual({
+				ok: false,
+				status: 0,
+				reason: 'unavailable'
+			});
+		});
+	});
+});
+
+describe('createApi provider search calls', () => {
+	const sent = (f: ReturnType<typeof mockFetch>, i = 0) => ({
+		url: f.mock.calls[i][0],
+		method: f.mock.calls[i][1]?.method,
+		body:
+			f.mock.calls[i][1]?.body === undefined
+				? undefined
+				: JSON.parse(String(f.mock.calls[i][1]?.body))
+	});
+	const respond = (body: unknown, status = 200) => mockFetch(async () => json(body, status));
+	const api = (f: ReturnType<typeof mockFetch>) => createApi(env, asFetch(f), SESSION);
+	const RESULT_WIRE = {
+		npi: '9000000015',
+		name: 'AVERY QUILL',
+		credential: 'MD',
+		taxonomy: 'Pediatrics',
+		address: '12 PINE ST, SEATTLE, WA 98101',
+		phone: '206-555-0100'
+	};
+	const RESULT = { ...RESULT_WIRE };
+	const BARE_WIRE = { ...RESULT_WIRE, credential: null, taxonomy: null, phone: null };
+
+	it('reads whether the search is on', async () => {
+		for (const enabled of [true, false]) {
+			const f = respond({ search: { enabled } });
+			expect(await api(f).providers.state()).toEqual({ ok: true, data: { enabled } });
+			expect(sent(f)).toEqual({
+				url: 'http://api:9210/v1/providers',
+				method: 'GET',
+				body: undefined
+			});
+		}
+	});
+
+	it.each([
+		['no search object', {}],
+		['a string flag', { search: { enabled: 'true' } }]
+	])('maps a state with %s to error', async (_name, body) => {
+		expect(await api(respond(body)).providers.state()).toMatchObject({
+			ok: false,
+			reason: 'error'
+		});
+	});
+
+	it('posts a person search with its terms in the body and reads the page', async () => {
+		const f = respond({ results: [RESULT_WIRE, BARE_WIRE], more: true });
+		const r = await api(f).providers.search({
+			kind: 'person',
+			lastName: 'Quill',
+			firstName: 'Av',
+			state: 'WA',
+			city: 'Seattle',
+			postalCode: '98101'
+		});
+		expect(r).toEqual({
+			ok: true,
+			data: {
+				results: [RESULT, { ...RESULT, credential: null, taxonomy: null, phone: null }],
+				more: true
+			}
+		});
+		expect(sent(f)).toEqual({
+			url: 'http://api:9210/v1/providers/search',
+			method: 'POST',
+			body: {
+				kind: 'person',
+				last_name: 'Quill',
+				first_name: 'Av',
+				state: 'WA',
+				city: 'Seattle',
+				postal_code: '98101'
+			}
+		});
+	});
+
+	it('sends only the terms given for a clinic search, and reads an empty page', async () => {
+		const f = respond({ results: [], more: false });
+		expect(
+			await api(f).providers.search({
+				kind: 'organization',
+				organization: 'Quill & Co',
+				state: 'OR'
+			})
+		).toEqual({ ok: true, data: { results: [], more: false } });
+		expect(sent(f).body).toEqual({ kind: 'organization', organization: 'Quill & Co', state: 'OR' });
+	});
+
+	it.each([
+		['no more flag', { results: [] }],
+		[
+			'a result without an address',
+			{ results: [{ ...RESULT_WIRE, address: undefined }], more: false }
+		],
+		['a numeric NPI', { results: [{ ...RESULT_WIRE, npi: 9000000015 }], more: false }],
+		['a missing phone', { results: [{ ...RESULT_WIRE, phone: undefined }], more: false }]
+	])('maps a page with %s to error', async (_name, body) => {
+		expect(
+			await api(respond(body)).providers.search({ kind: 'person', lastName: 'Q', state: 'WA' })
+		).toMatchObject({ ok: false, reason: 'error' });
+	});
+
+	it.each([
+		[429, { error: 'rate_limited' }, { reason: 'rate_limited', code: 'rate_limited' }],
+		[503, { error: 'unavailable' }, { reason: 'unavailable', code: 'unavailable' }],
+		[404, { error: 'not_found' }, { reason: 'not_found', code: 'not_found' }],
+		[
+			422,
+			{ error: 'invalid', field: 'postal_code' },
+			{ reason: 'invalid', code: 'invalid', field: 'postal_code' }
+		]
+	])('maps a search answered %i to its reason', async (status, body, failure) => {
+		expect(
+			await api(respond(body, status)).providers.search({
+				kind: 'person',
+				lastName: 'Quill',
+				state: 'WA'
+			})
+		).toEqual({ ok: false, status, ...failure });
+	});
+
+	it('logs a refused search by its endpoint name, never a term', async () => {
+		await api(respond({ error: 'unavailable' }, 503)).providers.search({
+			kind: 'person',
+			lastName: 'Secretname',
+			state: 'WA',
+			city: 'Hiddentown'
+		});
+		expect(logSpy.mock.calls.map((c) => JSON.parse(String(c[0])))).toEqual([
+			{ level: 'error', msg: 'api call failed', endpoint: 'provider_search', status: 503 }
+		]);
+		for (const needle of ['Secretname', 'Hiddentown']) expect(logged()).not.toContain(needle);
 	});
 });

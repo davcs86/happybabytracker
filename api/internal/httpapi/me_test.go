@@ -40,7 +40,7 @@ func TestAdminCannotReachMe(t *testing.T) {
 
 func parentObject(t *testing.T, m map[string]any, name, display string, units ...string) {
 	t.Helper()
-	sameKeys(t, m, "id", "username", "display_name", "units")
+	sameKeys(t, m, "id", "username", "display_name", "units", "password_changed_at")
 	u := m["units"].(map[string]any)
 	sameKeys(t, u, "weight", "length", "volume", "temp")
 	if m["username"] != name || m["display_name"] != display || m["id"] == "" ||
@@ -210,7 +210,7 @@ func TestListOwnSessions(t *testing.T) {
 		t.Fatalf("%d sessions, want ana's two", len(rows))
 	}
 	for _, row := range rows {
-		sameKeys(t, row.(map[string]any), "id", "created_at", "last_seen_at", "current")
+		sameKeys(t, row.(map[string]any), "id", "created_at", "last_seen_at", "current", "device_label")
 	}
 	newest, oldest := rows[0].(map[string]any), rows[1].(map[string]any)
 	if newest["current"] != true || oldest["current"] != false ||

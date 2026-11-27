@@ -14,6 +14,7 @@ import type {
 	Severity,
 	SymptomName,
 	TempMethod,
+	TimelineKind,
 	TimelineType,
 	TimerKind,
 	TrackerKind,
@@ -22,11 +23,21 @@ import type {
 	VaccineDismissReason,
 	VaccineKind,
 	VaccineStatus,
+	VisitKind,
+	VisitStatus,
 	VolumeUnit,
 	WeightUnit
 } from './types';
 
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
+export const THEMES = ['light', 'dark', 'auto'] as const;
+export type Theme = (typeof THEMES)[number];
+// The child switcher shows its search field above this many children.
+export const FIND_CHILD_MIN = 6;
+// Toast display time; a failure that offers Try again stays longer.
+export const TOAST_MS = 6000;
+export const TOAST_FAILURE_MS = 9000;
+export const UNDO_FAILED = 'Could not undo that';
 export const MIN_PASSWORD_LEN = 12;
 export const MAX_PASSWORD_LEN = 256;
 // The API's limits (api/internal/constants), for the forms' hints and attributes.
@@ -153,6 +164,122 @@ export const MILESTONE_POSITIONS = [
 	'next',
 	'later'
 ] as const satisfies readonly MilestonePosition[];
+// Medical visits (constants.go): VisitKinds in the API's order; status is derived by the API.
+export const VISIT_KINDS = [
+	'well_child',
+	'sick',
+	'specialist',
+	'dental',
+	'emergency',
+	'other'
+] as const satisfies readonly VisitKind[];
+export const VISIT_STATUSES = [
+	'upcoming',
+	'past',
+	'cancelled'
+] as const satisfies readonly VisitStatus[];
+export const VISIT_KIND_LABEL: Record<VisitKind, string> = {
+	well_child: 'Well-child visit',
+	sick: 'Sick visit',
+	specialist: 'Specialist visit',
+	dental: 'Dental visit',
+	emergency: 'Emergency visit',
+	other: 'Other visit'
+};
+export const VISIT_STATUS_LABEL: Record<VisitStatus, string> = {
+	upcoming: 'Upcoming',
+	past: 'Past',
+	cancelled: 'Cancelled'
+};
+// Mirrors DefaultVisitDurationMin, MinVisitDurationMin and MaxVisitDurationMin (constants.go), in minutes.
+export const DEFAULT_VISIT_DURATION_MIN = 30;
+export const VISIT_DURATION_MIN = { min: 5, max: 720 } as const;
+// Mirrors VisitProviderMaxLen, VisitLocationMaxLen and VisitOutcomeNotesMaxLen (constants.go), in characters.
+export const VISIT_PROVIDER_MAX_LEN = 120;
+export const VISIT_LOCATION_MAX_LEN = 200;
+export const VISIT_OUTCOME_NOTES_MAX_LEN = 4000;
+// Mirrors MaxVisitsPerKid, VisitHorizon (in days) and VisitDueLookAheadDays (constants.go).
+export const MAX_VISITS_PER_KID = 2000;
+export const VISIT_HORIZON_DAYS = 731;
+export const VISIT_DUE_LOOK_AHEAD_DAYS = 7;
+// Mirrors MaxOutcomeVaccinations and MaxOutcomeMedications (constants.go): the rows one outcome may add.
+export const MAX_OUTCOME_VACCINATIONS = 10;
+export const MAX_OUTCOME_MEDICATIONS = 5;
+// Mirrors NPINameMinLen, NPINameMaxLen, NPIPostalCodeLen and ProviderNPILen (constants.go).
+export const NPI_NAME_MIN_LEN = 2;
+export const NPI_NAME_MAX_LEN = 60;
+export const NPI_POSTAL_CODE_LEN = 5;
+export const PROVIDER_NPI_LEN = 10;
+// Mirror NPINamePattern and NPIOrgPattern (constants.go); they apply after trimming.
+export const NPI_NAME_PATTERN = new RegExp(
+	`^\\p{L}[\\p{L} .'-]{${NPI_NAME_MIN_LEN - 1},${NPI_NAME_MAX_LEN - 1}}$`,
+	'u'
+);
+export const NPI_ORG_PATTERN = new RegExp(
+	`^[\\p{L}0-9][\\p{L}0-9 &.'-]{${NPI_NAME_MIN_LEN - 1},${NPI_NAME_MAX_LEN - 1}}$`,
+	'u'
+);
+// Mirrors NPIStates (constants.go), in the page spec's order of names.
+export const NPI_STATE_LABEL = {
+	AL: 'Alabama',
+	AK: 'Alaska',
+	AZ: 'Arizona',
+	AR: 'Arkansas',
+	CA: 'California',
+	CO: 'Colorado',
+	CT: 'Connecticut',
+	DE: 'Delaware',
+	FL: 'Florida',
+	GA: 'Georgia',
+	HI: 'Hawaii',
+	ID: 'Idaho',
+	IL: 'Illinois',
+	IN: 'Indiana',
+	IA: 'Iowa',
+	KS: 'Kansas',
+	KY: 'Kentucky',
+	LA: 'Louisiana',
+	ME: 'Maine',
+	MD: 'Maryland',
+	MA: 'Massachusetts',
+	MI: 'Michigan',
+	MN: 'Minnesota',
+	MS: 'Mississippi',
+	MO: 'Missouri',
+	MT: 'Montana',
+	NE: 'Nebraska',
+	NV: 'Nevada',
+	NH: 'New Hampshire',
+	NJ: 'New Jersey',
+	NM: 'New Mexico',
+	NY: 'New York',
+	NC: 'North Carolina',
+	ND: 'North Dakota',
+	OH: 'Ohio',
+	OK: 'Oklahoma',
+	OR: 'Oregon',
+	PA: 'Pennsylvania',
+	RI: 'Rhode Island',
+	SC: 'South Carolina',
+	SD: 'South Dakota',
+	TN: 'Tennessee',
+	TX: 'Texas',
+	UT: 'Utah',
+	VT: 'Vermont',
+	VA: 'Virginia',
+	WA: 'Washington',
+	WV: 'West Virginia',
+	WI: 'Wisconsin',
+	WY: 'Wyoming',
+	DC: 'District of Columbia',
+	AS: 'American Samoa',
+	GU: 'Guam',
+	MP: 'Northern Mariana Islands',
+	PR: 'Puerto Rico',
+	VI: 'U.S. Virgin Islands'
+} as const;
+export type NpiState = keyof typeof NPI_STATE_LABEL;
+export const NPI_STATES = Object.keys(NPI_STATE_LABEL) as readonly NpiState[];
 // The home shows at most this many due entries.
 export const HOME_DUE_MAX = 3;
 export const INVITE_VALIDITY = '72 hours';
@@ -168,15 +295,18 @@ export const TRACKER_KINDS: readonly TrackerKind[] = [
 	'symptoms'
 ];
 export const TIMER_KINDS = ['sleep', 'nursing'] as const satisfies readonly TimerKind[];
+// The timeline's filter boxes, in this order.
+export const TIMELINE_KINDS: readonly TimelineKind[] = [...TRACKER_KINDS, 'visit'];
 // The one place the timeline's singular type names meet the route names that paths and TrackerKind use.
-export const TIMELINE_TYPE: Record<TrackerKind, TimelineType> = {
+export const TIMELINE_TYPE: Record<TimelineKind, TimelineType> = {
 	bottles: 'bottle',
 	nursing: 'nursing',
 	pumping: 'pumping',
 	sleep: 'sleep',
 	diapers: 'diaper',
 	meals: 'meal',
-	symptoms: 'symptom'
+	symptoms: 'symptom',
+	visit: 'visit'
 };
 export const TRACKER_TITLE: Record<TrackerKind, { log: string; edit: string }> = {
 	bottles: { log: 'Log a bottle', edit: 'Edit bottle' },
@@ -196,6 +326,7 @@ export const TRACKER_LABEL: Record<TrackerKind, string> = {
 	meals: 'Solids',
 	symptoms: 'Symptom'
 };
+export const TIMELINE_LABEL: Record<TimelineKind, string> = { ...TRACKER_LABEL, visit: 'Visits' };
 // Longest range the summary endpoint answers (SummaryMaxDays), so a longer timeline range is refused here.
 export const SUMMARY_MAX_DAYS = 93;
 export const VOLUME_UNITS = ['ml', 'floz'] as const satisfies readonly VolumeUnit[];
@@ -275,7 +406,8 @@ export const MODULES = [
 	'growth',
 	'vaccination',
 	'sickness',
-	'medication'
+	'medication',
+	'visits'
 ] as const satisfies readonly ModuleId[];
 // Mirrors ExportMaxDays and ExportModules (constants.go): every module id, in MODULES order.
 export const EXPORT_MAX_DAYS = 93;
@@ -291,7 +423,8 @@ export const MODULE_LABEL: Record<ModuleId, string> = {
 	growth: 'Growth',
 	vaccination: 'Vaccination',
 	sickness: 'Sickness',
-	medication: 'Medication'
+	medication: 'Medication',
+	visits: 'Medical visits'
 };
 // Only modules whose tracker exists in this build have an entry point.
 export const TRACKER_ROUTE: Partial<Record<ModuleId, TrackerKind>> = {
@@ -310,6 +443,8 @@ export const QUICK_LOG_FIRST: Record<AgeBand, readonly ModuleId[]> = {
 	'24+': ['sickness', 'medication', 'growth', 'vaccination']
 };
 export const AGE_BANDS = ['0-11', '12-23', '24+'] as const satisfies readonly AgeBand[];
+// The Home page's Latest list.
+export const HOME_LATEST_MAX = 3;
 export const SECONDS_PER_MINUTE = 60;
 export const SECONDS_PER_HOUR = 3600;
 export const HUNDREDTHS_PER_FLOZ = 100;

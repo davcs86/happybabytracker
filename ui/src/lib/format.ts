@@ -2,6 +2,7 @@ import {
 	DAYS_PER_MONTH,
 	HUNDREDTHS_PER_FLOZ,
 	HUNDREDTHS_PER_OZ,
+	SECONDS_PER_HOUR,
 	SECONDS_PER_MINUTE
 } from './constants';
 import type { Milk, Units, Volume, VolumeUnit } from './types';
@@ -9,6 +10,7 @@ import type { Milk, Units, Volume, VolumeUnit } from './types';
 const MONTHS_PER_YEAR = 12;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
 
 type Ymd = { y: number; m: number; d: number };
 
@@ -116,4 +118,40 @@ export function todayIn(timeZone: string, now = new Date()): string {
 export function formatInstant(rfc3339: string): string {
 	const iso = new Date(rfc3339).toISOString();
 	return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// The running clock: H:MM:SS, the hours growing past a day.
+export function formatElapsed(seconds: number): string {
+	const total = Math.max(0, Math.floor(seconds));
+	const hours = Math.floor(total / SECONDS_PER_HOUR);
+	const rest = total % SECONDS_PER_HOUR;
+	return `${hours}:${pad2(Math.floor(rest / SECONDS_PER_MINUTE))}:${pad2(rest % SECONDS_PER_MINUTE)}`;
+}
+
+// "1 h 34 min ago": minutes under an hour, hours and minutes under a day, then whole days.
+export function formatAgo(instant: string, now: Date): string {
+	const seconds = Math.floor((now.getTime() - new Date(instant).getTime()) / 1000);
+	const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+	if (minutes < 1) return 'Just now';
+	if (minutes < MINUTES_PER_HOUR) return `${minutes} min ago`;
+	const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+	if (hours < HOURS_PER_DAY) {
+		const rest = minutes % MINUTES_PER_HOUR;
+		return rest === 0 ? `${hours} h ago` : `${hours} h ${rest} min ago`;
+	}
+	return `${Math.floor(hours / HOURS_PER_DAY)} d ago`;
+}
+
+const DAYS_PER_MONTH_LABEL = 30;
+
+// "3 days ago": today and yesterday by name, whole days up to a month, then whole months.
+export function formatDaysAgo(instant: string, now: Date): string {
+	const days = Math.floor((now.getTime() - new Date(instant).getTime()) / MS_PER_DAY);
+	if (days < 1) return 'today';
+	if (days === 1) return 'yesterday';
+	if (days < DAYS_PER_MONTH_LABEL) return `${days} days ago`;
+	const months = Math.floor(days / DAYS_PER_MONTH_LABEL);
+	return months === 1 ? '1 month ago' : `${months} months ago`;
 }

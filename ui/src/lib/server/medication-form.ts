@@ -341,16 +341,17 @@ function buildCourse(v: CourseFormValues, mode: CourseMode, activeOK: boolean): 
 
 export function readMedicationForm(
 	form: FormData,
-	mode: CourseMode
+	mode: CourseMode,
+	{ prefix = '' }: { prefix?: string } = {}
 ): { values: CourseFormValues; input: EntryBody | null; field: string | null } {
-	const text = (k: string) => String(form.get(k) ?? '');
+	const text = (k: string) => String(form.get(`${prefix}${k}`) ?? '');
 	// An unticked box is absent; anything but on is not what the form posts.
-	const box = form.get('active');
+	const box = form.get(`${prefix}active`);
 	const values: CourseFormValues = {
 		name: text('name'),
 		dose: text('dose'),
 		kind: text('kind'),
-		times: form.getAll('times').map(String),
+		times: form.getAll(`${prefix}times`).map(String),
 		hours: text('hours'),
 		start_at: text('start_at'),
 		end_on: text('end_on'),
@@ -359,7 +360,7 @@ export function readMedicationForm(
 	};
 	if (mode.kind === 'edit') {
 		for (const k of TEXT_ORIGINALS) {
-			const o = form.get(`${k}_original`);
+			const o = form.get(`${prefix}${k}_original`);
 			if (o !== null) values[`${k}_original`] = String(o);
 		}
 	}

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vaccines</title>
+<script src="./react.production.min.js"></script><script src="./react-dom.production.min.js"></script><script src="./support.js"></script>
+<script src="./hbt-ui.js"></script>
+<script src="./hbt-data.js"></script>
+<script src="./hbt-acct.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500&display=swap" rel="stylesheet"><style>body{margin:0}button{font-family:inherit;color:inherit}input,select{font-family:inherit;color:inherit}summary{cursor:pointer}</style></helmet>
+<div data-hbt="outer" style="display:flex;flex-wrap:wrap;gap:32px;padding:32px;align-items:flex-start;font-family:'Geist',system-ui,sans-serif;background:#8a8580;min-height:100%;box-sizing:border-box">
+<div data-hbt="panel" style="width:230px;display:flex;flex-direction:column;gap:16px;background:#f6f3ef;color:#2a2420;border-radius:14px;padding:18px;font-size:13px">
+<div style="font-weight:700;font-size:15px">Vaccines · prototype</div>
+<sc-for list="{{ toggles }}" as="t" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;gap:6px"><div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.7">{{ t.title }}</div><div style="display:flex;gap:4px"><sc-for list="{{ t.opts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" style="{{ o.style }}">{{ o.label }}</button></sc-for></div></div></sc-for>
+<div style="font-size:11.5px;line-height:1.5;opacity:.8"><b>shadcn-svelte parts</b><br>Card, Badge, Button, Alert, Sheet (record, dismiss, schedule, edit), Checkbox, Select, Input, Label, Collapsible (visit rows, About), RadioGroup, Sonner (undo).<br><br><b>No-JS baseline</b><br>Every sheet is its own route (<code>/vaccines/new?visit=…</code>); each visit is a <code>&lt;details&gt;</code>; Dismiss and Undo are form POSTs; the status line is shown after the redirect.<br><br><b>Changed on purpose</b><br>Visit cards group antigens by schedule group (one 6-in-1 card, not six rows). Banner and button say “Dismiss older vaccines” (was “lines”). Window text uses ages and short dates, no ISO.<br><br>Sample data, simplified. Not a real schedule.</div>
+</div>
+<div data-hbt="app" style="{{ appStyle }}">
+<sc-if value="{{ desktop }}" hint-placeholder-val="{{ false }}"><div data-hbt="side" role="navigation" aria-label="Primary" style="width:200px;flex:none;border-right:1px solid var(--border);padding:20px 12px;display:flex;flex-direction:column;gap:4px;background:var(--card)"><div style="font-weight:700;font-size:16px;padding:0 10px 14px">Happy baby</div>
+<sc-for list="{{ sideTabs }}" as="t" hint-placeholder-count="12"><a href="{{ t.href }}" onClick="{{ t.on }}" aria-current="{{ t.cur }}" style="{{ t.sideStyle }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div></sc-if>
+<div data-hbt="frame" style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
+<div role="main" style="flex:1;overflow:auto;padding:16px 16px 28px;display:flex;flex-direction:column;gap:18px">
+
+<div style="display:flex;flex-direction:column;gap:6px">
+<div data-hbt="head" style="display:flex;align-items:center;gap:8px;min-height:48px;margin-bottom:8px"><a href="{{ hdr.href }}" data-drawer="Switch child" data-drawer-fit aria-label="Child: {{ hdr.name }}. Switch child" data-shadcn="Button" style="min-height:48px;min-width:0;box-sizing:border-box;display:inline-flex;align-items:center;gap:8px;padding:0 12px 0 8px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);text-decoration:none;font-size:15px;font-weight:600"><span aria-hidden="true" style="width:32px;height:32px;border-radius:99px;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex:none">{{ hdr.initial }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ hdr.name }}</span><span style="flex:none;color:var(--muted);display:inline-flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></a><div data-hbt-bell style="margin-left:auto;flex:none;display:flex;align-items:center;gap:8px"><a href="Notifications.dc.html" aria-label="Notification settings" data-shadcn="Button" style="width:48px;height:48px;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;flex:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg></a><span data-role style="font-size:12px;font-weight:600;padding:4px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)">{{ roleLabel }}</span></div></div>
+<div style="display:flex;align-items:center;gap:8px"><h1 style="margin:0;font-size:30px;font-weight:600;letter-spacing:-.02em;line-height:1.1;flex:1;min-width:0">Vaccines</h1><sc-if value="{{ hasSchedule }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openAbout }}" aria-label="About this schedule" aria-haspopup="dialog" data-shadcn="Button" style="width:48px;height:48px;flex:none;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button></sc-if><sc-if value="{{ showMenu }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openMenu }}" aria-label="Schedule options" aria-haspopup="dialog" data-shadcn="Button" style="width:48px;height:48px;flex:none;box-sizing:border-box;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button></sc-if></div>
+<div style="font-size:14px;color:var(--muted)">{{ ageText }} · from birth, not corrected age</div>
+<sc-if value="{{ hasSchedule }}" hint-placeholder-val="{{ true }}"><div style="font-size:13px;color:var(--muted)">Schedule: {{ meta.authority }}, {{ meta.edition }}</div></sc-if>
+</div>
+
+<sc-if value="{{ noSchedule }}" hint-placeholder-val="{{ false }}"><div data-shadcn="Card" style="border:1px dashed var(--border);border-radius:16px;background:var(--card);padding:20px;display:flex;flex-direction:column;gap:12px;align-items:flex-start">
+<span style="{{ chipStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ icShield }}"></svg></span>
+<div style="font-size:17px;font-weight:600">No vaccination schedule chosen yet</div>
+<div style="font-size:13.5px;color:var(--muted);line-height:1.5">A schedule is only a list of what is usually offered and when. You can switch later; recorded doses always stay.</div>
+<sc-if value="{{ guardian }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openSchedule }}" style="min-height:48px;padding:0 20px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer">Choose a schedule</button></sc-if>
+<sc-if value="{{ caregiver }}" hint-placeholder-val="{{ false }}"><div style="font-size:14px;font-weight:500">Ask a guardian to choose one.</div></sc-if>
+</div></sc-if>
+
+<sc-if value="{{ hasSchedule }}" hint-placeholder-val="{{ true }}"><div data-w="grid" style="display:flex;flex-direction:column;gap:18px">
+
+
+<div data-w="l"><sc-if value="{{ statusMsg }}" hint-placeholder-val="{{ false }}"><div role="status" data-shadcn="Alert" style="display:flex;align-items:center;gap:8px;padding:6px 6px 6px 14px;border-radius:12px;border:1px solid var(--border);background:var(--soft);font-size:14px"><span style="flex:1">{{ statusMsg }}</span><button onClick="{{ undoOlder }}" style="min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--ink);font-weight:700;font-size:14px;cursor:pointer">Undo</button></div></sc-if>
+
+<sc-if value="{{ showBanner }}" hint-placeholder-val="{{ false }}"><div data-shadcn="Alert" style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;border:1.5px solid var(--primary);background:var(--card)">
+<div style="display:flex;gap:10px;align-items:flex-start"><span style="{{ chipStyle }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ icInfo }}"></svg></span><div><div style="font-size:15px;font-weight:600">Starting partway through the schedule?</div><div style="font-size:13.5px;color:var(--muted);line-height:1.5;margin-top:2px">{{ overdueCount }} earlier vaccines show as Overdue. If they were given before you started here, or are not needed, you can dismiss them together. Each one can be restored on its own.</div></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:8px"><button onClick="{{ openOlder }}" style="flex:1 1 160px;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Dismiss older vaccines</button><button onClick="{{ openRecord }}" style="flex:1 1 160px;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px;color:var(--fg)">Record doses</button></div></div></sc-if>
+
+<button onClick="{{ openRecord }}" style="min-height:48px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Record a vaccination</button>
+
+<div style="display:flex;flex-direction:column;gap:12px">
+<sc-for list="{{ visits }}" as="v" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:8px">
+<sc-if value="{{ v.sectionLabel }}" hint-placeholder-val="{{ false }}"><h2 style="margin:8px 0 0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ v.sectionLabel }}</h2></sc-if>
+<details open="{{ v.open }}" data-shadcn="Collapsible" style="border:1px solid var(--border);border-radius:16px;background:var(--card);overflow:hidden">
+<summary style="min-height:56px;padding:0 14px;display:flex;align-items:center;gap:10px;list-style:none"><h3 style="margin:0;font-size:16px;font-weight:600;flex:1">{{ v.title }}</h3><span data-shadcn="Badge" style="{{ v.badgeStyle }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ v.badgeIcon }}"></svg>{{ v.badge }}</span><svg data-chev width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--muted)"><path d="m6 9 6 6 6-6"/></svg></summary>
+<div style="padding:0 12px 12px;display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{ v.cards }}" as="c" hint-placeholder-count="3">
+<div data-shadcn="Card" style="border:1px solid var(--border);border-radius:12px;background:var(--bg);padding:12px;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:flex-start;gap:8px"><div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600">{{ c.title }}</div><div style="font-size:12.5px;color:var(--muted);margin-top:1px">{{ c.ants }}</div></div><span data-shadcn="Badge" style="{{ c.badgeStyle }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ c.badgeIcon }}"></svg>{{ c.badge }}</span></div>
+<sc-if value="{{ c.isGiven }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.onEdit }}" aria-label="{{ c.editLabel }}" style="align-self:flex-start;min-height:44px;padding:0;border:0;background:transparent;font-size:13.5px;text-decoration:underline;cursor:pointer;text-align:left">{{ c.givenText }}</button></sc-if>
+<sc-if value="{{ c.isDismissed }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:13px;color:var(--muted);flex:1">{{ c.dismissedText }}</span><sc-if value="{{ guardian }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onUndo }}" aria-label="{{ c.undoLabel }}" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Undo</button></sc-if></div></sc-if>
+<sc-if value="{{ c.isOpen }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;color:var(--muted);flex:1;line-height:1.4">{{ c.windowText }}</span><sc-if value="{{ guardian }}" hint-placeholder-val="{{ true }}"><button onClick="{{ c.onDismiss }}" aria-label="{{ c.dismissLabel }}" style="min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;color:var(--fg)">Dismiss</button></sc-if></div></sc-if>
+</div></sc-for>
+<sc-if value="{{ v.canRecord }}" hint-placeholder-val="{{ true }}"><button onClick="{{ v.onRecord }}" aria-label="{{ v.recordLabel }}" style="min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Record {{ v.title }}</button></sc-if>
+</div></details></div></sc-for></div></div>
+
+<div data-w="r"><sc-if value="{{ hasAlso }}" hint-placeholder-val="{{ false }}"><section style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Also available</h2><div style="border:1px solid var(--border);background:var(--card);border-radius:14px;overflow:hidden"><sc-for list="{{ also }}" as="a" hint-placeholder-count="1"><div style="padding:12px"><div style="font-size:14px;font-weight:500">{{ a.title }}</div><div style="font-size:12.5px;color:var(--muted)">{{ a.sub }}</div></div></sc-for></div></section></sc-if>
+
+<section style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Every season</h2><div style="border:1px solid var(--border);background:var(--card);border-radius:14px;overflow:hidden"><sc-for list="{{ seasonal }}" as="a" hint-placeholder-count="2"><div style="padding:12px;border-top:1px solid var(--border);margin-top:-1px"><div style="font-size:14px;font-weight:500">{{ a.title }}</div><div style="font-size:12.5px;color:var(--muted)">{{ a.sub }}</div></div></sc-for></div></section>
+
+<sc-if value="{{ hasOther }}" hint-placeholder-val="{{ false }}"><section style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">Other recorded vaccinations</h2><div style="border:1px solid var(--border);background:var(--card);border-radius:14px;overflow:hidden"><div style="padding:12px"><div style="font-size:14px;font-weight:500">Typhoid, given Sep 1, 2026</div><div style="font-size:12.5px;color:var(--muted)">Not part of this schedule</div></div></div></section></sc-if></div>
+</div></sc-if>
+</div>
+
+<div data-hbt="tabs" role="navigation" aria-label="Primary" style="flex:none;display:{{ phoneDisplay }};border-top:1px solid var(--border);background:var(--card);padding:6px 6px 10px"><sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><a href="{{ t.href }}" onClick="{{ t.on }}" style="{{ t.tabStyle }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" dangerouslySetInnerHTML="{{ t.icon }}"></svg>{{ t.label }}</a></sc-for></div>
+
+<sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(20,12,8,.5);display:flex;align-items:flex-end;justify-content:center;z-index:5"><div onClick="{{ stop }}" role="dialog" aria-label="{{ sheetTitle }}" data-shadcn="Sheet" style="width:100%;max-width:480px;max-height:92%;overflow:auto;background:var(--card);border-radius:20px 20px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;box-shadow:0 -8px 32px rgba(0,0,0,.2)">
+<div style="width:36px;height:4px;border-radius:2px;background:var(--border);align-self:center"></div>
+<div style="display:flex;align-items:center"><div style="font-size:18px;font-weight:600;flex:1">{{ sheetTitle }}</div><button onClick="{{ closeSheet }}" aria-label="Close" style="width:44px;height:44px;border:0;background:transparent;font-size:22px;cursor:pointer">×</button></div>
+<sc-if value="{{ formErr }}" hint-placeholder-val="{{ false }}"><div role="alert" data-shadcn="Alert" style="border:1.5px solid var(--fg);background:var(--bg);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.5"><b>Couldn’t save.</b> {{ formErr }}</div></sc-if>
+
+<sc-if value="{{ isRecord }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:6px"><label for="rdate" style="font-size:12px;color:var(--muted)">Date given</label><input id="rdate" type="date" value="{{ recDate }}" onChange="{{ setRecDate }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"></div>
+<fieldset style="border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:12px;color:var(--muted);padding:0;margin-bottom:6px">Vaccines given · one row per shot, ticked when open</legend>
+<sc-for list="{{ recItems }}" as="r" hint-placeholder-count="3"><label style="{{ r.style }}"><input type="checkbox" checked="{{ r.checked }}" onChange="{{ r.on }}" style="width:22px;height:22px;accent-color:var(--primary);flex:none"><span style="flex:1;min-width:0"><span style="display:block;font-size:14.5px;font-weight:600">{{ r.title }}</span><span style="display:block;font-size:12px;color:var(--muted)">{{ r.sub }}</span></span></label></sc-for>
+<sc-if value="{{ recEmpty }}" hint-placeholder-val="{{ false }}"><div style="font-size:13.5px;color:var(--muted)">Nothing is open right now.</div></sc-if></fieldset>
+<div style="display:flex;gap:10px"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="rlot" style="font-size:12px;color:var(--muted)">Lot number (optional)</label><input id="rlot" type="text" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div><div style="flex:1;display:flex;flex-direction:column;gap:6px"><label for="rprod" style="font-size:12px;color:var(--muted)">Product (optional)</label><input id="rprod" type="text" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px;width:100%;box-sizing:border-box"></div></div>
+<div style="font-size:12px;color:var(--muted)">Need a vaccine that is not listed? Open “Other vaccines” on the full form (no-JS page).</div>
+<button onClick="{{ saveRecord }}" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer;padding:0 20px">{{ saveLabel }}</button></div></sc-if>
+
+<sc-if value="{{ isDismiss }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:12px"><div style="font-size:13.5px;color:var(--muted);line-height:1.5">{{ dismissName }} stays on the page as Dismissed and can be restored.</div>
+<div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ reasons }}" as="r" hint-placeholder-count="2"><button onClick="{{ r.on }}" aria-pressed="{{ r.pressed }}" style="{{ r.style }}">{{ r.label }}</button></sc-for></div>
+<button onClick="{{ confirmDismiss }}" style="min-height:48px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Dismiss</button></div></sc-if>
+
+<sc-if value="{{ isOlder }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><div style="font-size:13.5px;color:var(--muted);line-height:1.5">Dismisses every open vaccine that was due before the visit you pick. Doses you have recorded are never touched.</div>
+<div style="display:flex;flex-direction:column;gap:6px"><label for="obefore" style="font-size:12px;color:var(--muted)">Due before</label><select id="obefore" onChange="{{ setBefore }}" data-shadcn="Select" style="min-height:48px;padding:0 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"><sc-for list="{{ beforeOpts }}" as="o" hint-placeholder-count="4"><option value="{{ o.value }}" selected="{{ o.selected }}">{{ o.label }}</option></sc-for></select></div>
+<div style="display:flex;flex-direction:column;gap:8px"><sc-for list="{{ reasons }}" as="r" hint-placeholder-count="2"><button onClick="{{ r.on }}" aria-pressed="{{ r.pressed }}" style="{{ r.style }}">{{ r.label }}</button></sc-for></div>
+<div style="font-size:14px;font-weight:600">{{ olderPreview }}</div>
+<button onClick="{{ confirmOlder }}" style="min-height:48px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Dismiss older vaccines</button></div></sc-if>
+
+<sc-if value="{{ isSchedule }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:10px"><div style="font-size:13.5px;color:var(--muted);line-height:1.5">Recorded doses stay when you switch. Dismissals belong to the schedule they were made in.</div>
+<sc-for list="{{ schedOpts }}" as="o" hint-placeholder-count="3"><button onClick="{{ o.on }}" aria-pressed="{{ o.pressed }}" style="{{ o.style }}"><span style="flex:1;text-align:left"><span style="display:block;font-size:15px;font-weight:600">{{ o.label }}</span><span style="display:block;font-size:12px;color:var(--muted)">{{ o.sub }}</span></span><span aria-hidden="true">{{ o.mark }}</span></button></sc-for></div></sc-if>
+
+<sc-if value="{{ isEdit }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:13.5px;color:var(--muted);line-height:1.5">{{ editSub }}</div>
+<div style="display:flex;flex-direction:column;gap:6px"><label for="edate" style="font-size:12px;color:var(--muted)">Date given</label><input id="edate" type="date" value="{{ editDate }}" onChange="{{ setEditDate }}" style="min-height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:16px"></div>
+<button onClick="{{ saveEdit }}" style="min-height:48px;border-radius:12px;border:0;background:var(--primary);color:var(--primary-fg);font-size:15px;font-weight:600;cursor:pointer;padding:0 20px">Save changes</button>
+<sc-if value="{{ !delAsk }}" hint-placeholder-val="{{ true }}"><button onClick="{{ askDelete }}" style="min-height:48px;border-radius:12px;border:1px solid var(--border);background:transparent;font-size:15px;font-weight:600;cursor:pointer">Delete this dose</button></sc-if>
+<sc-if value="{{ delAsk }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px"><div style="font-size:13.5px;line-height:1.5">This removes the dose for everyone with access to {{ kid }}. Doses are matched to the schedule in the order recorded, so later doses may move up one line.</div><div style="display:flex;gap:8px"><button onClick="{{ keepDose }}" style="flex:1;min-height:48px;border-radius:12px;border:1px solid var(--border);background:var(--card);font-size:15px;font-weight:600;cursor:pointer;padding:0 16px;color:var(--fg)">Keep</button><button onClick="{{ doDelete }}" style="flex:1;min-height:48px;border-radius:10px;border:0;background:var(--fg);color:var(--bg);font-size:14px;font-weight:600;cursor:pointer">Delete dose</button></div></div></sc-if></div></sc-if>
+
+<sc-if value="{{ isMenu }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px"><button onClick="{{ openSchedule }}" data-shadcn="Button" style="min-height:64px;box-sizing:border-box;width:100%;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);cursor:pointer"><span style="font-size:15px;font-weight:600">Change schedule</span><span style="font-size:13px;color:var(--muted)">Now {{ meta.authority }}, {{ meta.edition }}</span></button><sc-if value="{{ canOlder }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openOlder }}" data-shadcn="Button" style="min-height:64px;box-sizing:border-box;width:100%;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg);cursor:pointer"><span style="font-size:15px;font-weight:600">Dismiss older vaccines</span><span style="font-size:13px;color:var(--muted)">Overdue ones from before you started here</span></button></sc-if></div></sc-if>
+<sc-if value="{{ isAbout }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;font-size:14px;line-height:1.5"><div><div style="font-weight:600">{{ meta.authority }}, {{ meta.edition }}</div><div style="color:var(--muted)">Retrieved {{ meta.retrieved }}</div></div><div style="color:var(--muted)">{{ meta.lic }}</div><div><h3 style="margin:0 0 4px;font-size:14px;font-weight:600">What is not included</h3><div style="color:var(--muted)">{{ meta.omitted }}</div></div></div></sc-if>
+<sc-if value="{{ isTheme }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px"><fieldset data-shadcn="RadioGroup" style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:8px"><legend style="font-size:13px;color:var(--muted);padding:0;margin-bottom:8px">Choose how Happy baby looks. It applies to every screen.</legend><sc-for list="{{ themeOpts }}" as="o" hint-placeholder-count="3"><label class="hbt-radiorow"><input type="radio" name="hbt-theme" value="{{ o.id }}" checked="{{ o.checked }}" onChange="{{ o.on }}"><span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">{{ o.label }}</span><span style="font-size:13px;color:var(--muted);line-height:1.4">{{ o.hint }}</span></span><span aria-hidden="true" style="{{ o.swatch }}"></span></label></sc-for></fieldset><button onClick="{{ closeSheet }}" data-shadcn="Button" style="min-height:56px;border-radius:14px;border:0;background:var(--primary);color:var(--primary-fg);font-size:16px;font-weight:600;cursor:pointer">Done</button></div></sc-if>
+<sc-if value="{{ isMore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column"><sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="4"><a href="{{ m.href }}" onClick="{{ m.on }}" style="display:flex;align-items:center;min-height:52px;border-top:1px solid var(--border);font-size:15px;color:var(--fg);text-decoration:none">{{ m.label }}<span style="margin-left:auto;font-size:12px;color:var(--muted)">{{ m.note }}</span></a></sc-for></div></sc-if>
+</div></div></sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}"><div role="{{ toastRole }}" style="position:absolute;left:12px;right:12px;bottom:84px;display:flex;align-items:center;gap:12px;padding:6px 6px 6px 16px;border-radius:12px;background:var(--fg);color:var(--bg);font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:9"><span style="flex:1">{{ toastText }}</span><sc-if value="{{ toastRetry }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doRetry }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Try again</button></sc-if><sc-if value="{{ toastUndo }}" hint-placeholder-val="{{ false }}"><button onClick="{{ doUndo }}" style="min-height:44px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:var(--toast-link);font-weight:700;font-size:14px;cursor:pointer">Undo</button></sc-if></div></sc-if>
+</div></div></div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state={retry:null,toastErr:false,dark:false,desktop:false,cg:false,sched:'uk',ageM:null,scen:'stored',given:{},dis:{},sheet:null,rec:{},recVisit:null,recDate:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})(),dsmId:null,reason:'not_needed',before:null,editId:null,editDate:'',delAsk:false,toast:null,undo:null,statusMsg:null,olderSnap:null,formErr:null};
+  componentDidMount(){this.setScen('stored',null);}
+  componentWillUnmount(){clearTimeout(this.tt);}
+  toast(text,undo){clearTimeout(this.tt);this.setState({toast:text,undo:undo||null,retry:null,toastErr:false,formErr:null});this.tt=setTimeout(()=>this.setState({toast:null,undo:null}),6000);}
+  data(sched){
+    const UK=window.HBTUI.vaccUK;
+    const US=[['Birth',0,'Hepatitis B',['Hepatitis B'],1,1],
+      ['2 months',2,'DTaP',['Diphtheria','Tetanus','Pertussis'],1,4],['2 months',2,'Hib',['Hib'],1,4,'mnn'],['2 months',2,'Polio',['Polio'],1,4],['2 months',2,'Pneumococcal',['Pneumococcal'],1,4],['2 months',2,'Rotavirus',['Rotavirus'],1,4,'mnn'],
+      ['4 months',4,'DTaP',['Diphtheria','Tetanus','Pertussis'],2,6],['4 months',4,'Hib',['Hib'],2,6,'mnn'],['4 months',4,'Polio',['Polio'],2,6],['4 months',4,'Pneumococcal',['Pneumococcal'],2,6],['4 months',4,'Rotavirus',['Rotavirus'],2,6,'mnn'],
+      ['6 months',6,'DTaP',['Diphtheria','Tetanus','Pertussis'],3,8],['6 months',6,'Pneumococcal',['Pneumococcal'],3,8],['6 months',6,'Hepatitis B',['Hepatitis B'],3,19],
+      ['12 months',12,'MMR',['Measles','Mumps','Rubella'],1,16],['12 months',12,'Varicella',['Varicella'],1,16],['12 months',12,'Hepatitis A',['Hepatitis A'],1,24],['12 months',12,'Pneumococcal',['Pneumococcal'],4,16],
+      ['15 months',15,'DTaP',['Diphtheria','Tetanus','Pertussis'],4,19],
+      ['4 years',48,'DTaP',['Diphtheria','Tetanus','Pertussis'],5,73],['4 years',48,'Polio',['Polio'],4,73],['4 years',48,'MMR',['Measles','Mumps','Rubella'],2,73],['4 years',48,'Varicella',['Varicella'],2,73]];
+    const src=sched==='uk'?UK:US;
+    return src.map((r,i)=>({id:sched+i,visit:r[0],from:r[1],group:r[2],ants:r[3],dose:r[4],until:r[5],kind:r[6]||'routine'}));
+  }
+  setScen(scen,ageM,sched){
+    const sc=sched||this.state.sched,HB=window.HBT,U=window.HBTUI;const lines=sc==='none'?[]:this.data(sc);const TODAY=new Date(),g={};
+    const addM=(d,m)=>{const x=new Date(d),w=Math.floor(m);x.setMonth(x.getMonth()+w);x.setDate(x.getDate()+Math.round((m-w)*30.4));return x;};
+    /* ageM null = the stored child: birth date from the profile; a number is a demo age counted back from today */
+    const A=ageM==null?U.ageMonths(HB.kid()):ageM;
+    const birth=ageM==null?new Date((HB.kidMeta(HB.kid()).born||'2026-07-11')+'T12:00:00'):addM(TODAY,-ageM);
+    const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const rows=sc==='uk'?U.vaccRows(HB.kid()):[];
+    lines.forEach((l,i)=>{const ok=scen==='stored'?(sc==='uk'?rows[i].given:l.until<A&&l.kind!=='mnn'):scen==='caught'?l.from<=A:scen==='partial'?l.from<=Math.min(A,4):false;if(ok&&l.kind!=='mnn')g[l.id]={date:iso(addM(birth,l.from+0.1))};});
+    this.setState({scen,ageM,sched:sc,given:g,dis:{},statusMsg:null,sheet:null});
+  }
+  fail(er,retry){clearTimeout(this.tt);if(this.state.sheet){this.setState({formErr:er.msg});}else{const c=er.code==='network'||er.code==='server';this.setState({toast:er.msg,undo:null,retry:c?retry:null,toastErr:true});this.tt=setTimeout(()=>this.setState({toast:null,retry:null,toastErr:false}),9000);}}
+  renderVals(){var v=this.__rv();v.hdr=window.HBTUI?window.HBTUI.hdr():{name:"",initial:"",href:"Choose Child.dc.html"};return v;}
+  __rv(){
+    const DK=window.HBTUI?window.HBTUI.isDark(this):false;
+    const HB=window.HBT,fp=HB.pref('fail')||'off',self=this;
+    const W=fn=>{const er=HB.tryWrite('other');if(er)return self.fail(er,()=>W(fn));fn();};
+    const s=this.state,P=h=>({__html:h}),z2=n=>String(n).padStart(2,'0');
+    const TODAY=new Date();
+    const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const addM=(d,m)=>{const x=new Date(d),w=Math.floor(m);x.setMonth(x.getMonth()+w);x.setDate(x.getDate()+Math.round((m-w)*30.4));return x;};
+    const AM=s.ageM==null?window.HBTUI.ageMonths(HB.kid()):s.ageM;
+    const birth=s.ageM==null?new Date((HB.kidMeta(HB.kid()).born||'2026-07-11')+'T12:00:00'):addM(TODAY,-s.ageM);
+    const IC={check:'<path d="M20 6 9 17l-5-5"/>',clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',cal:'<path d="M8 2v4M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',minus:'<path d="M5 12h14"/>',plus:'<path d="M12 5v14M5 12h14"/>',dot:'<circle cx="12" cy="12" r="5"/>',
+      Home:'<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',Timeline:'<path d="M3 12h.01M3 18h.01M3 6h.01M8 12h13M8 18h13M8 6h13"/>',Growth:'<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',More:'<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+      shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'};
+    const HUE=235;
+    const chipStyle=`width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex:none;background:${DK?`oklch(0.3 0.05 ${HUE})`:`oklch(0.95 0.04 ${HUE})`};color:${DK?`oklch(0.84 0.11 ${HUE})`:`oklch(0.42 0.12 ${HUE})`}`;
+    const L=DK?{bg:'oklch(0.19 0.015 50)',card:'oklch(0.245 0.015 50)',fg:'oklch(0.95 0.01 70)',muted:'oklch(0.74 0.02 60)',border:'oklch(0.36 0.015 50)',primary:'oklch(0.78 0.13 55)',pfg:'oklch(0.2 0.02 50)',tl:'oklch(0.45 0.15 38)',soft:'oklch(0.3 0.05 55)',ink:'oklch(0.84 0.11 55)'}:{bg:'oklch(0.982 0.008 70)',card:'oklch(0.998 0.003 70)',fg:'oklch(0.24 0.02 50)',muted:'oklch(0.48 0.02 50)',border:'oklch(0.9 0.012 60)',primary:'oklch(0.53 0.17 38)',pfg:'oklch(0.99 0 0)',tl:'oklch(0.8 0.12 55)',soft:'oklch(0.95 0.04 55)',ink:'oklch(0.42 0.12 38)'};
+    const D=s.desktop;
+    const appStyle=`--bg:${L.bg};--card:${L.card};--fg:${L.fg};--muted:${L.muted};--border:${L.border};--primary:${L.primary};--primary-fg:${L.pfg};--toast-link:${L.tl};--soft:${L.soft};--ink:${L.ink};display:flex;width:${D?980:390}px;height:${D?780:800}px;background:var(--bg);color:var(--fg);border-radius:${D?14:28}px;overflow:hidden;position:relative;flex:none;box-shadow:0 20px 60px rgba(0,0,0,.35)`;
+    const seg=on=>`flex:1;min-height:34px;border-radius:8px;border:1px solid ${on?'#2a2420':'#d8d0c8'};background:${on?'#2a2420':'#fff'};color:${on?'#fff':'#2a2420'};font-size:12px;font-weight:600;cursor:pointer;padding:0 4px`;
+    const opt=(label,on,cur)=>({label,on,style:seg(cur)});
+    const toggles=[
+      {title:'Next save',opts:[opt('Works',()=>{HB.setPref('fail','off');this.setState({});},fp==='off'),opt('Offline',()=>{HB.setPref('fail','network');this.setState({});},fp==='network'),opt('Error',()=>{HB.setPref('fail','server');this.setState({});},fp==='server')]},
+      {title:'Schedule',opts:[opt('England',()=>this.setScen(s.scen,s.ageM,'uk'),s.sched==='uk'),opt('US',()=>this.setScen(s.scen,s.ageM,'us'),s.sched==='us'),opt('None',()=>this.setScen(s.scen,s.ageM,'none'),s.sched==='none')]},
+      {title:'Age',opts:[[null,'Stored'],[0.7,'3 wk'],[5,'5 mo'],[14,'14 mo'],[50,'4 y']].map(([m,l])=>opt(l,()=>this.setScen(s.scen,m),s.ageM===m))},
+      {title:'Records',opts:[['stored','Sample'],['fresh','None'],['partial','Some'],['caught','Caught up']].map(([k,l])=>opt(l,()=>this.setScen(k,s.ageM),s.scen===k))},
+      {title:'Role',opts:[opt('Guardian',()=>this.setState({cg:false}),!s.cg),opt('Caregiver',()=>this.setState({cg:true}),s.cg)]},
+      {title:'Theme',opts:[opt('Light',()=>HBTUI.setTheme('light'),HBTUI.theme()==='light'),opt('Dark',()=>HBTUI.setTheme('dark'),HBTUI.theme()==='dark'),opt('Auto',()=>HBTUI.setTheme('auto'),HBTUI.theme()==='auto')]},
+      {title:'Layout',opts:[opt('Phone',()=>this.setState({desktop:false}),!D),opt('≥768 side-nav',()=>this.setState({desktop:true}),D)]}];
+    const tabDefs=[['Home','Kid Home.dc.html'],['Timeline','Timeline.dc.html'],['Growth','Growth.dc.html'],['More','']];
+    const tabs=tabDefs.map(([l,h])=>({label:l,icon:P(IC[l]),href:h||'#more',on:l==='More'?(e=>{e.preventDefault();this.setState({sheet:'more'});}):undefined,
+      tabStyle:`flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:12px;font-weight:600;text-decoration:none;color:${l==='More'?'var(--primary)':'var(--muted)'}`,
+      sideStyle:`display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:10px;font-size:14px;font-weight:600;text-decoration:none;background:${l==='More'?'var(--bg)':'transparent'};color:${l==='More'?'var(--primary)':'var(--fg)'}`}));
+    const META={uk:{authority:'UKHSA',edition:'Sept 2026',retrieved:'Sep 14, 2026',lic:'Sample text: licence and attribution for the schedule appear here, as the licence requires.',omitted:'Sample: school-age programme, travel vaccines and selective programmes.',name:'England',sub:'UKHSA · Sept 2026'},us:{authority:'CDC',edition:'2025 edition, revised Jul 2, 2025',retrieved:'Nov 2, 2025',lic:'Sample text: licence and attribution for the schedule appear here, as the licence requires.',omitted:'Sample: catch-up rules, risk-group vaccines, adolescent and adult schedules.',name:'United States',sub:'CDC · 2025 edition'},none:{authority:'',edition:'',retrieved:'',lic:'',omitted:'',name:'None yet',sub:''}}[s.sched];
+    const lines=s.sched==='none'?[]:this.data(s.sched);
+    const st=l=>{if(s.given[l.id])return 'given';if(s.dis[l.id])return 'dismissed';if(AM<l.from)return 'upcoming';if(AM<l.until)return 'due';return l.kind==='mnn'?'available':'overdue';};
+    const BD={given:['Given','check'],due:['Due','dot'],overdue:['Overdue','clock'],upcoming:['Upcoming','cal'],dismissed:['Dismissed','minus'],available:['Available','plus']};
+    const bstyle=k=>{const b='display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;flex:none;white-space:nowrap;';
+      return b+({given:'border:1px solid transparent;background:var(--soft);color:var(--ink)',due:'border:1.5px solid var(--primary);color:var(--ink)',overdue:'border:1.5px dashed var(--primary);color:var(--ink)',upcoming:'border:1px solid var(--border);color:var(--muted)',dismissed:'border:1px solid var(--border);color:var(--muted)',available:'border:1px dotted var(--muted);color:var(--muted)'})[k];};
+    const ORDER=['overdue','due','upcoming','available','dismissed','given'];
+    const dateOf=(l,m)=>fmt(addM(birth,m));
+    const cardTitle=l=>l.group+' · dose '+l.dose;
+    const winText=l=>(l.kind==='mnn'?'May not be needed, depending on the product. ':'')+'Usual window '+dateOf(l,l.from)+' – '+dateOf(l,l.until);
+    // visits
+    const keys=[];lines.forEach(l=>{if(!keys.includes(l.visit))keys.push(l.visit);});
+    const vs=keys.map(k=>{const ls=lines.filter(l=>l.visit===k);const sts=ls.map(st);const top=ORDER.find(o=>sts.includes(o));
+      const sec=top==='overdue'||top==='due'?0:top==='upcoming'?1:2;
+      const openLines=ls.filter(l=>['due','overdue','upcoming','available'].includes(st(l)));
+      const title=k==='Birth'?'Birth':k+' vaccines';
+      return {k,ls,top,sec,title,openLines};}).sort((a,b)=>a.sec-b.sec);
+    const doneN=vs.filter(v=>v.sec===2).length;let prevSec=-1,laterIdx=0;
+    const visits=vs.map(v=>{const first=v.sec!==prevSec;prevSec=v.sec;const li=v.sec===1?laterIdx++:0;
+      const cards=v.ls.map(l=>{const k=st(l),g=s.given[l.id],d=s.dis[l.id];
+        return {title:cardTitle(l),ants:l.ants.join(', '),badge:BD[k][0],badgeIcon:P(IC[BD[k][1]]),badgeStyle:bstyle(k),isGiven:k==='given',isDismissed:k==='dismissed',isOpen:k!=='given'&&k!=='dismissed',
+          givenText:g?'Given '+fmt(new Date(g.date+'T00:00:00')):'',editLabel:'Edit '+cardTitle(l)+', given '+(g?g.date:''),dismissedText:d==='not_needed'?'Dismissed: not needed':'Dismissed: given, date unknown',
+          undoLabel:'Undo dismissal of '+cardTitle(l),dismissLabel:'Dismiss '+cardTitle(l),windowText:winText(l),
+          onEdit:()=>this.setState({sheet:'edit',editId:l.id,editDate:g.date,delAsk:false}),
+          onUndo:()=>{const nd={...s.dis};delete nd[l.id];this.setState({dis:nd});this.toast('Dismissal undone');},
+          onDismiss:()=>this.setState({sheet:'dismiss',dsmId:l.id,reason:'not_needed'})};});
+      return {title:v.title,badge:BD[v.top][0],badgeIcon:P(IC[BD[v.top][1]]),badgeStyle:bstyle(v.top),open:v.sec===0||(v.sec===1&&li===0),
+        sectionLabel:first?(v.sec===0?'Due and overdue':v.sec===1?'Coming up':'Completed ('+doneN+')'):'',cards,canRecord:v.openLines.length>0&&v.sec!==1,recordLabel:'Record '+v.title,
+        onRecord:()=>{const r={};v.openLines.forEach(l=>{const k=st(l);if(k==='due'||k==='overdue')r[l.id]=true;});this.setState({sheet:'record',rec:r,recVisit:v.k,recDate:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()});}};});
+    const overdueLines=lines.filter(l=>st(l)==='overdue');
+    const noDoses=Object.keys(s.given).length===0&&Object.keys(s.dis).length===0;
+    const bannerOn=!s.cg&&noDoses&&overdueLines.length>=3&&!s.statusMsg;
+    // record sheet
+    const recSrc=(s.recVisit?lines.filter(l=>l.visit===s.recVisit):lines).filter(l=>['due','overdue','available'].includes(st(l)));
+    const recItems=recSrc.map(l=>{const on=!!s.rec[l.id];return {title:cardTitle(l),sub:l.visit+' · '+l.ants.join(', '),checked:on,style:`display:flex;align-items:center;gap:12px;min-height:56px;padding:8px 12px;border-radius:12px;border:1px solid ${on?'var(--primary)':'var(--border)'};background:var(--bg);cursor:pointer`,on:()=>this.setState({rec:{...s.rec,[l.id]:!on}})};});
+    const nRec=Object.keys(s.rec).filter(k=>s.rec[k]).length;
+    // dismiss
+    const dl=lines.find(l=>l.id===s.dsmId);
+    const reasonOpts=[['not_needed','Not needed'],['given_unknown','Given, date unknown']].map(([k,l])=>({label:l,pressed:s.reason===k,on:()=>this.setState({reason:k}),style:`min-height:52px;border-radius:12px;padding:0 14px;text-align:left;font-size:15px;font-weight:600;cursor:pointer;border:${s.reason===k?'1.5px solid var(--primary)':'1px solid var(--border)'};background:${s.reason===k?'var(--soft)':'var(--bg)'};color:var(--fg)`}));
+    // older
+    const froms=[...new Set(lines.map(l=>l.from))].sort((a,b)=>a-b);
+    const dflt=(()=>{const due=lines.find(l=>st(l)==='due');return due?due.from:(froms.find(f=>f>AM)||999);})();
+    const before=s.before===null?dflt:s.before;
+    const olderSet=lines.filter(l=>l.from<before&&['routine','mnn'].includes(l.kind)&&['due','overdue','upcoming','available'].includes(st(l))&&AM>=l.from);
+    const nameFor=f=>{const l=lines.find(x=>x.from===f);return l?l.visit:'';};
+    const beforeOpts=froms.filter(f=>f>0).map(f=>({value:String(f),label:nameFor(f)+' vaccines',selected:f===before}));
+    const sheet=s.sheet;
+    const editLine=lines.find(l=>l.id===s.editId);
+    const NV=window.HBTUI.nav({cg:s.cg,sheets:['theme'],open:id=>this.setState({sheet:id,formErr:null})});
+    const sideTabs=[...tabs.filter(t=>t.label!=='More'),...NV.side];
+    const schedOpts=[['uk','England','UKHSA · Sept 2026'],['us','United States','CDC · 2025 edition'],['none','None yet','No schedule shown']].map(([k,label,sub])=>({label,sub,pressed:s.sched===k,mark:s.sched===k?'✓':'',on:()=>{this.setScen(s.scen,s.ageM,k);this.toast('Schedule set to '+label);},style:`display:flex;align-items:center;min-height:60px;border-radius:12px;padding:0 14px;cursor:pointer;border:${s.sched===k?'1.5px solid var(--primary)':'1px solid var(--border)'};background:${s.sched===k?'var(--soft)':'var(--bg)'};color:var(--fg)`}));
+    return {formErr:s.formErr,kid:window.HBT.kidName(),toggles,tabs,appStyle,chipStyle,desktop:D,phoneDisplay:D?'none':'flex',roleLabel:s.cg?'Caregiver':'Guardian',guardian:!s.cg,caregiver:s.cg,
+      ageText:s.ageM==null?window.HBTUI.age(HB.kid()):AM<2?'3 weeks':AM<24?Math.round(AM)+' months':Math.floor(AM/12)+' years',
+      icShield:P(IC.shield),icInfo:P(IC.info),noSchedule:s.sched==='none',hasSchedule:s.sched!=='none',meta:META,visits,
+      showBanner:bannerOn,overdueCount:overdueLines.length,statusMsg:s.statusMsg,
+      undoOlder:()=>{if(s.olderSnap)this.setState({dis:s.olderSnap,statusMsg:null,olderSnap:null});},
+      also:[{title:'RSV antibody',sub:'Offered seasonally; discuss with your clinic'}],hasAlso:s.sched==='us',
+      seasonal:[{title:'Influenza',sub:'None recorded yet'},{title:'COVID-19',sub:'None recorded yet'}],hasOther:AM>=14,
+      sheet:!!sheet,isRecord:sheet==='record',isDismiss:sheet==='dismiss',isOlder:sheet==='older',isSchedule:sheet==='schedule',isEdit:sheet==='edit',isMore:sheet==='more',...window.HBTUI.themeVals(sheet),isMenu:sheet==='menu',isAbout:sheet==='about',
+      sheetTitle:{record:s.recVisit?'Record '+(s.recVisit==='Birth'?'birth':s.recVisit)+' vaccines':'Record a vaccination',dismiss:'Dismiss vaccine',older:'Dismiss older vaccines',schedule:'Vaccination schedule',menu:'Schedule options',about:'About this schedule',edit:'Edit dose',more:'More',theme:'Change theme'}[sheet]||'',
+      recItems,recEmpty:recItems.length===0,recDate:s.recDate,setRecDate:e=>this.setState({recDate:e.target.value}),saveLabel:nRec>0?'Save '+nRec+(nRec===1?' vaccine':' vaccines'):'Save',
+      openRecord:()=>this.setState({sheet:'record',rec:{},recVisit:null,recDate:(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})()}),
+      saveRecord:()=>{if(nRec===0){this.toast('Tick at least one vaccine');return;}W(()=>{const g={...s.given};Object.keys(s.rec).filter(k=>s.rec[k]).forEach(k=>{g[k]={date:s.recDate};});this.setState({given:g,sheet:null,undo:{given:s.given}});this.toast('Recorded '+nRec+(nRec===1?' vaccine':' vaccines'),true);});},
+      dismissName:dl?cardTitle(dl):'',reasons:reasonOpts,
+      confirmDismiss:()=>W(()=>{this.setState({dis:{...s.dis,[s.dsmId]:s.reason},sheet:null,undo:{dis:s.dis}});this.toast('Dismissed',true);}),
+      openOlder:()=>this.setState({sheet:'older',before:null,reason:'not_needed'}),setBefore:e=>this.setState({before:Number(e.target.value)}),beforeOpts,
+      olderPreview:olderSet.length===0?'Nothing to dismiss before this visit.':'This dismisses '+olderSet.length+(olderSet.length===1?' vaccine.':' vaccines.'),
+      confirmOlder:()=>{if(olderSet.length===0)return;W(()=>{const nd={...s.dis};olderSet.forEach(l=>{nd[l.id]=s.reason;});this.setState({dis:nd,olderSnap:s.dis,sheet:null,formErr:null,statusMsg:'Dismissed '+olderSet.length+(olderSet.length===1?' vaccine.':' vaccines.')});});},
+      openSchedule:()=>this.setState({sheet:'schedule'}),openMenu:()=>this.setState({sheet:'menu'}),openAbout:()=>this.setState({sheet:'about'}),showMenu:s.sched!=='none'&&!s.cg,canOlder:overdueLines.length>0&&!bannerOn,schedOpts,
+      editSub:editLine?cardTitle(editLine)+' · '+editLine.ants.join(', '):'',editDate:s.editDate,setEditDate:e=>this.setState({editDate:e.target.value}),delAsk:s.delAsk,
+      saveEdit:()=>W(()=>{this.setState({given:{...s.given,[s.editId]:{date:s.editDate}},sheet:null});this.toast('Dose updated');}),
+      askDelete:()=>this.setState({delAsk:true}),keepDose:()=>this.setState({delAsk:false}),
+      doDelete:()=>W(()=>{const ng={...s.given};delete ng[s.editId];this.setState({given:ng,sheet:null,undo:{given:s.given}});this.toast('Dose deleted',true);}),
+      moreItems:NV.more,sideTabs,closeSheet:()=>this.setState({sheet:null,formErr:null}),stop:e=>e.stopPropagation(),
+      toastRole:s.toastErr?'alert':'status',toastRetry:!!s.retry,doRetry:()=>{const r=s.retry;this.setState({toast:null,retry:null,toastErr:false});if(r)r();},toast:!!s.toast,toastText:s.toast,toastUndo:!!s.undo,
+      doUndo:()=>{const u=s.undo;if(!u)return;W(()=>{const n={toast:'Undone',undo:null};if(u.given)n.given=u.given;if(u.dis)n.dis=u.dis;this.setState(n);});}
+    };
+  }
+}
+</script>
+</body>
+</html>

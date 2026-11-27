@@ -1,17 +1,45 @@
 <script lang="ts">
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
-	import { ERROR_CLASS } from '#lib/components/field.js';
-	import TimelineRow from '#lib/components/TimelineRow.svelte';
+	import TimelineRow, { TIMELINE_VISUAL } from '#lib/components/TimelineRow.svelte';
+	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { Card } from '#lib/components/ui/card/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
-	import { TIMELINE_TYPE, TRACKER_KINDS, TRACKER_LABEL } from '#lib/constants.js';
-	import { formatDayHeading } from '#lib/timeline.js';
+	import { TIMELINE_KINDS, TIMELINE_LABEL, TIMELINE_TYPE } from '#lib/constants.js';
+	import RunningTimer, { type Timer } from '#lib/components/RunningTimer.svelte';
+	import { SECTION_HEADING } from '#lib/components/home.js';
+	import { formatDayHeading, sinceLast } from '#lib/timeline.js';
+	import type { TimelineType } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 
+	let now = $state(new Date());
+	$effect(() => {
+		const id = setInterval(() => (now = new Date()), 1000);
+		return () => clearInterval(id);
+	});
+	const since = $derived(data.last && data.running ? sinceLast(data.last, data.running, now) : []);
+	const timers = $derived<Timer[]>([
+		...(data.running?.sleep ? [{ kind: 'sleep' as const, entry: data.running.sleep }] : []),
+		...(data.running?.nursing ? [{ kind: 'nursing' as const, entry: data.running.nursing }] : [])
+	]);
+	const SEGMENT: Partial<Record<TimelineType, string>> = {
+		bottle: 'tracker-bottle',
+		nursing: 'tracker-nursing',
+		pumping: 'tracker-pumping',
+		sleep: 'tracker-sleep',
+		diaper: 'tracker-diaper',
+		meal: 'tracker-solids',
+		symptom: 'tracker-symptom'
+	};
+	const SEGMENT_PX = 5;
+	const SEGMENT_MAX_PX = 26;
+
 	const path = $derived(resolve('/(app)/kids/[kid]/timeline', { kid: data.kid.id }));
+	const home = $derived(resolve('/(app)/kids/[kid]', { kid: data.kid.id }));
 	const error = (name: string) => (data.error?.field === name ? data.error.message : null);
 </script>
 
@@ -19,80 +47,195 @@
 	<title>Timeline · {data.kid.name} · happybabytracker</title>
 </svelte:head>
 
-<p class="mb-2 text-sm">
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="underline">{data.kid.name}</a>
-</p>
-<div class="mb-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-	<h1 class="text-xl font-semibold">Timeline for {data.kid.name}</h1>
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="text-sm underline"
-		>Log something</a
-	>
-</div>
-
-<form method="GET" action={path} class="mb-6 flex max-w-md flex-col gap-4">
-	<div class="grid grid-cols-2 gap-3">
-		<Field id="timeline-from" label="From" error={error('from')}>
-			{#snippet children(control)}
-				<Input {...control} type="date" name="from" value={data.filter.from} required />
-			{/snippet}
-		</Field>
-		<Field id="timeline-to" label="To" error={error('to')}>
-			{#snippet children(control)}
-				<Input {...control} type="date" name="to" value={data.filter.to} required />
-			{/snippet}
-		</Field>
+<div
+	class="flex flex-col gap-[18px] md:max-w-[720px] xl:mx-auto xl:grid xl:w-[920px] xl:max-w-none xl:grid-cols-[448px_448px] xl:items-start xl:gap-x-6"
+>
+	<div class="mt-3.5 flex items-center gap-2.5 xl:col-span-2">
+		<div class="min-w-0 flex-1">
+			<h1>Timeline</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{data.ages[data.kid.id]}</p>
+		</div>
+		<Button href={home} class="flex-none">Log something</Button>
 	</div>
-	<fieldset class="flex flex-wrap gap-x-4 gap-y-2">
-		<legend class="mb-1 text-sm font-medium">Show</legend>
-		{#each TRACKER_KINDS as kind (kind)}
-			<label class="flex min-h-8 items-center gap-2">
-				<input
-					type="checkbox"
-					name="types"
-					value={TIMELINE_TYPE[kind]}
-					checked={data.filter.kinds.includes(kind)}
-					class="size-4"
-				/>
-				{TRACKER_LABEL[kind]}
-			</label>
-		{/each}
-	</fieldset>
-	<Button type="submit" class="self-start">Show</Button>
-</form>
 
-{#if data.error?.field === 'cursor'}
-	<p class="{ERROR_CLASS} mb-4" role="alert">{data.error.message}</p>
-	<p><a href="{path}?{data.newest}" class="underline">Back to newest</a></p>
-{:else if !data.error}
-	{#each data.days as day (day.date)}
-		<section aria-labelledby="day-{day.date}" class="mb-6">
-			<h2 id="day-{day.date}" class="mb-1 font-semibold">{formatDayHeading(day.date)}</h2>
-			{#if day.totals.length > 0}
-				<ul
-					aria-label="Totals"
-					class="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground"
-				>
-					{#each day.totals as row (row.label)}
-						<li>{row.label} {row.value}</li>
+	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if since.length > 0}
+			<section
+				aria-label="Since last"
+				class="grid grid-cols-3 overflow-hidden rounded-2xl border bg-card"
+			>
+				{#each since as cell (cell.label)}
+					<div class="-mr-px border-r px-3 py-2.5">
+						<p class="text-xs text-muted-foreground">{cell.label}</p>
+						<p class="mt-0.5 text-base font-semibold">{cell.value}</p>
+					</div>
+				{/each}
+			</section>
+		{/if}
+		{#if data.week}
+			<section aria-labelledby="week-heading" class="flex flex-col gap-2">
+				<div class="flex items-center">
+					<h2 id="week-heading" class="{SECTION_HEADING} flex-1">Last 7 days</h2>
+					{#if data.allDays}
+						<a
+							href="{path}?{data.allDays}"
+							class="inline-flex min-h-11 items-center px-1.5 text-[13px] underline"
+							>Show all days</a
+						>
+					{/if}
+				</div>
+				<ul class="grid grid-cols-7 gap-0.5 rounded-2xl border bg-card p-1.5">
+					{#each data.week as cell (cell.date)}
+						<li class="flex">
+							<a
+								href="{path}?{cell.query}"
+								aria-current={cell.current ? 'date' : undefined}
+								class="flex min-h-24 w-full flex-col items-center justify-between gap-1 rounded-[10px] border border-transparent px-0.5 py-1.5 aria-[current=date]:border-[1.5px] aria-[current=date]:border-primary aria-[current=date]:bg-accent"
+							>
+								<span aria-hidden="true" class="text-xs font-semibold text-muted-foreground"
+									>{cell.dow}</span
+								>
+								<span class="sr-only">{cell.label}</span>
+								<span class="flex h-[54px] w-full flex-col-reverse items-center gap-px">
+									{#each cell.segs as seg (seg.type)}
+										<span
+											aria-hidden="true"
+											class="tracker-bar block w-[70%] rounded-[3px] {SEGMENT[seg.type]}"
+											style:height="{Math.min(seg.count * SEGMENT_PX, SEGMENT_MAX_PX)}px"
+										></span>
+									{/each}
+								</span>
+							</a>
+						</li>
 					{/each}
 				</ul>
-			{/if}
-			<ul aria-label="Entries" class="flex flex-col gap-2">
-				{#each day.items as item (item.entry.id)}
-					<TimelineRow {item} kidId={data.kid.id} zone={data.kid.timeZone} units={data.units} />
-				{/each}
-			</ul>
-		</section>
-	{:else}
-		<p>Nothing logged in this range</p>
-	{/each}
+			</section>
+		{/if}
+		<form method="GET" action={path} class="flex flex-col gap-[18px]">
+			<div class="grid grid-cols-2 gap-3">
+				<Field id="timeline-from" label="From" error={error('from')}>
+					{#snippet children(control)}
+						<Input {...control} type="date" name="from" value={data.filter.from} required />
+					{/snippet}
+				</Field>
+				<Field id="timeline-to" label="To" error={error('to')}>
+					{#snippet children(control)}
+						<Input {...control} type="date" name="to" value={data.filter.to} required />
+					{/snippet}
+				</Field>
+			</div>
+			<fieldset class="m-0 min-w-0 border-0 p-0">
+				<legend
+					class="mb-2 p-0 text-xs font-semibold tracking-[0.06em] text-muted-foreground uppercase"
+					>Show</legend
+				>
+				<div class="flex flex-wrap gap-2">
+					{#each TIMELINE_KINDS as kind (kind)}
+						{@const Icon = TIMELINE_VISUAL[kind].icon}
+						<label
+							class="relative inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-sm border bg-card px-3.5 text-sm font-medium has-checked:border-primary has-checked:bg-accent has-checked:font-semibold has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary"
+						>
+							<input
+								type="checkbox"
+								name="types"
+								value={TIMELINE_TYPE[kind]}
+								checked={data.filter.kinds.includes(kind)}
+								class="peer absolute inset-0 m-0 size-full cursor-pointer opacity-0"
+							/>
+							<CheckIcon
+								aria-hidden="true"
+								class="hidden size-3.5 text-primary peer-checked:block"
+							/>
+							<Icon aria-hidden="true" class="size-4" />
+							{TIMELINE_LABEL[kind]}
+						</label>
+					{/each}
+				</div>
+			</fieldset>
+			<Button type="submit" variant="outline" class="self-start">Show</Button>
+		</form>
+	</div>
 
-	<p class="flex gap-6">
-		{#if data.older}
-			<a href="{path}?{data.older}" rel="next" class="underline">Older</a>
+	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
+		{#if timers.length > 0}
+			<section aria-labelledby="running-heading" class="flex flex-col gap-2.5">
+				<h2 id="running-heading" class={SECTION_HEADING}>Running now</h2>
+				<ul class="flex flex-col gap-2.5">
+					{#each timers as timer (timer.kind)}
+						<RunningTimer
+							{timer}
+							zone={data.kid.timeZone}
+							kidId={data.kid.id}
+							{now}
+							actions={home}
+						/>
+					{/each}
+				</ul>
+			</section>
 		{/if}
-		{#if data.newest}
-			<a href="{path}?{data.newest}" class="underline">Back to newest</a>
+		{#if data.error?.field === 'cursor'}
+			<Alert>{data.error.message}</Alert>
+			<a href="{path}?{data.newest}" class="inline-flex min-h-12 items-center self-start underline"
+				>Back to newest</a
+			>
+		{:else if !data.error}
+			{#if data.days.length === 0}
+				<Card class="items-start gap-2 border-dashed px-[22px] py-[22px]">
+					<p class="text-[17px] font-semibold">Nothing logged in this range</p>
+					<p class="text-[13.5px] leading-normal text-muted-foreground">
+						Entries from every tracker appear here, newest first, grouped by day.
+					</p>
+					<Button href={home} variant="outline">Log something</Button>
+				</Card>
+			{:else}
+				<div class="flex flex-col gap-5">
+					{#each data.days as day (day.date)}
+						<section aria-labelledby="day-{day.date}" class="flex flex-col gap-2">
+							<div>
+								<h2 id="day-{day.date}" class="text-base font-semibold">
+									{formatDayHeading(day.date)}
+								</h2>
+								{#if day.totals.length > 0}
+									<ul
+										aria-label="Totals"
+										class="mt-0.5 flex flex-wrap gap-x-3 text-[12.5px] text-muted-foreground"
+									>
+										{#each day.totals as row (row.label)}
+											<li>{row.label} {row.value}</li>
+										{/each}
+									</ul>
+								{/if}
+							</div>
+							<ul aria-label="Entries" class="flex flex-col gap-1.5">
+								{#each day.items as item (item.entry.id)}
+									<TimelineRow
+										{item}
+										kidId={data.kid.id}
+										zone={data.kid.timeZone}
+										units={data.units}
+									/>
+								{/each}
+							</ul>
+						</section>
+					{/each}
+				</div>
+			{/if}
+
+			{#if data.older || data.newest}
+				<div class="flex flex-wrap items-center gap-x-6">
+					{#if data.older}
+						<Button href="{path}?{data.older}" rel="next" variant="outline" class="px-5"
+							>Older</Button
+						>
+					{/if}
+					{#if data.newest}
+						<a
+							href="{path}?{data.newest}"
+							class="inline-flex min-h-12 items-center text-sm underline">Back to newest</a
+						>
+					{/if}
+				</div>
+			{/if}
 		{/if}
-	</p>
-{/if}
+	</div>
+</div>

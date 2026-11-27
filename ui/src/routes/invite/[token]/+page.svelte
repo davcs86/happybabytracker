@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { INVITE_VALIDITY } from '#lib/constants.js';
 	import SetPasswordForm from '#lib/components/SetPasswordForm.svelte';
 	import type { PageProps } from './$types';
 
@@ -9,6 +10,7 @@
 	heading="Set your password"
 	description="Choose a password to finish setting up your account."
 	valid={data.valid}
+	lifetime={INVITE_VALIDITY}
 	username={data.valid ? data.username : undefined}
 	{form}
 />

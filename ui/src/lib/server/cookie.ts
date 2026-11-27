@@ -6,9 +6,12 @@ import {
 	PARENT_SESSION_MAX_AGE_S,
 	PUSH_DEVICE_COOKIE,
 	PUSH_DEVICE_COOKIE_MAX_AGE_S,
-	SESSION_COOKIE
+	SESSION_COOKIE,
+	THEME_COOKIE,
+	THEME_COOKIE_MAX_AGE_S
 } from './constants';
 import { notificationsPath } from '../paths';
+import type { Theme } from '../constants';
 import type { SessionKind } from '../types';
 
 const ATTRIBUTES = { path: '/', httpOnly: true, secure: true, sameSite: 'strict' } as const;
@@ -49,4 +52,13 @@ export function setPushDeviceCookie(cookies: Cookies, deviceId: string): void {
 
 export function clearPushDeviceCookie(cookies: Cookies): void {
 	cookies.delete(PUSH_DEVICE_COOKIE, { ...PUSH_DEVICE_ATTRIBUTES });
+}
+
+// Lax, so the first page opened from another site already has the theme.
+export function setThemeCookie(cookies: Cookies, theme: Theme): void {
+	cookies.set(THEME_COOKIE, theme, {
+		...ATTRIBUTES,
+		sameSite: 'lax',
+		maxAge: THEME_COOKIE_MAX_AGE_S
+	});
 }

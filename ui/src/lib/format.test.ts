@@ -3,6 +3,9 @@ import {
 	ageMonths,
 	formatAge,
 	formatAgeDays,
+	formatAgo,
+	formatDaysAgo,
+	formatElapsed,
 	formatDuration,
 	formatInstant,
 	formatMilk,
@@ -201,5 +204,50 @@ describe('formatMilk', () => {
 			'weight gain 0.01 oz, about 0.9 fl oz'
 		);
 		expect(formatMilk(odd, { weight: 'kg', volume: 'ml' })).toBe('weight gain 100 g, about 7 ml');
+	});
+});
+
+describe('formatAgo', () => {
+	const now = new Date('2026-11-25T12:00:00Z');
+	const ago = (minutes: number) =>
+		formatAgo(new Date(now.getTime() - minutes * 60_000).toISOString(), now);
+	it('says how long ago an instant was, in the units the Home tiles use', () => {
+		expect(ago(0)).toBe('Just now');
+		expect(ago(0.5)).toBe('Just now');
+		expect(ago(1)).toBe('1 min ago');
+		expect(ago(59)).toBe('59 min ago');
+		expect(ago(60)).toBe('1 h ago');
+		expect(ago(94)).toBe('1 h 34 min ago');
+		expect(ago(24 * 60 - 1)).toBe('23 h 59 min ago');
+		expect(ago(24 * 60)).toBe('1 d ago');
+		expect(ago(3 * 24 * 60 + 600)).toBe('3 d ago');
+	});
+	it('never reads as the future', () => {
+		expect(ago(-5)).toBe('Just now');
+	});
+});
+
+describe('formatElapsed', () => {
+	it('is H:MM:SS, with the hours growing past a day', () => {
+		expect(formatElapsed(0)).toBe('0:00:00');
+		expect(formatElapsed(65)).toBe('0:01:05');
+		expect(formatElapsed(3600 + 34 * 60 + 7)).toBe('1:34:07');
+		expect(formatElapsed(26 * 3600)).toBe('26:00:00');
+		expect(formatElapsed(-3)).toBe('0:00:00');
+	});
+});
+
+describe('formatDaysAgo', () => {
+	const now = new Date('2026-11-25T12:00:00Z');
+	const ago = (days: number, hours = 0) =>
+		formatDaysAgo(new Date(now.getTime() - (days * 24 + hours) * 3_600_000).toISOString(), now);
+	it('says today, yesterday, then whole days, then whole months', () => {
+		expect(ago(0, 5)).toBe('today');
+		expect(ago(1)).toBe('yesterday');
+		expect(ago(2)).toBe('2 days ago');
+		expect(ago(29)).toBe('29 days ago');
+		expect(ago(30)).toBe('1 month ago');
+		expect(ago(75)).toBe('2 months ago');
+		expect(ago(400)).toBe('13 months ago');
 	});
 });

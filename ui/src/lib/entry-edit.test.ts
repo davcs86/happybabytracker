@@ -716,7 +716,8 @@ describe('formUnits', () => {
 			id: 'p1',
 			username: 'ana',
 			displayName: 'Ana',
-			units: { weight: 'lb', length: 'in', volume: 'floz', temp }
+			units: { weight: 'lb', length: 'in', volume: 'floz', temp },
+			passwordChangedAt: null
 		}
 	});
 

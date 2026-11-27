@@ -22,6 +22,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/growth"
 	"github.com/davcs86/happybabytracker/api/internal/httpapi"
 	"github.com/davcs86/happybabytracker/api/internal/milestones"
+	"github.com/davcs86/happybabytracker/api/internal/npi"
 	"github.com/davcs86/happybabytracker/api/internal/ntfy"
 	"github.com/davcs86/happybabytracker/api/internal/push"
 	"github.com/davcs86/happybabytracker/api/internal/reminders"
@@ -80,6 +81,9 @@ func start(ctx context.Context, getenv func(string) string, stdout io.Writer) (*
 	deps := httpapi.Deps{
 		Store: st, Cfg: cfg, Limiter: auth.NewLimiter(constants.LoginAttemptsPerMinute, time.Now), Now: time.Now, Log: log,
 		Resolver: net.DefaultResolver,
+	}
+	if cfg.NPISearch {
+		deps.NPI, deps.NPILimiter = npi.New(nil, time.Now), auth.NewLimiter(constants.NPISearchesPerMinute, time.Now)
 	}
 	if err := wirePush(&deps, cfg); err != nil {
 		return nil, errors.Join(err, st.Close())

@@ -275,9 +275,12 @@ func TestSessionShape(t *testing.T) {
 		t.Fatalf("parent body = %v", m)
 	}
 	parent := m["parent"].(map[string]any)
-	sameKeys(t, parent, "id", "username", "display_name", "units")
+	sameKeys(t, parent, "id", "username", "display_name", "units", "password_changed_at")
 	if parent["id"] != p.ID || parent["username"] != "ana" || parent["display_name"] != "Name of ana" {
 		t.Fatalf("parent = %v", parent)
+	}
+	if parent["password_changed_at"] != stamp(k.now) {
+		t.Fatalf("password_changed_at = %v, want %v", parent["password_changed_at"], stamp(k.now))
 	}
 	units := parent["units"].(map[string]any)
 	sameKeys(t, units, "weight", "length", "volume", "temp")
@@ -407,6 +410,76 @@ func TestLogHasNoIdentifyingText(t *testing.T) {
 	for _, field := range []string{`"route":"POST /v1/session"`, `"route":"GET /v1/session"`, `"status":200`, `"status":401`, `"principal_kind":"parent"`, `"principal_kind":"none"`, `"request_id":"`, `"duration_ms":`} {
 		if !strings.Contains(logs, field) {
 			t.Errorf("log lacks %s:\n%s", field, logs)
+		}
+	}
+}
+
+func (k *kit) loginLabelled(username, label string) *httptest.ResponseRecorder {
+	k.t.Helper()
+	return k.serve(k.newReq(http.MethodPost, "/v1/session", map[string]string{"username": username, "password": testParentPass, "device_label": label}))
+}
+
+func TestLoginStoresTheDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	k.addParent("ana")
+	rec := k.loginLabelled("ana", "Safari on iPhone")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: %d %q", rec.Code, rec.Body.String())
+	}
+	token := bodyMap(t, rec)["token"].(string)
+	rows := bodyMap(t, k.do(http.MethodGet, "/v1/me/sessions", token, nil))["sessions"].([]any)
+	if got := rows[0].(map[string]any)["device_label"]; got != "Safari on iPhone" {
+		t.Errorf("device_label = %v", got)
+	}
+	plain := bodyMap(t, k.login("", "ana", testParentPass))["token"].(string)
+	for _, row := range bodyMap(t, k.do(http.MethodGet, "/v1/me/sessions", plain, nil))["sessions"].([]any) {
+		m := row.(map[string]any)
+		if m["current"] == true && m["device_label"] != nil {
+			t.Errorf("a login without a label lists %v, want null", m["device_label"])
+		}
+	}
+}
+
+func TestLoginRefusesABadDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	k.addParent("ana")
+	for _, label := range []string{strings.Repeat("a", 49), "Safari/iPhone", "<b>", "Safari\non iPhone"} {
+		rec := k.loginLabelled("ana", label)
+		m := bodyMap(t, rec)
+		if rec.Code != http.StatusUnprocessableEntity || m["error"] != "invalid" || m["field"] != "device_label" {
+			t.Errorf("label %q: %d %q, want 422 invalid device_label", label, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminLoginIgnoresTheDeviceLabel(t *testing.T) {
+	k := newKit(t)
+	rec := k.serve(k.newReq(http.MethodPost, "/v1/session", map[string]string{"username": testAdminUser, "password": testAdminPass, "device_label": "Safari on iPhone"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin login: %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLogNeverHoldsTheRedesignFields(t *testing.T) {
+	k := newKit(t)
+	const label = "Zelda Unique Phone"
+	p := k.addParent("zelda-unique-731")
+	kid := k.createKid(k.asParent("ana"), nil)
+	k.grant(k.asParent("ana"), kid, "zelda-unique-731", "guardian")
+	k.createDiaper(k.asParent("ana"), kid, map[string]any{"note": "note-unique-9915"})
+	token := bodyMap(t, k.loginLabelled("zelda-unique-731", label))["token"].(string)
+
+	for _, path := range []string{"/v1/session", "/v1/me/sessions", "/v1/kids/" + kid + "/home", "/v1/kids/" + kid + "/counts", "/v1/kids/" + kid + "/access"} {
+		if rec := k.do(http.MethodGet, path, token, nil); rec.Code != http.StatusOK {
+			t.Fatalf("GET %s: %d %q", path, rec.Code, rec.Body.String())
+		}
+	}
+	k.do(http.MethodGet, "/v1/admin/parents", k.asAdmin(), nil)
+
+	logs := k.Log.String()
+	for _, secret := range []string{label, "note-unique-9915", p.ID, stamp(k.now), "device_label", "password_changed_at", "last_active_at"} {
+		if strings.Contains(logs, secret) {
+			t.Errorf("log contains %q:\n%s", secret, logs)
 		}
 	}
 }

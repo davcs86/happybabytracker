@@ -30,6 +30,7 @@ export const load: PageServerLoad = async ({ locals, params, cookies, parent }) 
 	return {
 		kid,
 		today: todayInOrUtc(kid.timeZone),
+		visitId: entry.visitId,
 		values: growthEditValues(entry, session?.parent?.units ?? METRIC_UNITS)
 	};
 };

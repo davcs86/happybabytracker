@@ -238,6 +238,15 @@ func (d Deps) getKid(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, newKidView(kid, KidRoleFrom(r.Context())))
 }
 
+func (d Deps) kidCounts(w http.ResponseWriter, r *http.Request) {
+	n, err := d.Store.EntryCount(r.Context(), r.PathValue("kid"))
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]int{"entries": n})
+}
+
 // updateKid validates the stored kid with the patch applied, never the patch alone.
 func (d Deps) updateKid(w http.ResponseWriter, r *http.Request) {
 	var in kidInput

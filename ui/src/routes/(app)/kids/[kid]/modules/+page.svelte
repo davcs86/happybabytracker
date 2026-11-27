@@ -1,51 +1,62 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { enhance } from '$app/forms';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
+	import FormFrame from '#lib/components/FormFrame.svelte';
+	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { MODULE_LABEL } from '#lib/constants.js';
+	import { savedAs } from '#lib/drawer.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 </script>
 
-<svelte:head>
-	<title>Modules for {data.kid.name} · happybabytracker</title>
-</svelte:head>
+<FormFrame
+	class="mt-5 flex flex-col gap-[18px]"
+	documentTitle="Modules for {data.kid.name} · happybabytracker"
+>
+	{#snippet chrome()}
+		<div class="flex flex-col gap-1.5">
+			<h1>Modules for {data.kid.name}</h1>
+			<p class="text-sm leading-normal text-muted-foreground">
+				A module you turn off leaves the home screen; its entries stay and come back when you turn
+				it on.
+			</p>
+		</div>
+	{/snippet}
 
-<p class="mb-2 text-sm">
-	<a href={resolve('/(app)/kids/[kid]', { kid: data.kid.id })} class="underline">{data.kid.name}</a>
-</p>
-<h1 class="mb-1 text-xl font-semibold">Modules for {data.kid.name}</h1>
-<p class="mb-4 text-sm text-muted-foreground">
-	A module you turn off leaves the home screen; its entries stay and come back when you turn it on.
-</p>
+	{#if form?.saved}<Alert.Root role="status">Saved</Alert.Root>{/if}
+	{#if form?.message}<Alert.Root>{form.message}</Alert.Root>{/if}
 
-{#if form?.saved}<p role="status" class="mb-4 text-sm">Saved</p>{/if}
-{#if form?.message}<p class="{ERROR_CLASS} mb-4" role="alert">{form.message}</p>{/if}
-
-<form method="POST" action="?/save" class="flex max-w-md flex-col gap-4" use:enhance={keepValues}>
-	<fieldset class="flex flex-col gap-3">
-		<legend class="sr-only">Modules</legend>
-		{#each data.modules as m (m.module)}
-			<div class="flex items-start gap-3">
-				<input
-					id="module-{m.module}"
-					type="checkbox"
-					name="module"
-					value={m.module}
-					checked={m.enabled}
-					aria-describedby="module-{m.module}-default"
-					class="mt-1 size-4"
-				/>
-				<div class="flex flex-col">
-					<label for="module-{m.module}" class="font-medium">{MODULE_LABEL[m.module]}</label>
-					<span id="module-{m.module}-default" class="text-sm text-muted-foreground">
-						{m.default ? 'On' : 'Off'} by default for this age
-					</span>
+	<form
+		method="POST"
+		action="?/save"
+		class="flex max-w-[448px] flex-col gap-4"
+		use:enhance={savedAs('Modules saved')}
+	>
+		<fieldset class="flex flex-col rounded-2xl border bg-card px-4">
+			<legend class="sr-only">Modules</legend>
+			{#each data.modules as m (m.module)}
+				<div class="relative flex min-h-14 items-start gap-3 border-t py-2.5 first:border-t-0">
+					<input
+						id="module-{m.module}"
+						type="checkbox"
+						name="module"
+						value={m.module}
+						checked={m.enabled}
+						aria-describedby="module-{m.module}-default"
+						class="relative z-10 mt-0.5 size-5 shrink-0 accent-primary"
+					/>
+					<div class="flex min-w-0 flex-col">
+						<label for="module-{m.module}" class="font-medium after:absolute after:inset-0"
+							>{MODULE_LABEL[m.module]}</label
+						>
+						<span id="module-{m.module}-default" class="text-[13px] text-muted-foreground">
+							{m.default ? 'On' : 'Off'} by default for this age
+						</span>
+					</div>
 				</div>
-			</div>
-		{/each}
-	</fieldset>
-	<Button type="submit" class="self-start">Save</Button>
-</form>
+			{/each}
+		</fieldset>
+		<Button type="submit">Save</Button>
+	</form>
+</FormFrame>

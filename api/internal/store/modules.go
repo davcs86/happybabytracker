@@ -20,12 +20,12 @@ type ModuleState struct {
 }
 
 // DefaultEnabled is the spec's 7.2 table: every module is on below 24 months; from 24 months only growth,
-// vaccination, sickness and medication stay on.
+// vaccination, sickness, medication and visits stay on.
 func DefaultEnabled(m model.Module, b kidtime.Band) bool {
 	if b != kidtime.Band24Plus {
 		return true
 	}
-	return slices.Contains([]model.Module{"growth", "vaccination", "sickness", "medication"}, m)
+	return slices.Contains([]model.Module{"growth", "vaccination", "sickness", "medication", "visits"}, m)
 }
 
 // moduleTable is a module's entry table, its time column and whether it holds timers; code constants.

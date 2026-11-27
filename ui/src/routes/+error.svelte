@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { Button } from '#lib/components/ui/button/index.js';
 
+	const unreachable = $derived(page.status === 503);
+	const missing = $derived(page.status === 404);
 	const heading = $derived(
-		page.status === 404
+		missing
 			? 'Not found'
-			: page.status === 503
+			: unreachable
 				? 'The app cannot reach its server right now'
 				: 'Something went wrong'
+	);
+	const lead = $derived(
+		missing
+			? 'We can’t find that page. It may not exist, or you may not have access to it.'
+			: 'Your sign-in is kept. Try again in a moment.'
 	);
 </script>
 
@@ -14,11 +22,19 @@
 	<title>{heading} · happybabytracker</title>
 </svelte:head>
 
-<main class="mx-auto flex w-full max-w-xl flex-col items-start gap-4 p-4">
-	<h1 class="text-lg font-semibold">{heading}</h1>
-	<p class="text-muted-foreground">
-		{page.status === 503 ? 'Try again in a moment.' : `Error ${page.status}.`}
-	</p>
-	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- reloads the current page -->
-	<a class="underline" href={page.url.pathname + page.url.search}>Try again</a>
+<main class="flex min-h-screen flex-col justify-center px-5 py-6">
+	<div class="mx-auto flex w-full max-w-[400px] flex-col gap-4">
+		<p class="text-base font-bold">Happy baby</p>
+		<h1>{heading}</h1>
+		<p class="text-[14.5px] leading-normal text-muted-foreground">{lead}</p>
+		<p class="text-[12.5px] text-muted-foreground">Error {page.status}</p>
+		<div class="flex flex-wrap gap-2">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -- Home, or a reload of this page -->
+			{#if missing}
+				<Button href="/" size="xl">Go to Home</Button>
+			{:else}
+				<Button href={page.url.pathname + page.url.search} size="xl">Try again</Button>
+			{/if}
+		</div>
+	</div>
 </main>

@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { expectAccessible, expectLanding, login, sessionCookie } from './helpers.js';
+import {
+	expectAccessible,
+	expectFieldError,
+	expectLanding,
+	login,
+	sessionCookie
+} from './helpers.js';
 import { ADMIN, ANA, MIA, receivedRequests, resetStub, setScenario } from './stub-api.js';
 
 const ADDRESS = '198.51.100.23';
@@ -58,6 +64,15 @@ test('a wrong password and an unknown user get one generic message', async ({ pa
 		await expectAccessible(page);
 		expect(await sessionCookie(context)).toBeUndefined();
 	}
+});
+
+test('blank fields are refused on the field and no sign-in is sent', async ({ page }) => {
+	await page.goto('/login');
+	await page.getByRole('button', { name: 'Sign in' }).click();
+	await expectFieldError(page.getByLabel('Username'), 'Enter your username');
+	await expectFieldError(page.getByLabel('Password'), 'Enter your password');
+	await expectAccessible(page);
+	expect((await receivedRequests()).filter((r) => r.method === 'POST')).toEqual([]);
 });
 
 test('a rate-limited login says to wait a minute', async ({ page, context }) => {

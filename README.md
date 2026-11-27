@@ -25,6 +25,9 @@ What a parent can do so far:
 - Sickness and medication: symptoms (a fever with its temperature) on the timeline, medication courses
   with a schedule, logged doses, and reminders on the home's Due list and, when the server has a channel
   configured, on opted-in devices (see "Sickness, medication and reminders" below).
+- Medical visits: appointments with a private-by-default calendar file, and after a visit its notes and
+  the growth, vaccines and medication recorded there; visits show on the home's Due list, the timeline and
+  the PDF (see the [Medical visits](docs/wiki/Medical-visits.md) wiki page).
 - Milestones: CDC's developmental milestone checklists, with a date marked for each item reached and custom
   milestones of your own (see "Milestones" below).
 - PDF export: one kid, a range of at most 93 days and the modules you choose, made as a PDF when you
@@ -41,6 +44,7 @@ Modules and their defaults by age (whole months from the birth date, in the kid'
 | `growth` | built | on | on | on |
 | `vaccination` | built | on | on | on |
 | `sickness`, `medication` | built | on | on | on |
+| `visits` (medical visits) | built | on | on | on |
 
 A guardian's switch is final. When a kid enters a band where a module is off by default, the module
 stays on if it has an entry from 60 days before the band's start onwards, or a running timer.
@@ -55,6 +59,31 @@ Two images, built from this repo:
 The browser talks only to the UI; the UI calls the API with a shared token. Both run as uid 10001 on a
 read-only root filesystem; the API writes only to `/data`. Design:
 `docs/superpowers/specs/2026-11-20-happybabytracker-design.md`; plans: `docs/superpowers/plans/`.
+
+## Wiki
+
+A guide and a screen reference, built from screenshots the e2e flow captures. Start at
+[docs/wiki/Home.md](docs/wiki/Home.md).
+
+- Getting started: [Sign in and invites](docs/wiki/Sign-in-and-invites.md),
+  [Navigation and shell](docs/wiki/Navigation-and-shell.md),
+  [Forms in sheets](docs/wiki/Forms-in-sheets.md),
+  [Roles, layouts and conventions](docs/wiki/Roles-and-layouts.md).
+- Every day: [Kid home](docs/wiki/Kid-home.md), [Logging trackers](docs/wiki/Logging-trackers.md),
+  [Timeline](docs/wiki/Timeline.md).
+- Health records: [Growth](docs/wiki/Growth.md), [Vaccines](docs/wiki/Vaccines.md),
+  [Medication](docs/wiki/Medication.md), [Medical visits](docs/wiki/Medical-visits.md),
+  [Milestones](docs/wiki/Milestones.md),
+  [Export PDF](docs/wiki/Export-PDF.md).
+- Setup and account: [Children and access](docs/wiki/Children-and-access.md),
+  [My profile](docs/wiki/My-profile.md), [Notifications](docs/wiki/Notifications.md).
+- Admin and errors: [Admin](docs/wiki/Admin.md), [Error pages](docs/wiki/Error-pages.md).
+- About the wiki: [Before and after](docs/wiki/Before-and-after.md),
+  [Not built yet](docs/wiki/Not-built-yet.md),
+  [How these screenshots are made](docs/wiki/How-these-screenshots-are-made.md).
+
+All captures are listed with captions in [docs/screenshots/README.md](docs/screenshots/README.md); the
+first-pass set is kept in [docs/screenshots-legacy/README.md](docs/screenshots-legacy/README.md).
 
 ## Growth
 
@@ -376,7 +405,8 @@ docker build -t hbt-api:dev api && docker build -t hbt-ui:dev ui && \
 `gofmt -l` must print nothing. The UI's e2e runs against a stub API (it needs
 `pnpm exec playwright install chromium`, or `PW_CHROMIUM_PATH` pointing at a Chromium); the smoke script
 runs the real API and the real UI together and prints one `PASS:` line per assertion. CI
-(`.github/workflows/ci.yml`) runs all three on every pull request and on `main`.
+(`.github/workflows/ci.yml`) runs all three on every pull request and on `main`. Its `CI Gate` job fails when
+any of the `api`, `ui` or `images` jobs fails or is cancelled; it is the one check `main` should require.
 
 Memory readings: the smoke's step 10 reads each container's cgroup high-water mark
 (`memory.max_usage_in_bytes`), which includes page cache, so it varies between runs. Three runs on

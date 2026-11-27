@@ -10,19 +10,19 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
-const doseColumns = `id, kid_id, administration, given_on, antigen, lot, product, note, created_by, updated_by, created_at, updated_at`
+const doseColumns = `id, kid_id, administration, given_on, antigen, lot, product, note, created_by, updated_by, created_at, updated_at, visit_id`
 
 func scanDose(row rowScanner) (model.VaccineDose, error) {
 	var (
-		d                  model.VaccineDose
-		lot, product, note sql.NullString
-		created, updated   int64
+		d                         model.VaccineDose
+		lot, product, note, visit sql.NullString
+		created, updated          int64
 	)
 	if err := row.Scan(&d.ID, &d.KidID, &d.Administration, &d.GivenOn, &d.Antigen, &lot, &product, &note,
-		&d.CreatedBy, &d.UpdatedBy, &created, &updated); err != nil {
+		&d.CreatedBy, &d.UpdatedBy, &created, &updated, &visit); err != nil {
 		return model.VaccineDose{}, err
 	}
-	d.Lot, d.Product, d.Note = nullableString(lot), nullableString(product), nullableString(note)
+	d.Lot, d.Product, d.Note, d.VisitID = nullableString(lot), nullableString(product), nullableString(note), nullableString(visit)
 	d.CreatedAt, d.UpdatedAt = unixTime(created), unixTime(updated)
 	return d, nil
 }
@@ -60,7 +60,7 @@ func groupDoses(doses []model.VaccineDose) []model.Administration {
 			continue
 		}
 		out = append(out, model.Administration{ID: d.Administration, KidID: d.KidID, GivenOn: d.GivenOn,
-			Antigens: []string{d.Antigen}, Lot: d.Lot, Product: d.Product, Note: d.Note,
+			Antigens: []string{d.Antigen}, Lot: d.Lot, Product: d.Product, Note: d.Note, VisitID: d.VisitID,
 			CreatedBy: d.CreatedBy, UpdatedBy: d.UpdatedBy, CreatedAt: d.CreatedAt, UpdatedAt: d.UpdatedAt})
 	}
 	return out
@@ -78,9 +78,9 @@ func canonicalAntigens(antigens []string) ([]string, bool) {
 func insertDoses(ctx context.Context, tx *sql.Tx, a model.Administration, antigens []string) error {
 	for _, antigen := range antigens {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO vaccine_doses(`+doseColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO vaccine_doses(`+doseColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			model.NewID(), a.KidID, a.ID, a.GivenOn, antigen, a.Lot, a.Product, a.Note,
-			a.CreatedBy, a.UpdatedBy, a.CreatedAt.Unix(), a.UpdatedAt.Unix()); err != nil {
+			a.CreatedBy, a.UpdatedBy, a.CreatedAt.Unix(), a.UpdatedAt.Unix(), a.VisitID); err != nil {
 			return err
 		}
 	}
@@ -90,27 +90,43 @@ func insertDoses(ctx context.Context, tx *sql.Tx, a model.Administration, antige
 // CreateAdministration stores one row per antigen of a for kidID as actorID, who needs an active grant (else
 // ErrNotFound); ErrConflict when the kid already holds MaxVaccineAdministrationsPerKid. The caller validates the rest.
 func (s *Store) CreateAdministration(ctx context.Context, kidID, actorID string, a model.Administration, now time.Time) (model.Administration, error) {
-	set, ok := canonicalAntigens(a.Antigens)
-	if !ok {
+	if _, ok := canonicalAntigens(a.Antigens); !ok {
 		return model.Administration{}, ErrInvalidAntigens
 	}
-	a.ID, a.KidID, a.Antigens, a.CreatedBy, a.UpdatedBy = model.NewID(), kidID, set, actorID, actorID
-	a.CreatedAt, a.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var out model.Administration
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		if _, err := actorRole(ctx, tx, kidID, actorID); err != nil {
 			return err
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(DISTINCT administration) FROM vaccine_doses WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
-			return err
-		}
-		if n >= constants.MaxVaccineAdministrationsPerKid {
-			return ErrConflict
-		}
-		return insertDoses(ctx, tx, a, set)
+		var err error
+		out, err = createAdministrationTx(ctx, tx, kidID, actorID, a, nil, now)
+		return err
 	})
 	if err != nil {
+		return model.Administration{}, err
+	}
+	return out, nil
+}
+
+// createAdministrationTx is CreateAdministration inside tx, every row linked to visitID when set; the caller has
+// asserted the actor's role.
+func createAdministrationTx(ctx context.Context, tx *sql.Tx, kidID, actorID string, a model.Administration, visitID *string,
+	now time.Time) (model.Administration, error) {
+	set, ok := canonicalAntigens(a.Antigens)
+	if !ok {
+		return model.Administration{}, ErrInvalidAntigens
+	}
+	a.ID, a.KidID, a.Antigens, a.CreatedBy, a.UpdatedBy, a.VisitID = model.NewID(), kidID, set, actorID, actorID, visitID
+	a.CreatedAt, a.UpdatedAt = unixTime(now.Unix()), unixTime(now.Unix())
+	var n int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT administration) FROM vaccine_doses WHERE kid_id = ?`, kidID).Scan(&n); err != nil {
+		return model.Administration{}, err
+	}
+	if n >= constants.MaxVaccineAdministrationsPerKid {
+		return model.Administration{}, ErrConflict
+	}
+	if err := insertDoses(ctx, tx, a, set); err != nil {
 		return model.Administration{}, err
 	}
 	return a, nil
@@ -155,17 +171,18 @@ func (s *Store) UpdateAdministration(ctx context.Context, kidID, actorID string,
 			return err
 		}
 		rows, err := tx.QueryContext(ctx,
-			`SELECT antigen, created_by, created_at FROM vaccine_doses WHERE kid_id = ? AND administration = ?`, kidID, a.ID)
+			`SELECT antigen, created_by, created_at, visit_id FROM vaccine_doses WHERE kid_id = ? AND administration = ?`, kidID, a.ID)
 		if err != nil {
 			return err
 		}
 		var (
 			stored    []string
 			createdAt int64
+			visit     sql.NullString
 		)
 		for rows.Next() {
 			var antigen string
-			if err := rows.Scan(&antigen, &a.CreatedBy, &createdAt); err != nil {
+			if err := rows.Scan(&antigen, &a.CreatedBy, &createdAt, &visit); err != nil {
 				rows.Close()
 				return err
 			}
@@ -201,6 +218,7 @@ func (s *Store) UpdateAdministration(ctx context.Context, kidID, actorID string,
 			return err
 		}
 		a.KidID, a.UpdatedBy, a.CreatedAt, a.UpdatedAt = kidID, actorID, unixTime(createdAt), unixTime(now.Unix())
+		a.VisitID = nullableString(visit)
 		return insertDoses(ctx, tx, a, added)
 	})
 }

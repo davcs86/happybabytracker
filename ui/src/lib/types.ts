@@ -7,7 +7,14 @@ export type Units = {
 	temp: 'c' | 'f';
 };
 
-export type Parent = { id: string; username: string; displayName: string; units: Units };
+// passwordChangedAt is null when the date is unknown (an older API, or a password set before it was kept).
+export type Parent = {
+	id: string;
+	username: string;
+	displayName: string;
+	units: Units;
+	passwordChangedAt: string | null;
+};
 
 export type Session = { kind: SessionKind; parent?: Parent };
 
@@ -47,7 +54,13 @@ export type Kid = Omit<
 	role: Role;
 };
 
-export type Grant = { parentId: string; username: string; displayName: string; role: Role };
+export type Grant = {
+	parentId: string;
+	username: string;
+	displayName: string;
+	role: Role;
+	disabled: boolean;
+};
 
 export type AdminParent = {
 	id: string;
@@ -56,17 +69,28 @@ export type AdminParent = {
 	disabled: boolean;
 	hasPassword: boolean;
 	createdAt: string;
+	// Only the list carries these; null when the parent has no session / no unused link.
+	lastActiveAt: string | null;
+	link: AdminLink | null;
 };
+
+export type AdminLink = { kind: 'invite' | 'reset'; issuedAt: string; expiresAt: string };
 
 export type ParentLink = { kind: 'invite' | 'reset'; url: string; expiresAt: string };
 
-export type SessionInfo = { id: string; createdAt: string; lastSeenAt: string; current: boolean };
+export type SessionInfo = {
+	id: string;
+	createdAt: string;
+	lastSeenAt: string;
+	current: boolean;
+	deviceLabel: string | null;
+};
 
 export type TrackerKind =
 	'bottles' | 'nursing' | 'pumping' | 'sleep' | 'diapers' | 'meals' | 'symptoms';
 
 export type TimelineType =
-	'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal' | 'symptom';
+	'bottle' | 'nursing' | 'pumping' | 'sleep' | 'diaper' | 'meal' | 'symptom' | 'visit';
 
 export type VolumeUnit = Units['volume'];
 
@@ -149,6 +173,7 @@ export type Symptom = Noted & {
 export type Schedule =
 	{ kind: 'none' } | { kind: 'times'; times: string[] } | { kind: 'every'; hours: number };
 export type Medication = Noted & {
+	visitId: string | null;
 	name: string;
 	dose: string;
 	schedule: Schedule;
@@ -166,6 +191,60 @@ export type MedicationDose = Noted & {
 	amount: string | null;
 };
 export type DoseQuery = ListQuery & { medication?: string };
+
+export type VisitKind = 'well_child' | 'sick' | 'specialist' | 'dental' | 'emergency' | 'other';
+export type VisitStatus = 'upcoming' | 'past' | 'cancelled';
+// note is the reason; startsAt and cancelledAt are instants; revision grows with every write.
+export type Visit = Noted & {
+	startsAt: string;
+	durationMin: number;
+	kind: VisitKind;
+	status: VisitStatus;
+	cancelledAt: string | null;
+	provider: string | null;
+	location: string | null;
+	// Set only by picking a registry result, with the provider text it filled in.
+	providerNpi: string | null;
+	outcomeNotes: string | null;
+	revision: number;
+};
+// Dates are YYYY-MM-DD in the kid's zone.
+export type VisitLinks = {
+	growth: { id: string; measuredOn: string }[];
+	vaccinations: { id: string; givenOn: string; antigens: string[] }[];
+	medications: { id: string; name: string; doseCount: number }[];
+};
+export type VisitDetail = Visit & { linked: VisitLinks };
+// A list or timeline row carries only how many rows each module holds for the visit.
+export type VisitRow = Visit & {
+	linked: { growth: number; vaccinations: number; medications: number };
+};
+export type VisitQuery = ListQuery & { order?: 'asc' | 'desc' };
+export type VisitCalendarDetail = 'generic' | 'full';
+export type VisitLinkedChoice = 'delete' | 'keep';
+
+// The US provider registry search: the terms travel only in a POST body.
+export type ProviderKind = 'person' | 'organization';
+export type ProviderQuery = {
+	kind: ProviderKind;
+	lastName?: string;
+	firstName?: string;
+	organization?: string;
+	state: string;
+	city?: string;
+	postalCode?: string;
+};
+// Registry text as sent (capitals); address is the practice location.
+export type ProviderResult = {
+	npi: string;
+	name: string;
+	credential: string | null;
+	taxonomy: string | null;
+	address: string;
+	phone: string | null;
+};
+// more: the registry sent its full page, so more matches may exist.
+export type ProviderPage = { results: ProviderResult[]; more: boolean };
 
 // A browser's subscription is a secret of the device: it travels only in the body of an upsert.
 export type PushState = { enabled: false } | { enabled: true; publicKey: string };
@@ -200,9 +279,11 @@ export type ListQuery = { from?: string; to?: string; limit?: number; cursor?: s
 export type Page<T> = { items: T[]; nextCursor: string | null };
 
 export type TimelineQuery = ListQuery & { types?: TimelineType[] };
-export type TimelineItem = {
+export type TrackerTimelineItem = {
 	[K in TrackerKind]: { kind: K; at: string; entry: TrackerEntries[K] };
 }[TrackerKind];
+export type TimelineItem = TrackerTimelineItem | { kind: 'visit'; at: string; entry: VisitRow };
+export type TimelineKind = TimelineItem['kind'];
 
 export type ModuleId =
 	| 'bottles'
@@ -215,7 +296,8 @@ export type ModuleId =
 	| 'growth'
 	| 'vaccination'
 	| 'sickness'
-	| 'medication';
+	| 'medication'
+	| 'visits';
 // The export's JSON body: kid-local dates, ids in EXPORT_MODULES order.
 export type ExportInput = { from: string; to: string; modules: ModuleId[] };
 export type ModuleState = {
@@ -247,6 +329,8 @@ export type Home = {
 	running: { sleep: Sleep | null; nursing: Nursing | null };
 	today: DaySummary;
 	due: HomeDue[];
+	// The newest entry of each tracker whose module is on; null when it has none, absent when the module is off.
+	last: Partial<Record<TimelineType, TimelineItem | null>>;
 };
 
 export type Measure = 'weight' | 'length' | 'head' | 'bmi';
@@ -260,6 +344,7 @@ export type GrowthWeight = { grams: number; ozHundredths: number; typedUnit: Wei
 export type GrowthLength = { mm: number; inHundredths: number; typedUnit: LengthUnit };
 export type GrowthRow = {
 	id: string;
+	visitId: string | null;
 	measuredOn: string;
 	weight: GrowthWeight | null;
 	length: GrowthLength | null;
@@ -367,6 +452,7 @@ export type VaccineCatalogue = {
 };
 export type Administration = {
 	id: string;
+	visitId: string | null;
 	givenOn: string;
 	antigens: string[];
 	lot: string | null;
@@ -394,7 +480,8 @@ export type HomeDueMedication = {
 	dueAt: string;
 	state: 'due' | 'overdue';
 };
-export type HomeDue = HomeDueVaccine | HomeDueMedication;
+export type HomeDueVisit = { kind: 'visit'; id: string; startsAt: string; visitKind: VisitKind };
+export type HomeDue = HomeDueVaccine | HomeDueMedication | HomeDueVisit;
 
 export type MilestoneDomain =
 	'social_emotional' | 'language_communication' | 'cognitive' | 'movement_physical';

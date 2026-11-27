@@ -79,7 +79,7 @@ func TestAdminFingerprintRotation(t *testing.T) {
 	}
 	mustSession := func(kind, parentID, hash string) {
 		t.Helper()
-		if _, err := s.CreateSession(ctx, kind, parentID, []byte(hash), now, exp); err != nil {
+		if _, err := s.CreateSession(ctx, kind, parentID, []byte(hash), now, exp, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -141,7 +141,7 @@ func TestFirstStartRecordsTheFingerprint(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := s.CreateSession(ctx, "admin", "", []byte("early"), now, now.Add(time.Hour)); err != nil {
+	if _, err := s.CreateSession(ctx, "admin", "", []byte("early"), now, now.Add(time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	cfg := cfgWith("root-admin", "admin-password-AAAAAAAA")
@@ -409,7 +409,7 @@ func parentSession(t *testing.T, s *store.Store) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateSession(context.Background(), "parent", p.ID, hash, time.Now(), time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.CreateSession(context.Background(), "parent", p.ID, hash, time.Now(), time.Now().Add(time.Hour), ""); err != nil {
 		t.Fatal(err)
 	}
 	return plain
@@ -535,5 +535,27 @@ func TestStartWithRealPushRegistersADevice(t *testing.T) {
 	}
 	if rec := call(t, a, http.MethodGet, "/v1/_test/pushes", "", nil); rec.Code != http.StatusNotFound {
 		t.Fatalf("test route with real push: %d", rec.Code)
+	}
+}
+
+func TestStartWiresProviderSearchOnlyUnderTheFlag(t *testing.T) {
+	for _, flag := range []string{"", "1"} {
+		env := baseEnv(t.TempDir())
+		env["NPI_SEARCH"] = flag
+		a, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session := parentSession(t, a.store)
+		rec := call(t, a, http.MethodGet, "/v1/providers", session, nil)
+		if want := fmt.Sprintf(`{"search":{"enabled":%v}}`, flag == "1"); strings.TrimSpace(rec.Body.String()) != want {
+			t.Errorf("NPI_SEARCH %q: GET /v1/providers %d %s, want %s", flag, rec.Code, rec.Body.String(), want)
+		}
+		// An invalid kind is refused before any registry call, so the test never leaves the process.
+		rec = call(t, a, http.MethodPost, "/v1/providers/search", session, map[string]string{"kind": "x"})
+		if want := map[string]int{"": http.StatusNotFound, "1": http.StatusUnprocessableEntity}[flag]; rec.Code != want {
+			t.Errorf("NPI_SEARCH %q: search %d %s, want %d", flag, rec.Code, rec.Body.String(), want)
+		}
+		a.store.Close()
 	}
 }

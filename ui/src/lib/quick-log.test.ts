@@ -137,3 +137,18 @@ describe('quickLog', () => {
 		]);
 	});
 });
+
+describe('quickLog last entries', () => {
+	it('puts the time of the newest entry on each tracker tile that has one', () => {
+		const last: Home['last'] = {
+			bottle: { kind: 'bottles', at: '2026-11-25T10:00:00Z', entry: { id: 'b' } } as never,
+			diaper: null
+		};
+		const tiles = quickLog('0-11', states(), none, last);
+		const at = (label: string) => tiles.find((t) => t.label === label)?.lastAt;
+		expect(at('Bottle')).toBe('2026-11-25T10:00:00Z');
+		expect(at('Diaper')).toBeUndefined();
+		expect(at('Nursing')).toBeUndefined();
+		expect(at('Milestones')).toBeUndefined();
+	});
+});

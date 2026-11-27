@@ -1,55 +1,90 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { preloadData } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
 	import MilestoneFields from '#lib/components/milestones/MilestoneFields.svelte';
+	import { Alert } from '#lib/components/ui/alert/index.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import FormFrame from '#lib/components/FormFrame.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
+	import { formatAge } from '#lib/format.js';
+	import { reachedId } from '#lib/milestones.js';
+	import { milestonesPath } from '#lib/paths.js';
+	import type { Milestones } from '#lib/types.js';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	// The undo runs after this sheet has closed, so it keeps the kid rather than reading the page.
+	// svelte-ignore state_referenced_locally
+	const kidId = data.kid.id;
 
 	const values = $derived(form?.values ?? data.values);
 	const error = (name: string) => (form?.field === name ? form.message : null);
 	// The item has no input of its own: its refusal shows on the form, like a conflict.
 	const top = $derived(form?.field == null || form.field === 'item' ? form?.message : null);
+	const refused = $derived(form?.field != null && form.field !== 'item');
+	const embed = isEmbed();
 	const milestones = $derived(resolve('/(app)/kids/[kid]/milestones', { kid: data.kid.id }));
 	// The item stays in the action's query, so a refused save without JavaScript still names it.
 	const action = $derived(data.item ? `?/save&item=${data.item.id}` : '?/save');
 </script>
 
-<svelte:head>
-	<title
-		>{data.item ? 'Mark as reached' : 'Add a milestone'} · {data.kid.name} · happybabytracker</title
-	>
-</svelte:head>
-
-<p class="mb-2 text-sm">
-	<a href={milestones} class="underline">Milestones for {data.kid.name}</a>
-</p>
-<h1 class="mb-4 text-xl font-semibold">{data.item ? 'Mark as reached' : 'Add a milestone'}</h1>
-<form
-	method="POST"
-	{action}
-	class="flex max-w-md flex-col gap-4"
-	novalidate
-	use:enhance={keepValues}
+<FormFrame
+	documentTitle="{data.item ? 'Mark as reached' : 'Add a milestone'} · {data.kid
+		.name} · happybabytracker"
 >
-	{#if top}
-		<p class={ERROR_CLASS} role="alert">{top}</p>
-	{/if}
+	{#snippet chrome()}
+		<a href={milestones} class="inline-flex min-h-11 items-center gap-1.5 text-sm underline"
+			><span aria-hidden="true">‹</span>Milestones for {data.kid.name}</a
+		>
+		<h1 class="mt-2">{data.item ? 'Mark as reached' : 'Add a milestone'}</h1>
+		<p class="mt-1.5 text-sm text-muted-foreground">{formatAge(data.kid.birthDate, data.today)}</p>
+	{/snippet}
 	{#if data.item}
-		<p class="text-sm [overflow-wrap:anywhere]">{data.item.text}</p>
-		<input type="hidden" name="item" value={data.item.id} />
+		<p class="mt-[18px] text-[15px] [overflow-wrap:anywhere]">{data.item.text}</p>
 	{/if}
-	<MilestoneFields
-		{values}
-		{error}
-		custom={!data.item}
-		birthDate={data.kid.birthDate}
-		today={data.today}
-	/>
-	<div class="flex items-center gap-4">
-		<Button type="submit">Save</Button>
-		<a href={milestones} class="text-sm underline">Cancel</a>
-	</div>
-</form>
+	<form
+		method="POST"
+		{action}
+		class={[
+			'flex flex-col gap-3.5',
+			!embed &&
+				'mt-[18px] xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6 xl:gap-y-[18px]'
+		]}
+		novalidate
+		use:enhance={savedAs('Milestone saved', {
+			// The new row's id is only known once the list has reloaded.
+			undo: async (fd) => {
+				const item = String(fd.get('item') ?? '');
+				const text = String(fd.get('text') ?? '').trim();
+				const loaded = await preloadData(milestonesPath(kidId));
+				if (loaded.type !== 'loaded') return null;
+				const id = reachedId(loaded.data.milestones as Milestones, item ? { item } : { text });
+				return id ? { action: `/kids/${kidId}/milestones/${id}?/delete`, fields: {} } : null;
+			},
+			undone: 'Milestone removed'
+		})}
+	>
+		{#if top}
+			<Alert class="xl:col-span-2">{top}</Alert>
+		{:else if refused}
+			<Alert class="xl:col-span-2">Check the fields with a message.</Alert>
+		{/if}
+		{#if data.item}
+			<input type="hidden" name="item" value={data.item.id} />
+		{/if}
+		<MilestoneFields
+			{values}
+			{error}
+			custom={!data.item}
+			birthDate={data.kid.birthDate}
+			today={data.today}
+		/>
+		<div class="flex gap-2">
+			<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
+			<FormCancel href={milestones} size="default" class="" />
+		</div>
+	</form>
+</FormFrame>

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -14,6 +15,8 @@ import (
 )
 
 const headerClientAddress = "X-Client-Address"
+
+var deviceLabelRE = regexp.MustCompile(constants.DeviceLabelPattern)
 
 // Replaced in tests to count verifications.
 var verifyPassword = auth.VerifyPassword
@@ -35,12 +38,15 @@ type parentView struct {
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
 	Units       unitsView `json:"units"`
+	// PasswordChangedAt is null when the date is unknown.
+	PasswordChangedAt *string `json:"password_changed_at"`
 }
 
 func newParentView(p model.Parent) parentView {
 	return parentView{
 		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
-		Units: unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
+		Units:             unitsView{Weight: p.Units.Weight, Length: p.Units.Length, Volume: p.Units.Volume, Temp: p.Units.Temp},
+		PasswordChangedAt: optionalInstant(p.PasswordChangedAt),
 	}
 }
 
@@ -67,10 +73,15 @@ func respondRateLimited(w http.ResponseWriter) {
 // login answers every credential failure alike, after one password verification.
 func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+		DeviceLabel string `json:"device_label"`
 	}
 	if !decodeJSON(w, r, &in) {
+		return
+	}
+	if in.DeviceLabel != "" && !deviceLabelRE.MatchString(in.DeviceLabel) {
+		respondInvalid(w, "device_label")
 		return
 	}
 	if !d.Limiter.Allow("addr:" + r.Header.Get(headerClientAddress)) {
@@ -103,7 +114,11 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 	if kind == kindAdmin {
 		ttl = constants.AdminSessionTTL
 	}
-	if _, err := d.Store.CreateSession(r.Context(), kind, parentID, hash, now, now.Add(ttl)); err != nil {
+	label := in.DeviceLabel
+	if kind == kindAdmin {
+		label = ""
+	}
+	if _, err := d.Store.CreateSession(r.Context(), kind, parentID, hash, now, now.Add(ttl), label); err != nil {
 		respondInternal(w, err)
 		return
 	}

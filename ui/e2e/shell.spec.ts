@@ -1,7 +1,7 @@
 import { request as httpRequest } from 'node:http';
 import { expect, test, type Page } from '@playwright/test';
 import { expectAccessible, expectLanding, login } from './helpers.js';
-import { ANA, MIA, UI_PORT, resetStub } from './stub-api.js';
+import { ANA, LEO, MIA, UI_PORT, resetStub } from './stub-api.js';
 
 test.beforeEach(async ({ page }) => {
 	await resetStub();
@@ -10,42 +10,120 @@ test.beforeEach(async ({ page }) => {
 	await expectLanding(page, { kid: MIA });
 });
 
-async function navLinks(page: Page) {
-	const nav = page.getByRole('navigation', { name: 'Main' });
-	const links = await nav
-		.getByRole('link')
-		.evaluateAll((els) =>
-			els.map((a) => ({ text: a.textContent?.trim(), href: a.getAttribute('href') }))
-		);
-	return { box: await nav.boundingBox(), links };
-}
+const primary = (page: Page) => page.getByRole('navigation', { name: 'Primary' });
 
-test('a bottom bar at phone width and side navigation at desktop width, same links', async ({
+test('a tab bar at phone width: Home, Timeline, Growth and More', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const nav = primary(page);
+	await expect(nav).toHaveCount(1);
+	const box = await nav.boundingBox();
+	expect(box!.y + box!.height).toBeCloseTo(844, 0);
+	expect(box!.width).toBeCloseTo(390, 0);
+	await expect(nav.getByRole('link')).toHaveText(['Home', 'Timeline', 'Growth']);
+	await expect(nav.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+	await expect(nav.getByRole('button', { name: 'More' })).toBeVisible();
+	await expectAccessible(page);
+});
+
+test('the More sheet lists the other pages, Sign out last', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const sheet = page.getByRole('dialog', { name: 'More' });
+	await expect(async () => {
+		await page.getByRole('button', { name: 'More', exact: true }).click();
+		await expect(sheet).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	await expect(sheet.getByRole('link')).toHaveText([
+		/^\s*Vaccines/,
+		/^\s*Medication/,
+		/^\s*Visits/,
+		/^\s*Milestones/,
+		/^\s*Export PDF/,
+		/^\s*Modules/,
+		/^\s*Child profile/,
+		/^\s*My profile/
+	]);
+	await expect(sheet.getByRole('button')).toHaveText([
+		/^\s*Change theme/,
+		/^\s*Sign out/,
+		/^\s*Close$/
+	]);
+	await expectAccessible(page);
+	await page.keyboard.press('Escape');
+	await expect(sheet).toBeHidden();
+});
+
+test('a side navigation from 768 px carries the same entries inline and no More', async ({
 	page
 }) => {
-	await page.setViewportSize({ width: 390, height: 844 });
-	const phone = await navLinks(page);
-	await expectAccessible(page);
-	expect(phone.box).not.toBeNull();
-	expect(phone.box!.y + phone.box!.height).toBeCloseTo(844, 0);
-	expect(phone.box!.width).toBeCloseTo(390, 0);
-
 	await page.setViewportSize({ width: 1280, height: 800 });
-	const desktop = await navLinks(page);
-	await expectAccessible(page);
-	expect(desktop.box).not.toBeNull();
-	expect(desktop.box!.x).toBe(0);
-	expect(desktop.box!.height).toBeCloseTo(800, 0);
-	expect(desktop.box!.width).toBeLessThan(300);
-
-	expect(phone.links).toEqual([
-		{ text: 'Home', href: '/' },
-		{ text: 'Timeline', href: '/timeline' },
-		{ text: 'Growth', href: '/growth' },
-		{ text: 'Account', href: '/account' }
+	const nav = primary(page);
+	await expect(nav).toHaveCount(1);
+	const box = await nav.boundingBox();
+	expect(box).toMatchObject({ x: 0, width: 225 });
+	expect(box!.height).toBeCloseTo(800, 0);
+	await expect(nav.getByRole('link')).toHaveText([
+		'Home',
+		'Timeline',
+		'Growth',
+		'Vaccines',
+		'Medication',
+		'Visits',
+		'Milestones',
+		'Export PDF',
+		'Modules',
+		'Child profile',
+		'My profile'
 	]);
-	expect(desktop.links).toEqual(phone.links);
-	await expect(page.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+	await expect(nav.getByRole('button')).toHaveText(['Change theme', 'Sign out']);
+	await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0);
+	await expectAccessible(page);
+});
+
+test('the header names the child and the switcher offers every child', async ({ page }) => {
+	const switcher = page.getByRole('link', { name: `Child: ${MIA.name}. Switch child` });
+	await expect(switcher).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Notification settings' })).toBeVisible();
+	const sheet = page.getByRole('dialog', { name: 'Switch child' });
+	await expect(async () => {
+		await switcher.click();
+		await expect(sheet).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	await expect(sheet.getByRole('link', { name: new RegExp(`^${MIA.name}`) })).toHaveAttribute(
+		'aria-current',
+		'true'
+	);
+	await expectAccessible(page);
+});
+
+test('the switcher link is the Choose a child page without JavaScript', async ({ browser }) => {
+	const context = await browser.newContext({ javaScriptEnabled: false });
+	const page = await context.newPage();
+	await page.goto('/login');
+	await login(page, ANA.username, ANA.password);
+	await page.getByRole('link', { name: `Child: ${MIA.name}. Switch child` }).click();
+	await expect(page).toHaveURL(/\/kids\?to=$/);
+	await expect(page.getByRole('heading', { name: 'Choose a child', level: 1 })).toBeVisible();
+	await page.getByRole('link', { name: new RegExp(`^${LEO.name}`) }).click();
+	await expect(page).toHaveURL(new RegExp(`/kids/${LEO.id}$`));
+	await context.close();
+});
+
+test('Change theme applies at once and persists', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	const more = page.getByRole('dialog', { name: 'More' });
+	await expect(async () => {
+		await page.getByRole('button', { name: 'More', exact: true }).click();
+		await expect(more).toBeVisible({ timeout: 1000 });
+	}).toPass();
+	await more.getByRole('button', { name: /^Change theme/ }).click();
+	const sheet = page.getByRole('dialog', { name: 'Change theme' });
+	await sheet.getByRole('radio', { name: 'Dark' }).click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+	await expect(page.locator('html')).toHaveAttribute('data-resolved', 'dark');
+	await expectAccessible(page);
+	await sheet.getByRole('button', { name: 'Done' }).click();
+	await page.reload();
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
 
 test('the page fits a phone without horizontal scroll', async ({ page }) => {

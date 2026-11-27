@@ -6,9 +6,11 @@ import {
 	expectAccessible,
 	expectFieldError,
 	expectNotFoundPage,
+	navLink,
 	signIn,
 	submit,
-	untilHydrated
+	untilHydrated,
+	openSheet
 } from './helpers.js';
 import {
 	ANA,
@@ -88,7 +90,7 @@ const itemText = (id: string) => {
 const summaries = (page: Page) => page.locator('main details > summary');
 const list = (page: Page, title: string) =>
 	page.locator('main details').filter({
-		has: page.locator(':scope > summary', { hasText: new RegExp(`^${title}( ·|$)`) })
+		has: page.locator(':scope > summary', { hasText: new RegExp(`^${title}( ·|\\s*$)`) })
 	});
 const item = (scope: Page | Locator, id: string) =>
 	scope.getByRole('listitem').filter({ hasText: itemText(id) });
@@ -117,7 +119,14 @@ async function open(page: Page, title: string) {
 async function onPage(page: Page, kid: { id: string; name: string }) {
 	await page.waitForURL((u) => u.pathname === pageUrl(kid.id) && u.search === '');
 	await expect(
-		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
+	).toBeVisible();
+}
+// A saved sheet closes onto the page it opened from, whatever its query.
+async function onSheetClosed(page: Page) {
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+	await expect(
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
 }
 // A one-tap mark returns to the item: its list named in the query, the row in the fragment.
@@ -126,7 +135,7 @@ async function onItem(page: Page, kid: { id: string; name: string }, id: string)
 		(u) => u.pathname === pageUrl(kid.id) && u.search === `?open=${id}` && u.hash === `#item-${id}`
 	);
 	await expect(
-		page.getByRole('heading', { name: `Milestones for ${kid.name}`, level: 1 })
+		page.getByRole('heading', { name: 'Milestones', level: 1, exact: true })
 	).toBeVisible();
 }
 const stored = async (api: Api, kid: string) => {
@@ -185,7 +194,10 @@ test('a 9-month kid sees all twelve lists in age order, the current one open and
 	).toHaveAttribute('href', newUrl(NELL.id, '9m-lc-stub-1'));
 	await expect(nine).not.toContainText('Reached on');
 	// No colour, icon, count or progress: nothing but the absence of a date marks an unreached item.
-	await expect(page.locator('main').locator('svg, img, progress, meter')).toHaveCount(0);
+	// The chevrons and the Edit and Choose a date buttons are controls, marked data-chrome.
+	await expect(
+		page.locator('main').locator('svg:not([data-chrome]), img, progress, meter')
+	).toHaveCount(0);
 	await expectAccessible(page);
 
 	await expect(reachButton(page, '30m-se-stub-1')).toHaveCount(0);
@@ -208,9 +220,16 @@ test('the CDC sentence and attribution from the API sit under the lists', async 
 	const attribution = page.getByText('Stub attribution, not reference data.', { exact: true });
 	await expect(note).toBeVisible();
 	await expect(attribution).toBeVisible();
-	const last = await summaries(page).last().boundingBox();
-	expect((await note.boundingBox())!.y).toBeGreaterThan(last!.y);
-	expect((await attribution.boundingBox())!.y).toBeGreaterThan(last!.y);
+	// Beside the lists from 1280 px: after them in the document, so also in the reading order.
+	const last = (await summaries(page).last().elementHandle())!;
+	for (const text of [note, attribution]) {
+		expect(
+			await text.evaluate(
+				(el, ref) => !!(ref.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING),
+				last
+			)
+		).toBe(true);
+	}
 	await expect(page.locator('main')).not.toContainText('omitted');
 });
 
@@ -373,7 +392,9 @@ test('a 30-month kid with the module off: the page loads from the kid links, the
 	await expect(quickLog(page).getByRole('link', { name: 'Milestones', exact: true })).toHaveCount(
 		0
 	);
-	await page.getByRole('link', { name: `Milestones for ${SAMI.name}` }).click();
+	// A switched-off module has no navigation entry; its page is still reachable.
+	await expect(await navLink(page, 'Milestones')).toHaveCount(0);
+	await page.goto(pageUrl(SAMI.id));
 	await onPage(page, SAMI);
 	await expect(page.getByText(NOTE_OFF(SAMI.name))).toBeVisible();
 	await expect(summaries(page)).toHaveCount(12);
@@ -433,12 +454,13 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	const id = '9m-lc-stub-1';
 	const [past, earlier] = [addDays(TODAY, -3), addDays(TODAY, -5)];
 	await signIn(page, CLEO);
-	await page.goto(pageUrl(NELL.id));
-	await item(page, id)
-		.getByRole('link', { name: `Choose a date for ${itemText(id)}` })
-		.click();
-	await expect(page.getByRole('heading', { name: 'Mark as reached', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	const sheet = await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => item(p, id).getByRole('link', { name: `Choose a date for ${itemText(id)}` }),
+		'Mark as reached'
+	);
+	await expect(sheet.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -455,8 +477,9 @@ test('a chosen past date is stored, read back and edited; the edit sends only th
 	await expect(row).toContainText(reachedLabel(past));
 
 	await editLink(row, itemText(id)).click();
-	await expect(page.getByRole('heading', { name: 'Edit milestone', level: 1 })).toBeVisible();
-	await expect(page.getByText(itemText(id), { exact: true })).toBeVisible();
+	const editing = page.getByRole('dialog', { name: 'Edit milestone' });
+	await expect(editing).toBeVisible();
+	await expect(editing.getByText(itemText(id), { exact: true })).toBeVisible();
 	await expect(field(page, 'Milestone')).toHaveCount(0);
 	await expect(field(page, 'Date reached')).toHaveValue(past);
 	await expect(field(page, 'Note')).toHaveValue('at the park');
@@ -514,7 +537,7 @@ test('undo deletes the mark and returns the item to its list', async ({ page }) 
 	await page.goto(editUrl(NELL.id, row.id));
 	await page.getByText('Undo reached', { exact: true }).click();
 	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	await expect(reachButton(page, id)).toBeVisible();
 	await expect(item(page, id)).not.toContainText('Reached on');
 	expect((await stored(cleo, NELL.id)).reached(id)).toBeNull();
@@ -527,8 +550,12 @@ test('a custom milestone is added, edited and deleted; 201 characters are refuse
 	await signIn(page, CLEO);
 	await page.goto(pageUrl(NELL.id));
 	await expect(custom(page)).toContainText('No milestones added');
-	await custom(page).getByRole('link', { name: 'Add a milestone' }).click();
-	await expect(page.getByRole('heading', { name: 'Add a milestone', level: 1 })).toBeVisible();
+	await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => custom(p).getByRole('link', { name: 'Add a milestone' }),
+		'Add a milestone'
+	);
 	await expect(field(page, 'Date reached')).toHaveValue(TODAY);
 	await expectAccessible(page);
 	await untilHydrated(field(page, 'Date reached'));
@@ -575,12 +602,12 @@ test('a caregiver marks, edits, undoes and adds milestones', async ({ page }) =>
 	await untilHydrated(field(page, 'Note'));
 	await field(page, 'Note').fill('with Ana');
 	await save(page);
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	expect((await stored(ana, NELL.id)).reached('9m-se-stub-1')).toMatchObject({ note: 'with Ana' });
 	await editLink(item(page, '9m-se-stub-1'), itemText('9m-se-stub-1')).click();
 	await page.getByText('Undo reached', { exact: true }).click();
 	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
-	await onPage(page, NELL);
+	await onSheetClosed(page);
 	await expect(reachButton(page, '9m-se-stub-1')).toBeVisible();
 
 	await page.goto(newUrl(NELL.id));
@@ -763,4 +790,44 @@ test.describe('without JavaScript', () => {
 		await page.getByRole('link', { name: 'Turn it on in Modules' }).click();
 		await expect(page).toHaveURL(`/kids/${SAMI.id}/modules`);
 	});
+});
+
+test('Undo takes back a mark and an unmark', async ({ page }) => {
+	const cleo = await stubAs(CLEO);
+	const id = '9m-lc-stub-1';
+	await signIn(page, CLEO);
+	const sheet = await openSheet(
+		page,
+		pageUrl(NELL.id),
+		(p) => item(p, id).getByRole('link', { name: `Choose a date for ${itemText(id)}` }),
+		'Mark as reached'
+	);
+	await untilHydrated(field(page, 'Date reached'));
+	await save(page);
+	await expect(sheet).toBeHidden();
+	await onPage(page, NELL);
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
+
+	const toast = page.locator('[data-sonner-toast]');
+	await toast.filter({ hasText: 'Milestone saved' }).getByRole('button', { name: 'Undo' }).click();
+	await expect(toast.filter({ hasText: 'Milestone removed' })).toBeVisible();
+	await expect(item(page, id)).not.toContainText(reachedLabel(TODAY));
+	expect((await stored(cleo, NELL.id)).reached(id)).toBeNull();
+
+	await item(page, id)
+		.getByRole('link', { name: `Choose a date for ${itemText(id)}` })
+		.click();
+	await untilHydrated(field(page, 'Date reached'));
+	await save(page);
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
+	await editLink(item(page, id), itemText(id)).click();
+	await page.getByText('Undo reached', { exact: true }).click();
+	await submit(page.getByRole('button', { name: 'Yes, undo reached' }));
+	await expect(item(page, id)).not.toContainText(reachedLabel(TODAY));
+	await toast
+		.filter({ hasText: 'Milestone removed' })
+		.getByRole('button', { name: 'Undo' })
+		.click();
+	await expect(toast.filter({ hasText: 'Milestone restored' })).toBeVisible();
+	await expect(item(page, id)).toContainText(reachedLabel(TODAY));
 });

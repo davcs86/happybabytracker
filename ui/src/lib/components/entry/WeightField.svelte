@@ -20,13 +20,13 @@
 </script>
 
 <!-- CSS shows the texts the chosen unit uses, so this works without JavaScript. -->
-<fieldset class="group/weight flex flex-col gap-2">
-	<legend class="mb-2 text-sm font-medium">{label}</legend>
+<fieldset class="group/weight flex flex-col gap-1.5">
+	<legend class="mb-0.5 text-[13px] leading-4 text-muted-foreground">{label}</legend>
 	<div class="flex items-end gap-2">
 		<div
-			class="hidden min-w-0 flex-1 flex-col gap-1 group-has-[option[value=kg]:checked]/weight:flex"
+			class="hidden min-w-0 flex-1 flex-col gap-1.5 group-has-[option[value=kg]:checked]/weight:flex"
 		>
-			<Label for="entry-{name}_kg" class="text-muted-foreground">Kilograms</Label>
+			<Label for="entry-{name}_kg">Kilograms</Label>
 			<Input
 				id="entry-{name}_kg"
 				name="{name}_kg"
@@ -38,7 +38,7 @@
 			/>
 		</div>
 		<div class="hidden min-w-0 flex-1 gap-2 group-has-[option[value=lb]:checked]/weight:flex">
-			<div class="flex min-w-0 flex-1 flex-col gap-1">
+			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 				<Label for="entry-{name}_lb" class="text-muted-foreground">Pounds</Label>
 				<Input
 					id="entry-{name}_lb"
@@ -50,7 +50,7 @@
 					aria-describedby={describedBy}
 				/>
 			</div>
-			<div class="flex min-w-0 flex-1 flex-col gap-1">
+			<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 				<Label for="entry-{name}_oz" class="text-muted-foreground">Ounces</Label>
 				<Input
 					id="entry-{name}_oz"

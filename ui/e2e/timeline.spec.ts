@@ -6,9 +6,14 @@ import {
 	expectFieldError,
 	expectNotFoundPage,
 	signIn,
-	untilHydrated
+	untilHydrated,
+	openSheet
 } from './helpers.js';
 import { ANA, CLEO, DAN, LEO, MIA, resetStub, stubAs } from './stub-api.js';
+
+// The day headings only: the strip and the running cards have their own level-2 headings.
+const dayHeadings = (page: Page) =>
+	page.getByRole('heading', { level: 2, name: /^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2} \d{4}$/ });
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -18,6 +23,8 @@ type Api = Awaited<ReturnType<typeof stubAs>>;
 type Row = Record<string, unknown>;
 
 const MS_PER_MINUTE = 60_000;
+const minutesAgo = (m: number) =>
+	new Date(Date.now() - m * MS_PER_MINUTE).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const DAY1 = '2026-10-14';
 const DAY2 = '2026-10-15';
 const RANGE = `from=${DAY1}&to=${DAY2}`;
@@ -61,6 +68,12 @@ const day = (page: Page, date: string) =>
 	page.getByRole('region', { name: formatDayHeading(date) });
 const entries = (page: Page, date: string) =>
 	day(page, date).getByRole('list', { name: 'Entries' }).getByRole('listitem');
+// A row's accessible name is its timeline line, with the note after it.
+const entryNames = (page: Page, date: string) =>
+	entries(page, date)
+		.getByRole('link')
+		.evaluateAll((links) => links.map((a) => a.getAttribute('aria-label')));
+const link = (page: Page, name: string | RegExp) => page.getByRole('link', { name });
 const totals = (page: Page, date: string) =>
 	day(page, date).getByRole('list', { name: 'Totals' }).getByRole('listitem');
 const show = (page: Page) => page.getByRole('button', { name: 'Show', exact: true }).click();
@@ -76,20 +89,24 @@ test('six entries on two days sit under two headings, newest first, with their d
 	await signIn(page, ANA);
 	const response = await page.goto(timelineUrl(RANGE));
 	expect(response?.headers()['cache-control']).toBe('no-store');
-	await expect(page.getByRole('heading', { name: 'Timeline for Mia', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 
-	const headings = page.getByRole('heading', { level: 2 });
+	const headings = dayHeadings(page);
 	await expect(headings).toHaveText([formatDayHeading(DAY2), formatDayHeading(DAY1)]);
-	await expect(entries(page, DAY2)).toHaveText([
-		'12:15 Solids: pear · liked it',
-		'10:00 Pumping 20 min, 90 ml (both)',
-		'08:00 Nursing L 8 min · R 5 min'
-	]);
-	await expect(entries(page, DAY1)).toHaveText([
-		'Sleep 13:05–14:40 (1 h 35 min)',
-		'11:30 Diaper wet',
-		/^09:05 Bottle 120 ml, breast milk \+ formula\s+woke hungry$/
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY2))
+		.toEqual([
+			'12:15 Solids: pear · liked it',
+			'10:00 Pumping 20 min, 90 ml (both)',
+			'08:00 Nursing L 8 min · R 5 min'
+		]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'Sleep 13:05–14:40 (1 h 35 min)',
+			'11:30 Diaper wet',
+			'09:05 Bottle 120 ml, breast milk + formula woke hungry'
+		]);
 	await expect(totals(page, DAY2)).toHaveText(['Nursing 1 · 13 min']);
 	await expect(totals(page, DAY1)).toHaveText([
 		'Bottles 1 · 120 ml',
@@ -116,7 +133,16 @@ test('the filter form shows the kid’s dates and every enabled tracker, ticked'
 	await page.goto(timelineUrl(RANGE));
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(DAY1);
 	await expect(page.getByLabel('To', { exact: true })).toHaveValue(DAY2);
-	for (const name of ['Bottle', 'Nursing', 'Pumping', 'Sleep', 'Diaper', 'Solids', 'Symptom']) {
+	for (const name of [
+		'Bottle',
+		'Nursing',
+		'Pumping',
+		'Sleep',
+		'Diaper',
+		'Solids',
+		'Symptom',
+		'Visits'
+	]) {
 		await expect(box(page, name)).toBeChecked();
 	}
 	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
@@ -131,7 +157,9 @@ test('the default range is the kid’s today', async ({ page }) => {
 	const today = todayIn(MIA.timeZone);
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(today);
 	await expect(page.getByLabel('To', { exact: true })).toHaveValue(today);
-	await expect(entries(page, today)).toHaveText([/Diaper dirty\s*$/]);
+	await expect
+		.poll(() => entryNames(page, today))
+		.toEqual([expect.stringMatching(/Diaper dirty$/)]);
 });
 
 test('unticking a tracker hides its entries, ticking it again brings them back', async ({
@@ -141,20 +169,20 @@ test('unticking a tracker hides its entries, ticking it again brings them back',
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
 	await untilHydrated(page.getByLabel('From', { exact: true }));
-	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toBeVisible();
 
 	await box(page, 'Bottle').uncheck();
 	await show(page);
 	await page.waitForURL(/types=/);
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Sleep')).toBeChecked();
-	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toHaveCount(0);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)', 'Sleep 1 h 35 min']);
 
 	await box(page, 'Bottle').check();
 	await show(page);
-	await expect(page.getByText('Bottle 120 ml')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toBeVisible();
 	await expect(totals(page, DAY1).first()).toHaveText('Bottles 1 · 120 ml');
 });
 
@@ -169,15 +197,98 @@ test('a switched-off module’s entries stay hidden until its box is ticked', as
 	await untilHydrated(page.getByLabel('From', { exact: true }));
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect(box(page, 'Diaper')).toBeChecked();
-	await expect(page.getByText('Bottle 120 ml')).toHaveCount(0);
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, /Bottle 120 ml/)).toHaveCount(0);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)', 'Sleep 1 h 35 min']);
 
 	await box(page, 'Bottle').check();
 	await show(page);
-	await expect(page.getByText('09:05 Bottle 120 ml')).toBeVisible();
-	await expect(page.getByText('11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, '09:05 Bottle 120 ml')).toBeVisible();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 	await expect(totals(page, DAY1).first()).toHaveText('Bottles 1 · 120 ml');
+});
+
+// A sick visit and a cancelled dental visit around a diaper, on DAY1.
+async function seedVisits(api: Api) {
+	const sick = await seed(api, 'visits', { kind: 'sick', starts_at: `${DAY1}T10:00:00Z` });
+	const dental = await seed(api, 'visits', { kind: 'dental', starts_at: `${DAY1}T15:00:00Z` });
+	const cancel = await api('PATCH', `/v1/kids/${MIA.id}/visits/${dental.id}`, { cancelled: true });
+	expect(cancel.status).toBe(200);
+	await seed(api, 'diapers', { at: `${DAY1}T11:30:00Z`, kind: 'wet' });
+	return { sick, dental };
+}
+// A visit row has no aria-label: its name is its visible text, clock first.
+const SICK = /^10:00\s*Sick visit$/;
+const DENTAL = /^15:00\s*Dental visit\s*Cancelled$/;
+
+test('a visit is a row of its day, Cancelled when it is, and opens the visit page', async ({
+	page
+}) => {
+	const { sick, dental } = await seedVisits(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
+	await expect(box(page, 'Visits')).toBeChecked();
+	const rows = entries(page, DAY1).getByRole('link');
+	await expect(rows).toHaveCount(3);
+	await expect(rows.nth(0)).toHaveAccessibleName(DENTAL);
+	await expect(rows.nth(1)).toHaveAccessibleName('11:30 Diaper wet');
+	await expect(rows.nth(2)).toHaveAccessibleName(SICK);
+	await expect(rows.nth(0)).toHaveAttribute('href', `/kids/${MIA.id}/visits/${dental.id}`);
+	await expect(rows.nth(0)).not.toHaveAttribute('data-drawer');
+	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 wet)']);
+	await expectAccessible(page);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await link(page, SICK).click();
+	await expect(page).toHaveURL(`/kids/${MIA.id}/visits/${sick.id}`);
+	await expect(page.getByRole('heading', { level: 1, name: 'Sick visit' })).toBeVisible();
+	await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('the Visits box narrows the timeline to visits, and unticking it hides them', async ({
+	page
+}) => {
+	await seedVisits(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}&types=visit`));
+	await expect(box(page, 'Visits')).toBeChecked();
+	await expect(box(page, 'Diaper')).not.toBeChecked();
+	await expect(entries(page, DAY1)).toHaveCount(2);
+	await expect(link(page, '11:30 Diaper wet')).toHaveCount(0);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await box(page, 'Visits').uncheck();
+	await box(page, 'Diaper').check();
+	await show(page);
+	await page.waitForURL(/types=diaper/);
+	await expect(page).not.toHaveURL(/types=visit/);
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, SICK)).toHaveCount(0);
+	await expect(link(page, DENTAL)).toHaveCount(0);
+});
+
+test('with Medical visits off, visits stay hidden until the Visits box is ticked', async ({
+	page
+}) => {
+	const api = await stubAs(ANA);
+	await seedVisits(api);
+	expect(
+		(await api('PUT', `/v1/kids/${MIA.id}/modules/visits`, { enabled: false })).status
+	).toBeLessThan(300);
+	await signIn(page, ANA);
+	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}`));
+	await expect(box(page, 'Visits')).not.toBeChecked();
+	await expect(box(page, 'Diaper')).toBeChecked();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
+	await expect(link(page, SICK)).toHaveCount(0);
+	await expectAccessible(page);
+
+	await untilHydrated(page.getByLabel('From', { exact: true }));
+	await box(page, 'Visits').check();
+	await show(page);
+	await expect(link(page, SICK)).toBeVisible();
+	await expect(link(page, DENTAL)).toBeVisible();
+	await expect(link(page, '11:30 Diaper wet')).toBeVisible();
 });
 
 // One more diaper than a page holds, on one day.
@@ -210,7 +321,9 @@ async function pageThroughOlder(page: Page) {
 	const second = await rowLinks(page);
 	expect(first).not.toContain(second[0]);
 	await expect(page.getByLabel('From', { exact: true })).toHaveValue(PAGE_DAY);
-	await expect(entries(page, PAGE_DAY).first()).toHaveText('06:00 Diaper wet');
+	await expect(entries(page, PAGE_DAY).first().getByRole('link')).toHaveAccessibleName(
+		'06:00 Diaper wet'
+	);
 
 	await page.getByRole('link', { name: 'Back to newest' }).click();
 	await expect(page).not.toHaveURL(/cursor=/);
@@ -243,7 +356,7 @@ test('Older carries a narrowed filter to the next page', async ({ page }) => {
 	await expect(page).not.toHaveURL(/types=bottle/);
 	await expect(box(page, 'Bottle')).not.toBeChecked();
 	await expect.poll(() => rowLinks(page)).toHaveLength(1);
-	await expect(page.getByText('Bottle 60 ml')).toHaveCount(0);
+	await expect(link(page, /Bottle 60 ml/)).toHaveCount(0);
 });
 
 test('an invalid date, a reversed range and a long range show a message on the field', async ({
@@ -252,7 +365,7 @@ test('an invalid date, a reversed range and a long range show a message on the f
 	await seedTwoDays(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(timelineUrl('from=garbage&to=2026-10-15'));
-	await expect(page.getByRole('heading', { name: 'Timeline for Mia', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
 	await expectFieldError(page.getByLabel('From', { exact: true }), 'Enter a valid date');
 	await expect(page.getByLabel('To', { exact: true })).not.toHaveAttribute('aria-invalid', 'true');
 	await expect(page.getByRole('list', { name: 'Entries' })).toHaveCount(0);
@@ -296,7 +409,7 @@ test('a row opens its edit page, and saving returns to the timeline with the cha
 	await page.getByRole('radio', { name: 'Both' }).check();
 	await page.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(page).toHaveURL(timelineUrl(`from=${DAY1}&to=${DAY1}`));
-	await expect(entries(page, DAY1)).toHaveText(['11:30 Diaper both']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['11:30 Diaper both']);
 	await expect(totals(page, DAY1)).toHaveText(['Diapers 1 (1 both)']);
 });
 
@@ -316,20 +429,20 @@ test('a Madrid day of 23 hours holds an entry at 00:30 and one at 23:30 under on
 	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
 
 	await page.goto(timelineUrl('from=2026-03-29&to=2026-03-29&types=diaper', LEO.id));
-	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
-		formatDayHeading('2026-03-29')
-	]);
-	await expect(entries(page, '2026-03-29')).toHaveText(['23:30 Diaper dirty', '00:30 Diaper wet']);
+	await expect(dayHeadings(page)).toHaveText([formatDayHeading('2026-03-29')]);
+	await expect
+		.poll(() => entryNames(page, '2026-03-29'))
+		.toEqual(['23:30 Diaper dirty', '00:30 Diaper wet']);
 	await expect(totals(page, '2026-03-29')).toHaveText(['Diapers 2 (1 wet, 1 dirty)']);
 
 	await page.goto(timelineUrl('from=2026-03-28&to=2026-03-30&types=diaper', LEO.id));
-	await expect(page.getByRole('heading', { level: 2 })).toHaveText([
+	await expect(dayHeadings(page)).toHaveText([
 		formatDayHeading('2026-03-30'),
 		formatDayHeading('2026-03-29'),
 		formatDayHeading('2026-03-28')
 	]);
-	await expect(entries(page, '2026-03-28')).toHaveText(['23:30 Diaper dry']);
-	await expect(entries(page, '2026-03-30')).toHaveText(['00:00 Diaper both']);
+	await expect.poll(() => entryNames(page, '2026-03-28')).toEqual(['23:30 Diaper dry']);
+	await expect.poll(() => entryNames(page, '2026-03-30')).toEqual(['00:00 Diaper both']);
 });
 
 test('a parent without a grant and an unknown kid get the same 404 page', async ({ page }) => {
@@ -342,7 +455,7 @@ test('a caregiver sees the kid’s timeline', async ({ page }) => {
 	await seed(await stubAs(CLEO), 'diapers', { at: `${DAY1}T11:30:00Z`, kind: 'wet' }, LEO.id);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(`from=${DAY1}&to=${DAY1}&types=diaper`, LEO.id));
-	await expect(entries(page, DAY1)).toHaveText(['13:30 Diaper wet']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['13:30 Diaper wet']);
 });
 
 test.describe('without JavaScript', () => {
@@ -392,24 +505,32 @@ test('symptoms read in the parent unit, and a row opens the symptom edit page', 
 	const { fever } = await seedSymptoms(api);
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1)).toHaveText([
-		'12:00 Other: hiccups',
-		'11:30 Diaper wet',
-		/^10:30 Cough, moderate\s+at night$/,
-		'09:12 Fever 38.4 °C (ear)'
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'12:00 Other: hiccups',
+			'11:30 Diaper wet',
+			'10:30 Cough, moderate at night',
+			'09:12 Fever 38.4 °C (ear)'
+		]);
 	await expectAccessible(page);
 
 	expect((await api('PATCH', '/v1/me', { units: { temp: 'f' } })).status).toBe(200);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1).last()).toHaveText('09:12 Fever 101.12 °F (ear)');
+	await expect(entries(page, DAY1).last().getByRole('link')).toHaveAccessibleName(
+		'09:12 Fever 101.12 °F (ear)'
+	);
 	await expect(page.getByRole('link', { name: /^09:12 Fever/ })).toHaveAttribute(
 		'href',
 		`/kids/${MIA.id}/log/symptoms/${fever.id}`
 	);
-	await page.getByRole('link', { name: /^09:12 Fever/ }).click();
+	await openSheet(
+		page,
+		timelineUrl(RANGE),
+		(p) => p.getByRole('link', { name: /^09:12 Fever/ }),
+		'Edit symptom'
+	);
 	await expect(page).toHaveURL(`/kids/${MIA.id}/log/symptoms/${fever.id}`);
-	await expect(page.getByRole('heading', { name: 'Edit symptom', level: 1 })).toBeVisible();
 });
 
 test('the Symptom box narrows the timeline to symptoms, and unticking it hides them', async ({
@@ -420,11 +541,13 @@ test('the Symptom box narrows the timeline to symptoms, and unticking it hides t
 	await page.goto(timelineUrl(`${RANGE}&types=symptom`));
 	await expect(box(page, 'Symptom')).toBeChecked();
 	await expect(box(page, 'Diaper')).not.toBeChecked();
-	await expect(entries(page, DAY1)).toHaveText([
-		'12:00 Other: hiccups',
-		/^10:30 Cough, moderate/,
-		'09:12 Fever 38.4 °C (ear)'
-	]);
+	await expect
+		.poll(() => entryNames(page, DAY1))
+		.toEqual([
+			'12:00 Other: hiccups',
+			expect.stringMatching(/^10:30 Cough, moderate/),
+			'09:12 Fever 38.4 °C (ear)'
+		]);
 
 	await page.goto(timelineUrl(RANGE));
 	await untilHydrated(page.getByLabel('From', { exact: true }));
@@ -432,7 +555,7 @@ test('the Symptom box narrows the timeline to symptoms, and unticking it hides t
 	await show(page);
 	await page.waitForURL(/types=/);
 	await expect(box(page, 'Symptom')).not.toBeChecked();
-	await expect(entries(page, DAY1)).toHaveText(['11:30 Diaper wet']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['11:30 Diaper wet']);
 });
 
 test('a sleep that ends the next day marks its end', async ({ page }) => {
@@ -440,7 +563,7 @@ test('a sleep that ends the next day marks its end', async ({ page }) => {
 	await seed(api, 'sleep', { started_at: `${DAY1}T22:00:00Z`, ended_at: `${DAY2}T06:00:00Z` });
 	await signIn(page, ANA);
 	await page.goto(timelineUrl(RANGE));
-	await expect(entries(page, DAY1)).toHaveText(['Sleep 22:00–06:00 +1 day (8 h)']);
+	await expect.poll(() => entryNames(page, DAY1)).toEqual(['Sleep 22:00–06:00 +1 day (8 h)']);
 });
 
 test('a long unbroken meal and note wrap on a phone', async ({ page }, testInfo) => {
@@ -452,4 +575,52 @@ test('a long unbroken meal and note wrap on a phone', async ({ page }, testInfo)
 	await page.goto(timelineUrl(RANGE));
 	await expect(entries(page, DAY1)).toHaveCount(1);
 	expect(await overflows(page)).toBe(false);
+});
+
+test('Since last, the week strip, the age line and the day filter', async ({ page }) => {
+	test.skip(new Date().getUTCHours() < 2, 'entries would fall on yesterday');
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/diapers`, { kind: 'wet', at: minutesAgo(90) });
+	await ana('POST', `/v1/kids/${MIA.id}/bottles`, {
+		contents: ['formula'],
+		volume: { unit: 'ml', amount: 120 },
+		at: minutesAgo(30)
+	});
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/timeline`);
+
+	await expect(page.getByRole('heading', { name: 'Timeline', level: 1 })).toBeVisible();
+	await expect(page.getByText(/^\d+ (month|week|day|year)s?\b/).first()).toBeVisible();
+
+	const since = page.getByRole('region', { name: 'Since last' });
+	await expect(since).toContainText('Last feed');
+	await expect(since).toContainText(/30 min ago/);
+	await expect(since).toContainText(/1 h 30 min ago/);
+
+	const strip = page.getByRole('region', { name: 'Last 7 days' });
+	await expect(strip.getByRole('list').getByRole('link')).toHaveCount(7);
+	const todayCell = strip.getByRole('link', { name: /^Today: 1 bottle \(120 ml\) · 1 diaper/ });
+	await expect(todayCell).toHaveAttribute('aria-current', 'date');
+	await expectAccessible(page);
+
+	await strip.getByRole('link', { name: /^Yesterday: nothing logged/ }).click();
+	await expect(page).toHaveURL(/from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}/);
+	await expect(page.getByText('Nothing logged in this range')).toBeVisible();
+
+	await strip.getByRole('link', { name: 'Show all days' }).click();
+	await expect(todayCell).not.toHaveAttribute('aria-current', 'date');
+	await expect(page.getByRole('link', { name: 'Show all days' })).toHaveCount(1);
+});
+
+test('a running sleep is a card on the timeline, and End closes it', async ({ page }) => {
+	const ana = await stubAs(ANA);
+	await ana('POST', `/v1/kids/${MIA.id}/sleep`, { started_at: minutesAgo(25) });
+	await signIn(page, ANA);
+	await page.goto(`/kids/${MIA.id}/timeline`);
+	const card = page.getByRole('region', { name: 'Running now' });
+	await expect(card).toContainText(/Asleep since \d{2}:\d{2}/);
+	await expect(page.getByRole('region', { name: 'Since last' })).toContainText('Asleep for');
+	await card.getByRole('button', { name: 'End sleep' }).click();
+	await expect(card).toHaveCount(0);
+	await expect(page).toHaveURL(new RegExp(`/kids/${MIA.id}/timeline`));
 });

@@ -184,6 +184,28 @@ func TestDeleteKidCascadesOnlyItsGrants(t *testing.T) {
 	}
 }
 
+func TestAccessListMarksADisabledParent(t *testing.T) {
+	s := openMem(t)
+	zed := mustParent(t, s, "zed")
+	mustParent(t, s, "amy")
+	k := mustKid(t, s, zed.ID, "Lía")
+	mustGrant(t, s, k.ID, zed.ID, "amy", model.RoleCaregiver)
+	amy, _, err := s.ParentByUsername(ctx, "amy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetParentDisabled(ctx, amy.ID, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.AccessList(ctx, k.ID)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("AccessList = %v, %v", got, err)
+	}
+	if got[0].Username != "zed" || got[0].Disabled || got[1].Username != "amy" || !got[1].Disabled {
+		t.Errorf("grants = %+v", got)
+	}
+}
+
 func TestAccessListOrder(t *testing.T) {
 	s := openMem(t)
 	zed := mustParent(t, s, "zed")
@@ -629,5 +651,26 @@ func TestConcurrentDisableAndDelete(t *testing.T) {
 		default:
 			t.Fatalf("round %d: write order %s (delete %v): a disabled actor's delete committed", round, order, deleted)
 		}
+	}
+}
+
+func TestEntryCountCoversTheDailyTrackersOfOneKid(t *testing.T) {
+	s := openMem(t)
+	ana := mustParent(t, s, "ana")
+	k := mustKid(t, s, ana.ID, "Lía")
+	other := mustKid(t, s, ana.ID, "Noa")
+	if n, err := s.EntryCount(ctx, k.ID); err != nil || n != 0 {
+		t.Fatalf("empty kid = %d, %v; want 0", n, err)
+	}
+	mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: t0.Add(-time.Hour), Kind: "wet"})
+	mustDiaper(t, s, k.ID, ana.ID, model.Diaper{At: t0.Add(-2 * time.Hour), Kind: "dirty"})
+	mustMeal(t, s, k.ID, ana.ID, model.Meal{At: t0.Add(-time.Hour), What: "pear"})
+	mustSleep(t, s, k.ID, ana.ID, model.SleepSession{StartedAt: t0.Add(-3 * time.Hour)})
+	mustDiaper(t, s, other.ID, ana.ID, model.Diaper{At: t0.Add(-time.Hour), Kind: "wet"})
+	if n, err := s.EntryCount(ctx, k.ID); err != nil || n != 4 {
+		t.Fatalf("count = %d, %v; want 4 and none of the other kid's", n, err)
+	}
+	if n, err := s.EntryCount(ctx, "nobody"); err != nil || n != 0 {
+		t.Fatalf("unknown kid = %d, %v; want 0", n, err)
 	}
 }

@@ -4,7 +4,8 @@ import {
 	EXPORT_TIMEOUT_MS,
 	ID_PATTERN,
 	TOKEN_PATTERN,
-	VACCINE_LINE_PATTERN
+	VACCINE_LINE_PATTERN,
+	VISIT_DISPOSITION_PATTERN
 } from './constants';
 import type { Env } from './env';
 import {
@@ -32,12 +33,15 @@ import {
 	VACCINE_DISMISS_REASONS,
 	VACCINE_KINDS,
 	VACCINE_STATUSES,
+	VISIT_KINDS,
+	VISIT_STATUSES,
 	VOLUME_UNITS,
 	WEIGHT_UNITS
 } from '../constants';
 import type {
 	Administration,
 	AdministrationInput,
+	AdminLink,
 	AdminParent,
 	Bottle,
 	BottleSource,
@@ -81,6 +85,9 @@ import type {
 	PumpingSideVolume,
 	PushDevice,
 	PushState,
+	ProviderPage,
+	ProviderQuery,
+	ProviderResult,
 	PushSubscriptionInput,
 	Role,
 	Schedule,
@@ -91,6 +98,7 @@ import type {
 	Symptom,
 	Temperature,
 	TimelineItem,
+	TimelineType,
 	TimelineQuery,
 	TimerKind,
 	TokenInfo,
@@ -104,6 +112,12 @@ import type {
 	VaccineLine,
 	Vaccines,
 	VaccineSchemaInfo,
+	Visit,
+	VisitCalendarDetail,
+	VisitDetail,
+	VisitLinkedChoice,
+	VisitQuery,
+	VisitRow,
 	Volume,
 	VolumeTotal
 } from '../types';
@@ -151,7 +165,11 @@ type Endpoint =
 	| 'list_access'
 	| 'set_access'
 	| 'remove_access'
-	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose' | 'milestone'}`
+	| `${'list' | 'get' | 'create' | 'update' | 'delete'}_${TrackerKind | 'growth' | 'vaccination' | 'medication' | 'dose' | 'milestone' | 'visit'}`
+	| 'visit_outcome'
+	| 'visit_calendar'
+	| 'provider_state'
+	| 'provider_search'
 	| 'push_state'
 	| 'list_push_devices'
 	| 'upsert_push_device'
@@ -174,6 +192,7 @@ type Endpoint =
 	| 'list_modules'
 	| 'set_module'
 	| 'home'
+	| 'kid_counts'
 	| 'vaccines'
 	| 'vaccine_schemas'
 	| 'vaccine_catalogue'
@@ -285,7 +304,8 @@ function toParent(v: unknown): Parent {
 		id: string(p.id),
 		username: string(p.username),
 		displayName: string(p.display_name),
-		units: toUnits(p.units)
+		units: toUnits(p.units),
+		passwordChangedAt: stringOrNull(p.password_changed_at ?? null)
 	};
 }
 
@@ -330,7 +350,17 @@ function toGrant(v: unknown): Grant {
 		parentId: string(g.parent_id),
 		username: string(g.username),
 		displayName: string(g.display_name),
-		role: oneOf(g.role, ROLES)
+		role: oneOf(g.role, ROLES),
+		disabled: g.disabled === true
+	};
+}
+
+function toAdminLink(v: unknown): AdminLink {
+	const l = object(v);
+	return {
+		kind: oneOf(l.kind, ['invite', 'reset'] as const),
+		issuedAt: string(l.issued_at),
+		expiresAt: string(l.expires_at)
 	};
 }
 
@@ -342,7 +372,9 @@ function toAdminParent(v: unknown): AdminParent {
 		displayName: string(p.display_name),
 		disabled: boolean(p.disabled),
 		hasPassword: boolean(p.has_password),
-		createdAt: string(p.created_at)
+		createdAt: string(p.created_at),
+		lastActiveAt: stringOrNull(p.last_active_at ?? null),
+		link: p.link == null ? null : toAdminLink(p.link)
 	};
 }
 
@@ -360,7 +392,8 @@ function toSessionInfo(v: unknown): SessionInfo {
 		id: string(s.id),
 		createdAt: string(s.created_at),
 		lastSeenAt: string(s.last_seen_at),
-		current: boolean(s.current)
+		current: boolean(s.current),
+		deviceLabel: stringOrNull(s.device_label ?? null)
 	};
 }
 
@@ -508,6 +541,7 @@ function toPage<K extends TrackerKind>(kind: K, v: unknown): Page<TrackerEntries
 // An item is its tracker's own view plus type and at; type is the singular name, kind the route name.
 function toTimelineItem(v: unknown): TimelineItem {
 	const o = object(v);
+	if (o.type === 'visit') return { kind: 'visit', at: string(o.at), entry: toVisitRow(o) };
 	const kind = TRACKER_KINDS.find((k) => TIMELINE_TYPE[k] === o.type);
 	if (!kind) throw new ShapeError();
 	return { kind, at: string(o.at), entry: PARSERS[kind](o) } as TimelineItem;
@@ -549,6 +583,18 @@ function toModuleState(v: unknown): ModuleState {
 	};
 }
 
+// A missing last is an older API: every tracker then reads as unknown, not as empty.
+function toLast(v: unknown): Home['last'] {
+	if (v === undefined) return {};
+	const out: Home['last'] = {};
+	for (const [type, row] of Object.entries(object(v))) {
+		if (TRACKER_KINDS.some((k) => TIMELINE_TYPE[k] === type)) {
+			out[type as TimelineType] = row === null ? null : toTimelineItem(row);
+		}
+	}
+	return out;
+}
+
 function toHome(v: unknown): Home {
 	const o = object(v);
 	const running = object(o.running);
@@ -562,7 +608,8 @@ function toHome(v: unknown): Home {
 			nursing: running.nursing === null ? null : toNursing(running.nursing)
 		},
 		today: toDaySummary(o.today),
-		due: list(o, 'due', toHomeDue)
+		due: list(o, 'due', toHomeDue),
+		last: toLast(o.last)
 	};
 }
 
@@ -576,6 +623,14 @@ function toVaccineAge(v: unknown): VaccineAge {
 
 function toHomeDue(v: unknown): HomeDue {
 	const o = object(v);
+	if (o.kind === 'visit') {
+		return {
+			kind: 'visit',
+			id: string(o.id),
+			startsAt: string(o.starts_at),
+			visitKind: oneOf(o.visit_kind, VISIT_KINDS)
+		};
+	}
 	if (o.kind === 'medication') {
 		const m = object(o.medication);
 		return {
@@ -687,6 +742,7 @@ function toAdministration(v: unknown): Administration {
 	const o = object(v);
 	return {
 		id: string(o.id),
+		visitId: stringOrNull(o.visit_id),
 		givenOn: string(o.given_on),
 		antigens: list(o, 'antigens', string),
 		lot: stringOrNull(o.lot),
@@ -713,6 +769,7 @@ function toMedication(v: unknown): Medication {
 	const o = object(v);
 	return {
 		id: string(o.id),
+		visitId: stringOrNull(o.visit_id),
 		name: string(o.name),
 		dose: string(o.dose),
 		schedule: toSchedule(o.schedule),
@@ -742,6 +799,95 @@ function toMedicationDose(v: unknown): MedicationDose {
 		amount: stringOrNull(o.amount),
 		note: stringOrNull(o.note)
 	};
+}
+
+function toVisit(o: Wire): Visit {
+	return {
+		id: string(o.id),
+		startsAt: string(o.starts_at),
+		durationMin: int(o.duration_min),
+		kind: oneOf(o.kind, VISIT_KINDS),
+		status: oneOf(o.status, VISIT_STATUSES),
+		cancelledAt: stringOrNull(o.cancelled_at),
+		provider: stringOrNull(o.provider),
+		location: stringOrNull(o.location),
+		providerNpi: stringOrNull(o.provider_npi),
+		note: stringOrNull(o.note),
+		outcomeNotes: stringOrNull(o.outcome_notes),
+		revision: int(o.revision)
+	};
+}
+
+function toVisitDetail(v: unknown): VisitDetail {
+	const o = object(v);
+	const linked = object(o.linked);
+	return {
+		...toVisit(o),
+		linked: {
+			growth: list(linked, 'growth', (r) => {
+				const g = object(r);
+				return { id: string(g.id), measuredOn: string(g.measured_on) };
+			}),
+			vaccinations: list(linked, 'vaccinations', (r) => {
+				const a = object(r);
+				return {
+					id: string(a.id),
+					givenOn: string(a.given_on),
+					antigens: list(a, 'antigens', string)
+				};
+			}),
+			medications: list(linked, 'medications', (r) => {
+				const m = object(r);
+				return { id: string(m.id), name: string(m.name), doseCount: int(m.dose_count) };
+			})
+		}
+	};
+}
+
+// A list or timeline row: linked holds counts, not rows.
+function toVisitRow(v: unknown): VisitRow {
+	const o = object(v);
+	const linked = object(o.linked);
+	return {
+		...toVisit(o),
+		linked: {
+			growth: int(linked.growth),
+			vaccinations: int(linked.vaccinations),
+			medications: int(linked.medications)
+		}
+	};
+}
+
+function toProviderResult(v: unknown): ProviderResult {
+	const o = object(v);
+	return {
+		npi: string(o.npi),
+		name: string(o.name),
+		credential: stringOrNull(o.credential),
+		taxonomy: stringOrNull(o.taxonomy),
+		address: string(o.address),
+		phone: stringOrNull(o.phone)
+	};
+}
+
+function toProviderPage(v: unknown): ProviderPage {
+	const o = object(v);
+	return { results: list(o, 'results', toProviderResult), more: boolean(o.more) };
+}
+
+// The API's body keys; a term left out is not sent.
+function providerBody(q: ProviderQuery): Wire {
+	const body: Wire = { kind: q.kind };
+	const keys = [
+		['last_name', q.lastName],
+		['first_name', q.firstName],
+		['organization', q.organization],
+		['state', q.state],
+		['city', q.city],
+		['postal_code', q.postalCode]
+	] as const;
+	for (const [k, v] of keys) if (v !== undefined) body[k] = v;
+	return body;
 }
 
 function toMilestoneReached(v: unknown): MilestoneReached {
@@ -883,6 +1029,7 @@ function toGrowthRow(v: unknown): GrowthRow {
 	const scores = object(o.scores);
 	return {
 		id: string(o.id),
+		visitId: stringOrNull(o.visit_id),
 		measuredOn: string(o.measured_on),
 		weight: nullOr(o.weight, toGrowthWeight),
 		length: nullOr(o.length, toGrowthLength),
@@ -959,7 +1106,7 @@ function curvesQuery(q: CurvesQuery): string {
 	return `?${p}`;
 }
 
-function queryString(q: TimelineQuery & { medication?: string }): string {
+function queryString(q: TimelineQuery & VisitQuery & { medication?: string }): string {
 	const p = new URLSearchParams();
 	if (q.from !== undefined) p.set('from', q.from);
 	if (q.to !== undefined) p.set('to', q.to);
@@ -967,6 +1114,7 @@ function queryString(q: TimelineQuery & { medication?: string }): string {
 	if (q.cursor !== undefined) p.set('cursor', q.cursor);
 	if (q.medication !== undefined) p.set('medication', q.medication);
 	if (q.types?.length) p.set('types', q.types.join(','));
+	if (q.order !== undefined) p.set('order', q.order);
 	const s = p.toString();
 	return s === '' ? '' : `?${s}`;
 }
@@ -1062,22 +1210,30 @@ export function createApi(
 		return failure;
 	}
 
-	// A 200 is streamed unread, and only as a PDF attachment; a refusal's JSON is read as call() reads it.
-	async function exportPdf(kidId: string, input: ExportInput): Promise<ExportResult> {
-		const endpoint = 'export_pdf';
+	// A 200 is streamed unread, and only as the attachment expected; a refusal's JSON is read as call() reads it.
+	async function download(d: {
+		endpoint: Endpoint;
+		method: string;
+		path: string;
+		accept: string;
+		body?: unknown;
+		timeoutMs: number;
+		contentType: string;
+		disposition: RegExp;
+	}): Promise<ExportResult> {
 		let res: Response;
 		let raw: unknown = undefined;
-		// The timeout bounds the wait for the headers and a refusal's body only; the PDF streams after it.
+		// The timeout bounds the wait for the headers and a refusal's body only; the file streams after it.
 		const timeout = new AbortController();
 		const timer = setTimeout(
-			() => timeout.abort(new DOMException('export timed out', 'TimeoutError')),
-			EXPORT_TIMEOUT_MS
+			() => timeout.abort(new DOMException('download timed out', 'TimeoutError')),
+			d.timeoutMs
 		);
 		try {
-			res = await fetchFn(`${base}/v1/kids/${kidId}/export`, {
-				method: 'POST',
-				headers: requestHeaders('application/pdf', true),
-				body: JSON.stringify(input),
+			res = await fetchFn(`${base}${d.path}`, {
+				method: d.method,
+				headers: requestHeaders(d.accept, d.body !== undefined),
+				body: d.body === undefined ? undefined : JSON.stringify(d.body),
 				signal: timeout.signal
 			});
 			if (!res.ok) {
@@ -1086,25 +1242,45 @@ export function createApi(
 				});
 			}
 		} catch (e) {
-			logFailure(endpoint, isAbort(e) ? 'timeout' : 'network');
+			logFailure(d.endpoint, isAbort(e) ? 'timeout' : 'network');
 			return { ok: false, status: 0, reason: 'unavailable' };
 		} finally {
 			clearTimeout(timer);
 		}
-		if (!res.ok) return refused(endpoint, res.status, raw);
+		if (!res.ok) return refused(d.endpoint, res.status, raw);
 		const contentType = res.headers.get('content-type') ?? '';
 		const disposition = res.headers.get('content-disposition') ?? '';
-		if (
-			res.body === null ||
-			contentType !== 'application/pdf' ||
-			!EXPORT_DISPOSITION_PATTERN.test(disposition)
-		) {
+		if (res.body === null || contentType !== d.contentType || !d.disposition.test(disposition)) {
 			await res.body?.cancel().catch(() => {});
-			logFailure(endpoint, res.status);
+			logFailure(d.endpoint, res.status);
 			return { ok: false, status: res.status, reason: 'error' };
 		}
 		return { ok: true, body: res.body, contentType, disposition };
 	}
+
+	const exportPdf = (kidId: string, input: ExportInput) =>
+		download({
+			endpoint: 'export_pdf',
+			method: 'POST',
+			path: `/v1/kids/${kidId}/export`,
+			accept: 'application/pdf',
+			body: input,
+			timeoutMs: EXPORT_TIMEOUT_MS,
+			contentType: 'application/pdf',
+			disposition: EXPORT_DISPOSITION_PATTERN
+		});
+
+	// The file is built in memory by the API, so the usual call timeout bounds it.
+	const visitCalendar = (kidId: string, id: string, detail: VisitCalendarDetail) =>
+		download({
+			endpoint: 'visit_calendar',
+			method: 'GET',
+			path: `/v1/kids/${kidId}/visits/${id}/calendar?detail=${detail}`,
+			accept: 'text/calendar',
+			timeoutMs: API_TIMEOUT_MS,
+			contentType: 'text/calendar; charset=utf-8',
+			disposition: VISIT_DISPOSITION_PATTERN
+		});
 
 	const tokenPath = (token: string) =>
 		TOKEN_PATTERN.test(token) ? `/v1/tokens/${token}` : undefined;
@@ -1137,8 +1313,12 @@ export function createApi(
 	return {
 		health: () => call<null>('health', 'GET', '/healthz', null),
 		remindersHealth: () => call<null>('reminders_health', 'GET', '/healthz/reminders', null),
-		login: (username: string, password: string) =>
-			call('login', 'POST', '/v1/session', toNewSession, { username, password }),
+		login: (username: string, password: string, deviceLabel?: string) =>
+			call('login', 'POST', '/v1/session', toNewSession, {
+				username,
+				password,
+				...(deviceLabel ? { device_label: deviceLabel } : {})
+			}),
 		session: () => call('session', 'GET', '/v1/session', toSession),
 		logout: () => call<null>('logout', 'DELETE', '/v1/session', null),
 		peekToken(token: string): Promise<ApiResult<TokenInfo>> {
@@ -1191,6 +1371,12 @@ export function createApi(
 		deleteKid: (id: string, confirmName: string) =>
 			withId(id, (i) =>
 				call<null>('delete_kid', 'DELETE', `/v1/kids/${i}`, null, { confirm_name: confirmName })
+			),
+		kidCounts: (kidId: string) =>
+			withId(kidId, (i) =>
+				call('kid_counts', 'GET', `/v1/kids/${i}/counts`, (b) => ({
+					entries: int(object(b).entries)
+				}))
 			),
 		listAccess: (kidId: string) =>
 			withId(kidId, (i) =>
@@ -1271,6 +1457,51 @@ export function createApi(
 				withKidEntry(kidId, id, (k, i) =>
 					call<null>('delete_medication', 'DELETE', `/v1/kids/${k}/medications/${i}`, null)
 				)
+		},
+		// input is the API's own JSON body; outcome's carries the revision it was read at.
+		visits: {
+			list: (kidId: string, query: VisitQuery = {}) =>
+				withId(kidId, (k) =>
+					call('list_visit', 'GET', `/v1/kids/${k}/visits${queryString(query)}`, (b) => ({
+						items: list(b, 'visits', toVisitRow),
+						nextCursor: stringOrNull(object(b).next_cursor)
+					}))
+				),
+			get: (kidId: string, id: string) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('get_visit', 'GET', `/v1/kids/${k}/visits/${i}`, toVisitDetail)
+				),
+			create: (kidId: string, input: EntryBody) =>
+				withId(kidId, (k) =>
+					call('create_visit', 'POST', `/v1/kids/${k}/visits`, toVisitDetail, input)
+				),
+			update: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('update_visit', 'PATCH', `/v1/kids/${k}/visits/${i}`, toVisitDetail, input)
+				),
+			remove: (kidId: string, id: string, linked: VisitLinkedChoice) =>
+				known(linked === 'delete' || linked === 'keep', () =>
+					withKidEntry(kidId, id, (k, i) =>
+						call<null>('delete_visit', 'DELETE', `/v1/kids/${k}/visits/${i}?linked=${linked}`, null)
+					)
+				),
+			outcome: (kidId: string, id: string, input: EntryBody) =>
+				withKidEntry(kidId, id, (k, i) =>
+					call('visit_outcome', 'POST', `/v1/kids/${k}/visits/${i}/outcome`, toVisitDetail, input)
+				),
+			calendar: (kidId: string, id: string, detail: VisitCalendarDetail): Promise<ExportResult> =>
+				ID_PATTERN.test(kidId) && ID_PATTERN.test(id) && (detail === 'generic' || detail === 'full')
+					? visitCalendar(kidId, id, detail)
+					: Promise.resolve(NOT_FOUND)
+		},
+		// Search answers 404 while the server's lookup is off; the terms never reach a log.
+		providers: {
+			state: () =>
+				call('provider_state', 'GET', '/v1/providers', (b) => ({
+					enabled: boolean(object(object(b).search).enabled)
+				})),
+			search: (q: ProviderQuery) =>
+				call('provider_search', 'POST', '/v1/providers/search', toProviderPage, providerBody(q))
 		},
 		// input is the API's own JSON body; query.medication filters to one course.
 		doses: {

@@ -2,8 +2,11 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Field from '#lib/components/entry/Field.svelte';
-	import { ERROR_CLASS, keepValues } from '#lib/components/field.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import { Alert } from '#lib/components/ui/alert/index.js';
+	import FormCancel from '#lib/components/FormCancel.svelte';
+	import FormFrame from '#lib/components/FormFrame.svelte';
+	import { Button, buttonVariants } from '#lib/components/ui/button/index.js';
+	import { isEmbed, savedAs } from '#lib/drawer.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import type { PageProps } from './$types';
 
@@ -19,66 +22,94 @@
 		)
 	});
 	const error = (name: string) => (save?.field === name ? save.message : null);
+	const embed = isEmbed();
 	const medication = $derived(resolve('/(app)/kids/[kid]/medication', { kid: data.kid.id }));
 </script>
 
-<svelte:head>
-	<title>Edit dose · {data.kid.name} · happybabytracker</title>
-</svelte:head>
+{#snippet info()}
+	<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
+		Dose of {data.course.name}
+	</p>
+	<p class="text-[13.5px] text-muted-foreground">Times are in {data.kid.timeZone}</p>
+{/snippet}
 
-<p class="mb-2 text-sm">
-	<a href={medication} class="underline">Medication for {data.kid.name}</a>
-</p>
-<h1 class="text-xl font-semibold">Edit dose</h1>
-<p class="mb-4 text-sm [overflow-wrap:anywhere] text-muted-foreground">
-	Dose of {data.course.name}
-</p>
-<form
-	method="POST"
-	action="?/save"
-	class="flex max-w-md flex-col gap-4"
-	novalidate
-	use:enhance={keepValues}
+<FormFrame
+	class="flex flex-col gap-[18px]"
+	documentTitle="Edit dose · {data.kid.name} · happybabytracker"
 >
-	{#if save && !save.field && save.message}
-		<p class={ERROR_CLASS} role="alert">{save.message}</p>
+	{#snippet chrome()}
+		<div class="mt-5 flex flex-col gap-1.5">
+			<h1>Edit dose</h1>
+			<p class="text-sm leading-snug text-muted-foreground">{data.ages[data.kid.id]}</p>
+			{@render info()}
+		</div>
+	{/snippet}
+	{#if embed}
+		<div class="flex flex-col gap-1.5">{@render info()}</div>
 	{/if}
-	<p class="text-sm text-muted-foreground">Times are in {data.kid.timeZone}</p>
-	<Field id="dose-given_at" label="Given at" error={error('given_at')}>
-		{#snippet children(control)}
-			<Input {...control} name="given_at" type="datetime-local" value={values.given_at} />
-		{/snippet}
-	</Field>
-	<Field id="dose-amount" label="Amount" error={error('amount')}>
-		{#snippet children(control)}
-			<Input {...control} name="amount" autocomplete="off" value={values.amount} />
-		{/snippet}
-	</Field>
-	<Field id="dose-note" label="Note" error={error('note')}>
-		{#snippet children(control)}
-			<Input {...control} name="note" autocomplete="off" value={values.note} />
-		{/snippet}
-	</Field>
-	<input type="hidden" name="given_at_original" value={data.values.given_at_original} />
-	<input type="hidden" name="amount_original" value={data.values.amount_original} />
-	<input type="hidden" name="note_original" value={data.values.note_original} />
-	<div class="flex items-center gap-4">
-		<Button type="submit">Save</Button>
-		<a href={medication} class="text-sm underline">Cancel</a>
-	</div>
-</form>
-
-<!-- Two steps without JavaScript: the button exists only inside the opened details.
-     A failure reopens it, so its message shows after a full-page POST too. -->
-<details class="mt-6 max-w-md rounded-lg border p-3" open={!!del?.message}>
-	<summary class="cursor-pointer text-sm font-medium">Delete this dose</summary>
-	<form method="POST" action="?/delete" class="mt-3 flex flex-col gap-3" use:enhance>
-		{#if del?.message}
-			<p class={ERROR_CLASS} role="alert">{del.message}</p>
-		{/if}
-		<p class="text-sm">This removes the dose for everyone with access to {data.kid.name}.</p>
-		<Button type="submit" variant="outline" class="self-start border-destructive text-destructive"
-			>Yes, delete this dose</Button
-		>
+	{#if save && !save.field && save.message}
+		<Alert class="[overflow-wrap:anywhere]">{save.message}</Alert>
+	{/if}
+	<form
+		method="POST"
+		action="?/save"
+		class={[
+			'flex flex-col gap-[18px]',
+			!embed && 'xl:grid xl:grid-cols-[448px_448px] xl:grid-rows-[auto_1fr] xl:gap-x-6'
+		]}
+		novalidate
+		use:enhance={savedAs('Dose saved')}
+	>
+		<div class="flex flex-col gap-3.5">
+			<Field id="dose-given_at" label="Given at" error={error('given_at')}>
+				{#snippet children(control)}
+					<Input {...control} name="given_at" type="datetime-local" value={values.given_at} />
+				{/snippet}
+			</Field>
+			<Field id="dose-amount" label="Amount" error={error('amount')}>
+				{#snippet children(control)}
+					<Input {...control} name="amount" autocomplete="off" value={values.amount} />
+				{/snippet}
+			</Field>
+		</div>
+		<div class="flex flex-col gap-3.5 xl:row-span-2">
+			<Field id="dose-note" label="Note" error={error('note')}>
+				{#snippet children(control)}
+					<Input {...control} name="note" autocomplete="off" value={values.note} />
+				{/snippet}
+			</Field>
+		</div>
+		<input type="hidden" name="given_at_original" value={data.values.given_at_original} />
+		<input type="hidden" name="amount_original" value={data.values.amount_original} />
+		<input type="hidden" name="note_original" value={data.values.note_original} />
+		<div class="flex gap-2">
+			<Button type="submit" size={embed ? 'lg' : 'default'} class="flex-1">Save</Button>
+			<FormCancel href={medication} size="default" class="" />
+		</div>
 	</form>
-</details>
+
+	<!-- Two steps without JavaScript: the button exists only inside the opened details.
+     A failure reopens it, so its message shows after a full-page POST too. -->
+	<details class="max-w-[448px] border-t pt-4" open={!!del?.message}>
+		<summary
+			class="{buttonVariants({
+				variant: 'destructive'
+			})} w-full cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+			>Delete this dose</summary
+		>
+		<form
+			method="POST"
+			action="?/delete"
+			class="flex flex-col gap-2.5 pt-3"
+			use:enhance={savedAs('Dose deleted')}
+		>
+			{#if del?.message}
+				<Alert class="[overflow-wrap:anywhere]">{del.message}</Alert>
+			{/if}
+			<p class="text-[13.5px] [overflow-wrap:anywhere] text-muted-foreground">
+				This removes the dose for everyone with access to {data.kid.name}.
+			</p>
+			<Button type="submit" variant="destructive">Yes, delete this dose</Button>
+		</form>
+	</details>
+</FormFrame>

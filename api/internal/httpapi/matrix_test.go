@@ -81,6 +81,8 @@ var routeClasses = map[string]Access{
 	"PUT /v1/kids/{kid}/push-devices/{device}":            Caregiver,
 	"DELETE /v1/kids/{kid}/push-devices/{device}":         Caregiver,
 	"GET /v1/_test/pushes":                                Internal,
+	"GET /v1/providers":                                   Parent,
+	"POST /v1/providers/search":                           Parent,
 	"GET /v1/me/ntfy":                                     Parent,
 	"PUT /v1/me/ntfy":                                     Parent,
 	"POST /v1/me/ntfy/regenerate":                         Parent,
@@ -95,6 +97,7 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}":                                  Caregiver,
 	"PATCH /v1/kids/{kid}":                                Guardian,
 	"DELETE /v1/kids/{kid}":                               Guardian,
+	"GET /v1/kids/{kid}/counts":                           Guardian,
 	"GET /v1/kids/{kid}/access":                           Guardian,
 	"PUT /v1/kids/{kid}/access/{username}":                Guardian,
 	"DELETE /v1/kids/{kid}/access/{parent}":               Caregiver,
@@ -137,6 +140,13 @@ var routeClasses = map[string]Access{
 	"GET /v1/kids/{kid}/growth/{entry}":                   Caregiver,
 	"PATCH /v1/kids/{kid}/growth/{entry}":                 Caregiver,
 	"DELETE /v1/kids/{kid}/growth/{entry}":                Caregiver,
+	"GET /v1/kids/{kid}/visits":                           Caregiver,
+	"POST /v1/kids/{kid}/visits":                          Caregiver,
+	"GET /v1/kids/{kid}/visits/{entry}":                   Caregiver,
+	"PATCH /v1/kids/{kid}/visits/{entry}":                 Caregiver,
+	"DELETE /v1/kids/{kid}/visits/{entry}":                Caregiver,
+	"POST /v1/kids/{kid}/visits/{entry}/outcome":          Caregiver,
+	"GET /v1/kids/{kid}/visits/{entry}/calendar":          Caregiver,
 	"GET /v1/kids/{kid}/symptoms":                         Caregiver,
 	"POST /v1/kids/{kid}/symptoms":                        Caregiver,
 	"GET /v1/kids/{kid}/symptoms/{entry}":                 Caregiver,
@@ -201,7 +211,7 @@ type fixture struct {
 	kid                                           string
 	bottle, diaper, meal, pumping, sleep, nursing string
 	growth, administration, symptom, medication   string
-	dose, milestone                               string
+	dose, milestone, visit                        string
 	invite                                        string
 	parent                                        [actorCount]model.Parent
 	token                                         [actorCount]string
@@ -254,6 +264,8 @@ var matrixParams = map[string]func(f *fixture, rt Route, a actor) string{
 			return f.dose
 		case strings.Contains(rt.Pattern, "/milestones/"):
 			return f.milestone
+		case strings.Contains(rt.Pattern, "/visits/"):
+			return f.visit
 		}
 		f.kit.t.Fatalf("%s: no seeded entry for this pattern; add one to newMatrixFixture", rt.Pattern)
 		return ""
@@ -357,6 +369,11 @@ func newMatrixFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	f.growth, f.administration = measurement.ID, dose.ID
+	visit, err := k.Store.CreateVisit(ctx, kid.ID, f.parent[aG].ID, model.Visit{StartsAt: k.now.Add(-time.Hour), DurationMin: 30, Kind: "sick"}, k.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.visit = visit.ID
 	symptom, err := k.Store.CreateSymptom(ctx, kid.ID, f.parent[aG].ID, model.Symptom{At: k.now, Symptom: "cough"}, k.now)
 	if err != nil {
 		t.Fatal(err)
@@ -422,7 +439,7 @@ func (f *fixture) seed(kind, parentID string, ttl time.Duration) (token, id stri
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
-	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl))
+	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl), "")
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}

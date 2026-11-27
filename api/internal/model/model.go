@@ -43,10 +43,18 @@ type Parent struct {
 	Disabled, HasPassword     bool
 	Units                     Units
 	CreatedAt                 time.Time
+	PasswordChangedAt         *time.Time // nil when the local password predates the column or is unset
+}
+
+// PendingLink is a parent's unused one-time token; an expired one is still pending.
+type PendingLink struct {
+	Kind      string
+	ExpiresAt time.Time
 }
 
 type SessionInfo struct {
 	ID                    string
+	DeviceLabel           string // empty when the sign-in sent none
 	CreatedAt, LastSeenAt time.Time
 	Current               bool
 }
@@ -61,17 +69,17 @@ type Kid struct {
 
 // Administration is one vaccination visit's dose: one stored row per antigen, sharing ID; Antigens are sorted.
 type Administration struct {
-	ID, KidID, GivenOn   string
-	Antigens             []string
-	Lot, Product, Note   *string
-	CreatedBy, UpdatedBy string
-	CreatedAt, UpdatedAt time.Time
+	ID, KidID, GivenOn          string
+	Antigens                    []string
+	Lot, Product, Note, VisitID *string
+	CreatedBy, UpdatedBy        string
+	CreatedAt, UpdatedAt        time.Time
 }
 
 // VaccineDose is one stored row: one antigen of the administration it belongs to.
 type VaccineDose struct {
 	ID, KidID, Administration, Antigen, GivenOn string
-	Lot, Product, Note                          *string
+	Lot, Product, Note, VisitID                 *string
 	CreatedBy, UpdatedBy                        string
 	CreatedAt, UpdatedAt                        time.Time
 }
@@ -84,6 +92,7 @@ type KidWithRole struct {
 type Grant struct {
 	ParentID, Username, DisplayName string
 	Role                            Role
+	Disabled                        bool
 }
 
 // PushDevice is a parent's Web Push subscription as the API shows it: never the endpoint or the keys.

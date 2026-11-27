@@ -8,6 +8,8 @@ export const EXPORT_DEFAULT_DAYS = 30;
 // The only answer streamed to the browser: an attachment named by its two dates.
 export const EXPORT_DISPOSITION_PATTERN =
 	/^attachment; filename="happybabytracker-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}\.pdf"$/;
+// A visit's calendar file: an attachment named by its kid-local date only.
+export const VISIT_DISPOSITION_PATTERN = /^attachment; filename="visit-\d{4}-\d{2}-\d{2}\.ics"$/;
 export const MIN_INTERNAL_API_TOKEN = 32;
 export const MAX_PORT = 65535;
 // One-time tokens are 43 base64url characters; anything else never reaches the API path.
@@ -32,3 +34,8 @@ export const UNREACHABLE_MESSAGE = 'The app cannot reach its server, try again s
 export const PUSH_DEVICE_COOKIE = 'hbt_push_device';
 // Renewed on each visit that re-sends the subscription; a lapsed cookie only stops the automatic re-send.
 export const PUSH_DEVICE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+// Holds the display theme only: light, dark or auto.
+export const THEME_COOKIE = 'hbt_theme';
+export const THEME_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+// A same-origin path with its query: one leading slash, no backslash, no whitespace.
+export const RETURN_PATH_PATTERN = /^\/(?![/\\])[^\s\\]*$/;

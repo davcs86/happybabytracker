@@ -52,7 +52,7 @@ test('three measurements are listed newest first with scores over the source’s
 	const latest = await seedIvy(await stubAs(ANA));
 	await signIn(page, ANA);
 	await page.goto(growthUrl(IVY.id));
-	await expect(page.getByRole('heading', { name: 'Growth for Ivy', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Growth', level: 1 })).toBeVisible();
 	await expect(rows(page)).toHaveCount(3);
 	await expect(rows(page)).toHaveText([
 		new RegExp(formatDayHeading(TODAY)),
@@ -264,7 +264,7 @@ test('the page stays with the growth module switched off', async ({ page }) => {
 	const response = await page.goto(growthUrl(IVY.id));
 	expect(response?.status()).toBe(200);
 	expect(response?.headers()['cache-control']).toBe('no-store');
-	await expect(page.getByRole('heading', { name: 'Growth for Ivy', level: 1 })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Growth', level: 1 })).toBeVisible();
 });
 
 test('an unknown measure falls back to weight; an unknown kid is the 404 page', async ({
@@ -309,4 +309,65 @@ test.describe('without JavaScript', () => {
 		await expect(page).toHaveURL(growthUrl(IVY.id, 'length'));
 		await expect(measureLink(page, 'Length')).toHaveAttribute('aria-current', 'page');
 	});
+});
+
+test('the chart’s labels are drawn at 12 px or larger on this screen', async ({ page }) => {
+	await seedIvy(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(growthUrl(IVY.id));
+	const scale = await page.evaluate(() => {
+		const svg = document.querySelector('figure svg') as SVGSVGElement;
+		const text = svg.querySelector('text') as SVGTextElement;
+		return (
+			(svg.getBoundingClientRect().width / svg.viewBox.baseVal.width) *
+			parseFloat(getComputedStyle(text).fontSize)
+		);
+	});
+	expect(scale).toBeGreaterThanOrEqual(12);
+});
+
+test('the units switch sets weight and length together for the account', async ({ page }) => {
+	await seedIvy(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(growthUrl(IVY.id));
+	const units = page.getByRole('group', { name: 'Units' });
+	await expect(units.getByRole('button', { name: 'kg · cm' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(rows(page).first()).toContainText('Weight 9.5 kg');
+	await units.getByRole('button', { name: 'lb · in' }).click();
+	await expect(units.getByRole('button', { name: 'lb · in' })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await expect(rows(page).first()).toContainText(
+		/Weight 20 lb 15 oz|Weight 20\.9 lb|Weight \d+ lb/
+	);
+	await expectAccessible(page);
+	await page.goto('/account');
+	await expect(page.getByLabel('Weight')).toHaveValue('lb');
+	await expect(page.getByLabel('Length')).toHaveValue('in');
+});
+
+test('choosing a row selects it: a card, a ring on the chart, and a way back', async ({ page }) => {
+	const latest = await seedIvy(await stubAs(ANA));
+	await signIn(page, ANA);
+	await page.goto(growthUrl(IVY.id));
+	await expect(page.getByRole('region', { name: 'Selected' })).toHaveCount(0);
+	await rows(page).nth(1).getByRole('link', { name: /\d{4}/ }).first().click();
+	await expect(page).toHaveURL(/sel=/);
+	const card = page.getByRole('region', { name: 'Selected' });
+	await expect(card).toContainText(formatDayHeading(MID));
+	await expect(card.getByRole('link', { name: 'Edit the selected measurement' })).toBeVisible();
+	await expect(page.locator('circle[data-selected]')).toHaveCount(1);
+	await expectAccessible(page);
+
+	await card.getByRole('link', { name: 'Clear selection' }).click();
+	await expect(page.getByRole('region', { name: 'Selected' })).toHaveCount(0);
+	// A row that is not there selects nothing.
+	await page.goto(`${growthUrl(IVY.id, 'weight')}&sel=no-such-row`);
+	await expect(rows(page)).toHaveCount(3);
+	await expect(page.getByRole('region', { name: 'Selected' })).toHaveCount(0);
+	expect(latest.id).toBeTruthy();
 });

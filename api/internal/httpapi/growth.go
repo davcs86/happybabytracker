@@ -57,6 +57,7 @@ type growthView struct {
 	Note       *string     `json:"note"`
 	Age        ageView     `json:"age"`
 	Scores     scoresView  `json:"scores"`
+	VisitID    *string     `json:"visit_id"`
 }
 
 func newLengthView(l *units.Length) *lengthView {
@@ -72,7 +73,7 @@ func newGrowthView(g model.Growth, kid model.Kid, loc *time.Location) (growthVie
 	if err != nil {
 		return growthView{}, err
 	}
-	v := growthView{ID: g.ID, MeasuredOn: g.MeasuredOn, Length: newLengthView(g.Length), Head: newLengthView(g.Head), Note: g.Note,
+	v := growthView{ID: g.ID, VisitID: g.VisitID, MeasuredOn: g.MeasuredOn, Length: newLengthView(g.Length), Head: newLengthView(g.Head), Note: g.Note,
 		Age: ageView{Days: basis.ChronologicalDays}}
 	if basis.Corrected {
 		v.Age.CorrectedDays = &basis.ScoringDays

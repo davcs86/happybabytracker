@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ func TestHomeShape(t *testing.T) {
 	kid, _, bob := k.trackerKid() // born 2026-03-04: 8 months at t0
 	k.createBottle(bob, kid, nil)
 	h := k.home(bob, kid)
-	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today", "due")
+	sameKeys(t, h, "age_months", "corrected_birth_date", "band", "modules", "running", "today", "due", "last")
 	if due, ok := h["due"].([]any); !ok || len(due) != 0 {
 		t.Errorf("due of a kid with no schedule = %#v, want []", h["due"])
 	}
@@ -166,8 +167,8 @@ func TestHomeCorrectedBirthDate(t *testing.T) {
 	}
 }
 
-// dueLines renders the home's due list, a vaccine entry as "<n><unit> <status> <count>" and a medication entry as
-// "<name> <due_at> <state>", after checking each entry's shape.
+// dueLines renders the home's due list, a vaccine entry as "<n><unit> <status> <count>", a medication entry as
+// "<name> <due_at> <state>" and a visit as "visit <visit_kind> <starts_at>", after checking each entry's shape.
 func dueLines(t *testing.T, h map[string]any) []string {
 	t.Helper()
 	list, ok := h["due"].([]any)
@@ -182,6 +183,11 @@ func dueLines(t *testing.T, h map[string]any) []string {
 			m := e["medication"].(map[string]any)
 			sameKeys(t, m, "id", "name")
 			out = append(out, fmt.Sprintf("%v %v %v", m["name"], e["due_at"], e["state"]))
+			continue
+		}
+		if e["kind"] == "visit" {
+			sameKeys(t, e, "kind", "id", "starts_at", "visit_kind")
+			out = append(out, fmt.Sprintf("visit %v %v", e["visit_kind"], e["starts_at"]))
 			continue
 		}
 		sameKeys(t, e, "kind", "from", "status", "count")
@@ -551,4 +557,79 @@ func TestHomeDueMedicationExpiredOfAnInactiveCourse(t *testing.T) {
 		t.Fatalf("deactivate: %d %q", rec.Code, rec.Body.String())
 	}
 	k.wantDue(bob, kid, "inactive course")
+}
+
+func TestHomeDueVisitWindowIsKidLocal(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bo := k.trackerKid()
+	// t0 is Friday 2026-11-20 13:00 in Madrid (UTC+1); the window ends at the start of Saturday 2026-11-28 there, 23:00Z.
+	last := time.Date(2026, 11, 27, 22, 59, 0, 0, time.UTC)
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(last), "kind": "dental"}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(last.Add(time.Minute))}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(-time.Minute))}))
+	k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(time.Hour)), "kind": "sick"}))
+	cancelled := k.createVisit(ana, kid, visitBody(map[string]any{"starts_at": ts(t0.Add(2 * time.Hour))}))
+	k.do(http.MethodPatch, "/v1/kids/"+kid+"/visits/"+cancelled["id"].(string), ana, map[string]any{"cancelled": true})
+	want := []string{"visit sick " + ts(t0.Add(time.Hour)), "visit dental " + ts(last)}
+	k.wantDue(bo, kid, "a caregiver", want...)
+	if body := k.do(http.MethodGet, "/v1/kids/"+kid+"/home", ana, nil).Body.String(); strings.Contains(body, "Dr. Lee") ||
+		strings.Contains(body, "4-month check") {
+		t.Errorf("the home names a provider or a reason: %s", body)
+	}
+	k.setModule(ana, kid, "visits", false)
+	k.wantDue(ana, kid, "with the module off")
+}
+
+func TestHomeLast(t *testing.T) {
+	k := newKit(t)
+	kid, ana, bob := k.trackerKid()
+	k.createBottle(bob, kid, map[string]any{"at": ts(t0.Add(-3 * time.Hour))})
+	newest := k.createBottle(bob, kid, map[string]any{"at": ts(t0.Add(-time.Hour))})
+	k.createDiaper(bob, kid, nil)
+	k.createSleep(bob, kid, map[string]any{"started_at": ts(t0.Add(-30 * time.Minute))}) // running
+
+	h := k.home(bob, kid)
+	last, ok := h["last"].(map[string]any)
+	if !ok {
+		t.Fatalf("last = %#v, want an object", h["last"])
+	}
+	want := map[string]bool{}
+	for _, it := range h["modules"].([]any) {
+		m := it.(map[string]any)
+		for _, typ := range store.TimelineTypes {
+			if string(timelineModules[typ]) == m["module"] && m["enabled"] == true {
+				want[typ] = true
+			}
+		}
+	}
+	for _, typ := range []string{"bottle", "diaper", "sleep"} {
+		if !want[typ] {
+			t.Fatalf("test premise: %s module is off for an 8-month-old", typ)
+		}
+	}
+	for typ := range last {
+		if !want[typ] {
+			t.Errorf("last has %q although its module is off", typ)
+		}
+	}
+	for typ := range want {
+		if _, present := last[typ]; !present {
+			t.Errorf("last lacks %q although its module is on", typ)
+		}
+	}
+	bottle := last["bottle"].(map[string]any)
+	if bottle["id"] != newest || bottle["type"] != "bottle" || bottle["at"] != ts(t0.Add(-time.Hour)) {
+		t.Errorf("last bottle = %v, want the newest one", bottle)
+	}
+	if sleep := last["sleep"].(map[string]any); sleep["ended_at"] != nil || sleep["at"] != ts(t0.Add(-30*time.Minute)) {
+		t.Errorf("last sleep = %v, want the running one", sleep)
+	}
+	if v, present := last["nursing"]; present && v != nil {
+		t.Errorf("last nursing = %v, want null for a kid with none", v)
+	}
+
+	k.setModule(ana, kid, "diapers", false)
+	if _, present := k.home(bob, kid)["last"].(map[string]any)["diaper"]; present {
+		t.Error("a module switched off must drop its key")
+	}
 }

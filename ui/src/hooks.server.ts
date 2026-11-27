@@ -1,15 +1,22 @@
 import { error, redirect, text } from '@sveltejs/kit';
 import type { Handle, ServerInit } from '@sveltejs/kit/hooks';
 import { createApi } from '#lib/server/api.js';
-import { ADMIN_HOME, SESSION_COOKIE, UNAVAILABLE_MESSAGE } from '#lib/server/constants.js';
+import {
+	ADMIN_HOME,
+	SESSION_COOKIE,
+	THEME_COOKIE,
+	UNAVAILABLE_MESSAGE
+} from '#lib/server/constants.js';
 import { clearSessionCookie, setSessionCookie } from '#lib/server/cookie.js';
 import { getEnv } from '#lib/server/env.js';
+import { themeOrAuto } from '#lib/server/theme.js';
 
 const isHealth = (path: string) => path === '/healthz' || path.startsWith('/healthz/');
 const isAdminArea = (path: string) => path === '/admin' || path.startsWith('/admin/');
 const isPublic = (path: string) =>
 	path === '/login' ||
 	path === '/logout' ||
+	path === '/theme' ||
 	path.startsWith('/invite/') ||
 	path.startsWith('/reset/') ||
 	isHealth(path);
@@ -55,7 +62,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 		error(404, 'Not found');
 	}
 
-	const response = await resolve(event);
+	const theme = themeOrAuto(event.cookies.get(THEME_COOKIE));
+	const response = await resolve(event, {
+		transformPageChunk: ({ html }) => html.replace('%hbt.theme%', theme)
+	});
 	if (!path.startsWith('/_app/')) response.headers.set('cache-control', 'no-store');
 	return response;
 };
