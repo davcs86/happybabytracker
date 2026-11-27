@@ -11,9 +11,12 @@ works and moves to the CLI's `reset-password` at that bump; and a password chang
 (5.3, 5.5). The edge retires both SOPS keys in a later change: the
 bump that brings the image changes only its digest.
 
-Amended 2026-11-27 (owner, homelab-edge SSO spec § 3 at `1d12328`) in 5.5 and 18, still not built: link and SSO invite
-re-authentication (`max_age=1`, `auth_time`), callback state sealed in `hbt_oidc` only, SSO invite redemption ends the
-parent's other sessions, and ID-token signatures verified on a fresh key set.
+Amended 2026-11-27 (owner, homelab-edge SSO spec § 3 at `77d9d99`; `max_age=1` from `0bbe7ca`) in 5.5 and 18, still
+not built: link and SSO invite re-authentication (`max_age=1`, `auth_time`), callback state sealed in `hbt_oidc` only,
+SSO invite redemption ends the parent's other sessions, and ID-token signatures verified on a fresh key set. Later the
+same day (owner, 5.5 and 13.2): SSO sessions carry the device label as a password login does, a failed callback answers
+a small "did not complete" page, `admin_identities` records `secret_changed_at`, and a relying-party variable that is
+present counts as set even when empty.
 
 Items marked **(owner)** were decided by the owner in the design conversation.
 Items marked **(call)** are the designer's choices, not owner decisions — correct any of them.
@@ -231,7 +234,7 @@ never holds a `kid_access` row (Rule 2):
 | Table | Columns |
 |---|---|
 | `admins` | id, username (5.3 rules, permanent, never reused), created/updated. No disabled flag: the admin is never deleted or demoted (5.1), and the CLI's `unlink-sso` stops its SSO **(call)** |
-| `admin_identities` | admin, provider, subject, secret hash; primary key `(provider, subject)`, as `identities` |
+| `admin_identities` | admin, provider, subject, secret hash, secret changed at (unix seconds; set whenever the local password is set: the import, the CLI's `create` and `reset-password`) **(owner, 2026-11-27)**; primary key `(provider, subject)`, as `identities` |
 | `sessions` | gains `admin_id` (references `admins`) and `reauth_at` (unix seconds, nullable; set by re-auth below); `kind = 'admin'` exactly when `admin_id` is set and `parent_id` is not |
 
 `identities` keeps its shape. An OIDC row has `provider` = the issuer URL (exact string), `subject` = `sub`,
@@ -315,8 +318,15 @@ relying-party settings, the UI shows no SSO button, its login page in `oidc` say
 **The flow.** The start writes a transaction cookie `hbt_oidc` (`HttpOnly; Secure; SameSite=Lax; Path=/auth`; 10
 minutes, in `ui/src/lib/server/constants.ts`), AEAD-encrypted with a key derived from `SESSION_SEAL_KEY` **(call)**. It
 holds the PKCE (S256) verifier, `state`, `nonce`, the purpose, the flow's start time (unix seconds), `next` for
-`login`, and the purpose's binding: for `link` the session token's hash and the account's username, for `invite` the raw
-invite token. It stays well under 4 KB and holds no other secret.
+`login`, the device label for `login` and `invite`, and the purpose's binding: for `link` the session token's hash and
+the account's username, for `invite` the raw invite token. It stays well under 4 KB and holds no other secret.
+
+**Device label (owner, 2026-11-27).** The SSO starts of `login` and `invite` take the device label exactly as the
+password login does: the start's form action derives it from the request's `User-Agent` with the same function
+(`ui/src/lib/server/device-label.ts`, a closed set of words), seals it in `hbt_oidc`, and sends it as `device_label` to
+`POST /v1/session/oidc` and `POST /v1/tokens/{token}/redeem-oidc`. Those routes validate it as `POST /v1/session` does
+(optional; `constants.DeviceLabelPattern`, else 422 field `device_label`) and store it on the parent session; an admin
+session stores none, as with a password login. `link` creates no session and carries no label.
 
 **Callback state (owner, 2026-11-27; SSO spec § 3).** The callback is a cross-site top-level navigation, so it relies
 only on `hbt_oidc`: it never reads the `SameSite=Strict` session cookie, even when a browser sends it. Everything it
@@ -334,18 +344,19 @@ validates the ID token (its signature on a key from the issuer's JWKS, `alg` RS2
 carries the `SameSite=Strict` session cookie, whatever site the IdP is on **(call)**:
 
 - an IdP error in the callback (`error=access_denied` for a person outside the group, or any other) or a failed check
-  clears `hbt_oidc` and answers the login page (or the invite or account page the flow started from) with "Single
-  sign-on did not complete"; nothing reaches the API **(call)**.
-- `login`: calls `POST /v1/session/oidc {iss, sub}`, sets the session cookie, and answers a page that continues to
-  `next` (the admin home for an admin) by meta refresh, with a Continue link.
-- `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, username, iss, sub, label}` (same
-  attributes, the remaining lifetime) and answers "You are linking <label> to <username>" with Confirm and Cancel; for
-  `link` the username comes from the start cookie, for `invite` from `GET /v1/tokens/{token}`.
+  clears `hbt_oidc` and answers a small page, "Single sign-on did not complete", with a link back to the page the flow
+  started from (the login page when the cookie cannot be read); nothing reaches the API **(owner, 2026-11-27)**.
+- `login`: calls `POST /v1/session/oidc {iss, sub, device_label}`, sets the session cookie, and answers a page that
+  continues to `next` (the admin home for an admin) by meta refresh, with a Continue link.
+- `link`, `invite`: rewrites the cookie as the pending `{purpose, binding, username, iss, sub, label}`, plus the device
+  label for `invite` (same attributes, the remaining lifetime), and answers "You are linking <label> to <username>"
+  with Confirm and Cancel; for `link` the username comes from the start cookie, for `invite` from
+  `GET /v1/tokens/{token}`.
 
 `POST /auth/confirm` is same-origin, so it carries the session cookie. It clears `hbt_oidc`; on Confirm, for `link` it
 checks that the session cookie's token hashes to the bound hash and calls `POST /v1/me/identities` or
 `POST /v1/admin/me/identities {iss, sub}` with that session; for `invite` it calls
-`POST /v1/tokens/{token}/redeem-oidc {iss, sub}` and sets the returned session's cookie.
+`POST /v1/tokens/{token}/redeem-oidc {iss, sub, device_label}` and sets the returned session's cookie.
 
 **The label.** `preferred_username` comes with the `profile` scope, which the edge's `happybabytracker` client is
 registered with (SSO spec § 4.6). The UI reads it from the ID token, else from one userinfo call with the access token;
@@ -395,8 +406,8 @@ this app.
 | Route | Class | Answers beyond 2xx |
 |---|---|---|
 | `GET /v1/auth` | `Internal` | — (`{mode}`) |
-| `POST /v1/session/oidc` | `Internal` | 403 `mode_refused`, 403 `not_linked` |
-| `POST /v1/tokens/{token}/redeem-oidc` | `Internal` | 403 `mode_refused`, 404 `not_found`, 409 `already_linked` |
+| `POST /v1/session/oidc` | `Internal` | 403 `mode_refused`, 422 `device_label`, `iss`, `sub`, 403 `not_linked` |
+| `POST /v1/tokens/{token}/redeem-oidc` | `Internal` | 403 `mode_refused`, 422 `device_label`, `iss`, `sub`, 404 `not_found`, 409 `already_linked` |
 | `POST /v1/me/reauth` | `Parent` | 403 `mode_refused`, 403 `wrong_password`, 429 `rate_limited` |
 | `POST /v1/admin/me/reauth` | `Admin` | as above |
 | `POST /v1/me/identities` | `Parent` | 403 `mode_refused`, 403 `reauth_required`, 409 `already_linked` |
@@ -404,7 +415,10 @@ this app.
 | `POST /v1/admin/parents/{parent}/unlink-sso` | `Admin` | 404 `not_found` |
 
 Existing routes gain: `POST /v1/session` and `POST /v1/tokens/{token}/redeem` 403 `mode_refused`; `POST /v1/me/password`
-429 `rate_limited`. Admin sessions stay refused outside `/v1/admin/*` and `/v1/session` (Rule 2): the new session and
+429 `rate_limited`. The session routes check in one order (owner, 2026-11-27): decode the body, the mode, then
+`device_label`, then (the SSO routes) `iss` (an absolute `https:` URL of at most 512 bytes) and `sub` (1–255 bytes),
+then everything else; so `POST /v1/session` answers `mode_refused` before it looks at `device_label`, as the SSO
+routes do. Admin sessions stay refused outside `/v1/admin/*` and `/v1/session` (Rule 2): the new session and
 token routes are `Internal` and take no session.
 
 **Routes that accept a password**, for the edge's `<site>_login` and `<site>_login_hourly` Caddy zones (SSO spec § 4.3):
@@ -424,7 +438,8 @@ every kid route after an SSO login (the matrix test); the cross-table uniqueness
 the limiter, and the password change too; the link flow's re-auth window, session binding and `already_linked`;
 invite redemption by SSO with `prompt=login`, `max_age=1` and the confirmation, including a used, expired or reset
 token, and ending the parent's other sessions; the callback answering 200 and the session cookie arriving on the next
-navigation; the link callback naming the account with no session cookie on the request; unlink and the
+navigation; the link callback naming the account with no session cookie on the request; the device label on SSO
+sessions and its 422 after the mode check; unlink and the
 disabled-parent OIDC
 request each deleting sessions, push subscriptions and the ntfy topic; the UI's refusals of a partial relying-party
 set and of `OIDC_AUTO_PROVISION`; the conformance cases of the SSO spec § 3 (bad `state`, wrong `iss`/`aud`, expired
@@ -810,6 +825,10 @@ than `INTERNAL_API_TOKEN` (amended 2026-11-24: and the OIDC client secret and tr
 The image sets `PROTOCOL_HEADER`, `HOST_HEADER`, `ADDRESS_HEADER` and `XFF_DEPTH` as commsgun's does.
 Amended 2026-11-24 (5.5): the UI refuses to start on a partial relying-party set, on `SESSION_SEAL_KEY` missing or
 shorter than 32 characters while `OIDC_ISSUER` is set, and on `OIDC_AUTO_PROVISION` set. It never contacts the issuer at start.
+Amended 2026-11-27 (owner, as webhooks-mcp): a variable that is present counts as set even when empty. So an empty
+`OIDC_ISSUER`, `OIDC_CLIENT_ID` or `OIDC_CLIENT_SECRET` makes a partial set unless all three are present, an empty
+`SESSION_SEAL_KEY` fails the 32-character check, an empty `OIDC_SCOPES` is refused, and `OIDC_AUTO_PROVISION` is
+refused whenever it is present.
 Health: `GET /healthz` (the UI itself), `GET /healthz/api` and `GET /healthz/reminders` (the API's
 two answers passed through), so Gatus can probe everything through the one published name.
 
