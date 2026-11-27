@@ -45,6 +45,7 @@ func TestLoadValid(t *testing.T) {
 		PublicOrigin:     "https://hbt.example.org",
 		DataDir:          "/var/lib/hbt",
 		Addr:             ":9210",
+		AuthMode:         AuthLocal,
 	}
 	if cfg != want {
 		t.Fatalf("got %+v, want %+v", cfg, want)
@@ -134,6 +135,21 @@ func TestLoadNPISearch(t *testing.T) {
 		cfg, err := Load(env(map[string]string{"NPI_SEARCH": val}))
 		if err != nil || cfg.NPISearch != want {
 			t.Errorf("NPI_SEARCH %q: %v %v, want %v", val, cfg.NPISearch, err, want)
+		}
+	}
+}
+
+func TestLoadAuthMode(t *testing.T) {
+	for val, want := range map[string]AuthMode{"\x00unset": AuthLocal, "": AuthLocal, "local": AuthLocal, "oidc": AuthOIDC, "both": AuthBoth} {
+		cfg, err := Load(env(map[string]string{"AUTH_MODE": val}))
+		if err != nil || cfg.AuthMode != want {
+			t.Errorf("AUTH_MODE %q: %q %v, want %q", val, cfg.AuthMode, err, want)
+		}
+	}
+	for _, val := range []string{"Local", "OIDC", "none", "both "} {
+		_, err := Load(env(map[string]string{"AUTH_MODE": val}))
+		if err == nil || err.Error() != "AUTH_MODE must be local, oidc or both" {
+			t.Errorf("AUTH_MODE %q: %v, want the AUTH_MODE refusal", val, err)
 		}
 	}
 }

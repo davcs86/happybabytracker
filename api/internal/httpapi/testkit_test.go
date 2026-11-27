@@ -161,7 +161,7 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 		Store: s,
 		Cfg: config.Config{
 			AdminUsername: testAdminUser, AdminPassword: testAdminPass,
-			InternalAPIToken: testInternalToken, PublicOrigin: "https://example.test",
+			InternalAPIToken: testInternalToken, PublicOrigin: "https://example.test", AuthMode: config.AuthLocal,
 		},
 		Log: &bytes.Buffer{},
 		now: t0,

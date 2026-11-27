@@ -55,6 +55,7 @@ func Routes(d Deps) []Route {
 		{http.MethodGet, "/healthz", Open, Health(d.Store, d.Now, d.LastTick)},
 		{http.MethodGet, "/healthz/reminders", Open, RemindersHealth(d.Store, d.Now)},
 		{http.MethodPost, "/v1/session", Internal, d.login},
+		{http.MethodGet, "/v1/auth", Internal, d.authMode},
 		{http.MethodGet, "/v1/session", Session, d.currentSession},
 		{http.MethodDelete, "/v1/session", Session, d.logout},
 

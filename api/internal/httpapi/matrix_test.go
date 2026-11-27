@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/schedule"
@@ -60,6 +61,7 @@ var routeClasses = map[string]Access{
 	"GET /healthz":                                        Open,
 	"GET /healthz/reminders":                              Open,
 	"POST /v1/session":                                    Internal,
+	"GET /v1/auth":                                        Internal,
 	"GET /v1/session":                                     Session,
 	"DELETE /v1/session":                                  Session,
 	"POST /v1/admin/parents":                              Admin,
@@ -303,6 +305,7 @@ func matrixCases(routes []Route) (cases []matrixCase, problems []string) {
 func newMatrixFixture(t *testing.T) *fixture {
 	t.Helper()
 	k := newKit(t)
+	k.setMode(config.AuthBoth)
 	ctx := context.Background()
 	f := &fixture{kit: k}
 
@@ -498,6 +501,9 @@ type matrixResult struct {
 }
 
 func TestAccessMatrix(t *testing.T) {
+	if m := newMatrixFixture(t).kit.Cfg.AuthMode; m != config.AuthBoth {
+		t.Fatalf("the matrix runs in %q, want both", m)
+	}
 	routes := Routes(newKit(t).deps())
 	cases, problems := matrixCases(routes)
 	for _, p := range problems {

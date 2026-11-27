@@ -352,3 +352,23 @@ func TestStartWiresProviderSearchOnlyUnderTheFlag(t *testing.T) {
 		a.store.Close()
 	}
 }
+
+func TestStartWiresAuthMode(t *testing.T) {
+	for val, want := range map[string]string{"": "local", "oidc": "oidc", "both": "both"} {
+		env := baseEnv(t.TempDir())
+		env["AUTH_MODE"] = val
+		a, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec := call(t, a, http.MethodGet, "/v1/auth", "", nil); strings.TrimSpace(rec.Body.String()) != `{"mode":"`+want+`"}` {
+			t.Errorf("AUTH_MODE %q: GET /v1/auth %d %s, want mode %s", val, rec.Code, rec.Body.String(), want)
+		}
+		a.store.Close()
+	}
+	env := baseEnv(t.TempDir())
+	env["AUTH_MODE"] = "bogus"
+	if _, err := start(context.Background(), func(k string) string { return env[k] }, io.Discard); err == nil || err.Error() != "AUTH_MODE must be local, oidc or both" {
+		t.Fatalf("start: %v, want the AUTH_MODE refusal", err)
+	}
+}

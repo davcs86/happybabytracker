@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -77,7 +78,7 @@ func (d Deps) login(w http.ResponseWriter, r *http.Request) {
 		Password    string `json:"password"`
 		DeviceLabel string `json:"device_label"`
 	}
-	if !decodeJSON(w, r, &in) {
+	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthLocal, config.AuthBoth) {
 		return
 	}
 	if in.DeviceLabel != "" && !deviceLabelRE.MatchString(in.DeviceLabel) {

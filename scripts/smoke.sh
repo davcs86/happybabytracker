@@ -1071,6 +1071,7 @@ refused VAPID_PRIVATE_KEY "${VAPID_KEY:0:42}" VAPID_PRIVATE_KEY="${VAPID_KEY:0:4
 refused VAPID_SUBJECT "http://localhost:${UI_PORT}" VAPID_PRIVATE_KEY="$VAPID_KEY" VAPID_SUBJECT="http://localhost:${UI_PORT}"
 refused HBT_ALLOW_FAKE_PUSH - HBT_ALLOW_FAKE_PUSH=1
 refused NPI_SEARCH - NPI_SEARCH=2
+refused AUTH_MODE bogus AUTH_MODE=bogus
 refused NTFY_TOKEN "$NTFY_SECRET" NTFY_TOKEN="$NTFY_SECRET"
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD" fake-push

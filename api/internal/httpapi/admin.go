@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -221,7 +222,7 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Password string `json:"password"`
 	}
-	if !decodeJSON(w, r, &in) {
+	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthLocal, config.AuthBoth) {
 		return
 	}
 	if !d.Limiter.Allow("addr:" + r.Header.Get(headerClientAddress)) {

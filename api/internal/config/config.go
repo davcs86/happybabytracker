@@ -13,6 +13,15 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/push"
 )
 
+// AuthMode is AUTH_MODE; unset loads as AuthLocal.
+type AuthMode string
+
+const (
+	AuthLocal AuthMode = "local"
+	AuthOIDC  AuthMode = "oidc"
+	AuthBoth  AuthMode = "both"
+)
+
 type Config struct {
 	AdminUsername    string
 	AdminPassword    string
@@ -28,6 +37,7 @@ type Config struct {
 	Ntfy        ntfy.Config
 	NtfyEnabled bool
 	NPISearch   bool
+	AuthMode    AuthMode
 }
 
 // Load errors name the variable and never echo its value.
@@ -59,6 +69,9 @@ func Load(getenv func(string) string) (Config, error) {
 	if cfg.NPISearch, err = loadNPI(getenv); err != nil {
 		return Config{}, err
 	}
+	if cfg.AuthMode, err = loadAuthMode(getenv); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
 }
 
@@ -71,6 +84,17 @@ func loadNPI(getenv func(string) string) (bool, error) {
 		return true, nil
 	}
 	return false, errors.New("NPI_SEARCH must be 1 or unset")
+}
+
+// loadAuthMode: unset is local; the error never echoes the value.
+func loadAuthMode(getenv func(string) string) (AuthMode, error) {
+	switch m := AuthMode(getenv("AUTH_MODE")); m {
+	case "":
+		return AuthLocal, nil
+	case AuthLocal, AuthOIDC, AuthBoth:
+		return m, nil
+	}
+	return "", errors.New("AUTH_MODE must be local, oidc or both")
 }
 
 // loadPush: both VAPID variables or neither (Web Push off); errors never echo a value.

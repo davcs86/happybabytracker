@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 )
 
@@ -483,5 +484,29 @@ func TestAdminListLastActiveNullAfterDisable(t *testing.T) {
 	rows := bodyMap(t, k.do(http.MethodGet, "/v1/admin/parents", admin, nil))["parents"].([]any)
 	if rows[0].(map[string]any)["last_active_at"] != nil {
 		t.Errorf("a disabled parent has no sessions, got %v", rows[0])
+	}
+}
+
+func TestPasswordRedeemRefusedInOIDCLeavesTheTokenUsable(t *testing.T) {
+	k := newKit(t)
+	admin := k.asAdmin()
+	id, invite := k.createParent(admin, "ana")
+	k.setMode(config.AuthOIDC)
+	wantErr(t, k.redeem(invite, "invite password 1"), http.StatusForbidden, "mode_refused")
+	rec := k.do(http.MethodPost, "/v1/tokens/"+invite+"/redeem", "", `{"x":1}`)
+	if rec.Code != http.StatusUnprocessableEntity || bodyMap(t, rec)["error"] != "unknown_field" {
+		t.Errorf("unknown field in oidc: %d %q, want 422 unknown_field", rec.Code, rec.Body.String())
+	}
+	k.setMode(config.AuthBoth)
+	if rec := k.redeem(invite, "invite password 1"); rec.Code != http.StatusOK {
+		t.Fatalf("invite in both after the refusal: %d %q", rec.Code, rec.Body.String())
+	}
+
+	reset := tokenOf(t, k.resetLink(admin, id)["reset_url"].(string), "reset")
+	k.setMode(config.AuthOIDC)
+	wantErr(t, k.redeem(reset, "reset password 12"), http.StatusForbidden, "mode_refused")
+	k.setMode(config.AuthBoth)
+	if rec := k.redeem(reset, "reset password 12"); rec.Code != http.StatusOK {
+		t.Fatalf("reset in both after the refusal: %d %q", rec.Code, rec.Body.String())
 	}
 }
