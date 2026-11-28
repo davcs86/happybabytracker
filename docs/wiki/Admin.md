@@ -2,7 +2,7 @@
 
 The admin panel has two pages: **Parents**, where the admin creates parent accounts, issues one-time links, disables or enables accounts and unlinks a parent's single sign-on, and **Account**, the admin's own username and Link single sign-on. The admin never sees a child: no names, no entries, no counts. Examples use fake parents: Ana, Bo, Cleo, Dan and Dee.
 
-The admin signs in with the username and password set when the server is deployed. They are not a parent: they have no children, no notification bell and no page outside the admin panel. If the admin asks for a child's page, they are sent back to the Parents page.
+The admin signs in with their username and password, or by single sign-on once it is linked on the Account page. The username and the first password come from the deployment the first time the server starts; after that the operator resets the password with the admin command, which signs the admin out. They are not a parent: they have no children, no notification bell and no page outside the admin panel. If the admin asks for a child's page, they are sent back to the Parents page.
 
 ## Guide
 
