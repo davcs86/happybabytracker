@@ -173,6 +173,14 @@ describe('loadEnv, relying party', () => {
 		}
 	);
 
+	it.each([
+		'https://auth.example.com/.well-known/openid-configuration',
+		'https://auth.example.com/tenant/.well-known/',
+		'https://auth.example.com/.well-known\\openid-configuration'
+	])('refuses a /.well-known/ OIDC_ISSUER = %j, naming OIDC_ISSUER only', (issuer) => {
+		expect(refusal({ ...valid, ...rp, OIDC_ISSUER: issuer })).toEqual(['OIDC_ISSUER']);
+	});
+
 	it.each(['https://auth.example.com', 'https://127.0.0.1:4182'])(
 		'accepts OIDC_ISSUER = %j',
 		(issuer) => {

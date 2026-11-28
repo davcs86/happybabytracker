@@ -351,7 +351,7 @@ test.describe('Web Push on', () => {
 		const first = (await ana('GET', DEVICES)).body.devices[0].id;
 		expect((await deviceCookie(context))?.value).toBe(first);
 
-		await context.clearCookies({ name: 'hbt_session' });
+		await context.clearCookies({ name: '__Secure-hbt_session' });
 		await signIn(page, CLEO);
 		const before = (await receivedRequests()).length;
 		await openHydrated(page);

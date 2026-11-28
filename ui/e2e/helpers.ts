@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import { openSession, UI_ORIGIN } from './stub-api.js';
 
-export const SESSION_COOKIE = 'hbt_session';
+export const SESSION_COOKIE = '__Secure-hbt_session';
 
 export async function expectAccessible(page: Page): Promise<void> {
 	// A sheet that is still closing is not part of the settled page.

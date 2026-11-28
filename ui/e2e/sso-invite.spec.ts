@@ -18,7 +18,7 @@ import { configureIssuer, issuerAuthorizeLog, resetIssuer } from './stub-issuer.
 
 const BO_SUB = 'stub-subject-bo-0001';
 const BO_ID = 'p-bo';
-const OIDC_COOKIE = 'hbt_oidc';
+const OIDC_COOKIE = '__Secure-hbt_oidc';
 const SSO = 'Continue with single sign-on';
 const DID_NOT_COMPLETE = 'Single sign-on did not complete';
 const NO_LONGER_VALID =

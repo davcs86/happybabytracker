@@ -32,6 +32,11 @@ function isHttpsUrl(value: string): boolean {
 	return URL.canParse(value) && new URL(value).protocol === 'https:';
 }
 
+// openid-client skips its issuer match for such an issuer.
+function isWellKnown(value: string): boolean {
+	return value.includes('/.well-known/') || new URL(value).href.includes('/.well-known/');
+}
+
 // Present means !== undefined: an empty value counts as set.
 function loadOidc(source: Record<string, string | undefined>, bad: string[]): OidcEnv | null {
 	const refuse = (key: string) => {
@@ -52,7 +57,8 @@ function loadOidc(source: Record<string, string | undefined>, bad: string[]): Oi
 	if (present('OIDC_ISSUER') && [...(sealKey ?? '')].length < MIN_SESSION_SEAL_KEY) {
 		refuse('SESSION_SEAL_KEY');
 	}
-	if (rp.length === RELYING_PARTY.length && !isHttpsUrl(source.OIDC_ISSUER ?? '')) {
+	const issuer = source.OIDC_ISSUER ?? '';
+	if (rp.length === RELYING_PARTY.length && (!isHttpsUrl(issuer) || isWellKnown(issuer))) {
 		refuse('OIDC_ISSUER');
 	}
 	if (scopes === '') refuse('OIDC_SCOPES');

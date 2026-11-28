@@ -56,6 +56,11 @@ export function createRelyingParty(oidc: OidcEnv, origin: string, deps: Deps = {
 			client.ClientSecretBasic(oidc.clientSecret),
 			{ [client.customFetch]: customFetch, timeout: OIDC_TIMEOUT_MS / 1000 }
 		);
+		const jwksUri = config.serverMetadata().jwks_uri;
+		if (!jwksUri || !URL.canParse(jwksUri)) throw new Error('jwks_uri refused');
+		if (new URL(jwksUri).origin !== new URL(oidc.issuer).origin) {
+			throw new Error('jwks_uri refused');
+		}
 		client.enableNonRepudiationChecks(config);
 		if (deps.jwksCache) {
 			client.setJwksCache(config, deps.jwksCache as Parameters<typeof client.setJwksCache>[1]);

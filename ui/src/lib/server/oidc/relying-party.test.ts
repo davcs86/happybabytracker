@@ -331,6 +331,45 @@ describe('createRelyingParty', () => {
 		expect(await rp.finish(callback, txn)).toEqual({ ok: false, code: 'id_token' });
 	});
 
+	describe.each([
+		['another origin', 'https://keys.elsewhere.test/jwks.json'],
+		['another port', 'https://issuer.test:8443/jwks.json'],
+		['plain http', 'http://issuer.test/jwks.json'],
+		['not a URL', 'not a url'],
+		['absent', undefined]
+	])('jwks_uri on %s refuses discovery', (_, jwksUri) => {
+		const fetch = () =>
+			discoveryAs((doc) => {
+				if (jwksUri === undefined) delete doc.jwks_uri;
+				else doc.jwks_uri = jwksUri;
+			});
+
+		it('start gives ok false', async () => {
+			expect(await createRelyingParty(OIDC, ORIGIN, { fetch: fetch() }).start('login')).toEqual({
+				ok: false
+			});
+		});
+
+		it('finish gives discovery', async () => {
+			const { callback, txn } = await begin(
+				createRelyingParty(OIDC, ORIGIN, { fetch: toIssuer }),
+				'login'
+			);
+			const rp = createRelyingParty(OIDC, ORIGIN, { fetch: fetch() });
+			expect(await rp.finish(callback, txn)).toEqual({ ok: false, code: 'discovery' });
+		});
+	});
+
+	it('accepts a jwks_uri on the issuer origin with another path', async () => {
+		const rp = createRelyingParty(OIDC, ORIGIN, {
+			fetch: discoveryAs((doc) => {
+				doc.jwks_uri = 'https://ISSUER.test:443/jwks.json';
+			})
+		});
+		const { callback, txn } = await begin(rp, 'login');
+		expect(await rp.finish(callback, txn)).toMatchObject({ ok: true, sub: USER.sub });
+	});
+
 	it('start without an authorization_endpoint gives ok false', async () => {
 		const rp = createRelyingParty(OIDC, ORIGIN, {
 			fetch: discoveryAs((doc) => {

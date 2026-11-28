@@ -31,16 +31,20 @@ describe('session cookie', () => {
 		expect(sessionCookieOptions('admin')).toEqual({ ...hardened, maxAge: 12 * 60 * 60 });
 	});
 
-	it.each(['parent', 'admin'] as const)('is set as hbt_session for %s', (kind) => {
+	it.each(['parent', 'admin'] as const)('is set as __Secure-hbt_session for %s', (kind) => {
 		const cookies = fakeCookies();
 		setSessionCookie(cookies, 'tok', kind);
-		expect(cookies.set).toHaveBeenCalledWith('hbt_session', 'tok', sessionCookieOptions(kind));
+		expect(cookies.set).toHaveBeenCalledWith(
+			'__Secure-hbt_session',
+			'tok',
+			sessionCookieOptions(kind)
+		);
 	});
 
 	it('is cleared with the same path and attributes', () => {
 		const cookies = fakeCookies();
 		clearSessionCookie(cookies);
-		expect(cookies.delete).toHaveBeenCalledWith('hbt_session', hardened);
+		expect(cookies.delete).toHaveBeenCalledWith('__Secure-hbt_session', hardened);
 	});
 });
 
@@ -95,15 +99,18 @@ describe('theme cookie', () => {
 describe('oidc transaction cookie', () => {
 	const scoped = { path: '/auth', httpOnly: true, secure: true, sameSite: 'lax' };
 
-	it('is set as hbt_oidc, lax, scoped to /auth, with the given lifetime', () => {
+	it('is set as __Secure-hbt_oidc, lax, scoped to /auth, with the given lifetime', () => {
 		const cookies = fakeCookies();
 		setOidcCookie(cookies, 'sealed', 600);
-		expect(cookies.set).toHaveBeenCalledWith('hbt_oidc', 'sealed', { ...scoped, maxAge: 600 });
+		expect(cookies.set).toHaveBeenCalledWith('__Secure-hbt_oidc', 'sealed', {
+			...scoped,
+			maxAge: 600
+		});
 	});
 
 	it('is cleared with the same path and attributes', () => {
 		const cookies = fakeCookies();
 		clearOidcCookie(cookies);
-		expect(cookies.delete).toHaveBeenCalledWith('hbt_oidc', scoped);
+		expect(cookies.delete).toHaveBeenCalledWith('__Secure-hbt_oidc', scoped);
 	});
 });
