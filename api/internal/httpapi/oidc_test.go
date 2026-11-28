@@ -14,6 +14,7 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
+	"github.com/davcs86/happybabytracker/api/internal/store"
 )
 
 const testIssuer = "https://issuer.example"
@@ -488,4 +489,31 @@ func TestAdminLinkUsesAdminIdentities(t *testing.T) {
 		t.Fatalf("admin_identities rows = %d, %v", n, err)
 	}
 	wantExpiry(t, k.oidcLogin(oidcBody("sub-admin")), "admin", constants.AdminSessionTTL)
+}
+
+// dummyLiteral is the public input behind dummyHash; it must never authenticate anyone.
+const dummyLiteral = "dummy password for timing"
+
+func TestReauthRefusesTheDummyLiteral(t *testing.T) {
+	k := newKit(t)
+	k.setMode(config.AuthBoth)
+	id, _ := k.createParent(k.asAdmin(), "bob")
+	bob := k.seedSession("parent", id, constants.ParentSessionTTL)
+	calls := countVerifications(t)
+	wantErr(t, k.reauthFrom(reauthPath, "203.0.113.33", bob, dummyLiteral), http.StatusForbidden, "wrong_password")
+	if *calls != 1 {
+		t.Errorf("%d verifications, want 1", *calls)
+	}
+	wantErr(t, k.link(linkPath, bob, "sub-bob"), http.StatusForbidden, "reauth_required")
+}
+
+func TestChangePasswordRefusesTheDummyLiteral(t *testing.T) {
+	k := newKit(t)
+	id, _ := k.createParent(k.asAdmin(), "bob")
+	bob := k.seedSession("parent", id, constants.ParentSessionTTL)
+	rec := k.do(http.MethodPost, "/v1/me/password", bob, map[string]string{"current": dummyLiteral, "new": "a brand new password"})
+	wantErr(t, rec, http.StatusForbidden, "wrong_password")
+	if _, err := k.Store.LocalSecret(context.Background(), id); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("local password after a refused change: %v, want ErrNotFound", err)
+	}
 }

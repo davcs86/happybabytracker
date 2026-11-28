@@ -113,10 +113,12 @@ func (d Deps) reauth(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if hash == "" {
+	found := hash != ""
+	if !found {
 		hash = dummyHash()
 	}
-	if !verifyPassword(hash, in.Password) {
+	// No local password is a refusal even if the dummy verifies: its input is public.
+	if verified := verifyPassword(hash, in.Password); !found || !verified {
 		respondError(w, http.StatusForbidden, "wrong_password")
 		return
 	}
