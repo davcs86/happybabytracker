@@ -1,6 +1,6 @@
 # Handoff: happybabytracker
 
-Updated 2026-11-24 at the end of plan 7 (milestones and PDF export). Read this first in a new session, then the
+Updated 2026-11-28 at the end of plan 8 (single sign-on). Read this first in a new session, then the
 design and the plan of the next item.
 
 ## State
@@ -17,6 +17,7 @@ design and the plan of the next item.
 | Plan 6, sickness, medication, reminders, Web Push, ntfy (app side) | `docs/superpowers/plans/2026-11-22-sickness-medication-reminders.md` | done, merged to `main` (PR #9) |
 | Plan 6, edge side | `davcs86/homelab-edge`, not written | the VAPID PR, then the ntfy plan; see "What to do next" |
 | Plan 7, milestones and PDF export | `docs/superpowers/plans/2026-11-23-milestones-pdf-export.md` | done on branch `ccr-174d8c4e-jjczdt` (draft PR #10 to `main`, merged only with the owner's go-ahead); open owner items under "What to do next" |
+| Plan 8, single sign-on | `docs/superpowers/plans/2026-11-24-happybabytracker-sso.md` (design: spec § 5.5, § 13.1, § 13.2 and § 18; cross-repo contract: `davcs86/homelab-edge` `docs/superpowers/specs/2026-11-23-authelia-sso-respec.md` § 3) | built on branch `claude/sso-plan-8` (PR to `main`, merged only with the owner's go-ahead): the admin in its own tables (migration 0011, forward-only) with the `admin` CLI, `AUTH_MODE` at the API, the UI as OIDC relying party (login, SSO invite, Link SSO for parents and the admin). The spec's "not built" status is the owner's to change. Open: the edge's runbook change, then its SSO plan ("What to do next", item 6) |
 | Plan 9, medical visits | `docs/superpowers/plans/2026-11-25-visits.md` (design `docs/superpowers/specs/2026-11-25-medical-visits-design.md`, page spec `docs/plans/ui-redesign/pages/visits.md`) | API merged to `main` (PR #22); UI, screenshots, visual baselines and wiki on branch `ccr-406c8e35-e8hvag` (PR #24 to `main`, merged only with the owner's go-ahead); the provider lookup (NPI, design section 10) is plan 10, below |
 | Plan 10, provider lookup (NPI) | `docs/superpowers/plans/2026-11-26-provider-lookup.md` (design: visits spec section 10; page spec `docs/plans/ui-redesign/pages/visits.md`, "Find a US provider (plan 10)", approved 2026-11-26) | built on branch `ccr-406c8e35-e8hvag` (PR #25, merged only with the owner's go-ahead): API (`npi` package, migration 0009 forward-only, `NPI_SEARCH`, two routes), UI panel, smoke 4l/4p, screenshots, baselines and wiki. Ships **off**. Open: the owner's edge change ("What to do next", item 5) |
 
@@ -90,6 +91,27 @@ what a new session needs to start correctly.
    manual check: a person search in one state lists only providers practising there, a repeat is fast (cache),
    and the API log line shows `npi_outcome` with no term. Until then `GET /v1/providers` says disabled and no
    sheet shows the panel.
+
+6. **Single sign-on (plan 8):** once its PR is merged and CI has published both images:
+   - **Image content.** The API image: `api/` sources (migration `0011_sso.sql`, the start-up admin import, the
+     `admin` CLI, `AUTH_MODE` and the new session, token, re-auth and identity routes). The UI image: `ui/` sources
+     and one new dependency, `openid-client` 6.8.9 (exact pin in `package.json`; `pnpm-lock.yaml` resolves its
+     dependencies `jose` 6.2.18 and `oauth4webapi` 3.8.9). No Dockerfile change, no new Go module.
+   - **Before the bump PR merges:** the edge's `docs/runbooks/happybabytracker.md` must move admin password rotation
+     to the CLI (`docker compose run --rm -T happybabytracker-api admin reset-password <username>`, the password on
+     stdin), since from this image's first start changing the admin password in SOPS changes nothing (the env admin
+     is imported once, then ignored with a warning). In the same change its § 4 step 3 ("the API stores a keyed
+     fingerprint of the admin username, password and internal token… changing any of the three signs the admin
+     out") must go: migration 0011 drops the fingerprint, so rotating `INTERNAL_API_TOKEN` no longer signs the admin
+     out.
+   - **Bump both pins together:** the new UI requires the `admin` object in `GET /v1/session`, which only the new API
+     sends.
+   - **Migration 0011 is forward-only** (an older API refuses the newer schema) and deletes every admin session, so
+     the admin signs in once more after the upgrade: take an `edge-backup` archive right before the deploy; a rollback
+     is both pins back plus a restore of that archive.
+   - With `AUTH_MODE` unset the deploy behaves as `local`. The edge's `AUTH_MODE`, `OIDC_*` and `SESSION_SEAL_KEY`
+     wiring (and its Caddy zones for the six password routes, README "Single sign-on") is the edge plan's, not this
+     repository's.
 
 ## Owner decisions in plan 3 (do not reopen)
 
