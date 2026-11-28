@@ -162,7 +162,9 @@ test.describe('the callback without the session cookie', () => {
 				const start = await route.fetch({ maxRedirects: 0 });
 				const authorize = await page.request.get(start.headers().location, { maxRedirects: 0 });
 				held = authorize.headers().location;
-				await route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html>' });
+				// No favicon fetch: its response would slide the session cookie back after the clear.
+				const body = '<!doctype html><link rel="icon" href="data:,">';
+				await route.fulfill({ status: 200, contentType: 'text/html', body });
 			}
 		);
 		await ssoSection(page).getByLabel('Password', { exact: true }).fill(ANA.password);
