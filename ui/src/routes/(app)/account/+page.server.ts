@@ -1,5 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { DISPLAY_NAME_MAX_LEN, MAX_PASSWORD_LEN, MIN_PASSWORD_LEN } from '#lib/constants.js';
+import { createApi } from '#lib/server/api.js';
+import { SESSION_COOKIE } from '#lib/server/constants.js';
 import { getEnv } from '#lib/server/env.js';
 import { TOO_MANY_ATTEMPTS } from '#lib/server/oidc/link.js';
 import { ssoOffered } from '#lib/server/oidc/start.js';
@@ -47,7 +49,7 @@ export const actions: Actions = {
 		}
 		return failAction(r, { action: 'profile' as const, values, field: null });
 	},
-	password: async ({ request, locals }) => {
+	password: async ({ request, cookies, getClientAddress }) => {
 		const form = await request.formData();
 		const current = String(form.get('current') ?? '');
 		const next = String(form.get('new') ?? '');
@@ -56,7 +58,9 @@ export const actions: Actions = {
 			const field = problem.field === 'password' ? 'new' : 'confirm';
 			return fail(400, { action: 'password' as const, field, message: problem.message });
 		}
-		const r = await locals.api.changePassword(current, next);
+		// The address is the limiter's addr: key; without it every parent would share one.
+		const api = createApi(getEnv(), fetch, cookies.get(SESSION_COOKIE), getClientAddress());
+		const r = await api.changePassword(current, next);
 		if (r.ok) return { action: 'password' as const, changed: true };
 		if (r.code === 'wrong_password') {
 			return fail(403, {
