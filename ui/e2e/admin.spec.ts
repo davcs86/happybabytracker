@@ -150,6 +150,16 @@ test.describe('without JavaScript', () => {
 	});
 });
 
+test('the footnote says how the admin password is reset', async ({ page }) => {
+	await expect(
+		page.getByText(
+			'The admin’s own username can’t be changed. The operator resets the admin password with the admin command; that signs the admin out.',
+			{ exact: true }
+		)
+	).toBeVisible();
+	await expect(page.getByText(/come from the deployment/)).toHaveCount(0);
+});
+
 test('each parent says when they were last active and which link is waiting', async ({ page }) => {
 	await openSession('cleo', 'fake-cleo-password-0000');
 	await page.goto('/admin/parents');

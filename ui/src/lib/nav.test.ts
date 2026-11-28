@@ -107,3 +107,37 @@ describe('current page', () => {
 		expect(current(path)).toEqual(expected);
 	});
 });
+
+describe('admin navigation', () => {
+	const admin = (pathname: string) => navModel({ admin: true, pathname });
+
+	it('has no primary entries and lists Parents, then Account', () => {
+		const m = admin('/admin/account');
+		expect(m.primary).toEqual([]);
+		expect(m.more.map((e) => e.id)).toEqual(['admin-parents', 'admin-account']);
+		expect(m.more.flatMap((e) => (e.kind === 'link' ? [e.href] : []))).toEqual([
+			'/admin/parents',
+			'/admin/account'
+		]);
+		expect(m.more.map((e) => e.label)).toEqual(['Parents', 'Account']);
+		expect(m.more.map((e) => e.note)).toEqual(['Open', 'Open']);
+	});
+
+	it.each([
+		['/admin/account', ['admin-account']],
+		['/admin/account/link-sso', ['admin-account']],
+		['/admin/parents', ['admin-parents']],
+		['/admin/accounts', []]
+	])('%s marks %j', (path, expected) => {
+		expect(
+			admin(path)
+				.more.filter((e) => e.current)
+				.map((e) => e.id)
+		).toEqual(expected);
+	});
+
+	it('leaves the parent entries unchanged', () => {
+		expect(ids({})).toContain('account');
+		expect(ids({})).not.toContain('admin-account');
+	});
+});

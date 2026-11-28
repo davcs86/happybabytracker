@@ -8,6 +8,7 @@ const USERNAME_MESSAGE = `Use ${USERNAME_MIN_LEN} to ${USERNAME_MAX_LEN} charact
 const SOLE_GUARDIAN =
 	'This parent is the only guardian of at least one child. Another guardian must be added first.';
 const GONE = 'That parent no longer exists';
+const UNLINKED = 'Single sign-on unlinked. Their sessions and notification devices were removed.';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const r = await locals.api.listParents();
@@ -66,5 +67,11 @@ export const actions: Actions = {
 			false
 		);
 		return r.ok ? { done: true } : parentFailure(r);
+	},
+	unlink: async ({ request, locals }) => {
+		const r = await locals.api.unlinkParentSso(
+			String((await request.formData()).get('parent_id') ?? '')
+		);
+		return r.ok ? { status: UNLINKED } : parentFailure(r);
 	}
 };

@@ -71,7 +71,28 @@ export const load: PageServerLoad = async ({
 			username: peek.data.username
 		};
 	}
-	if (txn.purpose !== 'login') return failed(null, txn);
+	if (txn.purpose === 'link') {
+		// Every field from the start cookie: the seal check does not tie them to the purpose.
+		if (!txn.binding || !txn.username || !txn.kind) return failed('binding', txn);
+		const pending: OidcPending = {
+			stage: 'pending',
+			purpose: 'link',
+			binding: txn.binding,
+			username: txn.username,
+			kind: txn.kind,
+			iss: r.iss,
+			sub: r.sub,
+			label: r.label,
+			deviceLabel: null,
+			exp: txn.exp
+		};
+		setOidcCookie(cookies, seal(oidc.sealKey, pending), Math.max(1, txn.exp - nowS));
+		return {
+			outcome: 'confirm',
+			label: r.label ?? SSO_LABEL_FALLBACK,
+			username: txn.username
+		};
+	}
 
 	const s = await api.oidcSession(r.iss, r.sub, txn.deviceLabel ?? undefined);
 	if (!s.ok) {

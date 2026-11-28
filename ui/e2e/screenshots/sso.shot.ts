@@ -1,6 +1,6 @@
-import { TOKENS, moveStubClock, setAuthMode } from '../stub-api.js';
+import { ADMIN, ANA, TOKENS, moveStubClock, setAuthMode } from '../stub-api.js';
 import { configureIssuer, resetIssuer } from '../stub-issuer.js';
-import { expect, shot, test } from './shots.js';
+import { expect, shot, signInAs, test } from './shots.js';
 
 const SSO = 'Continue with single sign-on';
 
@@ -97,5 +97,60 @@ test('invite confirmation', async ({ page }) => {
 		'sso',
 		'09-confirm-link-no-longer-valid',
 		'The invite expired, was replaced or used before Confirm: nothing is linked'
+	);
+});
+
+test('link single sign-on', async ({ page }) => {
+	await resetIssuer();
+	await setAuthMode('both');
+	await signInAs(page, ANA);
+	await page.goto('/account');
+	const section = page.getByRole('region', { name: 'Single sign-on' });
+	await expect(section.getByRole('button', { name: 'Link single sign-on' })).toBeVisible();
+	await shot(
+		page,
+		'sso',
+		'10-account-linkable',
+		'AUTH_MODE=both: a Single sign-on card follows Password; linking asks for the password first'
+	);
+	await section.getByLabel('Password', { exact: true }).fill('not the password');
+	await section.getByRole('button', { name: 'Link single sign-on' }).click();
+	await expect(page.getByText('The password is incorrect')).toBeVisible();
+	await shot(
+		page,
+		'sso',
+		'12-link-sso-wrong-password',
+		'A wrong password: the link page says so under the field and nothing reaches the issuer'
+	);
+	await page.goto('/account');
+	await section.getByLabel('Password', { exact: true }).fill(ANA.password);
+	await section.getByRole('button', { name: 'Link single sign-on' }).click();
+	await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
+	await shot(
+		page,
+		'sso',
+		'13-confirm-link',
+		'Back from the issuer: confirm which single sign-on account joins this one, or cancel'
+	);
+	await page.getByRole('button', { name: 'Confirm' }).click();
+	await expect(section).toContainText('Single sign-on is linked.');
+	await shot(
+		page,
+		'sso',
+		'11-account-linked',
+		'Linked: the section says so; only the admin can unlink'
+	);
+});
+
+test('admin account', async ({ page }) => {
+	await setAuthMode('both');
+	await signInAs(page, ADMIN);
+	await page.goto('/admin/account');
+	await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
+	await shot(
+		page,
+		'sso',
+		'14-admin-account',
+		'The admin’s Account page: the permanent username, then Link single sign-on'
 	);
 });

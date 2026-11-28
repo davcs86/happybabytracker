@@ -1,8 +1,11 @@
 import { fail } from '@sveltejs/kit';
 import { DISPLAY_NAME_MAX_LEN, MAX_PASSWORD_LEN, MIN_PASSWORD_LEN } from '#lib/constants.js';
+import { getEnv } from '#lib/server/env.js';
+import { TOO_MANY_ATTEMPTS } from '#lib/server/oidc/link.js';
+import { ssoOffered } from '#lib/server/oidc/start.js';
 import { failAction, failPage } from '#lib/server/outcome.js';
 import { passwordProblem } from '#lib/password.js';
-import type { Units } from '#lib/types.js';
+import type { AuthMode, Units } from '#lib/types.js';
 import type { Actions, PageServerLoad } from './$types';
 
 const UNIT_KEYS = ['weight', 'length', 'volume', 'temp'] as const;
@@ -10,9 +13,10 @@ const DISPLAY_NAME_MESSAGE = `Use 1 to ${DISPLAY_NAME_MAX_LEN} characters`;
 const UNIT_MESSAGE = 'Choose one of the listed units';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const r = await locals.api.listSessions();
+	const [r, m] = await Promise.all([locals.api.listSessions(), locals.api.authMode()]);
 	if (!r.ok) failPage(r);
-	return { sessions: r.data };
+	const mode: AuthMode = m.ok ? m.data : 'local';
+	return { sessions: r.data, mode, sso: m.ok && ssoOffered(mode, getEnv().oidc) };
 };
 
 export const actions: Actions = {
@@ -60,6 +64,9 @@ export const actions: Actions = {
 				field: 'current',
 				message: 'The current password is incorrect'
 			});
+		}
+		if (r.status === 429) {
+			return fail(429, { action: 'password' as const, field: null, message: TOO_MANY_ATTEMPTS });
 		}
 		if (r.reason === 'invalid' && r.field === 'new') {
 			return fail(400, {

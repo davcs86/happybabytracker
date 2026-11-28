@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { submit } from '../helpers.js';
-import { ADMIN } from '../stub-api.js';
+import { ADMIN, ISSUER_URL, linkStubIdentity } from '../stub-api.js';
 import { expect, openDetails, shot, signInAs, test } from './shots.js';
 
 // The stub draws random link tokens: the shots show this one instead.
@@ -82,5 +82,26 @@ test('parents', async ({ page }) => {
 		'admin',
 		'07-parent-disabled',
 		'Dan disabled: Enable offered; Ana’s Disable confirmation is still open'
+	);
+});
+
+test('unlink single sign-on', async ({ page }) => {
+	await linkStubIdentity(ISSUER_URL, 'stub-subject-ana-0001', 'ana');
+	await signInAs(page, ADMIN);
+	await expect(row(page, 'ana').getByText('Single sign-on', { exact: true })).toBeVisible();
+	await openDetails(page, 'Unlink single sign-on');
+	await shot(
+		page,
+		'admin',
+		'08-unlink-confirm',
+		'A linked parent: the Single sign-on badge, and Unlink with what it does'
+	);
+	await submit(row(page, 'ana').getByRole('button', { name: /^Unlink single sign-on/ }));
+	await expect(page.getByRole('status')).toBeVisible();
+	await shot(
+		page,
+		'admin',
+		'09-unlinked',
+		'Unlinked: their sessions and notification devices are gone; the badge is gone'
 	);
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { ERROR_CLASS, SELECT_CLASS, keepValues } from '#lib/components/field.js';
+	import SsoSection, { ssoSectionState } from '#lib/components/SsoSection.svelte';
 	import { Alert } from '#lib/components/ui/alert/index.js';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -59,6 +60,9 @@
 	// "Last changed" and "Last active" are read against this clock.
 	const now = new Date();
 	const parent = $derived(data.session?.parent);
+	const sso = $derived(
+		ssoSectionState({ mode: data.mode, sso: data.sso, linked: !!parent?.ssoLinked })
+	);
 	const others = $derived(data.sessions.filter((s) => !s.current).length);
 	const roleCount = (role: string) => data.kids.filter((k) => k.role === role).length;
 	const roleLine = (role: string, label: string) => {
@@ -247,6 +251,7 @@
 				<Button type="submit" variant="outline" class="self-start">Change password</Button>
 			</form>
 		</Card>
+		{#if sso}<SsoSection action="/account/link-sso" state={sso} form={null} />{/if}
 	</div>
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">

@@ -1,8 +1,8 @@
 # Admin
 
-The admin panel is a single page, **Parents**, where the admin creates parent accounts, issues one-time links and disables or enables accounts. The admin never sees a child: no names, no entries, no counts. Examples use fake parents: Ana, Bo, Cleo, Dan and Dee.
+The admin panel has two pages: **Parents**, where the admin creates parent accounts, issues one-time links, disables or enables accounts and unlinks a parent's single sign-on, and **Account**, the admin's own username and Link single sign-on. The admin never sees a child: no names, no entries, no counts. Examples use fake parents: Ana, Bo, Cleo, Dan and Dee.
 
-The admin signs in with the username and password set when the server is deployed. They are not a parent: they have no children, no notification bell and no other page. If the admin asks for a child's page, they are sent back to the Parents page.
+The admin signs in with the username and password set when the server is deployed. They are not a parent: they have no children, no notification bell and no page outside the admin panel. If the admin asks for a child's page, they are sent back to the Parents page.
 
 ## Guide
 
@@ -18,9 +18,9 @@ Under the title a line counts them, for example "5 parents · 3 active · 1 invi
 
 | Phone | Desktop |
 |---|---|
-| <img src="../screenshots/admin/01-parents-mobile.png" alt="The Parents page on a phone with an Admin badge: Create parent button, the line 5 parents, 3 active, 1 invited, 1 disabled, the note about what the screen can do, filters, and a card per parent: Ana, Cleo and Dan Active with New reset link and Disable; Bo Invited with New invite link and Disable; Dee Disabled with Enable; and a Sign out of admin button" width="260"> | <img src="../screenshots/admin/01-parents-desktop.png" alt="The same page on a desktop: an empty left column with only the Happy baby name, the parent cards in the middle and the note about the admin's own username and the Sign out of admin button on the right" width="460"> |
+| <img src="../screenshots/admin/01-parents-mobile.png" alt="The Parents page on a phone with two icon buttons, Parents and Account, then an Admin badge at the top: Create parent button, the line 5 parents, 3 active, 1 invited, 1 disabled, the note about what the screen can do, filters, and a card per parent: Ana, Cleo and Dan Active with New reset link and Disable; Bo Invited with New invite link and Disable; Dee Disabled with Enable; and a Sign out of admin button" width="260"> | <img src="../screenshots/admin/01-parents-desktop.png" alt="The same page on a desktop: a left menu with the Happy baby name, Parents (current) and Account, the parent cards in the middle and the note about the admin's own username and the Sign out of admin button on the right" width="460"> |
 
-On a desktop the left menu is empty: the admin has nothing else to open.
+The admin's menu has two entries, **Parents** and **Account**. On a desktop they are in the left menu; on a phone they are two icon buttons at the top, before the Admin badge. The current one is highlighted.
 
 ### How do I create a parent?
 
@@ -73,18 +73,43 @@ A child always keeps at least one active guardian. If the parent is the only gua
 |---|
 | <img src="../screenshots/admin/06-disable-sole-guardian-refused-mobile.png" alt="Parents page on a phone: under the note, a bordered message This parent is the only guardian of at least one child. Another guardian must be added first.; Ana's card has its Disable box open and no change was made" width="260"> |
 
+### How do I unlink a parent's single sign-on?
+
+A parent who linked a single sign-on account shows a second badge, **Single sign-on**, beside the status. Unlink it when the parent's single sign-on account was recreated, or linked by mistake. Parents cannot unlink themselves.
+
+1. On the parent's card choose **Unlink single sign-on**. A red box opens with two lines: "Ana is signed out everywhere and their notification devices are removed." and "Their password still works, if they have one."
+2. Choose **Unlink single sign-on** in the box to confirm.
+
+The page says "Single sign-on unlinked. Their sessions and notification devices were removed." and the badge is gone. The parent can link again from their profile, or, without a password, be sent a new invite link.
+
+| Phone | Phone |
+|---|---|
+| <img src="../screenshots/admin/08-unlink-confirm-mobile.png" alt="Parents page on a phone: Ana's card shows the Active and Single sign-on badges and an open red box with the two consequence lines and a red Unlink single sign-on button" width="220"> | <img src="../screenshots/admin/09-unlinked-mobile.png" alt="Parents page on a phone after unlinking: the message Single sign-on unlinked. Their sessions and notification devices were removed. under the note, and Ana's card without the Single sign-on badge" width="220"> |
+
+### How do I link single sign-on to the admin?
+
+Open **Account**. It shows the admin's **Username**, which cannot be changed, and, when the deployment allows both passwords and single sign-on, a **Single sign-on** card. Type the admin password, choose **Link single sign-on**, sign in again on the single sign-on page, then **Confirm** on "You are linking … to admin". The card then says "Single sign-on is linked.", and **Continue with single sign-on** on the sign-in page opens the Parents page. A failure returns with **Go to Account**; the messages are those of [My profile](My-profile.md#how-do-i-link-single-sign-on).
+
+| Phone | Desktop |
+|---|---|
+| <img src="../screenshots/sso/14-admin-account-mobile.png" alt="The admin Account page on a phone: the Parents and Account icon buttons with Account highlighted, the Admin badge, the heading Account, a Details card with the read-only username admin, and a Single sign-on card with a Password field and an outline Link single sign-on button" width="260"> | <img src="../screenshots/sso/14-admin-account-desktop.png" alt="The same page on a desktop with Account highlighted in the left menu" width="460"> |
+
+The admin's own single sign-on is removed by the operator with the admin command, not on this page.
+
 ### How do I sign out?
 
-Choose **Sign out of admin** at the bottom. The page also says: "The admin's own username and password can't be changed here. They come from the deployment; changing them signs the admin out."
+Choose **Sign out of admin** at the bottom of Parents. The page also says: "The admin's own username can't be changed. The operator resets the admin password with the admin command; that signs the admin out."
 
 ## Screens
 
 | Screen | Route | Who can open it | States captured |
 |---|---|---|---|
-| Parents | `/admin/parents` | admin only | `01-parents`, `02-add-malformed-username`, `03-add-duplicate-username`, `04-invite-link`, `05-reset-link`, `06-disable-sole-guardian-refused`, `07-parent-disabled` |
+| Parents | `/admin/parents` | admin only | `01-parents`, `02-add-malformed-username`, `03-add-duplicate-username`, `04-invite-link`, `05-reset-link`, `06-disable-sole-guardian-refused`, `07-parent-disabled`, `08-unlink-confirm`, `09-unlinked` |
+| Account | `/admin/account` | admin only | `sso/14-admin-account` |
+| Link single sign-on | `/admin/account/link-sso` (the card's form; also its page without JavaScript) | admin only | the parent's version is `sso/12-link-sso-wrong-password` |
 | Not found | any `/admin/*` page | a parent (guardian or caregiver) | see [Error pages](Error-pages.md), shot `errors/03-404-parent-on-admin` |
 
-The shots are in the [screenshot catalogue](../screenshots/README.md#admin). The admin is refused by every route outside `/admin/*` and the sign-in page: asking for a child's page sends the admin back to `/admin/parents`.
+The shots are in the [screenshot catalogue](../screenshots/README.md#admin). The admin is refused by every route outside `/admin/*`, the sign-in page and the single sign-on pages: asking for a child's page sends the admin back to `/admin/parents`.
 
 ### Rules the screens show
 
@@ -94,10 +119,11 @@ The shots are in the [screenshot catalogue](../screenshots/README.md#admin). The
 - Status: Active (has a password), Invited (no password), Disabled. A disabled parent has no link buttons.
 - The only guardian of a child cannot be disabled; the server decides, so the refusal comes back even if the buttons are shown.
 - A parent who no longer exists gives "That parent no longer exists".
-- The filter is a link (`?show=`), so it works without JavaScript; so do Create parent, the links, Disable and Enable. Only Copy link needs JavaScript.
+- A **Single sign-on** badge marks a parent who linked single sign-on; only such a card offers Unlink, which also signs the parent out everywhere and removes their notification devices.
+- The filter is a link (`?show=`), so it works without JavaScript; so do Create parent, the links, Disable, Enable, Unlink and Link single sign-on. Only Copy link needs JavaScript.
 
 ### Not built yet
 
-The design shows a "Last active" time and a line saying when a link was issued. Neither exists, and the admin has no notification bell because an admin session cannot open any other page: see [Not built yet](Not-built-yet.md).
+The design shows a "Last active" time and a line saying when a link was issued. Neither exists, and the admin has no notification bell because an admin session cannot open any page outside the admin panel: see [Not built yet](Not-built-yet.md).
 
 Back to the [wiki home](Home.md).
