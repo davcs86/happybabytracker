@@ -23,7 +23,7 @@ import { configureIssuer, issuerAuthorizeLog, issuerDown, resetIssuer } from './
 
 const ANA_SUB = 'stub-subject-ana-0001';
 const ADMIN_SUB = 'stub-subject-admin-0001';
-const OIDC_COOKIE = 'hbt_oidc';
+const OIDC_COOKIE = '__Secure-hbt_oidc';
 const SSO = 'Continue with single sign-on';
 const DID_NOT_COMPLETE = 'Single sign-on did not complete';
 const UNAVAILABLE = 'Single sign-on is unavailable';
@@ -174,7 +174,7 @@ test('a replayed callback does not complete and keeps the session', async ({ pag
 	expect((await sessionCookie(context))?.value).toBe(before?.value);
 });
 
-test('the callback answers 200 and clears hbt_oidc while the API is down, even signed in', async ({
+test('the callback answers 200 and clears __Secure-hbt_oidc while the API is down, even signed in', async ({
 	page,
 	context
 }) => {
@@ -196,7 +196,7 @@ test('the callback answers 200 and clears hbt_oidc while the API is down, even s
 	expect(await oidcCookie(context)).toBeUndefined();
 });
 
-test('the start sets a hardened hbt_oidc cookie; without it the callback does not complete', async ({
+test('the start sets a hardened __Secure-hbt_oidc cookie; without it the callback does not complete', async ({
 	page,
 	context
 }) => {

@@ -21,7 +21,7 @@ const failed = (back: { href: string; label: string }, message: string | null = 
 });
 
 export const actions: Actions = {
-	// Always clears hbt_oidc, so a second post meets no pending link.
+	// Always clears __Secure-hbt_oidc, so a second post meets no pending link.
 	default: async ({ request, cookies, locals, getClientAddress }) => {
 		const form = await request.formData();
 		const choice = form.get('choice');

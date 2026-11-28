@@ -145,7 +145,7 @@ req() { # name client-addr cookie|- curl-args... -> status; body and headers in 
   local args=(-sS --max-time 10 -o "$WORK/$name.body" -D "$WORK/$name.headers" -w '%{http_code}'
     -H 'X-Forwarded-Proto: https' -H "X-Forwarded-Host: ${FORWARDED_HOST}"
     -H "X-Forwarded-For: ${addr}" -H 'Accept: text/html')
-  if [ "$cookie" != "-" ]; then args+=(-H "Cookie: hbt_session=${cookie}"); fi
+  if [ "$cookie" != "-" ]; then args+=(-H "Cookie: __Secure-hbt_session=${cookie}"); fi
   curl "${args[@]}" "$@" || echo 000
 }
 
@@ -163,8 +163,8 @@ location() { # name
   grep -i '^location:' "$WORK/$1.headers" | sed -E 's/^[^:]*: *//' | tr -d '\r' || true
 }
 
-set_cookie() { # name -> the hbt_session value the response sets ('' when none)
-  { grep -i '^set-cookie: hbt_session=' "$WORK/$1.headers" |
+set_cookie() { # name -> the __Secure-hbt_session value the response sets ('' when none)
+  { grep -i '^set-cookie: __Secure-hbt_session=' "$WORK/$1.headers" |
     sed -E 's/^[^=]*=([^;]*).*/\1/' | tr -d '\r'; } || true
 }
 
@@ -1665,7 +1665,7 @@ printf '%s\n' "$ADMIN_PASSWORD_2" | docker run --rm -i --network none --read-onl
   --security-opt no-new-privileges -v "$VOLUME":/data "$API_IMAGE" admin reset-password "$ADMIN_USERNAME" \
   >"$WORK/cli.log" 2>&1 || fail "8 CLI reset-password" "exit $?"
 code="$(req admin-old-2 "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
-cleared="$(grep -ci '^set-cookie: hbt_session=;.*Max-Age=0' "$WORK/admin-old-2.headers" || true)"
+cleared="$(grep -ci '^set-cookie: __Secure-hbt_session=;.*Max-Age=0' "$WORK/admin-old-2.headers" || true)"
 case "$code $(location admin-old-2) $cleared" in
   "303 /login"*" 1") ;;
   *) fail "8 old admin cookie after reset-password" "status $code, Location $(location admin-old-2), cleared $cleared" ;;

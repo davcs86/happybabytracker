@@ -32,7 +32,7 @@ import {
 } from './stub-api.js';
 import { configureIssuer, issuerAuthorizeLog, resetIssuer } from './stub-issuer.js';
 
-const OIDC_COOKIE = 'hbt_oidc';
+const OIDC_COOKIE = '__Secure-hbt_oidc';
 const SSO = 'Continue with single sign-on';
 const LINK = 'Link single sign-on';
 const LINKED = 'Single sign-on is linked.';
@@ -150,7 +150,7 @@ test('with another IdP session live, the re-authenticated account is the one lin
 });
 
 test.describe('the callback without the session cookie', () => {
-	// A redirect is not routed: the start is fetched by hand (route.fetch keeps hbt_oidc in the
+	// A redirect is not routed: the start is fetched by hand (route.fetch keeps __Secure-hbt_oidc in the
 	// context), and so is the issuer's redirect, so the callback URL is held unvisited.
 	async function callbackWithoutSession(page: Page, context: BrowserContext) {
 		await signIn(page, ANA);
@@ -170,7 +170,7 @@ test.describe('the callback without the session cookie', () => {
 		await expect.poll(() => held).toMatch(/\/auth\/callback\?/);
 		await page.unrouteAll();
 		const saved = (await sessionCookie(context))!;
-		await context.clearCookies({ name: 'hbt_session' });
+		await context.clearCookies({ name: '__Secure-hbt_session' });
 		const res = await page.goto(held);
 		expect(res?.status()).toBe(200);
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
