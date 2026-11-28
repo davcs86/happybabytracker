@@ -10,6 +10,7 @@ import {
 import type { Env } from './env';
 import {
 	AGE_BANDS,
+	AUTH_MODES,
 	BOTTLE_CONTENTS,
 	DIAPER_KINDS,
 	GROWTH_SCORE_REASONS,
@@ -43,6 +44,7 @@ import type {
 	AdministrationInput,
 	AdminLink,
 	AdminParent,
+	AuthMode,
 	Bottle,
 	BottleSource,
 	Curves,
@@ -148,6 +150,14 @@ type Endpoint =
 	| 'logout'
 	| 'peek_token'
 	| 'redeem_token'
+	| 'auth_mode'
+	| 'oidc_session'
+	| 'redeem_token_oidc'
+	| 'reauth'
+	| 'admin_reauth'
+	| 'link_identity'
+	| 'admin_link_identity'
+	| 'unlink_parent_sso'
 	| 'list_parents'
 	| 'create_parent'
 	| 'parent_link'
@@ -305,14 +315,17 @@ function toParent(v: unknown): Parent {
 		username: string(p.username),
 		displayName: string(p.display_name),
 		units: toUnits(p.units),
-		passwordChangedAt: stringOrNull(p.password_changed_at ?? null)
+		passwordChangedAt: stringOrNull(p.password_changed_at ?? null),
+		ssoLinked: boolean(p.sso_linked)
 	};
 }
 
 function toSession(v: unknown): Session {
 	const s = object(v);
 	const kind = oneOf(s.kind, KINDS);
-	return kind === 'parent' ? { kind, parent: toParent(s.parent) } : { kind };
+	if (kind === 'parent') return { kind, parent: toParent(s.parent) };
+	const a = object(s.admin);
+	return { kind, admin: { username: string(a.username), ssoLinked: boolean(a.sso_linked) } };
 }
 
 function toNewSession(v: unknown): NewSession {
@@ -372,6 +385,7 @@ function toAdminParent(v: unknown): AdminParent {
 		displayName: string(p.display_name),
 		disabled: boolean(p.disabled),
 		hasPassword: boolean(p.has_password),
+		ssoLinked: boolean(p.sso_linked),
 		createdAt: string(p.created_at),
 		lastActiveAt: stringOrNull(p.last_active_at ?? null),
 		link: p.link == null ? null : toAdminLink(p.link)
@@ -1331,6 +1345,35 @@ export function createApi(
 			if (!path) return Promise.resolve(NOT_FOUND);
 			return call('redeem_token', 'POST', `${path}/redeem`, toNewSession, { password });
 		},
+		authMode: (): Promise<ApiResult<AuthMode>> =>
+			call('auth_mode', 'GET', '/v1/auth', (b) => oneOf(object(b).mode, AUTH_MODES)),
+		oidcSession: (iss: string, sub: string, deviceLabel?: string) =>
+			call('oidc_session', 'POST', '/v1/session/oidc', toNewSession, {
+				iss,
+				sub,
+				...(deviceLabel ? { device_label: deviceLabel } : {})
+			}),
+		redeemTokenOidc(
+			token: string,
+			iss: string,
+			sub: string,
+			deviceLabel?: string
+		): Promise<ApiResult<NewSession>> {
+			const path = tokenPath(token);
+			if (!path) return Promise.resolve(NOT_FOUND);
+			return call('redeem_token_oidc', 'POST', `${path}/redeem-oidc`, toNewSession, {
+				iss,
+				sub,
+				...(deviceLabel ? { device_label: deviceLabel } : {})
+			});
+		},
+		reauth: (password: string) => call<null>('reauth', 'POST', '/v1/me/reauth', null, { password }),
+		adminReauth: (password: string) =>
+			call<null>('admin_reauth', 'POST', '/v1/admin/me/reauth', null, { password }),
+		linkIdentity: (iss: string, sub: string) =>
+			call<null>('link_identity', 'POST', '/v1/me/identities', null, { iss, sub }),
+		adminLinkIdentity: (iss: string, sub: string) =>
+			call<null>('admin_link_identity', 'POST', '/v1/admin/me/identities', null, { iss, sub }),
 
 		listParents: () =>
 			call('list_parents', 'GET', '/v1/admin/parents', (b) => list(b, 'parents', toAdminParent)),
@@ -1351,6 +1394,10 @@ export function createApi(
 				disabled
 					? call<null>('disable_parent', 'POST', `/v1/admin/parents/${i}/disable`, null)
 					: call<null>('enable_parent', 'POST', `/v1/admin/parents/${i}/enable`, null)
+			),
+		unlinkParentSso: (id: string) =>
+			withId(id, (i) =>
+				call<null>('unlink_parent_sso', 'POST', `/v1/admin/parents/${i}/unlink-sso`, null)
 			),
 
 		updateProfile: (displayName: string, units: Units) =>

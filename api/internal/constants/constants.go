@@ -7,6 +7,7 @@ const (
 	MinPasswordLen      = 12
 	MaxPasswordLen      = 256
 	MinAdminPasswordLen = 16
+	CLIPasswordMaxBytes = 4*MaxPasswordLen + 2
 	MinSecretLen        = 32
 
 	InviteTTL            = 72 * time.Hour
@@ -35,6 +36,11 @@ const (
 	UsernamePattern = `^[a-z0-9._-]{3,32}$`
 
 	DeviceLabelPattern = `^[A-Za-z0-9 ]{1,48}$`
+
+	OIDCIssuerMaxLen  = 512
+	OIDCSubjectMaxLen = 255
+
+	ReauthWindow = 5 * time.Minute
 
 	DisplayNameMinLen = 1
 	DisplayNameMaxLen = 64

@@ -10,6 +10,7 @@ import ListIcon from '@lucide/svelte/icons/list';
 import LogOutIcon from '@lucide/svelte/icons/log-out';
 import NotebookPenIcon from '@lucide/svelte/icons/notebook-pen';
 import StethoscopeIcon from '@lucide/svelte/icons/stethoscope';
+import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 import SunMoonIcon from '@lucide/svelte/icons/sun-moon';
 import SyringeIcon from '@lucide/svelte/icons/syringe';
 import UserIcon from '@lucide/svelte/icons/user';
@@ -31,6 +32,11 @@ export type NavInput = {
 	modules: ModuleState[] | null;
 	theme: Theme;
 };
+export type AdminNavInput = { admin: true; pathname: string };
+
+// A side-nav entry, in the shell and in the admin layout.
+export const SIDE_ENTRY_CLASS =
+	'flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-sm font-semibold hover:bg-accent aria-[current=page]:bg-background aria-[current=page]:text-primary';
 
 export const MORE_ICON = EllipsisIcon;
 export const BELL_ICON = BellIcon;
@@ -53,7 +59,32 @@ const MODULE_OF: Partial<Record<string, ModuleId>> = {
 	milestones: 'milestones'
 };
 
-export function navModel(i: NavInput): { primary: PrimaryEntry[]; more: NavEntry[] } {
+function adminNav(pathname: string): { primary: PrimaryEntry[]; more: NavLink[] } {
+	const entry = (id: string, label: string, icon: NavIcon, href: string, current: RegExp) => ({
+		kind: 'link' as const,
+		id,
+		label,
+		icon,
+		href,
+		note: 'Open',
+		current: current.test(pathname)
+	});
+	return {
+		primary: [],
+		more: [
+			entry('admin-parents', 'Parents', ShieldCheckIcon, '/admin/parents', /^\/admin\/parents$/),
+			entry('admin-account', 'Account', UserIcon, '/admin/account', /^\/admin\/account(\/|$)/)
+		]
+	};
+}
+
+export function navModel(i: NavInput): { primary: PrimaryEntry[]; more: NavEntry[] };
+export function navModel(i: AdminNavInput): { primary: PrimaryEntry[]; more: NavLink[] };
+export function navModel(i: NavInput | AdminNavInput): {
+	primary: PrimaryEntry[];
+	more: NavEntry[];
+} {
+	if ('admin' in i) return adminNav(i.pathname);
 	const at = (re: RegExp) => re.test(i.pathname);
 	const primary: PrimaryEntry[] = [
 		{ id: 'home', label: 'Home', href: '/', icon: HouseIcon, current: at(HOME) },

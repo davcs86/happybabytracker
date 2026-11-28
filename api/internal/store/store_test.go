@@ -16,7 +16,7 @@ var wantTables = []string{"meta", "parents", "identities", "sessions", "one_time
 	"bottle_feeds", "diapers", "meals", "pumping_sessions", "sleep_sessions", "nursing_sessions", "kid_modules", "growth_measurements",
 	"vaccine_doses", "vaccine_dismissals", "bottle_feed_sources", "pumping_session_sides",
 	"symptoms", "medications", "medication_doses", "reminders", "reminder_deliveries", "push_subscriptions", "push_kid_optins",
-	"ntfy_topics", "ntfy_kid_optins", "milestones_reached", "visits"}
+	"ntfy_topics", "ntfy_kid_optins", "milestones_reached", "visits", "admins", "admin_identities"}
 
 func version(t *testing.T, s *Store) string {
 	t.Helper()
@@ -33,8 +33,8 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	for _, name := range wantTables {
 		var n int
@@ -51,8 +51,8 @@ func TestOpenIsIdempotent(t *testing.T) {
 		if err != nil {
 			t.Fatalf("open %d: %v", i, err)
 		}
-		if v := version(t, s); v != "10" {
-			t.Fatalf("open %d: schema_version = %q, want 10", i, v)
+		if v := version(t, s); v != "11" {
+			t.Fatalf("open %d: schema_version = %q, want 11", i, v)
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -97,14 +97,23 @@ func TestAdminSessionShape(t *testing.T) {
 	if _, err := s.w.Exec(`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p', 'parent1', 'P', 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
-	const ins = `INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, 0, 0, 1)`
-	if _, err := s.w.Exec(ins, "s1", []byte{1}, "admin", "p"); err == nil {
+	if _, err := s.w.Exec(`INSERT INTO admins(id, username, created_at, updated_at) VALUES ('a', 'admin1', 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	const ins = `INSERT INTO sessions(id, token_hash, kind, parent_id, admin_id, created_at, last_seen_at, expires_at) VALUES (?, ?, ?, ?, ?, 0, 0, 1)`
+	if _, err := s.w.Exec(ins, "s1", []byte{1}, "admin", "p", "a"); err == nil {
 		t.Error("admin session with a parent_id was accepted")
 	}
-	if _, err := s.w.Exec(ins, "s2", []byte{2}, "parent", nil); err == nil {
+	if _, err := s.w.Exec(ins, "s2", []byte{2}, "parent", nil, nil); err == nil {
 		t.Error("parent session without a parent_id was accepted")
 	}
-	if _, err := s.w.Exec(ins, "s3", []byte{3}, "admin", nil); err != nil {
+	if _, err := s.w.Exec(ins, "s4", []byte{4}, "admin", nil, nil); err == nil {
+		t.Error("admin session without an admin_id was accepted")
+	}
+	if _, err := s.w.Exec(ins, "s5", []byte{5}, "parent", "p", "a"); err == nil {
+		t.Error("parent session with an admin_id was accepted")
+	}
+	if _, err := s.w.Exec(ins, "s3", []byte{3}, "admin", nil, "a"); err != nil {
 		t.Errorf("valid admin session rejected: %v", err)
 	}
 }
@@ -397,8 +406,8 @@ func TestExistingKidsReadTheDefaultSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.GrowthSource != "who" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -546,8 +555,8 @@ func TestUpgradeFrom0003KeepsEveryRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	k, err := s.Kid(ctx, "k1")
 	if err != nil || k.VaccineSchema != nil || k.GrowthSource != "cdc" || k.Name != "Lía" || k.BirthDate != "2026-01-02" {
@@ -746,8 +755,8 @@ func TestMigration0005KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	var contents, sources int
 	var volume int64
@@ -853,8 +862,8 @@ func TestMigration0006KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	counts := map[string]int{"parents": 1, "kids": 1, "kid_access": 1, "kid_modules": 1, "bottle_feeds": 1, "bottle_feed_sources": 1,
 		"nursing_sessions": 1, "pumping_sessions": 1, "pumping_session_sides": 1, "growth_measurements": 1, "vaccine_doses": 1, "vaccine_dismissals": 1}
@@ -954,7 +963,7 @@ func TestMigration0007KeepsRows(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, table := range wantTables {
-		if table == "meta" || table == "milestones_reached" || table == "visits" {
+		if table == "meta" || table == "milestones_reached" || table == "visits" || table == "admins" || table == "admin_identities" {
 			continue
 		}
 		var n int
@@ -972,8 +981,8 @@ func TestMigration0007KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1037,7 +1046,7 @@ func TestMigration0008KeepsRows(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, table := range wantTables {
-		if table == "meta" || table == "visits" {
+		if table == "meta" || table == "visits" || table == "admins" || table == "admin_identities" {
 			continue
 		}
 		var n int
@@ -1055,8 +1064,8 @@ func TestMigration0008KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	for table, want := range counts {
 		var n int
@@ -1343,8 +1352,8 @@ func TestMigration0009KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	var (
 		note, provider, location string
@@ -1428,8 +1437,8 @@ func TestMigration0010KeepsRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v := version(t, s); v != "10" {
-		t.Fatalf("schema_version = %q, want 10", v)
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
 	}
 	var changed, label sql.NullString
 	if err := s.r.QueryRow(`SELECT secret_changed_at FROM identities WHERE parent_id = 'p1'`).Scan(&changed); err != nil || changed.Valid {
@@ -1437,5 +1446,89 @@ func TestMigration0010KeepsRows(t *testing.T) {
 	}
 	if err := s.r.QueryRow(`SELECT device_label FROM sessions WHERE id = 's1'`).Scan(&label); err != nil || label.Valid {
 		t.Errorf("device_label = %v, err %v; want NULL", label, err)
+	}
+}
+
+func TestMigration0011KeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	old, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile)+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.SetMaxOpenConns(1)
+	ms, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range ms[:10] {
+		if err := apply(ctx, old, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES ('p1', 'ana', 'Ana', 100, 100)`,
+		`INSERT INTO identities(parent_id, provider, subject, secret_hash, secret_changed_at) VALUES ('p1', 'local', 'ana', 'h', 100)`,
+		`INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at, device_label) VALUES ('s1', x'01', 'parent', 'p1', 100, 100, 200, 'Firefox on Mac')`,
+		`INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at) VALUES ('s2', x'02', 'admin', NULL, 100, 100, 200)`,
+		`INSERT INTO meta(key, value) VALUES ('admin_fingerprint', 'f')`,
+	} {
+		if _, err := old.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	counts := map[string]int{}
+	for _, table := range wantTables {
+		if table == "meta" || table == "sessions" || table == "admins" || table == "admin_identities" {
+			continue
+		}
+		var n int
+		if err := old.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil {
+			t.Fatalf("%s before 0011: %v", table, err)
+		}
+		counts[table] = n
+	}
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v := version(t, s); v != "11" {
+		t.Fatalf("schema_version = %q, want 11", v)
+	}
+	var (
+		label            sql.NullString
+		admin            sql.NullString
+		reauth, changed  sql.NullInt64
+		adminSessions, f int
+	)
+	if err := s.r.QueryRow(`SELECT device_label, admin_id, reauth_at FROM sessions WHERE id = 's1'`).Scan(&label, &admin, &reauth); err != nil ||
+		label.String != "Firefox on Mac" || admin.Valid || reauth.Valid {
+		t.Errorf("s1 = %v %v %v, err %v; want the label and NULL admin_id and reauth_at", label, admin, reauth, err)
+	}
+	if err := s.r.QueryRow(`SELECT secret_changed_at FROM identities WHERE parent_id = 'p1'`).Scan(&changed); err != nil || changed.Int64 != 100 {
+		t.Errorf("secret_changed_at = %v, err %v; want 100", changed, err)
+	}
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM sessions WHERE kind = 'admin'`).Scan(&adminSessions); err != nil || adminSessions != 0 {
+		t.Errorf("admin sessions = %d, err %v; want 0", adminSessions, err)
+	}
+	if err := s.r.QueryRow(`SELECT COUNT(*) FROM meta WHERE key = 'admin_fingerprint'`).Scan(&f); err != nil || f != 0 {
+		t.Errorf("fingerprint rows = %d, err %v; want 0", f, err)
+	}
+	for table, want := range counts {
+		var n int
+		if err := s.r.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil || n != want {
+			t.Errorf("%s after 0011: %d rows, err %v; want %d", table, n, err, want)
+		}
+	}
+	rows, err := s.r.Query(`SELECT * FROM pragma_foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		t.Error("pragma_foreign_key_check found a violation")
 	}
 }

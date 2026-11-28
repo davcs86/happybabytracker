@@ -48,8 +48,18 @@ var testHash = sync.OnceValue(func() string {
 	return h
 })
 
+// One real admin hash per test binary; every kit's admin shares it.
+var testAdminHash = sync.OnceValue(func() string {
+	h, err := auth.HashAdminPassword(testAdminPass)
+	if err != nil {
+		panic(err)
+	}
+	return h
+})
+
 type kit struct {
 	t        *testing.T
+	adminID  string
 	Store    *store.Store
 	Cfg      config.Config
 	Limiter  *auth.Limiter
@@ -151,7 +161,7 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 		Store: s,
 		Cfg: config.Config{
 			AdminUsername: testAdminUser, AdminPassword: testAdminPass,
-			InternalAPIToken: testInternalToken, PublicOrigin: "https://example.test",
+			InternalAPIToken: testInternalToken, PublicOrigin: "https://example.test", AuthMode: config.AuthLocal,
 		},
 		Log: &bytes.Buffer{},
 		now: t0,
@@ -164,7 +174,28 @@ func newKitWith(t *testing.T, s *store.Store) *kit {
 	k.Registry = &registry{status: http.StatusOK, body: `{"result_count":0,"results":[]}`}
 	k.NPI, k.NPILimiter = npi.New(k.Registry, k.clock), auth.NewLimiter(constants.NPISearchesPerMinute, k.clock)
 	k.Handler = NewHandler(k.deps())
+	k.seedAdmin()
 	return k
+}
+
+// seedAdmin creates testAdminUser with testAdminPass unless the store already holds an admin.
+func (k *kit) seedAdmin() {
+	k.t.Helper()
+	ctx := context.Background()
+	ok, err := k.Store.HasAdmin(ctx)
+	if err != nil {
+		k.t.Fatal(err)
+	}
+	var a model.Admin
+	if ok {
+		a, _, err = k.Store.AdminByUsername(ctx, testAdminUser)
+	} else {
+		a, err = k.Store.CreateFirstAdmin(ctx, testAdminUser, testAdminHash(), k.now)
+	}
+	if err != nil {
+		k.t.Fatal(err)
+	}
+	k.adminID = a.ID
 }
 
 const testNtfyURL = "http://ntfy:2586"
@@ -218,7 +249,7 @@ func (k *kit) addParent(username string) model.Parent {
 // asAdmin seeds an admin session and returns its token.
 func (k *kit) asAdmin() string {
 	k.t.Helper()
-	return k.seedSession("admin", "", constants.AdminSessionTTL)
+	return k.seedSession("admin", k.adminID, constants.AdminSessionTTL)
 }
 
 // asParent seeds a session for the parent, creating the parent first when it does not exist.
@@ -233,13 +264,13 @@ func (k *kit) asParent(username string) string {
 	return k.seedSession("parent", p.ID, constants.ParentSessionTTL)
 }
 
-func (k *kit) seedSession(kind, parentID string, ttl time.Duration) string {
+func (k *kit) seedSession(kind, principalID string, ttl time.Duration) string {
 	k.t.Helper()
 	plain, hash, err := auth.NewToken()
 	if err != nil {
 		k.t.Fatal(err)
 	}
-	if _, err := k.Store.CreateSession(context.Background(), kind, parentID, hash, k.now, k.now.Add(ttl), ""); err != nil {
+	if _, err := k.Store.CreateSession(context.Background(), kind, principalID, hash, k.now, k.now.Add(ttl), ""); err != nil {
 		k.t.Fatal(err)
 	}
 	return plain

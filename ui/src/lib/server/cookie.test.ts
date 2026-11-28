@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Cookies } from '@sveltejs/kit';
 import {
 	clearKidCookie,
+	clearOidcCookie,
 	clearPushDeviceCookie,
 	clearSessionCookie,
 	sessionCookieOptions,
 	setKidCookie,
+	setOidcCookie,
 	setPushDeviceCookie,
 	setSessionCookie,
 	setThemeCookie
@@ -87,5 +89,21 @@ describe('theme cookie', () => {
 			sameSite: 'lax',
 			maxAge: 365 * 24 * 60 * 60
 		});
+	});
+});
+
+describe('oidc transaction cookie', () => {
+	const scoped = { path: '/auth', httpOnly: true, secure: true, sameSite: 'lax' };
+
+	it('is set as hbt_oidc, lax, scoped to /auth, with the given lifetime', () => {
+		const cookies = fakeCookies();
+		setOidcCookie(cookies, 'sealed', 600);
+		expect(cookies.set).toHaveBeenCalledWith('hbt_oidc', 'sealed', { ...scoped, maxAge: 600 });
+	});
+
+	it('is cleared with the same path and attributes', () => {
+		const cookies = fakeCookies();
+		clearOidcCookie(cookies);
+		expect(cookies.delete).toHaveBeenCalledWith('hbt_oidc', scoped);
 	});
 });

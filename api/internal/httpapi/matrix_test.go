@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/schedule"
@@ -60,6 +61,8 @@ var routeClasses = map[string]Access{
 	"GET /healthz":                                        Open,
 	"GET /healthz/reminders":                              Open,
 	"POST /v1/session":                                    Internal,
+	"POST /v1/session/oidc":                               Internal,
+	"GET /v1/auth":                                        Internal,
 	"GET /v1/session":                                     Session,
 	"DELETE /v1/session":                                  Session,
 	"POST /v1/admin/parents":                              Admin,
@@ -67,10 +70,16 @@ var routeClasses = map[string]Access{
 	"POST /v1/admin/parents/{parent}/reset-link":          Admin,
 	"POST /v1/admin/parents/{parent}/disable":             Admin,
 	"POST /v1/admin/parents/{parent}/enable":              Admin,
+	"POST /v1/admin/parents/{parent}/unlink-sso":          Admin,
 	"GET /v1/tokens/{token}":                              Internal,
 	"POST /v1/tokens/{token}/redeem":                      Internal,
+	"POST /v1/tokens/{token}/redeem-oidc":                 Internal,
 	"PATCH /v1/me":                                        Parent,
 	"POST /v1/me/password":                                Parent,
+	"POST /v1/me/reauth":                                  Parent,
+	"POST /v1/me/identities":                              Parent,
+	"POST /v1/admin/me/reauth":                            Admin,
+	"POST /v1/admin/me/identities":                        Admin,
 	"GET /v1/me/sessions":                                 Parent,
 	"DELETE /v1/me/sessions/{session}":                    Parent,
 	"GET /v1/push":                                        Parent,
@@ -303,10 +312,11 @@ func matrixCases(routes []Route) (cases []matrixCase, problems []string) {
 func newMatrixFixture(t *testing.T) *fixture {
 	t.Helper()
 	k := newKit(t)
+	k.setMode(config.AuthBoth)
 	ctx := context.Background()
 	f := &fixture{kit: k}
 
-	f.token[aAdmin], f.sid[aAdmin] = f.seed("admin", "", constants.AdminSessionTTL)
+	f.token[aAdmin], f.sid[aAdmin] = f.seed("admin", k.adminID, constants.AdminSessionTTL)
 	for a, name := range map[actor]string{aG: "gwen", aC: "cora", aX: "xavi"} {
 		f.parent[a] = k.addParent(name)
 		f.token[a], f.sid[a] = f.seed("parent", f.parent[a].ID, constants.ParentSessionTTL)
@@ -433,13 +443,13 @@ func newMatrixFixture(t *testing.T) *fixture {
 	return f
 }
 
-func (f *fixture) seed(kind, parentID string, ttl time.Duration) (token, id string) {
+func (f *fixture) seed(kind, principalID string, ttl time.Duration) (token, id string) {
 	f.kit.t.Helper()
 	plain, hash, err := auth.NewToken()
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
-	id, err = f.kit.Store.CreateSession(context.Background(), kind, parentID, hash, f.kit.now, f.kit.now.Add(ttl), "")
+	id, err = f.kit.Store.CreateSession(context.Background(), kind, principalID, hash, f.kit.now, f.kit.now.Add(ttl), "")
 	if err != nil {
 		f.kit.t.Fatal(err)
 	}
@@ -498,6 +508,9 @@ type matrixResult struct {
 }
 
 func TestAccessMatrix(t *testing.T) {
+	if m := newMatrixFixture(t).kit.Cfg.AuthMode; m != config.AuthBoth {
+		t.Fatalf("the matrix runs in %q, want both", m)
+	}
 	routes := Routes(newKit(t).deps())
 	cases, problems := matrixCases(routes)
 	for _, p := range problems {

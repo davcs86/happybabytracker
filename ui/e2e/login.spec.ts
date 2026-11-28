@@ -6,7 +6,15 @@ import {
 	login,
 	sessionCookie
 } from './helpers.js';
-import { ADMIN, ANA, MIA, receivedRequests, resetStub, setScenario } from './stub-api.js';
+import {
+	ADMIN,
+	ANA,
+	MIA,
+	receivedRequests,
+	resetStub,
+	setAuthMode,
+	setScenario
+} from './stub-api.js';
 
 const ADDRESS = '198.51.100.23';
 
@@ -123,5 +131,17 @@ test.describe('without JavaScript', () => {
 		await page.goto('/login');
 		await login(page, ANA.username, ANA.password);
 		await expectLanding(page, { kid: MIA });
+	});
+
+	test('a password login posted by hand in oidc says password sign-in is turned off', async ({
+		page,
+		context
+	}) => {
+		await page.goto('/login');
+		await setAuthMode('oidc');
+		const response = await login(page, ANA.username, ANA.password);
+		expect(response.status()).toBe(403);
+		await expect(page.getByRole('alert')).toHaveText('Password sign-in is turned off');
+		expect(await sessionCookie(context)).toBeUndefined();
 	});
 });

@@ -13,4 +13,5 @@
 	lifetime={RESET_VALIDITY}
 	username={data.valid ? data.username : undefined}
 	{form}
+	mode={data.mode === 'oidc' ? 'off' : 'password'}
 />

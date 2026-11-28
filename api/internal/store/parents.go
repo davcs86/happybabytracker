@@ -14,7 +14,8 @@ import (
 
 const providerLocal = "local"
 
-const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash, i.secret_changed_at
+const parentSelect = `SELECT p.id, p.username, p.display_name, p.disabled, p.unit_weight, p.unit_length, p.unit_volume, p.unit_temp, p.created_at, i.secret_hash, i.secret_changed_at,
+	EXISTS (SELECT 1 FROM identities o WHERE o.parent_id = p.id AND o.provider <> '` + providerLocal + `')
 	FROM parents p LEFT JOIN identities i ON i.parent_id = p.id AND i.provider = '` + providerLocal + `' `
 
 type rowScanner interface{ Scan(dest ...any) error }
@@ -27,7 +28,7 @@ func scanParent(row rowScanner) (model.Parent, string, error) {
 		changed sql.NullInt64
 	)
 	err := row.Scan(&p.ID, &p.Username, &p.DisplayName, &p.Disabled,
-		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash, &changed)
+		&p.Units.Weight, &p.Units.Length, &p.Units.Volume, &p.Units.Temp, &created, &hash, &changed, &p.SSOLinked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Parent{}, "", ErrNotFound
 	}
@@ -53,16 +54,24 @@ func (s *Store) ParentByID(ctx context.Context, id string) (model.Parent, error)
 	return p, err
 }
 
-// CreateParent returns ErrConflict when the username is taken; the caller passes it normalised.
+// CreateParent returns ErrConflict when a parent or the admin holds the username; the caller passes it normalised.
 func (s *Store) CreateParent(ctx context.Context, username, displayName string, now time.Time) (model.Parent, error) {
 	id := model.NewID()
-	_, err := s.w.ExecContext(ctx,
-		`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		id, username, displayName, now.Unix(), now.Unix())
-	var se *sqlite.Error
-	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		return model.Parent{}, ErrConflict
-	}
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM admins WHERE username = ?`, username).Scan(new(int)); err == nil {
+			return ErrConflict
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			`INSERT INTO parents(id, username, display_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			id, username, displayName, now.Unix(), now.Unix())
+		var se *sqlite.Error
+		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return ErrConflict
+		}
+		return err
+	})
 	if err != nil {
 		return model.Parent{}, err
 	}

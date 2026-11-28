@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/davcs86/happybabytracker/api/internal/auth"
+	"github.com/davcs86/happybabytracker/api/internal/config"
 	"github.com/davcs86/happybabytracker/api/internal/constants"
 	"github.com/davcs86/happybabytracker/api/internal/model"
 	"github.com/davcs86/happybabytracker/api/internal/store"
@@ -19,13 +20,14 @@ type adminParentView struct {
 	DisplayName string `json:"display_name"`
 	Disabled    bool   `json:"disabled"`
 	HasPassword bool   `json:"has_password"`
+	SSOLinked   bool   `json:"sso_linked"`
 	CreatedAt   string `json:"created_at"`
 }
 
 func newAdminParentView(p model.Parent) adminParentView {
 	return adminParentView{
 		ID: p.ID, Username: p.Username, DisplayName: p.DisplayName,
-		Disabled: p.Disabled, HasPassword: p.HasPassword, CreatedAt: formatTime(p.CreatedAt),
+		Disabled: p.Disabled, HasPassword: p.HasPassword, SSOLinked: p.SSOLinked, CreatedAt: formatTime(p.CreatedAt),
 	}
 }
 
@@ -62,7 +64,7 @@ func (d Deps) createParent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username, ok := auth.NormalizeUsername(in.Username)
-	if !ok || username == d.Cfg.AdminUsername {
+	if !ok {
 		respondInvalid(w, "username")
 		return
 	}
@@ -200,6 +202,19 @@ func (d Deps) setDisabled(disabled bool) http.HandlerFunc {
 	}
 }
 
+func (d Deps) unlinkParentSSO(w http.ResponseWriter, r *http.Request) {
+	err := d.Store.UnlinkParentSSO(r.Context(), r.PathValue("parent"))
+	if errors.Is(err, store.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "not_found")
+		return
+	}
+	if err != nil {
+		respondInternal(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (d Deps) peekToken(w http.ResponseWriter, r *http.Request) {
 	kind, username, err := d.Store.PeekToken(r.Context(), auth.HashToken(r.PathValue("token")), d.Now())
 	if errors.Is(err, store.ErrNotFound) {
@@ -221,7 +236,7 @@ func (d Deps) redeemToken(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Password string `json:"password"`
 	}
-	if !decodeJSON(w, r, &in) {
+	if !decodeJSON(w, r, &in) || !d.allowMode(w, config.AuthLocal, config.AuthBoth) {
 		return
 	}
 	if !d.Limiter.Allow("addr:" + r.Header.Get(headerClientAddress)) {

@@ -6,7 +6,15 @@ import {
 	signInWithForm,
 	untilHydrated
 } from './helpers.js';
-import { ANA, MIA, STUB_TOKEN, STUB_URL, openSession, resetStub } from './stub-api.js';
+import {
+	ANA,
+	MIA,
+	STUB_TOKEN,
+	STUB_URL,
+	openSession,
+	receivedRequests,
+	resetStub
+} from './stub-api.js';
 
 const NEW_PASSWORD = 'a brand new password';
 
@@ -62,6 +70,24 @@ test('a blank display name is refused on its field', async ({ page }) => {
 	await page.getByRole('button', { name: 'Save' }).click();
 	await expectFieldError(page.getByLabel('Display name'), 'Use 1 to 64 characters');
 	await expectAccessible(page);
+});
+
+test('a password change carries the client address the limiter counts', async ({
+	page,
+	context
+}) => {
+	await context.setExtraHTTPHeaders({
+		'x-forwarded-proto': 'http',
+		'x-forwarded-for': '198.51.100.61'
+	});
+	await changePassword(page, ANA.password, NEW_PASSWORD);
+	await expect(page.getByRole('status')).toBeVisible();
+	const posted = (await receivedRequests()).find((r) => r.path === '/v1/me/password');
+	expect(posted).toMatchObject({
+		method: 'POST',
+		authorized: true,
+		clientAddress: '198.51.100.61'
+	});
 });
 
 test('a wrong current password gets its message', async ({ page }) => {

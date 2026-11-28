@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectAccessible, expectLanding, login, sessionCookie } from './helpers.js';
-import { ANA, MIA, resetStub, setScenario, type Scenario } from './stub-api.js';
+import { ANA, MIA, resetStub, setAuthMode, setScenario, type Scenario } from './stub-api.js';
 
 test.beforeEach(async () => {
 	await resetStub();
@@ -74,5 +74,22 @@ test('a login while the API is down says so and sets no cookie', async ({ page, 
 	await expect(page.getByRole('alert')).toHaveText(
 		'The app cannot reach its server, try again soon'
 	);
+	expect(await sessionCookie(context)).toBeUndefined();
+});
+
+test('the login page keeps the password form when the API is down', async ({ page, context }) => {
+	await setAuthMode('oidc');
+	await setScenario('down');
+	const res = await page.goto('/login');
+	expect(res?.status()).toBe(200);
+	await expect(page.getByLabel('Username')).toBeVisible();
+	await expect(page.getByLabel('Password')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Continue with single sign-on' })).toHaveCount(0);
+	await login(page, ANA.username, ANA.password);
+	await expect(page.getByRole('alert')).toHaveText(
+		'The app cannot reach its server, try again soon'
+	);
+	await expect(page.getByLabel('Password')).toBeVisible();
 	expect(await sessionCookie(context)).toBeUndefined();
 });

@@ -3,6 +3,8 @@ import {
 	ADMIN_SESSION_MAX_AGE_S,
 	KID_COOKIE,
 	KID_COOKIE_MAX_AGE_S,
+	OIDC_TXN_COOKIE,
+	OIDC_TXN_PATH,
 	PARENT_SESSION_MAX_AGE_S,
 	PUSH_DEVICE_COOKIE,
 	PUSH_DEVICE_COOKIE_MAX_AGE_S,
@@ -61,4 +63,15 @@ export function setThemeCookie(cookies: Cookies, theme: Theme): void {
 		sameSite: 'lax',
 		maxAge: THEME_COOKIE_MAX_AGE_S
 	});
+}
+
+// Lax, so the issuer's top-level redirect back to the callback carries it.
+const OIDC_ATTRIBUTES = { ...ATTRIBUTES, path: OIDC_TXN_PATH, sameSite: 'lax' } as const;
+
+export function setOidcCookie(cookies: Cookies, value: string, maxAgeS: number): void {
+	cookies.set(OIDC_TXN_COOKIE, value, { ...OIDC_ATTRIBUTES, maxAge: maxAgeS });
+}
+
+export function clearOidcCookie(cookies: Cookies): void {
+	cookies.delete(OIDC_TXN_COOKIE, { ...OIDC_ATTRIBUTES });
 }

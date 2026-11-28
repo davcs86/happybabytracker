@@ -36,6 +36,7 @@
 		form && 'field' in form && !form.field && 'message' in form ? form.message : null
 	);
 	const values = $derived(form && 'values' in form ? form.values : null);
+	const done = $derived(form && 'status' in form ? form.status : null);
 	type Status = 'active' | 'invited' | 'disabled';
 	const STATUS_LABEL: Record<Status, string> = {
 		active: 'Active',
@@ -164,6 +165,7 @@
 	</Alert>
 
 	{#if pageError}<Alert class="xl:col-span-2">{pageError}</Alert>{/if}
+	{#if done}<Alert role="status" class="xl:col-span-2">{done}</Alert>{/if}
 
 	{#if link}
 		<Card role="region" aria-labelledby="link-heading" class="gap-3 p-4 xl:col-span-2">
@@ -228,6 +230,7 @@
 								? 'border-[1.5px] border-dashed border-foreground text-foreground'
 								: ''}>{STATUS_LABEL[s]}</Badge
 						>
+						{#if p.ssoLinked}<Badge>Single sign-on</Badge>{/if}
 					</div>
 					<p class="font-mono text-[13px] [overflow-wrap:anywhere] text-muted-foreground">
 						{p.username}
@@ -282,6 +285,33 @@
 								>
 							</form>
 						{/if}
+						{#if p.ssoLinked}
+							<details class="open:w-full">
+								<summary
+									class="{buttonVariants({
+										variant: 'outline'
+									})} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+									>Unlink single sign-on<span class="sr-only"> for {p.displayName}</span></summary
+								>
+								<form
+									method="POST"
+									action="?/unlink"
+									class="mt-2 flex flex-col gap-3 rounded-xl border-[1.5px] border-destructive bg-card p-3"
+									use:enhance
+								>
+									<input type="hidden" name="parent_id" value={p.id} />
+									<ul class="list-disc pl-5 text-sm leading-relaxed [overflow-wrap:anywhere]">
+										<li>
+											{p.displayName} is signed out everywhere and their notification devices are removed.
+										</li>
+										<li>Their password still works, if they have one.</li>
+									</ul>
+									<Button type="submit" variant="destructive"
+										>Unlink single sign-on<span class="sr-only"> for {p.displayName}</span></Button
+									>
+								</form>
+							</details>
+						{/if}
 					</div>
 				</li>
 			{/each}
@@ -290,8 +320,8 @@
 
 	<div class="contents xl:flex xl:flex-col xl:gap-[18px]">
 		<p class="text-[12.5px] leading-normal text-muted-foreground">
-			The admin’s own username and password can’t be changed here. They come from the deployment;
-			changing them signs the admin out.
+			The admin’s own username can’t be changed. The operator resets the admin password with the
+			admin command; that signs the admin out.
 		</p>
 		<form method="POST" action="/logout">
 			<Button type="submit" variant="outline" class="w-full">Sign out of admin</Button>

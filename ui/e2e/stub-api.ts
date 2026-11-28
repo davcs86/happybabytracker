@@ -5,13 +5,21 @@ import { resolve } from 'node:path';
 // A stub keeps UI tests green on a broken contract: scripts/smoke.sh (real API + real UI) is the final check.
 
 // Each Playwright worker has its own stub and UI, at its TEST_PARALLEL_INDEX slot; slot 0 when unset.
-export const slotPorts = (slot: number) => ({ stub: 4181 + 100 * slot, ui: 4173 + 100 * slot });
+export const slotPorts = (slot: number) => ({
+	stub: 4181 + 100 * slot,
+	ui: 4173 + 100 * slot,
+	issuer: 4182 + 100 * slot
+});
 const SLOT = slotPorts(Number(process.env.TEST_PARALLEL_INDEX ?? 0));
 export const STUB_PORT = SLOT.stub;
 export const STUB_URL = `http://127.0.0.1:${STUB_PORT}`;
 export const UI_PORT = SLOT.ui;
 export const UI_ORIGIN = `http://127.0.0.1:${UI_PORT}`;
 export const STUB_TOKEN = 'fake-internal-api-token-000000000000';
+export const ISSUER_PORT = SLOT.issuer;
+export const ISSUER_URL = `https://127.0.0.1:${ISSUER_PORT}`;
+export const STUB_OIDC_CLIENT = { id: 'fake-client', secret: 'fake-client-secret-000000000000' };
+export const STUB_SEAL_KEY = 'fake-seal-key-000000000000000000';
 export const ADMIN = { username: 'admin', password: 'fake-admin-password-0000' };
 export const ANA = { username: 'ana', password: 'fake-ana-password-0000', displayName: 'Ana' };
 export const CLEO = { username: 'cleo', password: 'fake-cleo-password-0000', displayName: 'Cleo' };
@@ -42,6 +50,8 @@ export const TOKENS = {
 	unknown: tok('x')
 } as const;
 export const INVITEE = 'bo';
+const AUTH_MODES = ['local', 'oidc', 'both'] as const;
+export type AuthMode = (typeof AUTH_MODES)[number];
 
 export const SCENARIOS = [
 	'normal',
@@ -77,6 +87,12 @@ const MIN_PASSWORD = 12;
 const MAX_PASSWORD = 256;
 // The API's limits (constants.go), mirrored for the stub only.
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
+// constants.DeviceLabelPattern, for the password and the two SSO session routes.
+const DEVICE_LABEL_RE = /^[A-Za-z0-9 ]{1,48}$/;
+const OIDC_ISSUER_MAX_LEN = 512;
+const OIDC_SUBJECT_MAX_LEN = 255;
+const REAUTH_WINDOW_S = 5 * 60;
+const ADMIN_ID = 'a-admin';
 const DISPLAY_NAME = { min: 1, max: 64 };
 const KID_NAME = { min: 1, max: 64 };
 const KID_MIN_BIRTH_DATE = '1900-01-01';
@@ -121,6 +137,7 @@ type SessionRow = {
 	createdAt: number;
 	lastSeenAt: number;
 	deviceLabel: string | null;
+	reauthAt: number | null;
 };
 type TokenRow = {
 	kind: 'invite' | 'reset';
@@ -180,6 +197,9 @@ type State = {
 	pushDevices: PushDeviceStub[];
 	// By parent id.
 	ntfyTopics: Map<string, NtfyTopicStub>;
+	authMode: AuthMode;
+	// iss + '\n' + sub -> the principal holding that SSO identity.
+	identities: Map<string, { kind: 'admin' | 'parent'; id: string }>;
 	// The stub clock when the simulated reminder worker last ran.
 	syncedAt: number;
 	nextId: number;
@@ -331,6 +351,8 @@ function freshState(): Omit<State, 'scenario' | 'requests'> {
 		reminders: [],
 		pushDevices: [],
 		ntfyTopics: new Map(),
+		authMode: 'local',
+		identities: new Map(),
 		syncedAt: now(),
 		nextId: 1
 	};
@@ -530,30 +552,88 @@ function newSession(
 		expiresAt,
 		createdAt: t,
 		lastSeenAt: t,
-		deviceLabel
+		deviceLabel,
+		reauthAt: null
 	});
 	return { token, kind, expires_at: iso(expiresAt) };
 }
 
-function parentView(p: Account) {
+const ssoLinked = (state: State, kind: 'admin' | 'parent', id: string) =>
+	[...state.identities.values()].some((i) => i.kind === kind && i.id === id);
+
+function parentView(state: State, p: Account) {
 	return {
 		id: p.id,
 		username: p.username,
 		display_name: p.displayName,
 		units: p.units,
-		password_changed_at: p.passwordChangedAt === null ? null : iso(p.passwordChangedAt)
+		password_changed_at: p.passwordChangedAt === null ? null : iso(p.passwordChangedAt),
+		sso_linked: ssoLinked(state, 'parent', p.id)
 	};
 }
 
-function adminParentView(p: Account) {
+function adminParentView(state: State, p: Account) {
 	return {
 		id: p.id,
 		username: p.username,
 		display_name: p.displayName,
 		disabled: p.disabled,
 		has_password: p.password !== null,
+		sso_linked: ssoLinked(state, 'parent', p.id),
 		created_at: iso(p.createdAt)
 	};
+}
+
+// allowMode in authmode.go: right after the body is decoded, before any lookup or limiter.
+function allowMode(state: State, res: ServerResponse, ...allowed: AuthMode[]): boolean {
+	if (allowed.includes(state.authMode)) return true;
+	error(res, 403, 'mode_refused');
+	return false;
+}
+
+// validPair in oidc.go: iss an absolute https URL with a host, at most 512 bytes; then sub, 1-255 bytes.
+function validPair(res: ServerResponse, iss: string, sub: string): boolean {
+	const bytes = (v: string) => Buffer.byteLength(v, 'utf8');
+	const issOK =
+		bytes(iss) <= OIDC_ISSUER_MAX_LEN &&
+		/^https:\/\/[^/?#]/i.test(iss) &&
+		URL.canParse(iss) &&
+		new URL(iss).host !== '';
+	if (!issOK) error(res, 422, 'invalid', 'iss');
+	else if (sub === '' || bytes(sub) > OIDC_SUBJECT_MAX_LEN) error(res, 422, 'invalid', 'sub');
+	else return true;
+	return false;
+}
+
+const identityKey = (iss: string, sub: string) => `${iss}\n${sub}`;
+
+// LinkIdentity and RedeemInviteOIDC: anyone holds the pair, or the principal already has an identity for iss.
+function linkTaken(state: State, kind: 'admin' | 'parent', id: string, iss: string, sub: string) {
+	if (state.identities.has(identityKey(iss, sub))) return true;
+	return [...state.identities].some(
+		([key, i]) => i.kind === kind && i.id === id && key.split('\n')[0] === iss
+	);
+}
+
+// The parent's sessions, Web Push devices and ntfy topic (deleteChannels and the session purge).
+function purgeParent(state: State, parentId: string) {
+	for (const [t, s] of state.sessions) if (s.parentId === parentId) state.sessions.delete(t);
+	state.pushDevices = state.pushDevices.filter((d) => d.parentId !== parentId);
+	state.ntfyTopics.delete(parentId);
+}
+
+// decodeOIDC: the body, the mode, then device_label, iss and sub.
+async function decodeOIDC(state: State, req: IncomingMessage, res: ServerResponse) {
+	const body = await decode(req, res, ['iss', 'sub', 'device_label']);
+	if (!body || !allowMode(state, res, 'oidc', 'both')) return null;
+	const label = body.device_label ?? '';
+	if (label !== '' && !DEVICE_LABEL_RE.test(label)) {
+		error(res, 422, 'invalid', 'device_label');
+		return null;
+	}
+	const iss = body.iss ?? '';
+	const sub = body.sub ?? '';
+	return validPair(res, iss, sub) ? { iss, sub, label: label === '' ? null : label } : null;
 }
 
 // What only the list shows: the newest session activity and the parent's unused link (a disabled parent has no sessions).
@@ -708,7 +788,11 @@ const activeGuardians = (state: State, kidId: string) =>
 		(g) => g.kidId === kidId && g.role === 'guardian' && !state.parents.get(g.parentId)?.disabled
 	).length;
 
+// IssueToken: replaces the parent's unused tokens of that kind.
 function issueLink(state: State, kind: TokenRow['kind'], parentId: string) {
+	for (const [t, row] of state.tokens) {
+		if (row.parentId === parentId && row.kind === kind && row.usable) state.tokens.delete(t);
+	}
 	const token = randomBytes(32).toString('base64url');
 	state.tokens.set(token, { kind, parentId, usable: true, issuedAt: now() });
 	const ttl = kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S;
@@ -781,7 +865,7 @@ const routes: RouteDef[] = [
 		run: (state, _req, res) => {
 			const rows = [...state.parents.values()].sort((a, b) => a.username.localeCompare(b.username));
 			send(res, 200, {
-				parents: rows.map((p) => ({ ...adminParentView(p), ...adminListExtras(state, p) }))
+				parents: rows.map((p) => ({ ...adminParentView(state, p), ...adminListExtras(state, p) }))
 			});
 		}
 	},
@@ -793,17 +877,20 @@ const routes: RouteDef[] = [
 			const body = await decode(req, res, ['username', 'display_name']);
 			if (!body) return;
 			const username = normalizeUsername(body.username ?? '');
-			if (!username || username === ADMIN.username) return error(res, 422, 'invalid', 'username');
+			if (!username) return error(res, 422, 'invalid', 'username');
 			const name = cleanDisplayName(body.display_name ?? '');
 			if (name === null) return error(res, 422, 'invalid', 'display_name');
-			if ([...state.parents.values()].some((p) => p.username === username)) {
+			if (
+				username === ADMIN.username ||
+				[...state.parents.values()].some((p) => p.username === username)
+			) {
 				return error(res, 409, 'username_taken');
 			}
 			const parent = account(nextId(state, 'p'), username, name, null);
 			state.parents.set(parent.id, parent);
 			const link = issueLink(state, 'invite', parent.id);
 			send(res, 201, {
-				parent: adminParentView(parent),
+				parent: adminParentView(state, parent),
 				invite_url: link.url,
 				expires_at: link.expiresAt
 			});
@@ -846,6 +933,63 @@ const routes: RouteDef[] = [
 		}
 	},
 	{
+		method: 'POST',
+		pattern: /^\/v1\/admin\/parents\/([^/]+)\/unlink-sso$/,
+		access: 'admin',
+		run: (state, _req, res, _p, [id]) => {
+			if (!state.parents.has(id)) return error(res, 404, 'not_found');
+			for (const [key, i] of state.identities) {
+				if (i.kind === 'parent' && i.id === id) state.identities.delete(key);
+			}
+			purgeParent(state, id);
+			send(res, 204);
+		}
+	},
+	...(['parent', 'admin'] as const).flatMap((kind): RouteDef[] => {
+		const prefix = kind === 'admin' ? '\\/v1\\/admin\\/me' : '\\/v1\\/me';
+		return [
+			{
+				method: 'POST',
+				pattern: new RegExp(`^${prefix}\\/reauth$`),
+				access: kind,
+				run: async (state, req, res, p) => {
+					const body = await decode(req, res, ['password']);
+					if (!body || !allowMode(state, res, 'both')) return;
+					if (state.scenario === 'rate_limited') {
+						return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
+					}
+					const stored =
+						kind === 'admin' ? ADMIN.password : (state.parents.get(p.parentId)?.password ?? null);
+					if (stored === null || stored !== body.password) {
+						return error(res, 403, 'wrong_password');
+					}
+					p.session.reauthAt = now();
+					send(res, 204);
+				}
+			},
+			{
+				method: 'POST',
+				pattern: new RegExp(`^${prefix}\\/identities$`),
+				access: kind,
+				run: async (state, req, res, p) => {
+					const body = await decode(req, res, ['iss', 'sub']);
+					if (!body || !allowMode(state, res, 'both')) return;
+					const at = p.session.reauthAt;
+					if (at === null || now() - at > REAUTH_WINDOW_S) {
+						return error(res, 403, 'reauth_required');
+					}
+					const iss = body.iss ?? '';
+					const sub = body.sub ?? '';
+					if (!validPair(res, iss, sub)) return;
+					const id = kind === 'admin' ? ADMIN_ID : p.parentId;
+					if (linkTaken(state, kind, id, iss, sub)) return error(res, 409, 'already_linked');
+					state.identities.set(identityKey(iss, sub), { kind, id });
+					send(res, 204);
+				}
+			}
+		];
+	}),
+	{
 		method: 'PATCH',
 		pattern: /^\/v1\/me$/,
 		access: 'parent',
@@ -872,7 +1016,7 @@ const routes: RouteDef[] = [
 			}
 			parent.displayName = name;
 			parent.units = units;
-			send(res, 200, parentView(parent));
+			send(res, 200, parentView(state, parent));
 		}
 	},
 	{
@@ -882,6 +1026,9 @@ const routes: RouteDef[] = [
 		run: async (state, req, res, p) => {
 			const body = await decode(req, res, ['current', 'new']);
 			if (!body) return;
+			if (state.scenario === 'rate_limited') {
+				return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
+			}
 			const parent = state.parents.get(p.parentId);
 			if (!parent || parent.password === null || parent.password !== body.current) {
 				return error(res, 403, 'wrong_password');
@@ -5105,9 +5252,9 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 
 	if (path === '/v1/session' && method === 'POST') {
 		const body = await decode(req, res, ['username', 'password', 'device_label']);
-		if (!body) return;
+		if (!body || !allowMode(state, res, 'local', 'both')) return;
 		const label = body.device_label ?? '';
-		if (label !== '' && !/^[A-Za-z0-9 ]{1,48}$/.test(label)) {
+		if (label !== '' && !DEVICE_LABEL_RE.test(label)) {
 			return error(res, 422, 'invalid', 'device_label');
 		}
 		if (state.scenario === 'rate_limited') {
@@ -5129,36 +5276,79 @@ async function route(state: State, req: IncomingMessage, res: ServerResponse, ur
 		return send(res, 200, newSession(state, 'parent', parent.id, label === '' ? null : label));
 	}
 
+	if (path === '/v1/auth' && method === 'GET') return send(res, 200, { mode: state.authMode });
+
+	// OIDCLogin: an unknown pair and a disabled parent answer alike; the disabled parent's sessions and channels go.
+	if (path === '/v1/session/oidc' && method === 'POST') {
+		const pair = await decodeOIDC(state, req, res);
+		if (!pair) return;
+		const who = state.identities.get(identityKey(pair.iss, pair.sub));
+		if (who?.kind === 'admin') return send(res, 200, newSession(state, 'admin', null));
+		const parent = who ? state.parents.get(who.id) : undefined;
+		if (!parent) return error(res, 403, 'not_linked');
+		if (parent.disabled) {
+			purgeParent(state, parent.id);
+			return error(res, 403, 'not_linked');
+		}
+		return send(res, 200, newSession(state, 'parent', parent.id, pair.label));
+	}
+
 	if (path === '/v1/session' && (method === 'GET' || method === 'DELETE')) {
 		if (!live || !sessionToken) return error(res, 401, 'no_session');
 		if (method === 'DELETE') {
 			state.sessions.delete(sessionToken);
 			return send(res, 204);
 		}
-		if (live.kind === 'admin')
-			return send(res, 200, { kind: 'admin', expires_at: iso(live.expiresAt) });
+		if (live.kind === 'admin') {
+			return send(res, 200, {
+				kind: 'admin',
+				expires_at: iso(live.expiresAt),
+				admin: { username: ADMIN.username, sso_linked: ssoLinked(state, 'admin', ADMIN_ID) }
+			});
+		}
 		const parent = state.parents.get(live.parentId ?? '');
 		if (!parent) return error(res, 401, 'no_session');
 		live.lastSeenAt = now();
 		return send(res, 200, {
 			kind: 'parent',
 			expires_at: iso(live.expiresAt),
-			parent: parentView(parent)
+			parent: parentView(state, parent)
 		});
 	}
 
-	const tokenMatch = /^\/v1\/tokens\/([^/]+)(\/redeem)?$/.exec(path);
+	const tokenMatch = /^\/v1\/tokens\/([^/]+)(\/redeem|\/redeem-oidc)?$/.exec(path);
 	if (tokenMatch) {
 		const row = state.tokens.get(decodeURIComponent(tokenMatch[1]));
-		const usable = row?.usable && !state.parents.get(row.parentId)?.disabled ? row : undefined;
+		const live =
+			row?.usable &&
+			now() < row.issuedAt + (row.kind === 'invite' ? INVITE_TTL_S : RESET_TTL_S) &&
+			!state.parents.get(row.parentId)?.disabled;
+		const usable = live ? row : undefined;
 		if (!tokenMatch[2] && method === 'GET') {
 			if (!usable) return error(res, 404, 'not_found');
 			const parent = state.parents.get(usable.parentId);
 			return send(res, 200, { kind: usable.kind, username: parent?.username });
 		}
-		if (tokenMatch[2] && method === 'POST') {
+		// RedeemInviteOIDC: an unused invite of an enabled parent; any refusal leaves the token usable.
+		if (tokenMatch[2] === '/redeem-oidc' && method === 'POST') {
+			const pair = await decodeOIDC(state, req, res);
+			if (!pair) return;
+			if (!usable || usable.kind !== 'invite') return error(res, 404, 'not_found');
+			if (linkTaken(state, 'parent', usable.parentId, pair.iss, pair.sub)) {
+				return error(res, 409, 'already_linked');
+			}
+			usable.usable = false;
+			state.identities.set(identityKey(pair.iss, pair.sub), {
+				kind: 'parent',
+				id: usable.parentId
+			});
+			for (const [t, s] of state.sessions)
+				if (s.parentId === usable.parentId) state.sessions.delete(t);
+			return send(res, 200, newSession(state, 'parent', usable.parentId, pair.label));
+		}
+		if (tokenMatch[2] === '/redeem' && method === 'POST') {
 			const body = await decode(req, res, ['password']);
-			if (!body) return;
+			if (!body || !allowMode(state, res, 'local', 'both')) return;
 			if (state.scenario === 'rate_limited') {
 				return send(res, 429, { error: 'rate_limited' }, { 'retry-after': RETRY_AFTER_S });
 			}
@@ -5244,6 +5434,25 @@ async function control(state: State, req: IncomingMessage, res: ServerResponse, 
 		clockOffsetS = body.offset_seconds as number;
 		return send(res, 204);
 	}
+	if (req.method === 'POST' && url.pathname === '/__auth-mode') {
+		const body = JSON.parse((await readBody(req)) || '{}') as { mode?: string };
+		if (!(AUTH_MODES as readonly string[]).includes(body.mode ?? '')) return send(res, 400);
+		state.authMode = body.mode as AuthMode;
+		return send(res, 204);
+	}
+	// An SSO identity for the admin (ADMIN.username) or a parent by username, as a link would leave it.
+	if (req.method === 'POST' && url.pathname === '/__identity') {
+		const body = JSON.parse((await readBody(req)) || '{}') as Record<string, unknown>;
+		const { iss, sub, username } = body;
+		if (typeof iss !== 'string' || typeof sub !== 'string') return send(res, 400);
+		const parent = [...state.parents.values()].find((p) => p.username === username);
+		if (username !== ADMIN.username && !parent) return send(res, 400);
+		const who = parent
+			? { kind: 'parent' as const, id: parent.id }
+			: { kind: 'admin' as const, id: ADMIN_ID };
+		state.identities.set(identityKey(iss, sub), who);
+		return send(res, 204);
+	}
 	if (req.method === 'GET' && url.pathname === '/__requests') return send(res, 200, state.requests);
 	// A stored schedule id the API no longer ships, which PATCH /v1/kids refuses to write.
 	if (req.method === 'POST' && url.pathname === '/__vaccine-schema') {
@@ -5262,6 +5471,22 @@ export async function setScenario(name: Scenario): Promise<void> {
 		body: JSON.stringify({ name })
 	});
 	if (res.status !== 204) throw new Error(`setScenario ${name}: ${res.status}`);
+}
+
+export async function setAuthMode(mode: AuthMode): Promise<void> {
+	const res = await fetch(`${STUB_URL}/__auth-mode`, {
+		method: 'POST',
+		body: JSON.stringify({ mode })
+	});
+	if (res.status !== 204) throw new Error(`setAuthMode ${mode}: ${res.status}`);
+}
+
+export async function linkStubIdentity(iss: string, sub: string, username: string): Promise<void> {
+	const res = await fetch(`${STUB_URL}/__identity`, {
+		method: 'POST',
+		body: JSON.stringify({ iss, sub, username })
+	});
+	if (res.status !== 204) throw new Error(`linkStubIdentity: ${res.status}`);
 }
 
 export async function resetStub(): Promise<void> {

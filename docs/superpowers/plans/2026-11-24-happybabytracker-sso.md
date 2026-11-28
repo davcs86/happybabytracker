@@ -887,7 +887,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 - `hooks.server.ts`:
   - `isPublic` adds `path.startsWith('/auth/')`.
   - The admin redirect (`:60`) skips `/auth/*`.
-  - Responses for `/auth/*`, `/invite/*` and `/reset/*` get `referrer-policy: no-referrer`.
+  - Responses for `/auth/*`, `/invite/*` and `/reset/*` get `referrer-policy: same-origin` (coordinator decision 2026-11-27 under the owner's standing authority (no-referrer breaks the § 18 origin check)).
 - Login page load returns `{ mode: AuthMode; sso: ssoOffered(mode, env.oidc) }`. If `authMode()` fails, it returns `{ mode: 'local', sso: false }`, in every mode, and never `error(503, …)`: the login form is a plain POST without `use:enhance` (`login/+page.svelte:24`), so `load` runs again after the action, and an error there would replace the action's 503 alert "The app cannot reach its server, try again soon" (`login/+page.server.ts:36`, `e2e/unavailable.spec.ts:69-78`) with the error page (spec 5.5, DESIGN 3.4). `ssoOffered` logs `oidc_not_configured` once per process (Open question 14).
   - `local`, `both` without settings, and a failed mode read: the password card only, as today (no markup change).
   - `oidc`: Deviations item 1 (item 2 without settings).
@@ -925,7 +925,7 @@ git commit -m "feat(ui): OIDC relying party with the shared conformance cases"
 - `both` shows the password card and the outline SSO button. With `issuerDown()`, the password login still works, and an SSO attempt ends without a session. The UI process may hold a cached discovery, so the e2e test does not pin which message; Task 9 pins "unavailable" for an uncached discovery failure.
 - `local` shows no SSO button, and `POST /auth/sso` answers "Single sign-on is unavailable".
 - The `hbt_oidc` cookie set by the start has `{ httpOnly: true, secure: true, sameSite: 'Lax', path: '/auth' }` and expires within 600 s.
-- `referrer-policy: no-referrer` is on `/auth/callback`, `/invite/<token>` and `/reset/<token>`.
+- `referrer-policy: same-origin` (coordinator decision 2026-11-27 under the owner's standing authority (no-referrer breaks the § 18 origin check)) is on `/auth/callback`, `/invite/<token>` and `/reset/<token>`.
 - Accessibility: in a `describe` per `colorScheme` (light, dark), `expectAccessible` on `/login` in `oidc` and in `both`, on `/auth/sso`, and on the callback's "did not complete" page; the `phone` and `desktop` projects give 390 and 1280 px. The "Signing you in" page refreshes at once, so its test asserts the 200 body (one h1, one "Continue" link to the landing) instead of running axe.
 
 `login.spec.ts`: a password login in `oidc` (the form posted by hand without JavaScript, as in smoke) shows "Password sign-in is turned off".

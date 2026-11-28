@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
-	import { navModel, themeLabel, MORE_ICON, type NavEntry } from '#lib/nav.js';
+	import { navModel, themeLabel, MORE_ICON, SIDE_ENTRY_CLASS, type NavEntry } from '#lib/nav.js';
 	import { THEMES, type Theme } from '#lib/constants.js';
 	import { applyTheme, isTheme, THEME_STORAGE_KEY } from '#lib/theme-client.js';
 	import type { Kid, ModuleState } from '#lib/types.js';
@@ -60,8 +60,6 @@
 		return () => removeEventListener('storage', onStorage);
 	});
 
-	const SIDE =
-		'flex min-h-11 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-sm font-semibold hover:bg-accent aria-[current=page]:bg-background aria-[current=page]:text-primary';
 	const openTheme = () => {
 		moreOpen = false;
 		themeOpen = true;
@@ -71,7 +69,7 @@
 <!-- eslint-disable svelte/no-navigation-without-resolve -- hrefs come from the nav model -->
 {#snippet sideEntry(e: NavEntry)}
 	{#if e.kind === 'link'}
-		<a href={e.href} aria-current={e.current ? 'page' : undefined} class={SIDE}>
+		<a href={e.href} aria-current={e.current ? 'page' : undefined} class={SIDE_ENTRY_CLASS}>
 			<e.icon aria-hidden="true" class="size-[18px] shrink-0" />{e.label}
 		</a>
 	{:else if e.kind === 'theme'}
@@ -80,7 +78,7 @@
 			<input type="hidden" name="return" value={page.url.pathname + page.url.search} />
 			<button
 				type="submit"
-				class={SIDE}
+				class={SIDE_ENTRY_CLASS}
 				onclick={(ev) => {
 					ev.preventDefault();
 					themeOpen = true;
@@ -91,7 +89,7 @@
 		</form>
 	{:else}
 		<form method="POST" action="/logout" class="contents">
-			<button type="submit" class={SIDE}>
+			<button type="submit" class={SIDE_ENTRY_CLASS}>
 				<e.icon aria-hidden="true" class="size-[18px] shrink-0" />{e.label}
 			</button>
 		</form>
@@ -106,7 +104,7 @@
 	>
 		<p class="px-2.5 pb-3.5 text-base font-bold">Happy baby</p>
 		{#each nav.primary as e (e.id)}
-			<a href={e.href} aria-current={e.current ? 'page' : undefined} class={SIDE}>
+			<a href={e.href} aria-current={e.current ? 'page' : undefined} class={SIDE_ENTRY_CLASS}>
 				<e.icon aria-hidden="true" class="size-[18px] shrink-0" />{e.label}
 			</a>
 		{/each}

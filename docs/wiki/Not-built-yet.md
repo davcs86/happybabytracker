@@ -6,7 +6,7 @@ The redesign ([design export](../plans/ui-redesign/README.md)) shows a few thing
 
 - **Places on signed-in devices** (for example "Lisbon"). The app stores no IP address, and looking a place up would send one to another service.
 - **"Started on Cleo's phone"** on a running timer. The API does not say who started an entry or on which device.
-- **A notification bell for the admin.** An admin session cannot open any other page, and notifications belong to a parent.
+- **A notification bell for the admin.** An admin session reaches only `/admin/parents` and `/admin/account`, and notifications belong to a parent.
 - **A "Sign out my other devices" tick box** on the password form. Changing the password always signs the other devices out, and the form says so.
 - **The remove-access confirmation sheet.** The design system says reversible changes use Undo, not a confirm (DESIGN 4.5, PATTERNS P2), and the Child profile page spec draws a confirm. Removing access has the Undo. The owner decides which one stands.
 - **The edit-name and change-password sheets.** My profile stays a page (AGENTS.md rule 1), so both forms are on the page.

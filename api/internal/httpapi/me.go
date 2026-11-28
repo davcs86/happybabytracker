@@ -83,7 +83,7 @@ func (d Deps) updateProfile(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, newParentView(parent))
 }
 
-// changePassword keeps the calling session and ends the others.
+// changePassword counts against the login limiter, keeps the calling session and ends the others.
 func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Current string `json:"current"`
@@ -92,12 +92,11 @@ func (d Deps) changePassword(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &in) {
 		return
 	}
-	ctx, p := r.Context(), PrincipalFrom(r.Context())
-	stored, err := d.Store.LocalSecret(ctx, p.ParentID)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		respondInternal(w, err)
+	stored, ok := d.limitedSecret(w, r)
+	if !ok {
 		return
 	}
+	ctx, p := r.Context(), PrincipalFrom(r.Context())
 	if !verifyPassword(stored, in.Current) {
 		respondError(w, http.StatusForbidden, "wrong_password")
 		return

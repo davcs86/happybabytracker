@@ -304,8 +304,9 @@ API (`ghcr.io/davcs86/happybabytracker-api`):
 
 | Env var | Meaning |
 |---|---|
-| `ADMIN_USERNAME` | The admin's login name, `^[a-z0-9._-]{3,32}$` |
-| `ADMIN_PASSWORD` | The admin's password, at least 16 characters (secret) |
+| `ADMIN_USERNAME` | The admin's login name, `^[a-z0-9._-]{3,32}$`; used once, to create the admin when the database has none; then ignored with a warning |
+| `ADMIN_PASSWORD` | The admin's password, at least 16 characters (secret); used once, to create the admin when the database has none; then ignored with a warning |
+| `AUTH_MODE` | Optional; `local` (the default when unset), `oidc` or `both`: which sign-ins the API accepts (see [Single sign-on](#single-sign-on)) |
 | `INTERNAL_API_TOKEN` | Shared with the UI, at least 32 characters (secret) |
 | `PUBLIC_ORIGIN` | The app's origin, `http(s)://host[:port]` with no path; used in invite and reset links |
 | `DATA_DIR` | SQLite directory, default `/data` (the only writable path) |
@@ -318,15 +319,40 @@ API (`ghcr.io/davcs86/happybabytracker-api`):
 | `NTFY_PUBLIC_URL` | Optional `https:` server address shown to parents when it differs from `NTFY_URL` |
 
 The process refuses to start on a missing or invalid value and names the variable, never its value. Only
-`DATA_DIR` has a default. The VAPID and `NTFY_*` variables are optional, but any value that is set must be
+`DATA_DIR` and `AUTH_MODE` have a default; `ADMIN_USERNAME` and `ADMIN_PASSWORD` are checked after the database
+opens, and only while it holds no admin. The VAPID and `NTFY_*` variables are optional, but any value that is set must be
 valid: the two VAPID variables come both or neither, `HBT_ALLOW_FAKE_PUSH` is `1` or unset and needs both
 VAPID variables, and every other `NTFY_*` variable needs `NTFY_URL`. For example, it refuses only
 `VAPID_PRIVATE_KEY` or only `VAPID_SUBJECT`, a malformed key, a subject that is not an `https:` URL,
-`HBT_ALLOW_FAKE_PUSH=1` without VAPID, and `NTFY_TOKEN` without `NTFY_URL`.
+`HBT_ALLOW_FAKE_PUSH=1` without VAPID, `NTFY_TOKEN` without `NTFY_URL`, and an `AUTH_MODE` other than `local`,
+`oidc` or `both`.
 It listens on `:9210`. The image also sets `GOMEMLIMIT=40MiB`, so that
 two concurrent password hashes stay within the edge's 96m container limit and the 64 MiB memory ceiling.
-Changing `ADMIN_USERNAME`, `ADMIN_PASSWORD` or `INTERNAL_API_TOKEN` ends every admin session at the next
-start; parent sessions are kept.
+The admin lives in the database: changing `ADMIN_USERNAME` or `ADMIN_PASSWORD` later changes nothing, and
+changing `INTERNAL_API_TOKEN` ends no session. The admin password is rotated with the admin CLI's
+`reset-password`.
+
+### Admin CLI
+
+The API binary also runs `happybabytracker-api admin <verb> <username>`, a short-lived second process against the
+same database. It reads only `DATA_DIR` (default `/data`) and opens the store as the API does, applying pending
+migrations, so `create` works on a fresh volume.
+
+| Verb | What it does |
+|---|---|
+| `create <username>` | Creates the admin, only while the database has none |
+| `reset-password <username>` | Sets the admin's password and ends that admin's sessions |
+| `unlink-sso <username>` | Removes the admin's single sign-on identities and ends its sessions, so it can link again |
+
+`create` and `reset-password` read the password from stdin, 16 to 256 characters; exactly one trailing newline
+(`\n` or `\r\n`) is stripped. The username follows the same pattern as `ADMIN_USERNAME`. Exit codes: `0` done,
+`1` refused or failed (an admin already exists, the name belongs to a parent, no admin with that name, a password
+of the wrong length, or a database error), `2` usage (an unknown verb, a missing or invalid username). Output is one
+JSON line, naming the verb and the outcome, never the username or the password. On the edge:
+
+```sh
+docker compose run --rm -T happybabytracker-api admin reset-password <username> < new-password-file
+```
 
 UI (`ghcr.io/davcs86/happybabytracker-ui`):
 
@@ -336,7 +362,20 @@ UI (`ghcr.io/davcs86/happybabytracker-ui`):
 | `API_BASE_URL` | The API, for example `http://happybabytracker-api:9210` |
 | `ORIGIN` | The app's origin; a request whose derived origin differs gets 400, except `/healthz*` |
 | `PORT` | 9212 (set by the image) |
+| `OIDC_ISSUER` | Optional; the issuer, an absolute `https:` URL. `OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` come all three or none: none turns single sign-on off |
+| `OIDC_CLIENT_ID` | The relying party's client id; with the other two |
+| `OIDC_CLIENT_SECRET` | The client secret, sent as `client_secret_basic`; with the other two (secret) |
+| `OIDC_SCOPES` | Optional; default `openid profile`; only with the three above |
+| `SESSION_SEAL_KEY` | The key the SSO transaction cookie is encrypted with, at least 32 characters; required with the three above, refused without them (secret) |
+| `OIDC_AUTO_PROVISION` | Not implemented: refused whenever it is present. Parents are created by the admin |
 | `PROTOCOL_HEADER`, `HOST_HEADER`, `ADDRESS_HEADER`, `XFF_DEPTH` | Set by the image to `x-forwarded-proto`, `x-forwarded-host`, `x-forwarded-for` and `1` |
+
+The UI refuses to start on an invalid value and names the variable, never its value. A variable that is present
+counts as set, even when empty. So it refuses one or two of the three relying-party variables without the rest
+(an empty one included); with all three present, an `OIDC_ISSUER` that is not an absolute `https:` URL; a
+`SESSION_SEAL_KEY` missing or shorter than 32 characters while `OIDC_ISSUER` is present; an empty `OIDC_SCOPES`;
+`SESSION_SEAL_KEY` or `OIDC_SCOPES` present while none of the three is; and `OIDC_AUTO_PROVISION` present. It
+never contacts the issuer at start.
 
 Because of the last row, the origin and client address come from `X-Forwarded-Proto`,
 `X-Forwarded-Host` and `X-Forwarded-For`: put the UI behind a reverse proxy that sends all three. The
@@ -346,6 +385,35 @@ Health, all through the UI: `GET /healthz` (the UI), `GET /healthz/api` (the API
 while its database answers and the reminder worker has ticked within the last 60 seconds) and
 `GET /healthz/reminders` (the API's, 503 while a reminder delivery is stuck or one failed or expired in the
 last 15 minutes; 200 with no channel configured). What each answer means: `docs/runbooks/reminders.md`.
+
+## Single sign-on
+
+The API's `AUTH_MODE` decides which sign-ins work; the UI reads it from the API (`GET /v1/auth`) on the login,
+invite, reset and account pages, and holds the relying-party settings above.
+
+| | `local` | `oidc` | `both` |
+|---|---|---|---|
+| Password login | yes | refused | yes |
+| SSO login | refused | yes | yes |
+| Invite or reset link redeemed with a password | yes | refused | yes |
+| Invite link redeemed with SSO | refused | yes | yes |
+| Re-authentication and Link SSO (parents and the admin) | refused | refused | yes |
+
+A refusal (`403 mode_refused`) happens before the token is looked up, so a refused redemption leaves the link usable.
+A reset link is redeemable only in `local` and `both`. With `AUTH_MODE` unset the app behaves as `local`. When the
+API reports `oidc` or `both` and the UI has no relying-party settings, the UI shows no SSO button (in `oidc` its login
+page says sign-in is unavailable) and logs `oidc_not_configured` once.
+
+Register the client at the issuer with the redirect URI `${ORIGIN}/auth/callback`, token-endpoint authentication
+`client_secret_basic`, the authorization code flow with PKCE (S256), and RS256-signed ID tokens. The UI requests
+`OIDC_SCOPES` (default `openid profile`; it reads no email). Linking and SSO invites send `prompt=login` and
+`max_age=1`, so the issuer must ask for the password again. `/auth/*`, `/invite/*` and `/reset/*` are sent with
+`Referrer-Policy: same-origin`.
+
+The routes that accept a password, which the reverse proxy in front of the UI must rate-limit: `POST /login`,
+`POST /invite/{token}`, `POST /reset/{token}`, `POST /account` (its `?/password` action; the page's other actions
+share the path), `POST /account/link-sso` and `POST /admin/account/link-sso`. The invite page's SSO start shares
+the `/invite/{token}` path.
 
 ## Run locally
 
@@ -404,7 +472,8 @@ docker build -t hbt-api:dev api && docker build -t hbt-ui:dev ui && \
 
 `gofmt -l` must print nothing. The UI's e2e runs against a stub API (it needs
 `pnpm exec playwright install chromium`, or `PW_CHROMIUM_PATH` pointing at a Chromium); the smoke script
-runs the real API and the real UI together and prints one `PASS:` line per assertion. CI
+runs the real API and the real UI together and prints one `PASS:` line per assertion. The e2e run and
+`pnpm screenshots` also need `openssl`, which makes the stub issuer's TLS certificate. CI
 (`.github/workflows/ci.yml`) runs all three on every pull request and on `main`. Its `CI Gate` job fails when
 any of the `api`, `ui` or `images` jobs fails or is cancelled; it is the one check `main` should require.
 

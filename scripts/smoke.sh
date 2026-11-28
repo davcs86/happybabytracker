@@ -194,7 +194,7 @@ redeem() { # name addr url password -> session cookie
   local path="${3#"$ORIGIN"}" code session
   [ "$path" != "$3" ] || fail "invite link $1" "link is not under $ORIGIN"
   remember "${path##*/}"
-  code="$(form "$1" "$2" - "$path" "password=$4" "confirm=$4")"
+  code="$(form "$1" "$2" - "$path?/password" "password=$4" "confirm=$4")"
   session="$(set_cookie "$1")"
   { [ "$code" = 303 ] && [ -n "$session" ]; } || fail "redeem $1" "status $code, no session cookie"
   remember "$session"
@@ -1071,6 +1071,7 @@ refused VAPID_PRIVATE_KEY "${VAPID_KEY:0:42}" VAPID_PRIVATE_KEY="${VAPID_KEY:0:4
 refused VAPID_SUBJECT "http://localhost:${UI_PORT}" VAPID_PRIVATE_KEY="$VAPID_KEY" VAPID_SUBJECT="http://localhost:${UI_PORT}"
 refused HBT_ALLOW_FAKE_PUSH - HBT_ALLOW_FAKE_PUSH=1
 refused NPI_SEARCH - NPI_SEARCH=2
+refused AUTH_MODE bogus AUTH_MODE=bogus
 refused NTFY_TOKEN "$NTFY_SECRET" NTFY_TOKEN="$NTFY_SECRET"
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD" fake-push
@@ -1148,7 +1149,7 @@ docker logs "$API" >"$WORK/api-push.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD"
 wait_ok "$UI_URL/healthz/api" || fail "4l api back in no-push mode" "no 200 within 30 s"
-pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID, NTFY_TOKEN without NTFY_URL and NPI_SEARCH=2, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
+pass "4l the API refuses to start with only VAPID_PRIVATE_KEY, only VAPID_SUBJECT, a malformed key, an http: subject, HBT_ALLOW_FAKE_PUSH=1 without VAPID, NTFY_TOKEN without NTFY_URL, NPI_SEARCH=2 and AUTH_MODE=bogus, naming the variable and not the value; with the fake sender one push 'Medication due for <kid>' (no medication name) reaches $USER_A's opted-in device and none $USER_B's; a dose takes the sent occurrence off the Due list; a second course dosed before its first occurrence sends nothing at its due time; $USER_B's device, opted in, loses the kid on revoke (no opt-in) and its opt-in is then a 404; back in no-push mode"
 
 # 4m. Milestones through the real catalog: every list, the current one marked, marks by tap, by date and by the caregiver.
 MILESTONES="$KID_PATH/milestones"
@@ -1647,21 +1648,31 @@ code="$(req admin-after-restart "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/pa
 [ "$code" = 200 ] || fail "7 admin session after restart" "status $code"
 pass "7 after an API restart the sessions of $USER_B and the admin still work"
 
-# 8. New admin credentials end the old admin session (API no_session: cookie cleared).
+# 8. Once the admin is stored, a new ADMIN_PASSWORD is ignored with one warning; the old session keeps working.
 API_MEM_1B="$(mem "$API")"
 docker logs "$API" >"$WORK/api-1.log" 2>&1
 docker rm -f "$API" >/dev/null
 start_api "$ADMIN_PASSWORD_2"
 wait_ok "$UI_URL/healthz/api" || fail "8 api with new password" "no 200 within 30 s"
 code="$(req admin-old "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
-cleared="$(grep -ci '^set-cookie: hbt_session=;.*Max-Age=0' "$WORK/admin-old.headers" || true)"
-case "$code $(location admin-old) $cleared" in
+[ "$code" = 200 ] || fail "8 old admin cookie" "status $code"
+code="$(form admin-login-2 "$ADDR_ADMIN" - /login "username=$ADMIN_USERNAME" "password=$ADMIN_PASSWORD_2")"
+[ "$code" = 400 ] || fail "8 login with the new password" "status $code"
+warnings="$(docker logs "$API" 2>&1 | grep -cF 'admin credentials in the environment are ignored' || true)"
+[ "$warnings" = 1 ] || fail "8 ignored-credentials warning" "$warnings lines"
+pass "8 a restart with a new ADMIN_PASSWORD keeps the old admin password and session, with one warning"
+printf '%s\n' "$ADMIN_PASSWORD_2" | docker run --rm -i --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges -v "$VOLUME":/data "$API_IMAGE" admin reset-password "$ADMIN_USERNAME" \
+  >"$WORK/cli.log" 2>&1 || fail "8 CLI reset-password" "exit $?"
+code="$(req admin-old-2 "$ADDR_ADMIN" "$ADMIN_SESSION" "$UI_URL/admin/parents")"
+cleared="$(grep -ci '^set-cookie: hbt_session=;.*Max-Age=0' "$WORK/admin-old-2.headers" || true)"
+case "$code $(location admin-old-2) $cleared" in
   "303 /login"*" 1") ;;
-  *) fail "8 old admin cookie" "status $code, Location $(location admin-old), cleared $cleared" ;;
+  *) fail "8 old admin cookie after reset-password" "status $code, Location $(location admin-old-2), cleared $cleared" ;;
 esac
 NEW_ADMIN="$(login admin-login-2 "$ADDR_ADMIN" "$ADMIN_USERNAME" "$ADMIN_PASSWORD_2")"
 [ -n "$NEW_ADMIN" ] || fail "8 new admin login"
-pass "8 after the admin password changes the old admin cookie is refused and cleared"
+pass "8 the CLI's reset-password ends the old admin session and the new password logs in"
 
 # A parent login runs argon2 in the fresh API process before memory is read.
 login login-b "$ADDR_B" "$USER_B" "$PASSWORD_B" >/dev/null
@@ -1720,7 +1731,7 @@ API_MEM_EXPORT="$api_export"
   fail "10 export in its own process" "status $(cat "$WORK/export-mem.code")"
 docker logs "$API" >"$WORK/api-3.log" 2>&1
 docker logs "$UI" >"$WORK/ui.log" 2>&1
-for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log ui.log; do
+for f in api-0.log api-refused.log api-push.log api-1.log api-2.log api-3.log cli.log ui.log; do
   [ -s "$WORK/$f" ] || fail "9 logs" "$f is empty"
   if grep -qF -f "$SECRETS_FILE" "$WORK/$f"; then fail "9 logs" "$f carries a secret or identifier"; fi
   if logged_value "$WORK/$f"; then fail "9 logs" "$f carries a volume or measurement figure"; fi

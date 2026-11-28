@@ -115,7 +115,7 @@ A parent with no child sees a welcome page: "Welcome, Dan", the sentence "Add a 
 | Change theme sheet | on every signed-in page | Guardian, caregiver, a parent with no child | `shell/04-theme-sheet` |
 | Choose a child | `/kids` (`?to=<section>`, `?q=<text>`) | Guardian, caregiver | `shell/05-choose-a-child`, `shell/06-choose-a-child-many` |
 
-The admin has no shell: an admin session only reaches `/admin/parents`, and error pages stand alone, outside the shell.
+The admin has no shell: an admin session only reaches the admin panel, whose own menu has two entries, **Parents** (`/admin/parents`) and **Account** (`/admin/account`), in the left menu from 768 px and as two icon buttons before the Admin badge below it (see [Admin](Admin.md)). Error pages stand alone, outside the shell.
 
 ### Rules the screens show
 

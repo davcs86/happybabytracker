@@ -9,20 +9,30 @@ import (
 	"github.com/davcs86/happybabytracker/api/internal/model"
 )
 
-// CreateSession stores a session by token hash; parentID is empty for an admin session.
-func (s *Store) CreateSession(ctx context.Context, kind, parentID string, tokenHash []byte, now, expires time.Time, deviceLabel string) (string, error) {
-	var parent any
-	if parentID != "" {
-		parent = parentID
+// CreateSession stores a session by token hash; principalID is the admin id when kind is "admin", else the parent id.
+func (s *Store) CreateSession(ctx context.Context, kind, principalID string, tokenHash []byte, now, expires time.Time, deviceLabel string) (string, error) {
+	return insertSession(ctx, s.w, kind, principalID, tokenHash, now, expires, deviceLabel)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func insertSession(ctx context.Context, q execer, kind, principalID string, tokenHash []byte, now, expires time.Time, deviceLabel string) (string, error) {
+	var parent, admin any
+	if principalID != "" && kind == "admin" {
+		admin = principalID
+	} else if principalID != "" {
+		parent = principalID
 	}
 	var label any
 	if deviceLabel != "" {
 		label = deviceLabel
 	}
 	id := model.NewID()
-	_, err := s.w.ExecContext(ctx,
-		`INSERT INTO sessions(id, token_hash, kind, parent_id, created_at, last_seen_at, expires_at, device_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, tokenHash, kind, parent, now.Unix(), now.Unix(), expires.Unix(), label)
+	_, err := q.ExecContext(ctx,
+		`INSERT INTO sessions(id, token_hash, kind, parent_id, admin_id, created_at, last_seen_at, expires_at, device_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, tokenHash, kind, parent, admin, now.Unix(), now.Unix(), expires.Unix(), label)
 	if err != nil {
 		return "", err
 	}
@@ -32,24 +42,34 @@ func (s *Store) CreateSession(ctx context.Context, kind, parentID string, tokenH
 // SessionByToken returns ErrNotFound for an unknown or expired token and for a disabled parent's session.
 func (s *Store) SessionByToken(ctx context.Context, tokenHash []byte, now time.Time) (model.Principal, error) {
 	var (
-		p       model.Principal
-		parent  sql.NullString
-		expires int64
+		p             model.Principal
+		parent, admin sql.NullString
+		expires       int64
+		reauth        sql.NullInt64
 	)
 	err := s.r.QueryRowContext(ctx,
-		`SELECT s.id, s.kind, s.parent_id, s.expires_at
+		`SELECT s.id, s.kind, s.parent_id, s.admin_id, s.expires_at, s.reauth_at
 		 FROM sessions s LEFT JOIN parents p ON p.id = s.parent_id
 		 WHERE s.token_hash = ? AND s.expires_at > ? AND (p.id IS NULL OR p.disabled = 0)`,
-		tokenHash, now.Unix()).Scan(&p.SessionID, &p.Kind, &parent, &expires)
+		tokenHash, now.Unix()).Scan(&p.SessionID, &p.Kind, &parent, &admin, &expires, &reauth)
 	if errors.Is(err, sql.ErrNoRows) {
 		return model.Principal{}, ErrNotFound
 	}
 	if err != nil {
 		return model.Principal{}, err
 	}
-	p.ParentID = parent.String
+	p.ParentID, p.AdminID = parent.String, admin.String
 	p.ExpiresAt = time.Unix(expires, 0).UTC()
+	if reauth.Valid {
+		p.ReauthAt = time.Unix(reauth.Int64, 0).UTC()
+	}
 	return p, nil
+}
+
+// StampReauth records a password re-authentication on one session; a vanished session is not an error.
+func (s *Store) StampReauth(ctx context.Context, sessionID string, now time.Time) error {
+	_, err := s.w.ExecContext(ctx, `UPDATE sessions SET reauth_at = ? WHERE id = ?`, now.Unix(), sessionID)
+	return err
 }
 
 // TouchSession records the use and moves the expiry; a vanished session is not an error.
@@ -61,11 +81,6 @@ func (s *Store) TouchSession(ctx context.Context, id string, now, expires time.T
 
 func (s *Store) DeleteSession(ctx context.Context, id string) error {
 	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, id)
-	return err
-}
-
-func (s *Store) DeleteAdminSessions(ctx context.Context) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM sessions WHERE kind = 'admin'`)
 	return err
 }
 

@@ -31,6 +31,7 @@ export const FIXTURES = (now: string): string[] => [
 
 export const ABOUT_AREAS: Record<Area, string> = {
 	auth: 'Sign-in, invite and password-reset pages, signed out.',
+	sso: 'Single sign-on: the sign-in page by mode, and the pages a flow that cannot finish shows.',
 	shell:
 		'The app shell: tab bar on mobile, side navigation on desktop; its sheets (Switch child, More, Change theme) and the Choose a child pages. Every other shot shows the shell too (guardian and caregiver; the admin has none).',
 	sheets:

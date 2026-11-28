@@ -45,6 +45,7 @@ func TestLoadValid(t *testing.T) {
 		PublicOrigin:     "https://hbt.example.org",
 		DataDir:          "/var/lib/hbt",
 		Addr:             ":9210",
+		AuthMode:         AuthLocal,
 	}
 	if cfg != want {
 		t.Fatalf("got %+v, want %+v", cfg, want)
@@ -84,15 +85,6 @@ func TestLoadRefuses(t *testing.T) {
 		variable string
 		val      string
 	}{
-		{"username empty", "ADMIN_USERNAME", ""},
-		{"username unset", "ADMIN_USERNAME", "\x00unset"},
-		{"username upper case", "ADMIN_USERNAME", "Qzadmin"},
-		{"username too short", "ADMIN_USERNAME", "qz"},
-		{"username too long", "ADMIN_USERNAME", strings.Repeat("q", 33)},
-		{"username bad char", "ADMIN_USERNAME", "qz admin"},
-		{"password empty", "ADMIN_PASSWORD", ""},
-		{"password 15 chars", "ADMIN_PASSWORD", "wxyzwxyzwxyzwxy"},
-		{"password 15 multibyte runes", "ADMIN_PASSWORD", strings.Repeat("é", 15)},
 		{"token empty", "INTERNAL_API_TOKEN", ""},
 		{"token 31 chars", "INTERNAL_API_TOKEN", strings.Repeat("k", 31)},
 		{"origin empty", "PUBLIC_ORIGIN", ""},
@@ -123,11 +115,41 @@ func TestLoadRefuses(t *testing.T) {
 	}
 }
 
+func TestLoadIgnoresAdminVariables(t *testing.T) {
+	for name, o := range map[string]map[string]string{
+		"unset":      {"ADMIN_USERNAME": "\x00unset", "ADMIN_PASSWORD": "\x00unset"},
+		"upper case": {"ADMIN_USERNAME": "David"},
+	} {
+		cfg, err := Load(env(o))
+		if err != nil {
+			t.Errorf("%s: Load: %v", name, err)
+		}
+		if name == "upper case" && cfg.AdminUsername != "David" {
+			t.Errorf("AdminUsername = %q, want the raw value", cfg.AdminUsername)
+		}
+	}
+}
+
 func TestLoadNPISearch(t *testing.T) {
 	for val, want := range map[string]bool{"\x00unset": false, "": false, "1": true} {
 		cfg, err := Load(env(map[string]string{"NPI_SEARCH": val}))
 		if err != nil || cfg.NPISearch != want {
 			t.Errorf("NPI_SEARCH %q: %v %v, want %v", val, cfg.NPISearch, err, want)
+		}
+	}
+}
+
+func TestLoadAuthMode(t *testing.T) {
+	for val, want := range map[string]AuthMode{"\x00unset": AuthLocal, "": AuthLocal, "local": AuthLocal, "oidc": AuthOIDC, "both": AuthBoth} {
+		cfg, err := Load(env(map[string]string{"AUTH_MODE": val}))
+		if err != nil || cfg.AuthMode != want {
+			t.Errorf("AUTH_MODE %q: %q %v, want %q", val, cfg.AuthMode, err, want)
+		}
+	}
+	for _, val := range []string{"Local", "OIDC", "none", "both "} {
+		_, err := Load(env(map[string]string{"AUTH_MODE": val}))
+		if err == nil || err.Error() != "AUTH_MODE must be local, oidc or both" {
+			t.Errorf("AUTH_MODE %q: %v, want the AUTH_MODE refusal", val, err)
 		}
 	}
 }

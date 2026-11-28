@@ -32,6 +32,8 @@ import type {
 // Client-safe: the browser checks these too, so they cannot live under lib/server.
 export const THEMES = ['light', 'dark', 'auto'] as const;
 export type Theme = (typeof THEMES)[number];
+// The API's AUTH_MODE values.
+export const AUTH_MODES = ['local', 'oidc', 'both'] as const;
 // The child switcher shows its search field above this many children.
 export const FIND_CHILD_MIN = 6;
 // Toast display time; a failure that offers Try again stays longer.

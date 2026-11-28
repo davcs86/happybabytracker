@@ -26,12 +26,14 @@ const (
 	TokenReset  = "reset"
 )
 
-// Principal is who a request acts as; Kind is "admin" or "parent", and ParentID is empty for an admin.
+// Principal is who a request acts as; Kind is "admin" (AdminID set) or "parent" (ParentID set).
 type Principal struct {
 	Kind      string
 	ParentID  string
+	AdminID   string
 	SessionID string
 	ExpiresAt time.Time
+	ReauthAt  time.Time // zero when the session never re-authenticated
 }
 
 type Units struct {
@@ -41,9 +43,17 @@ type Units struct {
 type Parent struct {
 	ID, Username, DisplayName string
 	Disabled, HasPassword     bool
+	SSOLinked                 bool // holds an identity whose provider is not local
 	Units                     Units
 	CreatedAt                 time.Time
 	PasswordChangedAt         *time.Time // nil when the local password predates the column or is unset
+}
+
+// Admin is the one admin principal; it is never a parent and holds no kid access.
+type Admin struct {
+	ID, Username           string
+	HasPassword, SSOLinked bool
+	CreatedAt              time.Time
 }
 
 // PendingLink is a parent's unused one-time token; an expired one is still pending.
