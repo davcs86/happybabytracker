@@ -1,7 +1,7 @@
 <script lang="ts" module>
 	import type { AuthMode } from '#lib/types.js';
 
-	export type SsoSectionState = 'linkable' | 'linked';
+	export type SsoSectionState = 'linkable' | 'linked' | 'off';
 
 	// Parents cannot unlink: a linked account only says so; linking needs both modes and settings.
 	export function ssoSectionState(d: {
@@ -40,6 +40,8 @@
 	<h2 id="sso-heading" class="text-base font-semibold">Single sign-on</h2>
 	{#if state === 'linked'}
 		<p class="text-[13.5px] text-muted-foreground">Single sign-on is linked.</p>
+	{:else if state === 'off'}
+		<Alert>{sectionError ?? 'Linking is turned off'}</Alert>
 	{:else}
 		<!-- A plain POST: success is a redirect to the issuer. -->
 		<form method="POST" {action} class="flex flex-col gap-3" novalidate>

@@ -8,7 +8,7 @@ import type { AuthMode, Session, SessionKind } from '../../types';
 import { ssoOffered, startSso } from './start';
 
 export const TOO_MANY_ATTEMPTS = 'Too many attempts, try again in a minute';
-export const LINKING_OFF = 'Linking is turned off';
+const LINKING_OFF = 'Linking is turned off';
 const WRONG_PASSWORD = 'The password is incorrect';
 
 export function sessionBinding(token: string): string {

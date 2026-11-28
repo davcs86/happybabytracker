@@ -166,7 +166,7 @@ test('a foreign host gets 400 Bad origin, except on /healthz', async ({ request 
 });
 
 test('a parent gets the 404 page on /admin/*', async ({ page }) => {
-	for (const path of ['/admin', '/admin/parents']) {
+	for (const path of ['/admin', '/admin/parents', '/admin/account', '/admin/account/link-sso']) {
 		const response = await page.goto(path);
 		expect(response?.status()).toBe(404);
 		await expect(page.getByRole('heading', { name: 'Not found' })).toBeVisible();

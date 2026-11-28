@@ -315,6 +315,16 @@ for (const mode of ['local', 'oidc'] as const) {
 		expect(await res.text()).toContain('Linking is turned off');
 		expect(await issuerAuthorizeLog()).toEqual([]);
 	});
+
+	test(`${mode}: the link page offers no form`, async ({ page }) => {
+		await signIn(page, ANA);
+		await setAuthMode(mode);
+		await page.goto('/account/link-sso');
+		await expect(ssoSection(page).getByText('Linking is turned off')).toBeVisible();
+		await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Link single sign-on' })).toHaveCount(0);
+		await expectAccessible(page);
+	});
 }
 
 test('the admin opens Account from the nav, links, then signs in by single sign-on', async ({

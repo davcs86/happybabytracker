@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SsoSection from '#lib/components/SsoSection.svelte';
+	import SsoSection, { ssoSectionState } from '#lib/components/SsoSection.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -18,7 +18,7 @@
 	</div>
 	<SsoSection
 		action="/admin/account/link-sso"
-		state={data.linked ? 'linked' : 'linkable'}
+		state={ssoSectionState(data) ?? 'off'}
 		form={form ?? null}
 	/>
 </div>
